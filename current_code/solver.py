@@ -1,12 +1,12 @@
 from msread import *
 from time import time, sleep
 
-ms = DataHandler("WESTERBORK_GAP.MS")
+ms = DataHandler("WESTERBORK_POINT.MS")
 ms.fetch_all()
 ms.define_chunk(1,1)
 a, b = ms.vis_to_array(0,105,0,1)
 
-def compute_jhr(obser_arr, model_arr, gains, ind):
+def compute_jhr(obser_arr, model_arr, gains):
 
     spec_eye = np.zeros([2,4])
     spec_eye[(0,1),(0,3)] = 1
@@ -14,15 +14,17 @@ def compute_jhr(obser_arr, model_arr, gains, ind):
     new_shape = list(model_arr.shape)
     new_shape[-3:] = [4,1]
 
-    GI = np.einsum("...ij,...jk->...ik", gains, spec_eye)
+    RG = np.einsum("...ij,...jk->...ik", obser_arr, gains)
 
-    RG = np.einsum("...ij,...jk->...ik", obser_arr[...,ind,:,:,:], gains)
+    RGMH = np.einsum("...ij,...kj->...ik", RG, model_arr.conj())
 
-    RGMH = np.einsum("...ij,...kj->...ik", RG, model_arr[...,:,ind,:,:])
+    RGMH = np.sum(RGMH, axis=-3)
 
-    GIRGMH = np.einsum("...ij,...jk->...ik", GI, RGMH.reshape(new_shape))
+    GHI = np.einsum("...ij,...jk->...ik", gains.conj(), spec_eye)
 
-    JHR = -2 * np.sum(GIRGMH.imag, axis=-3)
+    GHIRGMH = np.einsum("...ij,...jk->...ik", GHI, RGMH.reshape(new_shape))
+
+    JHR = -2 * GHIRGMH.imag
 
     return JHR
 
@@ -45,24 +47,26 @@ def compute_update(model_arr, obser_arr, gains):
 
     jhjinv = compute_jhjinv(model_arr)
 
-    update = np.zeros_like(gains)
+    jhr = compute_jhr(obser_arr, model_arr, gains)
 
-    for i in xrange(model_arr.shape[-3]):
+    update = np.einsum("...ij,...jk->...ik", jhjinv, jhr)
 
-        jhr = compute_jhr(obser_arr, model_arr, gains, i)
-
-        update[...,i,:,:] = np.einsum("...ij,...jk->...ik", jhjinv[...,i,:,:], jhr)
-
-
-        # print update
+    return update
 
 def full_pol_phase_only(model_arr, obser_arr):
 
-    gains = np.empty(model_arr.shape[-3:])
-    gains[:] = np.eye(2)
+    phases = np.zeros([1, 1, 14, 2, 1])
 
-    for i in range(3):
-        compute_update(model_arr, obser_arr, gains)
+    gains = np.einsum("...ij,...jk->...ik", np.exp(phases), np.ones([1,2]))
+    gains[...,(0,1),(1,0)] = 0
+
+    for i in range(100):
+        phases += 0.5*compute_update(model_arr, obser_arr, gains)
+
+        gains = np.einsum("...ij,...jk->...ik", np.exp(phases), np.ones([1,2]))
+        gains[...,(0,1),(1,0)] = 0
+
+        print gains
 
 
 full_pol_phase_only(b, a)
