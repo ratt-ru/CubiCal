@@ -45,7 +45,9 @@ def compute_jhjinv(model_arr):
 
 def compute_update(model_arr, obser_arr, gains):
 
+    t0 = time()
     jhjinv = compute_jhjinv(model_arr)
+    print time() - t0
 
     jhr = compute_jhr(obser_arr, model_arr, gains)
 
@@ -57,16 +59,17 @@ def full_pol_phase_only(model_arr, obser_arr):
 
     phases = np.zeros([1, 1, 14, 2, 1])
 
-    gains = np.einsum("...ij,...jk->...ik", np.exp(phases), np.ones([1,2]))
+    gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1,2]))
     gains[...,(0,1),(1,0)] = 0
 
-    for i in range(100):
-        phases += 0.5*compute_update(model_arr, obser_arr, gains)
+    for i in range(10):
 
-        gains = np.einsum("...ij,...jk->...ik", np.exp(phases), np.ones([1,2]))
+        phases += compute_update(model_arr, obser_arr, gains)
+
+        gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1,2]))
         gains[...,(0,1),(1,0)] = 0
 
-        print gains
+        # print gains
 
 
 full_pol_phase_only(b, a)
