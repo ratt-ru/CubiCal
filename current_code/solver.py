@@ -45,15 +45,20 @@ def compute_jhjinv(model_arr):
 
 def compute_update(model_arr, obser_arr, gains):
 
-    t0 = time()
     jhjinv = compute_jhjinv(model_arr)
-    print time() - t0
 
     jhr = compute_jhr(obser_arr, model_arr, gains)
 
     update = np.einsum("...ij,...jk->...ik", jhjinv, jhr)
 
     return update
+
+def compute_residual(obser_arr, model_arr, gains):
+
+    GM = np.einsum("...lmij,...lmjk->...mljk", gains, model_arr)
+    GMGH = np.einsum("...lmki,...lmji->...lmkj", GM, gains.conj())
+
+    return obser_arr - GMGH
 
 def full_pol_phase_only(model_arr, obser_arr):
 
@@ -62,12 +67,17 @@ def full_pol_phase_only(model_arr, obser_arr):
     gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1,2]))
     gains[...,(0,1),(1,0)] = 0
 
+    print np.linalg.norm(compute_residual(obser_arr, model_arr, gains))
+
     for i in range(10):
 
         phases += compute_update(model_arr, obser_arr, gains)
 
         gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1,2]))
         gains[...,(0,1),(1,0)] = 0
+
+        # print gains
+        print np.linalg.norm(compute_residual(obser_arr, model_arr, gains))
 
         # print gains
 
