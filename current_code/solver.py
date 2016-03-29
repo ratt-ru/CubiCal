@@ -66,7 +66,7 @@ def full_pol_phase_only(model_arr, obser_arr):
     gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1,2]))
     gains[...,(0,1),(1,0)] = 0
 
-    print np.linalg.norm(compute_residual(obser_arr, model_arr, gains))
+    # print np.linalg.norm(compute_residual(obser_arr, model_arr, gains))
 
     for i in range(10):
 
@@ -76,12 +76,14 @@ def full_pol_phase_only(model_arr, obser_arr):
         gains[...,(0,1),(1,0)] = 0
 
         # print gains
-        print np.linalg.norm(compute_residual(obser_arr, model_arr, gains))
+        # print np.linalg.norm(compute_residual(obser_arr, model_arr, gains))
 
         # print gains
 
+t0 = time()
 for b,a in ms:
     full_pol_phase_only(a, b)
+print time() - t0
 # print compute_jhr(a, b, "a")
 # print compute_jhjinv(b)
 

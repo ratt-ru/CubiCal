@@ -3,6 +3,7 @@ import numpy as np
 from collections import Counter, OrderedDict
 # from pprint import pprint
 
+
 class DataHandler:
     """
     Class for handling measurement sets.
@@ -139,28 +140,48 @@ class DataHandler:
         return obser_arr, model_arr
 
     def __iter__(self):
-        return self
+        return next(self)
 
     def next(self):
 
-        first_t = self.chunk_tind[self.active_t]
-        last_t = self.chunk_tind[self.active_t + 1]
-        first_f = self.chunk_find[self.active_f]
-        last_f = self.chunk_find[self.active_f + 1]
-        t_dim = self.chunk_tkeys[self.active_t + 1] - \
-                self.chunk_tkeys[self.active_t]
-        f_dim = last_f - first_f
+        for i in xrange(len(self.chunk_tind[:-1]) - 1):
+            for j in self.chunk_find[:-1]:
 
-        self.active_f += 1
+                first_t = self.chunk_tind[i]
+                last_t = self.chunk_tind[i + 1]
 
-        if self.active_f == len(self.chunk_find) - 1:
-            self.active_f = 0
-            self.active_t += 1
-            if self.active_t ==  len(self.chunk_tind) - 1:
-                raise StopIteration
+                first_f = self.chunk_find[j]
+                last_f = self.chunk_find[j + 1]
 
-        return self.vis_to_array(t_dim, f_dim, first_t, last_t, first_f, last_f)
+                print i, j
 
+                t_dim = self.chunk_tkeys[i + 1] - \
+                        self.chunk_tkeys[i]
+                f_dim = last_f - first_f
+
+                yield self.vis_to_array(t_dim, f_dim, first_t, last_t, first_f,
+                                        last_f)
+
+
+
+        # first_t = self.chunk_tind[self.active_t]
+        # last_t = self.chunk_tind[self.active_t + 1]
+        # first_f = self.chunk_find[self.active_f]
+        # last_f = self.chunk_find[self.active_f + 1]
+        # t_dim = self.chunk_tkeys[self.active_t + 1] - \
+        #         self.chunk_tkeys[self.active_t]
+        # f_dim = last_f - first_f
+        #
+        # self.active_f += 1
+        #
+        # if self.active_f == len(self.chunk_find) - 1:
+        #     self.active_f = 0
+        #     self.active_t += 1
+        #     if self.active_t ==  len(self.chunk_tind) - 1:
+        #         raise StopIteration
+        #
+        # return self.vis_to_array(t_dim, f_dim, first_t, last_t, first_f, last_f)
+        #
 
 
 
