@@ -1,10 +1,9 @@
 from msread import *
 from time import time, sleep
 
-ms = DataHandler("WESTERBORK_POINT.MS")
+ms = DataHandler("WESTERBORK_GAP.MS")
 ms.fetch_all()
 ms.define_chunk(1,1)
-a, b = ms.vis_to_array(0,105,0,1)
 
 def compute_jhr(obser_arr, model_arr, gains):
 
@@ -81,8 +80,8 @@ def full_pol_phase_only(model_arr, obser_arr):
 
         # print gains
 
-
-full_pol_phase_only(b, a)
+for b,a in ms:
+    full_pol_phase_only(a, b)
 # print compute_jhr(a, b, "a")
 # print compute_jhjinv(b)
 

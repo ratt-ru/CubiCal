@@ -28,6 +28,13 @@ class DataHandler:
         self.anteb = None
         self.times = None
 
+        self.chunk_tdim = None
+        self.chunk_fdim = None
+        self.chunk_tind = None
+        self.chunk_find = None
+        self.active_t = 0
+        self.active_f = 0
+
         self.tdict = None
 
     def fetch(self, *args, **kwargs):
@@ -64,39 +71,45 @@ class DataHandler:
         self.chunk_tdim = tdim
         self.chunk_fdim = fdim
 
-        # self.chunk_nrow = self.tdict[self.chunk_tdim - 1]
+        self.chunk_tind = [0]
+        self.chunk_tind.extend(self.tdict.values())
+        self.chunk_tind = list(np.cumsum(self.chunk_tind)[::self.chunk_tdim])
+        self.chunk_tind.append(self.nrows)
 
-        # self.curtdim = tdim
-        # self.curfdim = fdim
-        #
-        # self.lind = tdim
-        # self.lrow = np.sum(self.tdict.values()[:self.lind])
-        #
-        # self.lfre = 0
+        self.chunk_tkeys = self.tdict.keys()[::self.chunk_tdim]
+        self.chunk_tkeys.append(self.ntime)
 
-    def vis_to_array(self, f_t_row, l_t_row, f_f_col, l_f_col):
+        self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
+        self.chunk_find.append(self.nfreq)
+
+        print self.chunk_tind
+        print self.chunk_find
+
+    def vis_to_array(self,chunk_tdim, chunk_fdim, f_t_row, l_t_row, f_f_col,
+                     l_f_col):
 
 
         # Creates empty 5D arrays into which the model and observed data can
         # be packed. TODO: 6D? dtype?
 
-        obser_arr = np.empty([self.chunk_tdim, self.chunk_fdim, self.nants,
+        obser_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
                               self.nants, self.ncorr], dtype=np.complex128)
 
-        model_arr = np.empty([self.chunk_tdim, self.chunk_fdim, self.nants,
+        model_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
                               self.nants, self.ncorr], dtype=np.complex128)
 
         # Grabs the relevant time and antenna info.
 
         tchunk = self.times[f_t_row:l_t_row]
+        tchunk = tchunk - np.min(tchunk)
         achunk = self.antea[f_t_row:l_t_row]
         bchunk = self.anteb[f_t_row:l_t_row]
 
         # The following takes the arbitrarily ordered data from the MS and
         # places it into a 5D data structure (measurement matrix).
 
-        self.obvis[5,0,1] = 100
-        self.movis[5,0,1] = 123
+        # self.obvis[5,0,1] = 100
+        # self.movis[5,0,1] = 100
 
         obser_arr[tchunk, :, achunk, bchunk, :] \
             = self.obvis[f_t_row:l_t_row, f_f_col:l_f_col, :]
@@ -112,15 +125,43 @@ class DataHandler:
         # purely a precaution - we do not want autocorrelations on the
         # diagonal. TODO: For loop with fill_diagonal?
 
-        obser_arr.reshape([-1, self.chunk_fdim, self.nants**2, self.ncorr]) \
+        obser_arr.reshape([-1, chunk_fdim, self.nants**2, self.ncorr]) \
             [:, :, ::self.nants + 1, :] = 0
 
-        model_arr.reshape([-1, self.chunk_fdim, self.nants**2, self.ncorr]) \
+        model_arr.reshape([-1, chunk_fdim, self.nants**2, self.ncorr]) \
             [:, :, ::self.nants + 1, :] = 0
 
-        obser_arr = obser_arr.reshape([self.chunk_tdim, self.chunk_fdim,
+        obser_arr = obser_arr.reshape([chunk_tdim, chunk_fdim,
                                        self.nants, self.nants, 2, 2])
-        model_arr = model_arr.reshape([self.chunk_tdim, self.chunk_fdim,
+        model_arr = model_arr.reshape([chunk_tdim, chunk_fdim,
                                        self.nants, self.nants, 2, 2])
 
         return obser_arr, model_arr
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+
+        first_t = self.chunk_tind[self.active_t]
+        last_t = self.chunk_tind[self.active_t + 1]
+        first_f = self.chunk_find[self.active_f]
+        last_f = self.chunk_find[self.active_f + 1]
+        t_dim = self.chunk_tkeys[self.active_t + 1] - \
+                self.chunk_tkeys[self.active_t]
+        f_dim = last_f - first_f
+
+        self.active_f += 1
+
+        if self.active_f == len(self.chunk_find) - 1:
+            self.active_f = 0
+            self.active_t += 1
+            if self.active_t ==  len(self.chunk_tind) - 1:
+                raise StopIteration
+
+        return self.vis_to_array(t_dim, f_dim, first_t, last_t, first_f, last_f)
+
+
+
+
+
