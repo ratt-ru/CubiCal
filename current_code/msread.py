@@ -75,16 +75,14 @@ class DataHandler:
         self.chunk_tind = [0]
         self.chunk_tind.extend(self.tdict.values())
         self.chunk_tind = list(np.cumsum(self.chunk_tind)[::self.chunk_tdim])
-        self.chunk_tind.append(self.nrows)
+        if self.chunk_tind[-1] != self.nrows:
+            self.chunk_tind.append(self.nrows)
 
         self.chunk_tkeys = self.tdict.keys()[::self.chunk_tdim]
         self.chunk_tkeys.append(self.ntime)
 
         self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
         self.chunk_find.append(self.nfreq)
-
-        print self.chunk_tind
-        print self.chunk_find
 
     def vis_to_array(self,chunk_tdim, chunk_fdim, f_t_row, l_t_row, f_f_col,
                      l_f_col):
@@ -144,16 +142,14 @@ class DataHandler:
 
     def next(self):
 
-        for i in xrange(len(self.chunk_tind[:-1]) - 1):
-            for j in self.chunk_find[:-1]:
+        for i in xrange(len(self.chunk_tind[:-1])):
+            for j in xrange(len(self.chunk_find[:-1])):
 
                 first_t = self.chunk_tind[i]
                 last_t = self.chunk_tind[i + 1]
 
                 first_f = self.chunk_find[j]
                 last_f = self.chunk_find[j + 1]
-
-                print i, j
 
                 t_dim = self.chunk_tkeys[i + 1] - \
                         self.chunk_tkeys[i]
