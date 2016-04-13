@@ -1,48 +1,84 @@
 from msread import *
-from time import time, sleep
+from time import time
 
-ms = DataHandler("WESTERBORK_GAP.MS")
-ms.fetch_all()
-ms.define_chunk(1,16)
 
 def compute_jhr(obser_arr, model_arr, gains):
+    """
+    This function computes the (J^H)R term of the GN/LM method for the
+    full-polarisation, phase-only case.
 
-    spec_eye = np.zeros([2,4])
-    spec_eye[(0,1),(0,3)] = 1
+    Args:
+        obser_arr (np.array): Array containing the observed visibilities.
+        model_arr (np.array): Array containing the model visibilities.
+        gains (np.array): Array containing the current gain estimates.
+
+    Returns:
+        jhr (np.array): Array containing the result of computing (J^H)R.
+    """
+
+    spec_eye = np.zeros([2, 4])
+    spec_eye[(0, 1), (0, 3)] = 1
 
     new_shape = list(model_arr.shape)
-    new_shape[-3:] = [4,1]
+    new_shape[-3:] = [4, 1]
 
-    RG = np.einsum("gh...ij,gh...jk->gh...ik", obser_arr, gains)
+    rg = np.einsum("gh...ij,gh...jk->gh...ik", obser_arr, gains)
 
-    RGMH = np.einsum("...ij,...kj->...ik", RG, model_arr.conj())
+    rgmh = np.einsum("...ij,...kj->...ik", rg, model_arr.conj())
 
-    RGMH = np.sum(RGMH, axis=-3)
+    rgmh = np.sum(rgmh, axis=-3)
 
-    GHI = np.einsum("...ij,...jk->...ik", gains.conj(), spec_eye)
+    ghi = np.einsum("...ij,...jk->...ik", gains.conj(), spec_eye)
 
-    GHIRGMH = np.einsum("...ij,...jk->...ik", GHI, RGMH.reshape(new_shape))
+    ghirgmh = np.einsum("...ij,...jk->...ik", ghi, rgmh.reshape(new_shape))
 
-    JHR = -2 * GHIRGMH.imag
+    jhr = -2 * ghirgmh.imag
 
-    return JHR
+    return jhr
+
 
 def compute_jhjinv(model_arr):
+    """
+    This function computes the ((J^H)J)^-1 term of the GN/LM method for the
+    full-polarisation, phase-only case. Note that this depends only on the
+    model visibilities.
+
+    Args:
+        model_arr (np.array): Array containing the model visibilities.
+
+    Returns:
+        jhjinv (np.array): Array containing the result of computing ((J^H)J)^-1.
+    """
 
     new_shape = list(model_arr.shape)
     new_shape[-2:] = [4]
 
-    to_norm = np.array([[2,0,0,0],[1,0,0,1],[1,0,0,1],[0,0,0,2]])
+    to_norm = np.array([[2, 0, 0, 0], [1, 0, 0, 1],
+                        [1, 0, 0, 1], [0, 0, 0, 2]])
 
     jhjinv = np.sum(abs(model_arr.reshape(new_shape))**2, axis=-2).dot(to_norm)
 
-    jhjinv[jhjinv!=0] = 1./jhjinv[jhjinv!=0]
+    jhjinv[jhjinv != 0] = 1./jhjinv[jhjinv != 0]
 
-    new_shape[-2:] = [2,2]
+    new_shape[-2:] = [2, 2]
 
     return jhjinv.reshape(new_shape)
 
+
 def compute_update(model_arr, obser_arr, gains):
+    """
+    This function computes the update step of the GN/LM method. This is
+    equivalent to the complete (((J^H)J)^-1)(J^H)R.
+
+    Args:
+        obser_arr (np.array): Array containing the observed visibilities.
+        model_arr (np.array): Array containing the model visibilities.
+        gains (np.array): Array containing the current gain estimates.
+
+    Returns:
+        update (np.array): Array containing the result of computing
+            (((J^H)J)^-1)(J^H)R
+    """
 
     jhjinv = compute_jhjinv(model_arr)
 
@@ -52,86 +88,95 @@ def compute_update(model_arr, obser_arr, gains):
 
     return update
 
+
 def compute_residual(obser_arr, model_arr, gains):
+    """
+    This function computes the residual. This is the difference between the
+    observed data, and the model data with the gains applied to it.
 
-    GM = np.einsum("...lij,...lmjk->...lmik", gains, model_arr)
+    Args:
+        obser_arr (np.array): Array containing the observed visibilities.
+        model_arr (np.array): Array containing the model visibilities.
+        gains (np.array): Array containing the current gain estimates.
 
-    GMGH = np.einsum("...lmij,...mkj->...lmik", GM, gains.conj())
+    Returns:
+        residual (np.array): Array containing the result of computing D-GMG^H.
+    """
 
-    return obser_arr - GMGH
+    gm = np.einsum("...lij,...lmjk->...lmik", gains, model_arr)
 
-def full_pol_phase_only(model_arr, obser_arr):
+    gmgh = np.einsum("...lmij,...mkj->...lmik", gm, gains.conj())
+
+    residual = obser_arr - gmgh
+
+    return residual
+
+
+def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
+                        chi_tol=1e-6, chi_interval=5):
+    """
+    This function is the main body of the GN/LM method. It handles iterations
+    and convergence tests.
+
+    Args:
+        obser_arr (np.array): Array containing the observed visibilities.
+        model_arr (np.array): Array containing the model visibilities.
+        min_delta_g (float): Gain improvement threshold.
+        maxiter (int): Maximum number of iterations allowed.
+        chi_tol (float): Chi-squared improvement threshold.
+        chi_interval (int): Interval at which the chi-squared test is performed.
+
+    Returns:
+        gains (np.array): Array containing the final gain estimates.
+    """
 
     phase_shape = list(model_arr.shape)
     phase_shape[-3:] = [2, 1]
 
     phases = np.zeros(phase_shape)
 
-    gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1,2]))
-    gains[...,(0,1),(1,0)] = 0
+    gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1, 2]))
+    gains[..., (0, 1), (1, 0)] = 0
 
-    # print np.linalg.norm(compute_residual(obser_arr, model_arr, gains))
+    delta_g = 1
+    iters = 0
+    chi = np.inf
 
-    for i in range(10):
+    while delta_g > min_delta_g:
 
-        if i%2 == 0:
+        if iters % 2 == 0:
             fact = 0.5
         else:
             fact = 1
+
         phases += fact*compute_update(model_arr, obser_arr, gains)
 
-        gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1,2]))
-        gains[...,(0,1),(1,0)] = 0
+        delta_g = gains.copy()
 
-        # print np.linalg.norm(compute_residual(obser_arr, model_arr, gains)[0,0,:])
-        # print np.linalg.norm(compute_residual(obser_arr, model_arr, gains)[1,0,:])
-        # print np.linalg.norm(compute_residual(obser_arr, model_arr, gains)[0,1,:])
-        # print np.linalg.norm(compute_residual(obser_arr, model_arr, gains)[1,1,:])
+        gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1, 2]))
+        gains[..., (0, 1), (1, 0)] = 0
+
+        iters += 1
+
+        if iters > maxiter:
+            return gains
+
+        if (iters % chi_interval) == 0:
+            old_chi = chi
+            chi = np.linalg.norm(compute_residual(obser_arr, model_arr, gains))
+            if (old_chi - chi) < chi_tol:
+                return gains
+            if old_chi < chi:
+                print "Bad solutions."
+                return gains
+
+        delta_g = np.linalg.norm(delta_g - gains)
+
+ms = DataHandler("WESTERBORK_GAP.MS")
+ms.fetch_all()
+ms.define_chunk(10, 1)
 
 t0 = time()
-for b,a in ms:
-    # print b.shape
+for b, a in ms:
     full_pol_phase_only(a, b)
 print time() - t0
-# print compute_jhr(a, b, "a")
-# print compute_jhjinv(b)
-
-
-
-
-
-
-
-
-
-
-
-# def compute_jhjinv3(model_arr):
-#
-#     tst = np.sum(abs(model_arr)**2, axis=-3)
-#
-#     tst[...,0,0] = np.sum(tst[...,0,:] + tst[...,:,0], axis=-1)
-#     tst[...,1,1] = np.sum(tst[...,1,:] + tst[...,:,1], axis=-1)
-#     tst[...,(0,1),(1,0)] = 0
-#
-#     tst[tst!=0] = 1./tst[tst!=0]
-#
-#     return tst
-
-# print b[0,0,1,0,:].reshape(2,2).dot(np.eye(2))
-
-# CODE FOR COMPUTING JHR WITH EXPLICIT, INCONVENIENT KRON PROD.
-
-# MCG = np.einsum("...ij,...jk->...ik", model_arr[...,:,0,:,:], gains)
-#
-# res = np.empty([14,4,4], dtype=np.complex128)
-#
-# for i in xrange(MCG.shape[-3]):
-#     res[i,:,:] = np.kron(MCG[0,0,i,:,:], np.eye(2))
-#
-# res = np.einsum("...ij,...jk->...ik", GI, res)
-#
-# res = np.einsum("...ij,...jk->...ik", res, obser_arr[...,0,:,:,:].reshape(
-#     blah))
-#
-# print -2 * np.sum(res, axis=-3).imag
