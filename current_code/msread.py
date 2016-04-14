@@ -1,7 +1,6 @@
 from pyrap.tables import table
 import numpy as np
 from collections import Counter, OrderedDict
-# from pprint import pprint
 
 
 class DataHandler:
@@ -41,7 +40,7 @@ class DataHandler:
             ms_name (str): Name of measurement set.
         """
         self.ms_name = ms_name
-        self.data = table(self.ms_name)
+        self.data = table(self.ms_name, readonly=False)
 
         self.nrows = self.data.nrows()
         self.ntime = len(np.unique(self.fetch("TIME")))
@@ -51,6 +50,7 @@ class DataHandler:
 
         self.obvis = None
         self.movis = None
+        self.covis = None
         self.antea = None
         self.anteb = None
         self.times = None
@@ -63,6 +63,10 @@ class DataHandler:
         self.chunk_tind = None
         self.chunk_find = None
         self.chunk_tkey = None
+        self._first_t = None
+        self._last_t = None
+        self._first_f = None
+        self._last_f = None
 
         self.apply_flags = False
         self.bitmask = None
@@ -113,6 +117,7 @@ class DataHandler:
         self.anteb = self.fetch("ANTENNA2", *args, **kwargs)
         self.times = self.index_t(self.fetch("TIME", *args, **kwargs))
         self.tdict = OrderedDict(sorted(Counter(self.times).items()))
+        self.covis = np.empty_like(self.obvis)
 
         self.flags = self.fetch("FLAG", *args, **kwargs)
         try:
@@ -248,14 +253,48 @@ class DataHandler:
         for i in xrange(len(self.chunk_tind[:-1])):
             for j in xrange(len(self.chunk_find[:-1])):
 
-                first_t = self.chunk_tind[i]
-                last_t = self.chunk_tind[i + 1]
+                self._first_t = self.chunk_tind[i]
+                self._last_t = self.chunk_tind[i + 1]
 
-                first_f = self.chunk_find[j]
-                last_f = self.chunk_find[j + 1]
+                self._first_f = self.chunk_find[j]
+                self._last_f = self.chunk_find[j + 1]
 
                 t_dim = self.chunk_tkey[i + 1] - self.chunk_tkey[i]
-                f_dim = last_f - first_f
+                f_dim = self._last_f - self._first_f
 
-                yield self.vis_to_array(t_dim, f_dim, first_t, last_t, first_f,
-                                        last_f)
+                yield self.vis_to_array(t_dim, f_dim, self._first_t,
+                                        self._last_t, self._first_f,
+                                        self._last_f)
+
+    def array_to_vis(self, in_arr, f_t_row, l_t_row, f_f_col, l_f_col):
+        """
+        Converts the calibrated measurement matrix back into the MS style.
+
+        Args:
+            in_arr (np.array): Input array which is to be made MS friendly.
+            f_t_row (int): First time row in MS to which the data belongs.
+            l_t_row (int): Last time row in MS to which the data belongs.
+            f_f_col (int): First frequency in MS to which the data belongs.
+            l_f_col (int): Last frequency in MS to which the data belongs.
+
+        """
+
+        new_shape = [l_t_row - f_t_row, l_f_col - f_f_col, 4]
+
+        tchunk = self.times[f_t_row:l_t_row]
+        achunk = self.antea[f_t_row:l_t_row]
+        bchunk = self.anteb[f_t_row:l_t_row]
+
+        self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
+            in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)
+
+    def save(self, values, col_name):
+        """
+        Saves values to column in MS.
+
+        Args
+        values (np.array): Values to be written to column.
+        col_name (str): Name of target column.
+        """
+
+        self.data.putcol(col_name, values)

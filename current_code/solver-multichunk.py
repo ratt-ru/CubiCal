@@ -65,7 +65,7 @@ def compute_jhjinv(model_arr):
     return jhjinv.reshape(new_shape)
 
 
-def compute_update(model_arr, obser_arr, gains):
+def compute_update(model_arr, obser_arr, gains, jhjinv):
     """
     This function computes the update step of the GN/LM method. This is
     equivalent to the complete (((J^H)J)^-1)(J^H)R.
@@ -74,13 +74,12 @@ def compute_update(model_arr, obser_arr, gains):
         obser_arr (np.array): Array containing the observed visibilities.
         model_arr (np.array): Array containing the model visibilities.
         gains (np.array): Array containing the current gain estimates.
+        jhjinv (np.array): Array containing (J^H)J)^-1. (Invariant)
 
     Returns:
         update (np.array): Array containing the result of computing
             (((J^H)J)^-1)(J^H)R
     """
-
-    jhjinv = compute_jhjinv(model_arr)
 
     jhr = compute_jhr(obser_arr, model_arr, gains)
 
@@ -142,6 +141,8 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
     iters = 0
     chi = np.inf
 
+    jhjinv = compute_jhjinv(model_arr)
+
     while delta_g > min_delta_g:
 
         if iters % 2 == 0:
@@ -149,7 +150,7 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
         else:
             fact = 1
 
-        phases += fact*compute_update(model_arr, obser_arr, gains)
+        phases += fact*compute_update(model_arr, obser_arr, gains, jhjinv)
 
         delta_g = gains.copy()
 
@@ -172,11 +173,45 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
 
         delta_g = np.linalg.norm(delta_g - gains)
 
-ms = DataHandler("WESTERBORK_GAP.MS")
+    return gains
+
+
+def apply_gains(obser_arr, gains):
+    """
+    Applies the inverse of the gain estimates to the observed data matrix.
+
+    Args:
+        obser_arr (np.array): Array of the observed visibilities.
+        gains (np.array): Array of the gain estimates.
+
+    Returns:
+        inv_gdgh (np.array): Array containing (G^-1)D(G^-H).
+    """
+
+    inv_gains = np.transpose(gains[..., ::-1, ::-1], axes=[0, 1, 2, 4, 3])
+
+    inv_gains = np.array([[1, -1], [-1, 1]]) * inv_gains
+
+    inv_gains *= 1./(gains[..., 0, 0] * gains[..., 1, 1]
+                   - gains[..., 0, 1] * gains[..., 1, 0])[..., None, None]
+
+    inv_gd = np.einsum("...lij,...lmjk->...lmik", inv_gains, obser_arr)
+
+    inv_gdgh = np.einsum("...lmij,...mkj->...lmik", inv_gd, inv_gains.conj())
+
+    return inv_gdgh
+
+
+ms = DataHandler("WESTERBORK_POINT.MS")
 ms.fetch_all()
 ms.define_chunk(10, 1)
 
 t0 = time()
 for b, a in ms:
-    full_pol_phase_only(a, b)
+    gains = full_pol_phase_only(a, b)
+    corr_vis = apply_gains(b, gains)
+    ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
 print time() - t0
+
+ms.save(ms.covis, "CORRECTED_DATA")
+
