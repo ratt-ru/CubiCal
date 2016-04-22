@@ -1,6 +1,6 @@
 from msread import *
 from time import time
-
+import cykernels
 
 def compute_jhr(obser_arr, model_arr, gains):
     """
@@ -16,23 +16,20 @@ def compute_jhr(obser_arr, model_arr, gains):
         jhr (np.array): Array containing the result of computing (J^H)R.
     """
 
-    spec_eye = np.zeros([2, 4])
-    spec_eye[(0, 1), (0, 3)] = 1
+    out_shape = list(obser_arr.shape)
+    out_shape[-3:] = [2,2]
 
-    new_shape = list(model_arr.shape)
-    new_shape[-3:] = [4, 1]
+    tmp_array1 = np.empty([2,2], dtype=np.complex128)
+    tmp_array2 = np.zeros(out_shape, dtype=np.complex128)
 
-    rg = np.einsum("gh...ij,gh...jk->gh...ik", obser_arr, gains)
+    cykernels.compute_rgmh(obser_arr, gains, model_arr.transpose([0,1,3,2,4,5]),
+                          tmp_array1, tmp_array2)
 
-    rgmh = np.einsum("...ij,...kj->...ik", rg, model_arr.conj())
+    out_shape[-1] = 1
+    tmp_array1 = np.empty(out_shape, dtype=np.complex128)
+    cykernels.compute_ghirmgh(gains.conj(), tmp_array2, tmp_array1)
 
-    rgmh = np.sum(rgmh, axis=-3)
-
-    ghi = np.einsum("...ij,...jk->...ik", gains.conj(), spec_eye)
-
-    ghirgmh = np.einsum("...ij,...jk->...ik", ghi, rgmh.reshape(new_shape))
-
-    jhr = -2 * ghirgmh.imag
+    jhr = -2 * tmp_array1.imag
 
     return jhr
 
@@ -82,6 +79,9 @@ def compute_update(model_arr, obser_arr, gains, jhjinv):
     """
 
     jhr = compute_jhr(obser_arr, model_arr, gains)
+
+    print "jhj", jhjinv.shape
+    print jhr.shape
 
     update = np.einsum("...ij,...jk->...ik", jhjinv, jhr)
 
@@ -204,7 +204,7 @@ def apply_gains(obser_arr, gains):
 
 ms = DataHandler("WESTERBORK_POINT.MS")
 ms.fetch_all()
-ms.define_chunk(10, 1)
+ms.define_chunk(100, 64)
 
 t0 = time()
 for b, a in ms:
