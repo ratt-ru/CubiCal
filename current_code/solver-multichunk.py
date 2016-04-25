@@ -47,19 +47,13 @@ def compute_jhjinv(model_arr):
         jhjinv (np.array): Array containing the result of computing ((J^H)J)^-1.
     """
 
-    new_shape = list(model_arr.shape)
-    new_shape[-2:] = [4]
+    jhjinv_shape = list(model_arr.shape)
+    jhjinv_shape[-3:] = [2,2]
 
-    to_norm = np.array([[2, 0, 0, 0], [1, 0, 0, 1],
-                        [1, 0, 0, 1], [0, 0, 0, 2]])
+    jhjinv = np.zeros(jhjinv_shape, dtype=np.float64)
+    cykernels.compute_jhj(model_arr, jhjinv)
 
-    jhjinv = np.sum(abs(model_arr.reshape(new_shape))**2, axis=-2).dot(to_norm)
-
-    jhjinv[jhjinv != 0] = 1./jhjinv[jhjinv != 0]
-
-    new_shape[-2:] = [2, 2]
-
-    return jhjinv.reshape(new_shape)
+    return jhjinv
 
 
 def compute_update(model_arr, obser_arr, gains, jhjinv):
@@ -80,10 +74,8 @@ def compute_update(model_arr, obser_arr, gains, jhjinv):
 
     jhr = compute_jhr(obser_arr, model_arr, gains)
 
-    print "jhj", jhjinv.shape
-    print jhr.shape
-
-    update = np.einsum("...ij,...jk->...ik", jhjinv, jhr)
+    update = np.empty_like(jhr)
+    cykernels.compute_update(jhjinv, jhr, update)
 
     return update
 
@@ -195,9 +187,8 @@ def apply_gains(obser_arr, gains):
     inv_gains *= 1./(gains[..., 0, 0] * gains[..., 1, 1]
                    - gains[..., 0, 1] * gains[..., 1, 0])[..., None, None]
 
-    inv_gd = np.einsum("...lij,...lmjk->...lmik", inv_gains, obser_arr)
-
-    inv_gdgh = np.einsum("...lmij,...mkj->...lmik", inv_gd, inv_gains.conj())
+    inv_gdgh = np.empty_like(obser_arr)
+    cykernels.apply_gains(inv_gains, inv_gains.conj(), obser_arr, inv_gdgh)
 
     return inv_gdgh
 
