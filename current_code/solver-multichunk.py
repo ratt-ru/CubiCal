@@ -94,9 +94,8 @@ def compute_residual(obser_arr, model_arr, gains):
         residual (np.array): Array containing the result of computing D-GMG^H.
     """
 
-    gm = np.einsum("...lij,...lmjk->...lmik", gains, model_arr)
-
-    gmgh = np.einsum("...lmij,...mkj->...lmik", gm, gains.conj())
+    gmgh = np.empty_like(obser_arr)
+    cykernels.apply_gains(gains, gains.conj(), model_arr, gmgh)
 
     residual = obser_arr - gmgh
 
@@ -124,10 +123,13 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
     phase_shape = list(model_arr.shape)
     phase_shape[-3:] = [2, 1]
 
-    phases = np.zeros(phase_shape)
+    phases = np.zeros(phase_shape, dtype=np.float64)
 
-    gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1, 2]))
-    gains[..., (0, 1), (1, 0)] = 0
+    gain_shape = list(model_arr.shape)
+    gain_shape[-3:] = [2, 2]
+
+    gains = np.zeros(gain_shape, dtype=np.complex128)
+    gains[...,(0,1),(0,1)] = np.exp(-1j*phases)[...,(0,1),(0,0)]
 
     delta_g = 1
     iters = 0
@@ -146,8 +148,7 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
 
         delta_g = gains.copy()
 
-        gains = np.einsum("...ij,...jk", np.exp(-1j*phases), np.ones([1, 2]))
-        gains[..., (0, 1), (1, 0)] = 0
+        gains[...,(0,1),(0,1)] = np.exp(-1j*phases)[...,(0,1),(0,0)]
 
         iters += 1
 
@@ -193,7 +194,7 @@ def apply_gains(obser_arr, gains):
     return inv_gdgh
 
 
-ms = DataHandler("WESTERBORK_POINT.MS")
+ms = DataHandler("WESTERBORK_GAP.MS")
 ms.fetch_all()
 ms.define_chunk(100, 64)
 

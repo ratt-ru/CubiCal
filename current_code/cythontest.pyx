@@ -32,25 +32,13 @@ def compute_rgmh(double complex [:,:,:,:,:,:] in1,
             for k in xrange(new_shape[2]):
                 for l in xrange(new_shape[3]):
 
-                    tmp1[0,0] = (in1[i,j,k,l,0,0]*
-                                         in2[i,j,l,0,0]) + \
-                                        (in1[i,j,k,l,0,1]*
-                                         in2[i,j,l,1,0])
+                    tmp1[0,0] = in1[i,j,k,l,0,0] * in2[i,j,l,0,0]
 
-                    tmp1[0,1] = (in1[i,j,k,l,0,0]*
-                                         in2[i,j,l,0,1]) + \
-                                        (in1[i,j,k,l,0,1]*
-                                         in2[i,j,l,1,1])
+                    tmp1[0,1] = in1[i,j,k,l,0,1] * in2[i,j,l,1,1]
 
-                    tmp1[1,0] = (in1[i,j,k,l,1,0]*
-                                         in2[i,j,l,0,0]) + \
-                                        (in1[i,j,k,l,1,1]*
-                                         in2[i,j,l,1,0])
+                    tmp1[1,0] = in1[i,j,k,l,1,0] * in2[i,j,l,0,0]
 
-                    tmp1[1,1] = (in1[i,j,k,l,1,0]*
-                                         in2[i,j,l,0,1]) + \
-                                        (in1[i,j,k,l,1,1]*
-                                         in2[i,j,l,1,1])
+                    tmp1[1,1] = in1[i,j,k,l,1,1] * in2[i,j,l,1,1]
 
                     out1[i,j,k,0,0] = out1[i,j,k,0,0] + (tmp1[0,0]*
                                          in3[i,j,k,l,0,0]) + \
