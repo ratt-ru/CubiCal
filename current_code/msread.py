@@ -44,8 +44,8 @@ class DataHandler:
 
         self.nrows = self.data.nrows()
         self.ntime = len(np.unique(self.fetch("TIME")))
-        self.nfreq = self.data.getcoldesc("DATA")["shape"][0]
-        self.ncorr = self.data.getcoldesc("DATA")["shape"][1]
+        self.nfreq = self.data.getcol("DATA", nrow=1).shape[1]
+        self.ncorr = self.data.getcol("DATA", nrow=1).shape[2]
         self.nants = table(self.ms_name + "/ANTENNA").nrows()
 
         self.obvis = None
