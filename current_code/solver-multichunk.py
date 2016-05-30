@@ -25,11 +25,22 @@ def compute_jhr(obser_arr, model_arr, gains):
     cykernels.compute_rgmh(obser_arr, gains, model_arr.transpose([0,1,3,2,4,5]),
                           tmp_array1, tmp_array2)
 
+    if 1==1:
+        reduced_shape = list(tmp_array2.shape)
+        reshape_dims = [10, reduced_shape[0]/10, 4, reduced_shape[1]/4]
+        reshape_dims += reduced_shape[2:]
+        tmp_array2 = tmp_array2.reshape(reshape_dims)
+        tmp_array2 = np.sum(tmp_array2, axis=1)
+        tmp_array2 = np.sum(tmp_array2, axis=2)
+        print tmp_array2.shape
+
     out_shape[-1] = 1
     tmp_array1 = np.empty(out_shape, dtype=np.complex128)
     cykernels.compute_ghirmgh(gains.conj(), tmp_array2, tmp_array1)
 
     jhr = -2 * tmp_array1.imag
+
+    print jhr.shape
 
     return jhr
 
