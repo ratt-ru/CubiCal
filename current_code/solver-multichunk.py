@@ -1,5 +1,6 @@
 from msread import *
 from time import time
+import math
 import cykernels
 
 def compute_jhr(obser_arr, model_arr, gains):
@@ -25,14 +26,32 @@ def compute_jhr(obser_arr, model_arr, gains):
     cykernels.compute_rgmh(obser_arr, gains, model_arr.transpose([0,1,3,2,4,5]),
                           tmp_array1, tmp_array2)
 
-    if 1==1:
+    f_int, t_int = 1., 1.
+
+    if (f_int>1) or (t_int>1):
+
         reduced_shape = list(tmp_array2.shape)
-        reshape_dims = [10, reduced_shape[0]/10, 4, reduced_shape[1]/4]
-        reshape_dims += reduced_shape[2:]
-        tmp_array2 = tmp_array2.reshape(reshape_dims)
-        tmp_array2 = np.sum(tmp_array2, axis=1)
-        tmp_array2 = np.sum(tmp_array2, axis=2)
-        print tmp_array2.shape
+        reduced_shape[0] = math.ceil(reduced_shape[0]/t_int)
+        reduced_shape[1] = math.ceil(reduced_shape[1]/f_int)
+
+        interval_array = np.zeros(reduced_shape, dtype=np.complex128)
+        cykernels.interval_reduce(tmp_array2, interval_array, t_int, f_int)
+        tmp_array2 = interval_array
+
+
+        # t0 = time()
+        # current_shape = list(tmp_array2.shape)
+        #
+        # reduced_t_dim = current_shape[0]/t_int
+        # reduced_f_dim = current_shape[1]/f_int
+        #
+        # reduced_dims = [t_int, reduced_t_dim, f_int, reduced_f_dim]
+        # reduced_dims += current_shape[2:]
+        #
+        # tmp_array2 = tmp_array2.reshape(reduced_dims, order="F")
+        # tmp_array2 = np.sum(tmp_array2, axis=0)
+        # tmp_array2 = np.sum(tmp_array2, axis=1)
+        # print time() - t0
 
     out_shape[-1] = 1
     tmp_array1 = np.empty(out_shape, dtype=np.complex128)
@@ -40,7 +59,7 @@ def compute_jhr(obser_arr, model_arr, gains):
 
     jhr = -2 * tmp_array1.imag
 
-    print jhr.shape
+    # print jhr.shape
 
     return jhr
 
