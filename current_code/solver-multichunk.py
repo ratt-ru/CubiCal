@@ -1,5 +1,5 @@
 from msread import *
-from time import time
+from time import time,sleep
 import math
 import cykernels
 
@@ -112,10 +112,27 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
         residual (np.array): Array containing the result of computing D-GMG^H.
     """
 
-    gmgh = np.empty_like(obser_arr)
-    cykernels.apply_gains(gains, gains.conj(), model_arr, gmgh, t_int, f_int)
+    if (f_int>1) or (t_int>1):
 
-    residual = obser_arr - gmgh
+        reduced_shape = list(model_arr.shape)
+        reduced_shape[0] = int(math.ceil(reduced_shape[0]/t_int))
+        reduced_shape[1] = int(math.ceil(reduced_shape[1]/f_int))
+
+        gmgh = np.zeros(reduced_shape, dtype=np.complex128)
+        cykernels.model_reduce(model_arr, gmgh, t_int, f_int)
+
+        data = np.zeros(reduced_shape, dtype=np.complex128)
+        cykernels.model_reduce(obser_arr, data, t_int, f_int)
+
+        cykernels.apply_gains(gains, gains.conj(), gmgh, gmgh, 1, 1)
+
+    else:
+        gmgh = np.zeros_like(obser_arr)
+        data = obser_arr
+
+        cykernels.apply_gains(gains, gains.conj(), model_arr, gmgh, 1, 1)
+
+    residual = data - gmgh
 
     return residual
 
@@ -155,7 +172,8 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
 
     delta_g = 1
     iters = 0
-    chi = np.inf
+    chi = np.linalg.norm(compute_residual(obser_arr, model_arr, gains,
+                                                  t_int, f_int), axis=(-4,-3))
 
     jhjinv = compute_jhjinv(model_arr, t_int, f_int)
 
@@ -181,12 +199,27 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
         if (iters % chi_interval) == 0:
             old_chi = chi
             chi = np.linalg.norm(compute_residual(obser_arr, model_arr, gains,
-                                                  t_int, f_int))
-            if (old_chi - chi) < chi_tol:
-                return gains
-            if old_chi < chi:
-                print "Bad solutions."
-                return gains
+                                                  t_int, f_int), axis=(-4,-3))
+
+            chi_array = np.sum((old_chi - chi) < chi_tol, axis=(-2,-1))
+
+            index_array = np.indices(chi_array.shape)
+            t_ind = int(t_int)*index_array[0,...][chi_array!=4]
+            f_ind = int(f_int)*index_array[1,...][chi_array!=4]
+
+            t_lim = model_arr.shape[0]
+            f_lim = model_arr.shape[1]
+
+            t_ind, f_ind = expand_index(zip(t_ind,f_ind), t_int, f_int,
+                                                          t_lim, f_lim)
+
+            print model_arr[t_ind, f_ind].shape
+
+            # if (old_chi - chi) < chi_tol:
+            #     return gains
+            # if old_chi < chi:
+            #     print "Bad solutions."
+            #     return gains
 
         delta_g = np.linalg.norm(delta_g - gains)
 
@@ -218,16 +251,50 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
 
     return inv_gdgh
 
+def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
 
-ms = DataHandler("WESTERBORK_POINT.MS")
+    new_ind_a = []
+    new_ind_b = []
+
+    if t_lim%t_int == 0:
+        t_lim = np.inf
+    if f_lim%f_int == 0:
+        f_lim = np.inf
+
+    if (t_lim != np.inf) or (f_lim != np.inf):
+        for i in indices:
+            for j in xrange(int(t_int)):
+                tmp_t_ind = i[0] + j
+                if tmp_t_ind >= t_lim:
+                    break
+
+                for k in xrange(int(f_int)):
+                    tmp_f_ind = i[1] + k
+                    if tmp_f_ind >= f_lim:
+                        break
+
+                    new_ind_a.append(tmp_t_ind)
+                    new_ind_b.append(tmp_f_ind)
+
+    else:
+        for i in indices:
+            for j in xrange(int(t_int)):
+                for k in xrange(int(f_int)):
+                    new_ind_a.append(i[0] + j)
+                    new_ind_b.append(i[1] + k)
+
+    return new_ind_a, new_ind_b
+
+
+ms = DataHandler("WESTERBORK_GAP.MS")
 ms.fetch_all()
 ms.define_chunk(100, 64)
 
-t_int, f_int = 4., 4.
+t_int, f_int = 5., 3.
 
 t0 = time()
 for b, a in ms:
-    gains = full_pol_phase_only(a, b, t_int=t_int, f_int=f_int)
+    gains = full_pol_phase_only(a, b, t_int=t_int, f_int=f_int, maxiter=100)
     corr_vis = apply_gains(b, gains, t_int=t_int, f_int=f_int)
     ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
 print time() - t0

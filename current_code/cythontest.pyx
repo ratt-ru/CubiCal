@@ -242,6 +242,42 @@ def interval_reduce(double complex [:,:,:,:,:] in1,
                 out1[rr,rc,k,1,0] = out1[rr,rc,k,1,0] + in1[i,j,k,1,0]
                 out1[rr,rc,k,1,1] = out1[rr,rc,k,1,1] + in1[i,j,k,1,1]
 
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def model_reduce(double complex [:,:,:,:,:,:] in1,
+                 double complex [:,:,:,:,:,:] out1,
+                 int t_int,
+                 int f_int):
+
+    """
+    NOTE: THIS RIGHT-MULTIPLIES THE COLUMNS OF IN1 BY THE ENTRIES OF IN2.
+
+    :param in1:
+    :param in2:
+    :param out1:
+    :return:
+    """
+
+    cdef int i,j,k,l,rr,rc = 0
+
+    cdef long new_shape[6]
+
+    new_shape[:] = in1.shape
+
+    for i in xrange(new_shape[0]):
+        rr = i//t_int
+        for j in xrange(new_shape[1]):
+            rc = j//f_int
+            for k in xrange(new_shape[2]):
+                for l in xrange(new_shape[3]):
+                    out1[rr,rc,k,l,0,0] = out1[rr,rc,k,l,0,0] + in1[i,j,k,l,0,0]
+                    out1[rr,rc,k,l,0,1] = out1[rr,rc,k,l,0,1] + in1[i,j,k,l,0,1]
+                    out1[rr,rc,k,l,1,0] = out1[rr,rc,k,l,1,0] + in1[i,j,k,l,1,0]
+                    out1[rr,rc,k,l,1,1] = out1[rr,rc,k,l,1,1] + in1[i,j,k,l,1,1]
+
+
+
 # @cython.wraparound(False)
 # @cython.boundscheck(False)
 # @cython.nonecheck(False)
