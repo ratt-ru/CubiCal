@@ -2,6 +2,7 @@ from msread import *
 from time import time,sleep
 import math
 import cykernels
+import cyfull
 
 def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
@@ -47,7 +48,7 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     return jhr
 
 
-def compute_jhjinv(model_arr, t_int=1, f_int=1):
+def compute_jhjinv(model_arr, gains, t_int=1, f_int=1):
     """
     This function computes the ((J^H)J)^-1 term of the GN/LM method for the
     full-polarisation, phase-only case. Note that this depends only on the
@@ -67,7 +68,29 @@ def compute_jhjinv(model_arr, t_int=1, f_int=1):
     jhjinv_shape[1] = int(math.ceil(jhjinv_shape[1]/f_int))
 
     jhjinv = np.zeros(jhjinv_shape, dtype=np.float64)
+
+    tmp_mod = model_arr.copy()
+    tmp_out = np.empty_like(tmp_mod)
+    rtril, ctril = np.tril_indices(model_arr.shape[-3])
+    tmp_mod[:,:,rtril,ctril,:,:] = \
+        tmp_mod[:,:,rtril,ctril,:,:].transpose(0,1,2,4,3)
+    cyfull.compute_jhj(tmp_mod, gains.transpose(0,1,2,4,3).conj(), tmp_out,
+                       t_int, f_int)
+    tmp_out2 = np.empty_like(tmp_out)
+    cyfull.compute_jhj(tmp_out, gains, tmp_out2, t_int, f_int)
+
+    cyfull.compute_abyah(tmp_out2, tmp_mod, tmp_out, t_int, f_int)
+
+    print tmp_out[0,0,2,5,...]
+    print ((tmp_mod[0,0,2,5,...].dot(gains.transpose(0,1,2,4,3).conj()[0,0,5,
+                                                                      ...])).dot(gains[0,0,5,...])).dot(tmp_mod[0,0,5,2,...])
+
+    print np.sum(tmp_out, axis=3)[0,0,0,...]
+
     cykernels.compute_jhj(model_arr, jhjinv, t_int, f_int)
+
+    print jhjinv[0,0,0,...]
+
     cykernels.invert_jhj(jhjinv)
 
     return jhjinv
@@ -175,7 +198,7 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
     chi = np.linalg.norm(compute_residual(obser_arr, model_arr, gains,
                                                   t_int, f_int), axis=(-4,-3))
 
-    jhjinv = compute_jhjinv(model_arr, t_int, f_int)
+    jhjinv = compute_jhjinv(model_arr, gains, t_int, f_int)
 
     while delta_g > min_delta_g:
 
@@ -190,6 +213,8 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
         delta_g = gains.copy()
 
         gains[...,(0,1),(0,1)] = np.exp(-1j*phases)[...,(0,1),(0,0)]
+
+        compute_jhjinv(model_arr, gains, t_int, f_int)
 
         iters += 1
 
@@ -294,7 +319,7 @@ ms = DataHandler("WESTERBORK_GAP.MS")
 ms.fetch_all()
 ms.define_chunk(100, 64)
 
-t_int, f_int = 5., 3.
+t_int, f_int = 1., 1.
 
 t0 = time()
 for b, a in ms:
