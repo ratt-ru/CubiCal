@@ -1,4 +1,4 @@
-from msread import *
+from cyfullms import *
 from time import time,sleep
 import math
 import cykernels
@@ -24,8 +24,8 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     tmp_array1 = np.empty([2,2], dtype=np.complex128)
     tmp_array2 = np.zeros(out_shape, dtype=np.complex128)
 
-    cykernels.compute_rgmh(obser_arr, gains, model_arr.transpose([0,1,3,2,4,5]),
-                          tmp_array1, tmp_array2, t_int, f_int)
+    cyfull.compute_jhr(obser_arr, gains, model_arr.transpose([0,1,3,2,4,5]),
+                       tmp_array1, tmp_array2, t_int, f_int)
 
     if (f_int>1) or (t_int>1):
 
@@ -37,13 +37,7 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
         cykernels.interval_reduce(tmp_array2, interval_array, t_int, f_int)
         tmp_array2 = interval_array
 
-        out_shape = reduced_shape
-
-    out_shape[-1] = 1
-    tmp_array1 = np.empty(out_shape, dtype=np.complex128)
-    cykernels.compute_ghirmgh(gains.conj(), tmp_array2, tmp_array1)
-
-    jhr = -2 * tmp_array1.imag
+    jhr = tmp_array2
 
     return jhr
 
@@ -62,41 +56,34 @@ def compute_jhjinv(model_arr, gains, t_int=1, f_int=1):
     """
 
     jhjinv_shape = list(model_arr.shape)
-    jhjinv_shape[-3:] = [2,2]
+    jhjinv_shape[-2:] = [2,2]
 
     jhjinv_shape[0] = int(math.ceil(jhjinv_shape[0]/t_int))
     jhjinv_shape[1] = int(math.ceil(jhjinv_shape[1]/f_int))
 
-    jhjinv = np.zeros(jhjinv_shape, dtype=np.float64)
+    jhjinv = np.zeros(jhjinv_shape, dtype=np.complex128)
 
-    tmp_mod = model_arr.copy()
-    tmp_out = np.empty_like(tmp_mod)
-    rtril, ctril = np.tril_indices(model_arr.shape[-3])
-    tmp_mod[:,:,rtril,ctril,:,:] = \
-        tmp_mod[:,:,rtril,ctril,:,:].transpose(0,1,2,4,3)
-    cyfull.compute_jhj(tmp_mod, gains.transpose(0,1,2,4,3).conj(), tmp_out,
-                       t_int, f_int)
-    tmp_out2 = np.empty_like(tmp_out)
-    cyfull.compute_jhj(tmp_out, gains, tmp_out2, t_int, f_int)
+    tmp_out = np.empty_like(model_arr)
+    tmp_out2 = np.empty_like(model_arr)
 
-    cyfull.compute_abyah(tmp_out2, tmp_mod, tmp_out, t_int, f_int)
+    gains_h = gains.transpose(0,1,2,4,3).conj()
 
-    print tmp_out[0,0,2,5,...]
-    print ((tmp_mod[0,0,2,5,...].dot(gains.transpose(0,1,2,4,3).conj()[0,0,5,
-                                                                      ...])).dot(gains[0,0,5,...])).dot(tmp_mod[0,0,5,2,...])
+    cyfull.compute_Abyb(model_arr, gains_h, tmp_out, t_int, f_int)
 
-    print np.sum(tmp_out, axis=3)[0,0,0,...]
+    cyfull.compute_Abyb(tmp_out, gains, tmp_out2, t_int, f_int)
 
-    cykernels.compute_jhj(model_arr, jhjinv, t_int, f_int)
+    cyfull.compute_AbyA(tmp_out2, model_arr, tmp_out)
 
-    print jhjinv[0,0,0,...]
+    cyfull.reduce_6d(tmp_out, jhjinv, t_int, f_int)
 
-    cykernels.invert_jhj(jhjinv)
+    jhjinv = np.sum(jhjinv, axis=-3)
+
+    cyfull.invert_jhj(jhjinv)
 
     return jhjinv
 
 
-def compute_update(model_arr, obser_arr, gains, jhjinv, t_int=1, f_int=1):
+def compute_update(model_arr, obser_arr, gains, t_int=1, f_int=1):
     """
     This function computes the update step of the GN/LM method. This is
     equivalent to the complete (((J^H)J)^-1)(J^H)R.
@@ -112,11 +99,13 @@ def compute_update(model_arr, obser_arr, gains, jhjinv, t_int=1, f_int=1):
             (((J^H)J)^-1)(J^H)R
     """
 
+    jhjinv = compute_jhjinv(model_arr, gains, t_int, f_int)
+
     jhr = compute_jhr(obser_arr, model_arr, gains, t_int, f_int)
 
     update = np.empty_like(jhr)
 
-    cykernels.compute_update(jhjinv, jhr, update)
+    cyfull.compute_update(jhr, jhjinv, update)
 
     return update
 
@@ -183,38 +172,36 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
     phase_shape[0] = int(math.ceil(phase_shape[0]/t_int))
     phase_shape[1] = int(math.ceil(phase_shape[1]/f_int))
 
-    phases = np.zeros(phase_shape, dtype=np.float64)
-
     gain_shape = list(model_arr.shape)
     gain_shape[-3:] = [2, 2]
     gain_shape[0] = int(math.ceil(gain_shape[0]/t_int))
     gain_shape[1] = int(math.ceil(gain_shape[1]/f_int))
 
     gains = np.zeros(gain_shape, dtype=np.complex128)
-    gains[...,(0,1),(0,1)] = np.exp(-1j*phases)[...,(0,1),(0,0)]
+    gains[...,(0,1),(0,1)] = 1
+    # gains = np.ones(gain_shape, dtype=np.complex128)+np.random.random(gain_shape).astype(np.complex128)
+    # gains += 0.1*np.random.random(gain_shape).astype(np.complex128)
 
+
+    old_gains = np.empty_like(gains)
+    old_gains[:] = np.inf
     delta_g = 1
     iters = 0
     chi = np.linalg.norm(compute_residual(obser_arr, model_arr, gains,
-                                                  t_int, f_int), axis=(-4,-3))
-
-    jhjinv = compute_jhjinv(model_arr, gains, t_int, f_int)
+                                          t_int, f_int), axis=(-4,-3))
 
     while delta_g > min_delta_g:
 
         if iters % 2 == 0:
-            fact = 0.5
+            gains = 0.5*(gains + \
+                compute_update(model_arr, obser_arr, gains, t_int, f_int))
         else:
-            fact = 1
+            gains = compute_update(model_arr, obser_arr, gains, t_int, f_int)
 
-        phases += fact*compute_update(model_arr, obser_arr, gains, jhjinv,
-                                      t_int, f_int)
+        delta_g = old_gains - gains
+        old_gains = gains.copy()
 
-        delta_g = gains.copy()
-
-        gains[...,(0,1),(0,1)] = np.exp(-1j*phases)[...,(0,1),(0,0)]
-
-        compute_jhjinv(model_arr, gains, t_int, f_int)
+        print compute_residual(obser_arr, model_arr, gains, t_int, f_int)[0,0,4,3,...]
 
         iters += 1
 
@@ -228,6 +215,8 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
                                                   t_int, f_int)
 
             chi = np.linalg.norm(residual, axis=(-4,-3))
+
+            # print np.average(chi)
 
             mask = ((old_chi - chi) < chi_tol) | (chi > old_chi)
 
@@ -267,16 +256,22 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
         inv_gdgh (np.array): Array containing (G^-1)D(G^-H).
     """
 
-    inv_gains = np.transpose(gains[..., ::-1, ::-1], axes=[0, 1, 2, 4, 3])
+    inv_gains = gains.copy()
 
-    inv_gains = np.array([[1, -1], [-1, 1]]) * inv_gains
+    cyfull.invert_jhj(inv_gains)
 
-    inv_gains *= 1./(gains[..., 0, 0] * gains[..., 1, 1]
-                   - gains[..., 0, 1] * gains[..., 1, 0])[..., None, None]
+    tmp_out = np.empty_like(obser_arr)
+
+    cyfull.compute_bbyA(inv_gains, obser_arr, tmp_out)
+
+    inv_gains = inv_gains.transpose(0,1,2,4,3).conj()
 
     inv_gdgh = np.empty_like(obser_arr)
-    cykernels.apply_gains(inv_gains, inv_gains.conj(), obser_arr, inv_gdgh,
-                          t_int, f_int)
+
+    cyfull.compute_Abyb(tmp_out, inv_gains, inv_gdgh)
+
+    # cykernels.apply_gains(inv_gains, inv_gains.conj(), obser_arr, inv_gdgh,
+    #                       t_int, f_int)
 
     return inv_gdgh
 
