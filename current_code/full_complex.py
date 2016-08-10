@@ -24,7 +24,7 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     tmp_array1 = np.empty([2,2], dtype=np.complex128)
     tmp_array2 = np.zeros(out_shape, dtype=np.complex128)
 
-    cyfull.compute_jhr(obser_arr, gains, model_arr.transpose([0,1,3,2,4,5]),
+    cyfull.compute_jhr(obser_arr, gains, model_arr,
                        tmp_array1, tmp_array2, t_int, f_int)
 
     if (f_int>1) or (t_int>1):
@@ -56,8 +56,6 @@ def compute_jhjinv(model_arr, gains, t_int=1, f_int=1):
     """
 
     jhjinv_shape = list(model_arr.shape)
-    jhjinv_shape[-2:] = [2,2]
-
     jhjinv_shape[0] = int(math.ceil(jhjinv_shape[0]/t_int))
     jhjinv_shape[1] = int(math.ceil(jhjinv_shape[1]/f_int))
 
@@ -139,10 +137,13 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
         cykernels.apply_gains(gains, gains.conj(), gmgh, gmgh, 1, 1)
 
     else:
+        gm = np.zeros_like(obser_arr)
         gmgh = np.zeros_like(obser_arr)
         data = obser_arr
 
-        cykernels.apply_gains(gains, gains.conj(), model_arr, gmgh, 1, 1)
+        cyfull.compute_bbyA(gains, model_arr, gm, t_int, f_int)
+        cyfull.compute_Abyb(gm, gains.transpose(0,1,2,4,3).conj(), gmgh,
+                            t_int, f_int)
 
     residual = data - gmgh
 
@@ -182,8 +183,6 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
     # gains = np.ones(gain_shape, dtype=np.complex128)+np.random.random(gain_shape).astype(np.complex128)
     # gains += 0.1*np.random.random(gain_shape).astype(np.complex128)
 
-    print model_arr[0,0,0,1,...]
-
     old_gains = np.empty_like(gains)
     old_gains[:] = np.inf
     delta_g = 1
@@ -202,8 +201,12 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
         delta_g = old_gains - gains
         old_gains = gains.copy()
 
-        print compute_residual(obser_arr, model_arr, gains,
-                                                  t_int, f_int)[0,0,0,1,...]
+        print compute_residual(obser_arr, model_arr, gains, t_int, f_int)[0,0,
+                                                                         0,2,
+                                                                          ...]
+
+        # print gains[0,0,2,...].dot(model_arr[0,0,2,1,...]).dot(gains[0,0,1,
+        #                                                              ...].T.conj())
 
         iters += 1
 
@@ -238,8 +241,6 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
             scaled_t_ind, scaled_f_ind = \
                 expand_index(zip(scaled_t_ind,scaled_f_ind), t_int, f_int,
                                                           t_lim, f_lim)
-
-            print t_ind.shape
 
         delta_g = np.linalg.norm(delta_g - gains)
 
@@ -312,7 +313,7 @@ def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
     return new_ind_a, new_ind_b
 
 
-ms = DataHandler("~/measurements/WESTERBORK_POL_2.MS")
+ms = DataHandler("WESTERBORK_POL_NOISEFREE.MS")
 ms.fetch_all()
 ms.define_chunk(100, 64)
 
@@ -322,7 +323,6 @@ t0 = time()
 for b, a in ms:
     gains = full_pol_phase_only(a, b, t_int=t_int, f_int=f_int, maxiter=100)
     corr_vis = apply_gains(b, gains, t_int=t_int, f_int=f_int)
-    print corr_vis
     ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
 print time() - t0
 

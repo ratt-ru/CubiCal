@@ -21,7 +21,7 @@ def compute_jhr(double complex [:,:,:,:,:,:] in1,
     :return:
     """
 
-    cdef int i,j,k,l,rr,rc = 0
+    cdef int i, j, k, l, rr, rc = 0
 
     cdef long new_shape[6]
 
@@ -47,20 +47,20 @@ def compute_jhr(double complex [:,:,:,:,:,:] in1,
                                 in1[i,j,k,l,1,1] * in2[rr,rc,l,1,1]
 
                     out1[i,j,k,0,0] = out1[i,j,k,0,0] + \
-                                     (tmp1[0,0] * in3[i,j,k,l,0,0]) + \
-                                     (tmp1[0,1] * in3[i,j,k,l,0,1])
+                                     (tmp1[0,0] * in3[i,j,l,k,0,0]) + \
+                                     (tmp1[0,1] * in3[i,j,l,k,1,0])
 
                     out1[i,j,k,0,1] = out1[i,j,k,0,1] + \
-                                     (tmp1[0,0] * in3[i,j,k,l,1,0]) + \
-                                     (tmp1[0,1] * in3[i,j,k,l,1,1])
+                                     (tmp1[0,0] * in3[i,j,l,k,0,1]) + \
+                                     (tmp1[0,1] * in3[i,j,l,k,1,1])
 
                     out1[i,j,k,1,0] = out1[i,j,k,1,0] + \
-                                     (tmp1[1,0] * in3[i,j,k,l,0,0]) + \
-                                     (tmp1[1,1] * in3[i,j,k,l,0,1])
+                                     (tmp1[1,0] * in3[i,j,l,k,0,0]) + \
+                                     (tmp1[1,1] * in3[i,j,l,k,1,0])
 
                     out1[i,j,k,1,1] = out1[i,j,k,1,1] + \
-                                     (tmp1[1,0] * in3[i,j,k,l,1,0]) + \
-                                     (tmp1[1,1] * in3[i,j,k,l,1,1])
+                                     (tmp1[1,0] * in3[i,j,l,k,0,1]) + \
+                                     (tmp1[1,1] * in3[i,j,l,k,1,1])
 
 
 def compute_Abyb(double complex [:,:,:,:,:,:] in1,
@@ -69,7 +69,9 @@ def compute_Abyb(double complex [:,:,:,:,:,:] in1,
                  int t_int,
                  int f_int):
     """
-    NOTE: THIS RIGHT-MULTIPLIES THE ENTRIES OF IN1 BY THE ENTRIES OF IN2.
+    This takes the dot product of the elements of matrix in1 with the elements
+    of a vector in2. Note that the elements of both are 2-by-2 blocks.
+    Broadcasting is done along rows.
     """
 
     cdef int i,j,k,l,rr,rc = 0
@@ -99,10 +101,11 @@ def compute_Abyb(double complex [:,:,:,:,:,:] in1,
 
 
 def compute_AbyA(double complex [:,:,:,:,:,:] in1,
-                  double complex [:,:,:,:,:,:] in2,
-                  double complex [:,:,:,:,:,:] out1):
+                 double complex [:,:,:,:,:,:] in2,
+                 double complex [:,:,:,:,:,:] out1):
     """
-    NOTE: THIS RIGHT-MULTIPLIES THE ENTRIES OF IN1 BY THE ENTRIES OF IN2.
+    This takes the dot product of the elements of matrix in1 with the elements
+    of matrix in2. Note that the elements of both are 2-by-2 blocks.
     """
 
     cdef int i,j,k,l = 0
@@ -164,11 +167,11 @@ def reduce_6d(double complex [:,:,:,:,:,:] in1,
               int f_int):
 
     """
-    NOTE: THIS RIGHT-MULTIPLIES THE COLUMNS OF IN1 BY THE ENTRIES OF IN2.
-
+    Summation over the time and frequency intervals for a 6D matrix. This
+    does not reduce its dimension - merely squashes it into fewer elements.
     """
 
-    cdef int i,j,k,l,rr,rc = 0
+    cdef int i, j, k, l, rr, rc = 0
 
     cdef long new_shape[6]
 
@@ -228,7 +231,7 @@ def compute_bbyA(double complex [:,:,:,:,:] in1,
 
     cdef long new_shape[6]
 
-    new_shape[:] = in1.shape
+    new_shape[:] = in2.shape
 
     for i in xrange(new_shape[0]):
         rr = i//t_int
