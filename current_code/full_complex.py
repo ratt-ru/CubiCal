@@ -182,6 +182,7 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
     # gains = np.ones(gain_shape, dtype=np.complex128)+np.random.random(gain_shape).astype(np.complex128)
     # gains += 0.1*np.random.random(gain_shape).astype(np.complex128)
 
+    print model_arr[0,0,0,1,...]
 
     old_gains = np.empty_like(gains)
     old_gains[:] = np.inf
@@ -201,7 +202,8 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
         delta_g = old_gains - gains
         old_gains = gains.copy()
 
-        print compute_residual(obser_arr, model_arr, gains, t_int, f_int)[0,0,4,3,...]
+        print compute_residual(obser_arr, model_arr, gains,
+                                                  t_int, f_int)[0,0,0,1,...]
 
         iters += 1
 
@@ -310,7 +312,7 @@ def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
     return new_ind_a, new_ind_b
 
 
-ms = DataHandler("WESTERBORK_GAP.MS")
+ms = DataHandler("~/measurements/WESTERBORK_POL_2.MS")
 ms.fetch_all()
 ms.define_chunk(100, 64)
 
@@ -320,6 +322,7 @@ t0 = time()
 for b, a in ms:
     gains = full_pol_phase_only(a, b, t_int=t_int, f_int=f_int, maxiter=100)
     corr_vis = apply_gains(b, gains, t_int=t_int, f_int=f_int)
+    print corr_vis
     ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
 print time() - t0
 
