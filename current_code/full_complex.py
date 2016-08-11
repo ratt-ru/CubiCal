@@ -150,7 +150,7 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
     return residual
 
 
-def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
+def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
                         chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
     """
     This function is the main body of the GN/LM method. It handles iterations
@@ -168,11 +168,6 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
         gains (np.array): Array containing the final gain estimates.
     """
 
-    phase_shape = list(model_arr.shape)
-    phase_shape[-3:] = [2, 1]
-    phase_shape[0] = int(math.ceil(phase_shape[0]/t_int))
-    phase_shape[1] = int(math.ceil(phase_shape[1]/f_int))
-
     gain_shape = list(model_arr.shape)
     gain_shape[-3:] = [2, 2]
     gain_shape[0] = int(math.ceil(gain_shape[0]/t_int))
@@ -180,15 +175,16 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
 
     gains = np.zeros(gain_shape, dtype=np.complex128)
     gains[...,(0,1),(0,1)] = 1
-    # gains = np.ones(gain_shape, dtype=np.complex128)+np.random.random(gain_shape).astype(np.complex128)
-    # gains += 0.1*np.random.random(gain_shape).astype(np.complex128)
 
     old_gains = np.empty_like(gains)
     old_gains[:] = np.inf
     delta_g = 1
     iters = 0
-    chi = np.linalg.norm(compute_residual(obser_arr, model_arr, gains,
-                                          t_int, f_int), axis=(-4,-3))
+
+    residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
+
+    chi = np.linalg.norm(residual, axis=(-4,-3))
+    chi = np.linalg.norm(chi, axis=(-2,-1))
 
     while delta_g > min_delta_g:
 
@@ -198,15 +194,9 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
         else:
             gains = compute_update(model_arr, obser_arr, gains, t_int, f_int)
 
-        delta_g = old_gains - gains
+        delta_g = np.linalg.norm(old_gains - gains)
+        print iters, delta_g
         old_gains = gains.copy()
-
-        print compute_residual(obser_arr, model_arr, gains, t_int, f_int)[0,0,
-                                                                         0,2,
-                                                                          ...]
-
-        # print gains[0,0,2,...].dot(model_arr[0,0,2,1,...]).dot(gains[0,0,1,
-        #                                                              ...].T.conj())
 
         iters += 1
 
@@ -220,29 +210,13 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
                                                   t_int, f_int)
 
             chi = np.linalg.norm(residual, axis=(-4,-3))
+            chi = np.linalg.norm(chi, axis=(-2,-1))
 
-            # print np.average(chi)
+            n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
+            n_tot = float(gain_shape[0]*gain_shape[1])
 
-            mask = ((old_chi - chi) < chi_tol) | (chi > old_chi)
-
-            mask = np.sum(mask, axis=(-2,-1))
-
-            index_array = np.indices(mask.shape)
-            t_ind = index_array[0,...][mask!=4]
-            f_ind = index_array[1,...][mask!=4]
-
-
-            scaled_t_ind = int(t_int)*t_ind
-            scaled_f_ind = int(f_int)*f_ind
-
-            t_lim = model_arr.shape[0]
-            f_lim = model_arr.shape[1]
-
-            scaled_t_ind, scaled_f_ind = \
-                expand_index(zip(scaled_t_ind,scaled_f_ind), t_int, f_int,
-                                                          t_lim, f_lim)
-
-        delta_g = np.linalg.norm(delta_g - gains)
+            if n_conv/n_tot > 0.9:
+                return gains
 
     return gains
 
