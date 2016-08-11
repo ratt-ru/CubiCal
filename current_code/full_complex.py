@@ -239,16 +239,13 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
 
     tmp_out = np.empty_like(obser_arr)
 
-    cyfull.compute_bbyA(inv_gains, obser_arr, tmp_out)
+    cyfull.compute_bbyA(inv_gains, obser_arr, tmp_out, t_int, f_int)
 
     inv_gains = inv_gains.transpose(0,1,2,4,3).conj()
 
     inv_gdgh = np.empty_like(obser_arr)
 
-    cyfull.compute_Abyb(tmp_out, inv_gains, inv_gdgh)
-
-    # cykernels.apply_gains(inv_gains, inv_gains.conj(), obser_arr, inv_gdgh,
-    #                       t_int, f_int)
+    cyfull.compute_Abyb(tmp_out, inv_gains, inv_gdgh, t_int, f_int)
 
     return inv_gdgh
 
@@ -287,7 +284,7 @@ def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
     return new_ind_a, new_ind_b
 
 
-ms = DataHandler("WESTERBORK_POL_NOISEFREE.MS")
+ms = DataHandler("~/measurements/WESTERBORK_POL_2.MS")
 ms.fetch_all()
 ms.define_chunk(100, 64)
 
@@ -297,6 +294,8 @@ t0 = time()
 for b, a in ms:
     gains = full_pol_phase_only(a, b, t_int=t_int, f_int=f_int, maxiter=100)
     corr_vis = apply_gains(b, gains, t_int=t_int, f_int=f_int)
+    print corr_vis[0,0,0,1,...]
+    print a[0,0,0,1,...]
     ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
 print time() - t0
 
