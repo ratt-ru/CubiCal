@@ -294,8 +294,8 @@ t0 = time()
 for b, a in ms:
     gains = full_pol_phase_only(a, b, t_int=t_int, f_int=f_int, maxiter=100)
     corr_vis = apply_gains(b, gains, t_int=t_int, f_int=f_int)
-    print corr_vis[0,0,0,1,...]
-    print a[0,0,0,1,...]
+    print corr_vis[0,8,0,1,...]
+    print a[0,8,0,1,...]
     ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
 print time() - t0
 
