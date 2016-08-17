@@ -3,7 +3,10 @@ import numpy as np
 cimport numpy as np
 import cython
 
-
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def compute_jhr(double complex [:,:,:,:,:,:] in1,
                 double complex [:,:,:,:,:] in2,
                 double complex [:,:,:,:,:,:] in3,
@@ -62,7 +65,10 @@ def compute_jhr(double complex [:,:,:,:,:,:] in1,
                                      (tmp1[1,0] * in3[i,j,l,k,0,1]) + \
                                      (tmp1[1,1] * in3[i,j,l,k,1,1])
 
-
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def compute_Abyb(double complex [:,:,:,:,:,:] in1,
                  double complex [:,:,:,:,:] in2,
                  double complex [:,:,:,:,:,:] out1,
@@ -99,7 +105,10 @@ def compute_Abyb(double complex [:,:,:,:,:,:] in1,
                     out1[i,j,k,l,1,1] = in1[i,j,k,l,1,0] * in2[rr,rc,l,0,1] + \
                                         in1[i,j,k,l,1,1] * in2[rr,rc,l,1,1]
 
-
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def compute_AbyA(double complex [:,:,:,:,:,:] in1,
                  double complex [:,:,:,:,:,:] in2,
                  double complex [:,:,:,:,:,:] out1):
@@ -131,6 +140,11 @@ def compute_AbyA(double complex [:,:,:,:,:,:] in1,
                     out1[i,j,k,l,1,1] = in1[i,j,k,l,1,0] * in2[i,j,l,k,0,1] + \
                                         in1[i,j,k,l,1,1] * in2[i,j,l,k,1,1]
 
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def invert_jhj(double complex [:,:,:,:,:] jhj):
     """
     NOTE: THIS RIGHT-MULTIPLIES THE ENTRIES OF IN1 BY THE ENTRIES OF IN2.
@@ -160,7 +174,10 @@ def invert_jhj(double complex [:,:,:,:,:] jhj):
                 jhj[i,j,k,0,1] = -1 * jhj[i,j,k,0,1]/denom
                 jhj[i,j,k,1,0] = -1 * jhj[i,j,k,1,0]/denom
 
-
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def reduce_6d(double complex [:,:,:,:,:,:] in1,
               double complex [:,:,:,:,:,:] out1,
               int t_int,
@@ -188,7 +205,10 @@ def reduce_6d(double complex [:,:,:,:,:,:] in1,
                     out1[rr,rc,k,l,1,0] = out1[rr,rc,k,l,1,0] + in1[i,j,k,l,1,0]
                     out1[rr,rc,k,l,1,1] = out1[rr,rc,k,l,1,1] + in1[i,j,k,l,1,1]
 
-
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def compute_update(double complex [:,:,:,:,:] in1,
                    double complex [:,:,:,:,:] in2,
                    double complex [:,:,:,:,:] out1):
@@ -218,6 +238,10 @@ def compute_update(double complex [:,:,:,:,:] in1,
                 out1[i,j,k,1,1] = in1[i,j,k,1,0] * in2[i,j,k,0,1] + \
                                   in1[i,j,k,1,1] * in2[i,j,k,1,1]
 
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def compute_bbyA(double complex [:,:,:,:,:] in1,
                  double complex [:,:,:,:,:,:] in2,
                  double complex [:,:,:,:,:,:] out1,
