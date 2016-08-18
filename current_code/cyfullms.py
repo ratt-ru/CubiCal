@@ -1,7 +1,6 @@
-from pyrap.tables import table
 import numpy as np
 from collections import Counter, OrderedDict
-
+from pyrap.tables import table
 
 class DataHandler:
     """
@@ -46,7 +45,7 @@ class DataHandler:
         self.ntime = len(np.unique(self.fetch("TIME")))
         self.nfreq = self.data.getcol("DATA", nrow=1).shape[1]
         self.ncorr = self.data.getcol("DATA", nrow=1).shape[2]
-        self.nants = table(self.ms_name + "/ANTENNA").nrows()
+        self.nants = table(self.ms_name + "::ANTENNA").nrows()
 
         self.obvis = None
         self.movis = None
@@ -163,11 +162,13 @@ class DataHandler:
             flags_arr (np.array): Array containing flags for the active data.
         """
 
-        flags_arr = ~self.flags[f_t_row:l_t_row, f_f_col:l_f_col, :]
+        flags_arr = self.flags[f_t_row:l_t_row, f_f_col:l_f_col, :]
+
+        #MAY BE WRONG NOW!!!
 
         if self.bitmask is not None:
             flags_arr &= ((self.bflag[f_t_row:l_t_row, f_f_col:l_f_col,
-                           :] & self.bitmask) == 0)
+                           :] & self.bitmask) == True)
 
         return flags_arr
 
@@ -209,8 +210,8 @@ class DataHandler:
 
         if self.apply_flags:
             flags_arr = self.make_flag_array(f_t_row, l_t_row, f_f_col, l_f_col)
-            self.obvis[f_t_row:l_t_row, f_f_col:l_f_col, :] *= flags_arr
-            self.movis[f_t_row:l_t_row, f_f_col:l_f_col, :] *= flags_arr
+            self.obvis[f_t_row:l_t_row, f_f_col:l_f_col, :][flags_arr] = 0
+            self.movis[f_t_row:l_t_row, f_f_col:l_f_col, :][flags_arr] = 0
 
         obser_arr[tchunk, :, achunk, bchunk, :] \
             = self.obvis[f_t_row:l_t_row, f_f_col:l_f_col, :]

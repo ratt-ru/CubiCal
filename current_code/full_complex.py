@@ -122,6 +122,8 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
         residual (np.array): Array containing the result of computing D-GMG^H.
     """
 
+    # TODO: The solution invterval code here must be fixed. 
+
     if (f_int>1) or (t_int>1):
 
         reduced_shape = list(model_arr.shape)
@@ -186,6 +188,8 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
     chi = np.linalg.norm(residual, axis=(-4,-3))
     chi = np.linalg.norm(chi, axis=(-2,-1))
 
+    # TODO: Add better messages.
+
     while delta_g > min_delta_g:
 
         if iters % 2 == 0:
@@ -195,7 +199,8 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
             gains = compute_update(model_arr, obser_arr, gains, t_int, f_int)
 
         delta_g = np.linalg.norm(old_gains - gains)
-        print iters, delta_g
+        print iters, np.linalg.norm(compute_residual(obser_arr, model_arr, gains,
+                                                  t_int, f_int))
         old_gains = gains.copy()
 
         iters += 1
@@ -284,9 +289,10 @@ def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
     return new_ind_a, new_ind_b
 
 
-ms = DataHandler("~/measurements/WESTERBORK_POL_2.MS")
+ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS")
 ms.fetch_all()
 ms.define_chunk(100, 64)
+ms.apply_flags = True
 
 t_int, f_int = 1., 1.
 
