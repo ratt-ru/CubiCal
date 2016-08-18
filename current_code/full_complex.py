@@ -180,17 +180,22 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
 
     old_gains = np.empty_like(gains)
     old_gains[:] = np.inf
-    delta_g = 1
+    n_quor = 0
+    n_sols = float(gain_shape[0]*gain_shape[1])
     iters = 0
 
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
 
-    chi = np.linalg.norm(residual, axis=(-4,-3))
-    chi = np.linalg.norm(chi, axis=(-2,-1))
+    chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
+
+    # chi = np.linalg.norm(residual, axis=(-4,-3))
+    # chi = np.linalg.norm(chi, axis=(-2,-1))
+
+    min_quorum = 0.99
 
     # TODO: Add better messages.
 
-    while delta_g > min_delta_g:
+    while n_quor/n_sols < min_quorum:
 
         if iters % 2 == 0:
             gains = 0.5*(gains + \
@@ -198,9 +203,10 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
         else:
             gains = compute_update(model_arr, obser_arr, gains, t_int, f_int)
 
-        delta_g = np.linalg.norm(old_gains - gains)
-        print iters, np.linalg.norm(compute_residual(obser_arr, model_arr, gains,
-                                                  t_int, f_int))
+        diff_g = np.sum(np.square(np.abs(old_gains - gains)), axis=(-1,-2,-3))
+        norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
+        n_quor = np.sum(diff_g/norm_g <= min_delta_g**2)
+
         old_gains = gains.copy()
 
         iters += 1
@@ -214,15 +220,16 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
             residual = compute_residual(obser_arr, model_arr, gains,
                                                   t_int, f_int)
 
-            chi = np.linalg.norm(residual, axis=(-4,-3))
-            chi = np.linalg.norm(chi, axis=(-2,-1))
+            chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
 
             n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
-            n_tot = float(gain_shape[0]*gain_shape[1])
 
-            if n_conv/n_tot > 0.9:
+            if n_conv/n_sols > 0.99:
+                print "Static residual in {:.2%} of visibilities.".format(
+                    n_conv/n_sols)
                 return gains
 
+    print "Quorum reached: {:.2%} solutions acceptable.".format(n_quor/n_sols)
     return gains
 
 
@@ -289,10 +296,11 @@ def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
     return new_ind_a, new_ind_b
 
 
-ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS")
+# ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS")
+ms = DataHandler("WESTERBORK_POL.MS")
 ms.fetch_all()
 ms.define_chunk(100, 64)
-ms.apply_flags = True
+# ms.apply_flags = True
 
 t_int, f_int = 1., 1.
 
