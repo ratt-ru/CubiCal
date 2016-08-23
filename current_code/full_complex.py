@@ -152,7 +152,7 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
     return residual
 
 
-def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
+def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
                         chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
     """
     This function is the main body of the GN/LM method. It handles iterations
@@ -206,12 +206,15 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
         diff_g = np.sum(np.square(np.abs(old_gains - gains)), axis=(-1,-2,-3))
         norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
         n_quor = np.sum(diff_g/norm_g <= min_delta_g**2)
+        n_quor += np.sum(norm_g==0)
+        print iters, n_quor/n_sols
 
         old_gains = gains.copy()
 
         iters += 1
 
         if iters > maxiter:
+            print "Maxiter exceeded."
             return gains
 
         if (iters % chi_interval) == 0:
@@ -225,11 +228,11 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
             n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
 
             if n_conv/n_sols > 0.99:
-                print "Static residual in {:.2%} of visibilities.".format(
+                print iters, "Static residual in {:.2%} of visibilities.".format(
                     n_conv/n_sols)
                 return gains
 
-    print "Quorum reached: {:.2%} solutions acceptable.".format(n_quor/n_sols)
+    print iters, "Quorum reached: {:.2%} solutions acceptable.".format(n_quor/n_sols)
     return gains
 
 
@@ -296,11 +299,11 @@ def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
     return new_ind_a, new_ind_b
 
 
-# ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS")
-ms = DataHandler("WESTERBORK_POL.MS")
+ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS")
+#ms = DataHandler("WESTERBORK_POL.MS")
 ms.fetch_all()
-ms.define_chunk(100, 64)
-# ms.apply_flags = True
+ms.define_chunk(100, 8)
+ms.apply_flags = True
 
 t_int, f_int = 1., 1.
 
@@ -308,8 +311,6 @@ t0 = time()
 for b, a in ms:
     gains = full_pol_phase_only(a, b, t_int=t_int, f_int=f_int, maxiter=100)
     corr_vis = apply_gains(b, gains, t_int=t_int, f_int=f_int)
-    print corr_vis[0,8,0,1,...]
-    print a[0,8,0,1,...]
     ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
 print time() - t0
 
