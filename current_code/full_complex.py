@@ -24,12 +24,10 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     tmp_array1 = np.empty([2,2], dtype=np.complex128)
     tmp_array2 = np.zeros(out_shape, dtype=np.complex128)
 
-    blah = np.empty_like(obser_arr, dtype=np.complex128)
-    blah2 = np.empty_like(obser_arr, dtype=np.complex128)
-    cyfull.compute_Abyb(obser_arr, gains, blah, t_int, f_int)
-    cyfull.compute_AbyA(blah, model_arr, blah2)
-
-    #print blah2[0,10,0,:,0,0]
+    # blah = np.empty_like(obser_arr, dtype=np.complex128)
+    # blah2 = np.empty_like(obser_arr, dtype=np.complex128)
+    # cyfull.compute_Abyb(obser_arr, gains, blah, t_int, f_int)
+    # cyfull.compute_AbyA(blah, model_arr, blah2)
 
     cyfull.compute_jhr(obser_arr, gains, model_arr,
                        tmp_array1, tmp_array2, t_int, f_int)
@@ -41,7 +39,7 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
         reduced_shape[1] = int(math.ceil(reduced_shape[1]/f_int))
 
         interval_array = np.zeros(reduced_shape, dtype=np.complex128)
-        cykernels.interval_reduce(tmp_array2, interval_array, t_int, f_int)
+        cyfull.interval_reduce(tmp_array2, interval_array, t_int, f_int)
         tmp_array2 = interval_array
 
     jhr = tmp_array2
@@ -129,25 +127,27 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
         residual (np.array): Array containing the result of computing D-GMG^H.
     """
 
-    # TODO: The solution invterval code here must be fixed. 
-
     if (f_int>1) or (t_int>1):
 
         reduced_shape = list(model_arr.shape)
         reduced_shape[0] = int(math.ceil(reduced_shape[0]/t_int))
         reduced_shape[1] = int(math.ceil(reduced_shape[1]/f_int))
 
-        gmgh = np.zeros(reduced_shape, dtype=np.complex128)
-        cykernels.model_reduce(model_arr, gmgh, t_int, f_int)
+        m = np.zeros(reduced_shape, dtype=np.complex128)
+        cyfull.model_reduce(model_arr, m, t_int, f_int)
 
         data = np.zeros(reduced_shape, dtype=np.complex128)
-        cykernels.model_reduce(obser_arr, data, t_int, f_int)
+        cyfull.model_reduce(obser_arr, data, t_int, f_int)
 
-        cykernels.apply_gains(gains, gains.conj(), gmgh, gmgh, 1, 1)
+        gm = np.empty(reduced_shape, dtype=np.complex128)
+        gmgh = np.empty(reduced_shape, dtype=np.complex128)
+
+        cyfull.compute_bbyA(gains, m, gm, 1, 1)
+        cyfull.compute_Abyb(gm, gains.transpose(0,1,2,4,3).conj(), gmgh, 1, 1)
 
     else:
-        gm = np.zeros_like(obser_arr)
-        gmgh = np.zeros_like(obser_arr)
+        gm = np.empty_like(obser_arr)
+        gmgh = np.empty_like(obser_arr)
         data = obser_arr
 
         cyfull.compute_bbyA(gains, model_arr, gm, t_int, f_int)
@@ -220,7 +220,6 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
         old_gains = gains.copy()
 
         print iters, n_quor/n_sols, n_quor
-        #print model_arr[0,10,0,:,0,0]
 
         iters += 1
         
@@ -312,12 +311,12 @@ def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
 
     return new_ind_a, new_ind_b
 
-ms = DataHandler("~/MEASUREMENT_SETS/D147.sel.MS")
-#ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS/SUBMSS/D147-LO-NOIFS-NOPOL-4M5S.MS")
-#ms = DataHandler("WESTERBORK_POL.MS")
+#ms = DataHandler("~/MEASUREMENT_SETS/D147.sel.MS")
+ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS/SUBMSS/D147-LO-NOIFS-NOPOL-4M5S.MS")
+# ms = DataHandler("WESTERBORK_POL.MS")
 ms.fetch_all()
 ms.define_chunk(3254, 64)
-ms.apply_flags = True
+# ms.apply_flags = True
 
 t_int, f_int = 1., 1.
 
