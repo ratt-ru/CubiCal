@@ -24,6 +24,13 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     tmp_array1 = np.empty([2,2], dtype=np.complex128)
     tmp_array2 = np.zeros(out_shape, dtype=np.complex128)
 
+    blah = np.empty_like(obser_arr, dtype=np.complex128)
+    blah2 = np.empty_like(obser_arr, dtype=np.complex128)
+    cyfull.compute_Abyb(obser_arr, gains, blah, t_int, f_int)
+    cyfull.compute_AbyA(blah, model_arr, blah2)
+
+    #print blah2[0,10,0,:,0,0]
+
     cyfull.compute_jhr(obser_arr, gains, model_arr,
                        tmp_array1, tmp_array2, t_int, f_int)
 
@@ -70,7 +77,7 @@ def compute_jhjinv(model_arr, gains, t_int=1, f_int=1):
 
     cyfull.compute_Abyb(tmp_out, gains, tmp_out2, t_int, f_int)
 
-    cyfull.compute_AbyA(tmp_out2, model_arr, tmp_out)
+    cyfull.compute_AbyA(tmp_out2, model_arr, tmp_out)   
 
     cyfull.reduce_6d(tmp_out, jhjinv, t_int, f_int)
 
@@ -152,7 +159,7 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
     return residual
 
 
-def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
+def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
                         chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
     """
     This function is the main body of the GN/LM method. It handles iterations
@@ -170,6 +177,7 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
         gains (np.array): Array containing the final gain estimates.
     """
 
+
     gain_shape = list(model_arr.shape)
     gain_shape[-3:] = [2, 2]
     gain_shape[0] = int(math.ceil(gain_shape[0]/t_int))
@@ -182,7 +190,7 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
     old_gains[:] = np.inf
     n_quor = 0
     n_sols = float(gain_shape[0]*gain_shape[1])
-    iters = 0
+    iters = 1
 
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
 
@@ -207,11 +215,17 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-3, maxiter=30,
         norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
         n_quor = np.sum(diff_g/norm_g <= min_delta_g**2)
         n_quor += np.sum(norm_g==0)
-        print iters, n_quor/n_sols
+        
 
         old_gains = gains.copy()
 
+        print iters, n_quor/n_sols, n_quor
+        #print model_arr[0,10,0,:,0,0]
+
         iters += 1
+        
+        if iters ==maxiter:
+            break
 
         if iters > maxiter:
             print "Maxiter exceeded."
@@ -298,11 +312,11 @@ def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
 
     return new_ind_a, new_ind_b
 
-
-ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS")
+ms = DataHandler("~/MEASUREMENT_SETS/D147.sel.MS")
+#ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS/SUBMSS/D147-LO-NOIFS-NOPOL-4M5S.MS")
 #ms = DataHandler("WESTERBORK_POL.MS")
 ms.fetch_all()
-ms.define_chunk(100, 8)
+ms.define_chunk(3254, 64)
 ms.apply_flags = True
 
 t_int, f_int = 1., 1.
