@@ -1,7 +1,6 @@
 from cyfullms import *
 from time import time,sleep
 import math
-import cykernels
 import cyfull
 
 def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
@@ -24,11 +23,6 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     tmp_array1 = np.empty([2,2], dtype=np.complex128)
     tmp_array2 = np.zeros(out_shape, dtype=np.complex128)
 
-    # blah = np.empty_like(obser_arr, dtype=np.complex128)
-    # blah2 = np.empty_like(obser_arr, dtype=np.complex128)
-    # cyfull.compute_Abyb(obser_arr, gains, blah, t_int, f_int)
-    # cyfull.compute_AbyA(blah, model_arr, blah2)
-
     cyfull.compute_jhr(obser_arr, gains, model_arr,
                        tmp_array1, tmp_array2, t_int, f_int)
 
@@ -45,7 +39,6 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     jhr = tmp_array2
 
     return jhr
-
 
 def compute_jhjinv(model_arr, gains, t_int=1, f_int=1):
     """
@@ -219,7 +212,7 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
 
         old_gains = gains.copy()
 
-        print iters, n_quor/n_sols, n_quor
+        # print iters, n_quor/n_sols, n_quor
 
         iters += 1
         
@@ -241,11 +234,13 @@ def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
             n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
 
             if n_conv/n_sols > 0.99:
-                print iters, "Static residual in {:.2%} of visibilities.".format(
-                    n_conv/n_sols)
+                print iters, "Static residual in {:.2%} of " \
+                             "visibilities.".format(n_conv/n_sols)
                 return gains
 
-    print iters, "Quorum reached: {:.2%} solutions acceptable.".format(n_quor/n_sols)
+    print "Iteration {}: Quorum reached: {:.2%} solutions " \
+                           "acceptable.".format(iters, n_quor/n_sols)
+
     return gains
 
 
@@ -312,13 +307,13 @@ def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
     return new_ind_a, new_ind_b
 
 #ms = DataHandler("~/MEASUREMENT_SETS/D147.sel.MS")
-ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS/SUBMSS/D147-LO-NOIFS-NOPOL-4M5S.MS")
-# ms = DataHandler("WESTERBORK_POL.MS")
+# ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS/SUBMSS/D147-LO-NOIFS-NOPOL-4M5S.MS")
+ms = DataHandler("WESTERBORK_POL.MS")
 ms.fetch_all()
-ms.define_chunk(3254, 64)
+ms.define_chunk(10, 4)
 # ms.apply_flags = True
 
-t_int, f_int = 1., 1.
+t_int, f_int = 2., 2.
 
 t0 = time()
 for b, a in ms:
