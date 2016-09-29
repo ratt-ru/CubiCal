@@ -166,7 +166,7 @@ class DataHandler:
 
         #MAY BE WRONG NOW!!!
 
-        if self.bitmask is not None:
+        if self.bitmask != 0:
             flags_arr &= ((self.bflag[f_t_row:l_t_row, f_f_col:l_f_col,
                            :] & self.bitmask) == True)
 

@@ -2,6 +2,7 @@ from cyfullms import *
 from time import time,sleep
 import math
 import cyfull
+import argparse
 
 def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
@@ -152,7 +153,7 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
     return residual
 
 
-def full_pol_phase_only(model_arr, obser_arr, min_delta_g=1e-6, maxiter=30,
+def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
                         chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
     """
     This function is the main body of the GN/LM method. It handles iterations
@@ -272,54 +273,48 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
 
     return inv_gdgh
 
-def expand_index(indices, t_int=1, f_int=1, t_lim=np.inf, f_lim=np.inf):
 
-    new_ind_a = []
-    new_ind_b = []
+if __name__ == "__main__":
 
-    if t_lim%t_int == 0:
-        t_lim = np.inf
-    if f_lim%f_int == 0:
-        f_lim = np.inf
+    parser = argparse.ArgumentParser(description='Basic full-polarisation '
+                                                 'calibration script.')
+    parser.add_argument('msname', help='Name and location of MS.')
+    parser.add_argument('-tc','--tchunk', type=int, default=1,
+                        help='Determines time chunk size.')
+    parser.add_argument('-fc','--fchunk', type=int, default=1,
+                        help='Determines frequency chunk size.')
+    parser.add_argument('-ti','--tint', type=int, default=1,
+                        help='Determines time solution intervals.')
+    parser.add_argument('-fi','--fint', type=int, default=1,
+                        help='Determines frequency solution intervals.')
+    parser.add_argument('-af','--applyflags', action="store_true",
+                        help='Apply FLAG column to data.')
+    parser.add_argument('-bm','--bitmask', type=int, default=0,
+                        help='Apply masked bitflags to data.')
+    parser.add_argument('-maxit','--maxiter', type=int, default=50,
+                        help='Maximum number of iterations.')
 
-    if (t_lim != np.inf) or (f_lim != np.inf):
-        for i in indices:
-            for j in xrange(int(t_int)):
-                tmp_t_ind = i[0] + j
-                if tmp_t_ind >= t_lim:
-                    break
+    args = parser.parse_args()
 
-                for k in xrange(int(f_int)):
-                    tmp_f_ind = i[1] + k
-                    if tmp_f_ind >= f_lim:
-                        break
+    ms = DataHandler(args.msname)
+    ms.fetch_all()
+    ms.define_chunk(args.tchunk, args.fchunk)
 
-                    new_ind_a.append(tmp_t_ind)
-                    new_ind_b.append(tmp_f_ind)
+    if args.applyflags:
+        ms.apply_flags = True
+    if args.bitmask != 0:
+        ms.bitmask = args.bitmask
 
-    else:
-        for i in indices:
-            for j in xrange(int(t_int)):
-                for k in xrange(int(f_int)):
-                    new_ind_a.append(i[0] + j)
-                    new_ind_b.append(i[1] + k)
+    t_int, f_int = args.tint, args.fint
 
-    return new_ind_a, new_ind_b
+    t0 = time()
+    for obs, mod in ms:
+        print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
+                                                       ms._first_f, ms._last_f)
+        gains = full_pol_phase_only(obs, mod, t_int=t_int, f_int=f_int,
+                                    maxiter=args.maxiter)
+        corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
+        ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
+    print "Time taken: {} seconds".format(time() - t0)
 
-#ms = DataHandler("~/MEASUREMENT_SETS/D147.sel.MS")
-# ms = DataHandler("~/MEASUREMENT_SETS/3C147-LO4-4M5S.MS/SUBMSS/D147-LO-NOIFS-NOPOL-4M5S.MS")
-ms = DataHandler("WESTERBORK_POL.MS")
-ms.fetch_all()
-ms.define_chunk(10, 4)
-# ms.apply_flags = True
-
-t_int, f_int = 2., 2.
-
-t0 = time()
-for b, a in ms:
-    gains = full_pol_phase_only(a, b, t_int=t_int, f_int=f_int, maxiter=100)
-    corr_vis = apply_gains(b, gains, t_int=t_int, f_int=f_int)
-    ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
-print time() - t0
-
-ms.save(ms.covis, "CORRECTED_DATA")
+    ms.save(ms.covis, "CORRECTED_DATA")
