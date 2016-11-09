@@ -293,10 +293,24 @@ if __name__ == "__main__":
                         help='Apply masked bitflags to data.')
     parser.add_argument('-maxit','--maxiter', type=int, default=50,
                         help='Maximum number of iterations.')
+    parser.add_argument('-f', '--field', type=int,
+                        help='Selects a particular FIELD_ID.')
+    parser.add_argument('-d', '--ddid', type=int,
+                        help='Selects a particular DATA_DESC_ID.')
+    parser.add_argument('--ddid-to', type=int,
+                        help='Selects range from --ddid to a particular DATA_DESC_ID.')
 
     args = parser.parse_args()
 
-    ms = DataHandler(args.msname)
+    if args.ddid is not None:
+        if args.ddid_to is not None:
+            ddid =  args.ddid, args.ddid_to+1
+        else:
+            ddid = args.ddid
+    else:
+        ddid = None
+
+    ms = DataHandler(args.msname, field=args.field, ddid=ddid)
     ms.fetch_all()
     ms.define_chunk(args.tchunk, args.fchunk)
 

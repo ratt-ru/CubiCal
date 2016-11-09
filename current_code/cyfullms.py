@@ -31,7 +31,7 @@ class DataHandler:
         self.bitmask: Mask for use with the BITFLAG column.
     """
 
-    def __init__(self, ms_name):
+    def __init__(self, ms_name, field=None, ddid=None, taql=None):
         """
         Initialisation method for DataHandler.
 
@@ -39,7 +39,18 @@ class DataHandler:
             ms_name (str): Name of measurement set.
         """
         self.ms_name = ms_name
+        taqls = [ "(" + taql +")" ] if taql else []
+        if field is not None:
+            taqls.append("FIELD_ID == %d" % field)
+        if ddid is not None:
+            if isinstance(ddid,(tuple,list)) and len(ddid) == 2:
+                taqls.append("DATA_DESC_ID IN %d:%d"%(ddid[0],ddid[1]-1))
+            else:
+                taqls.append("DATA_DESC_ID == %d" % ddid)
         self.data = table(self.ms_name, readonly=False)
+        if taqls:
+            print "Applying selection", taqls
+            self.data = self.data.query(" && ".join(taqls))
 
         self.nrows = self.data.nrows()
         self.ntime = len(np.unique(self.fetch("TIME")))
