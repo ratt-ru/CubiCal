@@ -6,7 +6,8 @@ from time import time
 
 class ReadModelHandler:
 
-    def __init__(self, ms_name, taql=None, fid=None, ddid=None):
+    def __init__(self, ms_name, taql=None, fid=None, ddid=None,
+                 precision="32"):
 
         self.ms_name = ms_name
 
@@ -20,6 +21,8 @@ class ReadModelHandler:
         else:
             self.data = self.ms
 
+        self.ctype = np.complex128 if precision=="64" else np.complex64
+        self.ftype = np.float64 if precision=="64" else np.float32
         self.nrows = self.data.nrows()
         self.ntime = len(np.unique(self.fetch("TIME")))
         self.nfreq, self.ncorr = self.data.getcoldesc("DATA")["shape"]
@@ -83,7 +86,7 @@ class ReadModelHandler:
 
     def mass_fetch(self, *args, **kwargs):
         """
-        Convenenience function for grabbing all the necessary data from the MS.
+        Convenience function for grabbing all the necessary data from the MS.
         Assigns values to initialised attributes.
 
         Args:
@@ -91,14 +94,15 @@ class ReadModelHandler:
             **kwargs: Arbitrary keyword arguments.
         """
 
-        self.obvis = self.fetch("DATA", *args, **kwargs)
-        self.movis = self.fetch("MODEL_DATA", *args, **kwargs)
+        self.obvis = self.fetch("DATA", *args, **kwargs).astype(self.ctype)
+        self.movis = self.fetch("MODEL_DATA", *args, **kwargs).astype(self.ctype)
         self.antea = self.fetch("ANTENNA1", *args, **kwargs)
         self.anteb = self.fetch("ANTENNA2", *args, **kwargs)
         self.times = self.t_to_ind(self.fetch("TIME", *args, **kwargs))
         self.tdict = OrderedDict(sorted(Counter(self.times).items()))
         self.covis = np.empty_like(self.obvis)
         self.flags = self.fetch("FLAG", *args, **kwargs)
+
 
         try:
             self.bflag = self.fetch("BITFLAG", *args, **kwargs)
@@ -148,14 +152,16 @@ class ReadModelHandler:
         self.chunk_tkey = self.tdict.keys()[::self.chunk_tdim]
         self.chunk_tkey.append(self.ntime)
 
-        self.chunk_tkey.extend(break_t)
-        self.chunk_tind.extend(break_i)
+        # self.chunk_tkey.extend(break_t)
+        # self.chunk_tind.extend(break_i)
 
         self.chunk_tkey = sorted(np.unique(self.chunk_tkey))
         self.chunk_tind = sorted(np.unique(self.chunk_tind))
 
         self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
         self.chunk_find.append(self.nfreq)
+
+        print self.chunk_tind
 
     def check_contig(self):
 
@@ -218,10 +224,10 @@ class ReadModelHandler:
         # be packed. TODO: 6D? dtype?
 
         obser_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
-                              self.nants, self.ncorr], dtype=np.complex64)
+                              self.nants, self.ncorr], dtype=self.ctype)
 
         model_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
-                              self.nants, self.ncorr], dtype=np.complex64)
+                              self.nants, self.ncorr], dtype=self.ctype)
 
         # Grabs the relevant time and antenna info.
 
@@ -322,9 +328,9 @@ class ReadModelHandler:
 
 
 
-ms = ReadModelHandler("~/measurements/WESTERBORK_POL_2.MS")
-ms.mass_fetch()
-ms.define_chunk(100,64)
-
-for obs, mod in ms:
-    pass
+# ms = ReadModelHandler("~/measurements/WESTERBORK_POL_2.MS")
+# ms.mass_fetch()
+# ms.define_chunk(100,64)
+#
+# for obs, mod in ms:
+#     pass
