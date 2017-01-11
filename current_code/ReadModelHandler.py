@@ -1,6 +1,7 @@
 import numpy as np
 from collections import Counter, OrderedDict
 import pyrap.tables as pt
+import MBTiggerSim as mbt
 
 from time import time
 
@@ -10,6 +11,7 @@ class ReadModelHandler:
                  precision="32"):
 
         self.ms_name = ms_name
+        self.fid = fid if fid is not None else 0
 
         self.taql = self.build_taql(taql, fid, ddid)
 
@@ -28,15 +30,29 @@ class ReadModelHandler:
         self.nfreq, self.ncorr = self.data.getcoldesc("DATA")["shape"]
         self.nants = pt.table(self.ms_name + "::ANTENNA").nrows()
 
+        self._anttab = pt.table(self.ms_name + "::ANTENNA")
+        self._fldtab = pt.table(self.ms_name + "::FIELD")
+        self._spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW")
+
+        self._nchans = self._spwtab.getcol("NUM_CHAN")
+        self._rfreqs = self._spwtab.getcol("REF_FREQUENCY")
+        self._chanfr = self._spwtab.getcol("CHAN_FREQ")
+        self._antpos = self._anttab.getcol("POSITION")
+        self._phadir = self._fldtab.getcol("PHASE_DIR", startrow=self.fid,
+                                           nrow=1)[0][0]
+
         self.obvis = None
         self.movis = None
         self.covis = None
         self.antea = None
         self.anteb = None
+        self.rtime = None
         self.times = None
         self.tdict = None
         self.flags = None
         self.bflag = None
+        self.weigh = None
+        self.uvwco = None
 
         self.chunk_tdim = None
         self.chunk_fdim = None
@@ -98,11 +114,13 @@ class ReadModelHandler:
         self.movis = self.fetch("MODEL_DATA", *args, **kwargs).astype(self.ctype)
         self.antea = self.fetch("ANTENNA1", *args, **kwargs)
         self.anteb = self.fetch("ANTENNA2", *args, **kwargs)
-        self.times = self.t_to_ind(self.fetch("TIME", *args, **kwargs))
+        self.rtime = self.fetch("TIME", *args, **kwargs)
+        self.times = self.t_to_ind(self.rtime)
         self.tdict = OrderedDict(sorted(Counter(self.times).items()))
         self.covis = np.empty_like(self.obvis)
         self.flags = self.fetch("FLAG", *args, **kwargs)
-
+        self.weigh = self.fetch("WEIGHT", *args, **kwargs)
+        self.uvwco = self.fetch("UVW", *args, **kwargs)
 
         try:
             self.bflag = self.fetch("BITFLAG", *args, **kwargs)
@@ -161,8 +179,6 @@ class ReadModelHandler:
         self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
         self.chunk_find.append(self.nfreq)
 
-        print self.chunk_tind
-
     def check_contig(self):
 
         ddid = self.fetch("SCAN_NUMBER")
@@ -198,6 +214,12 @@ class ReadModelHandler:
 
                 t_dim = self.chunk_tkey[i + 1] - self.chunk_tkey[i]
                 f_dim = self._last_f - self._first_f
+
+                srcprov = mbt.MSSourceProvider(self, t_dim, f_dim)
+                snkprov = mbt.ArraySinkProvider(self, t_dim, f_dim)
+                mbt.simulate(srcprov, snkprov)
+
+
 
                 yield self.vis_to_array(t_dim, f_dim, self._first_t,
                                         self._last_t, self._first_f,
