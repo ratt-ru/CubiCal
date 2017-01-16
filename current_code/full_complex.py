@@ -1,8 +1,10 @@
-from cyfullms import *
+from ReadModelHandler import *
 from time import time,sleep
 import math
 import cyfull
 import argparse
+import MBTiggerSim as mbt
+import TiggerSourceProvider as tsp
 
 def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
@@ -21,8 +23,8 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     out_shape = list(obser_arr.shape)
     out_shape[-3:] = [2,2]
 
-    tmp_array1 = np.empty([2,2], dtype=np.complex128)
-    tmp_array2 = np.zeros(out_shape, dtype=np.complex128)
+    tmp_array1 = np.empty([2,2], dtype=obser_arr.dtype)
+    tmp_array2 = np.zeros(out_shape, dtype=obser_arr.dtype)
 
     cyfull.compute_jhr(obser_arr, gains, model_arr,
                        tmp_array1, tmp_array2, t_int, f_int)
@@ -33,7 +35,7 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
         reduced_shape[0] = int(math.ceil(reduced_shape[0]/t_int))
         reduced_shape[1] = int(math.ceil(reduced_shape[1]/f_int))
 
-        interval_array = np.zeros(reduced_shape, dtype=np.complex128)
+        interval_array = np.zeros(reduced_shape, dtype=obser_arr.dtype)
         cyfull.interval_reduce(tmp_array2, interval_array, t_int, f_int)
         tmp_array2 = interval_array
 
@@ -58,7 +60,7 @@ def compute_jhjinv(model_arr, gains, t_int=1, f_int=1):
     jhjinv_shape[0] = int(math.ceil(jhjinv_shape[0]/t_int))
     jhjinv_shape[1] = int(math.ceil(jhjinv_shape[1]/f_int))
 
-    jhjinv = np.zeros(jhjinv_shape, dtype=np.complex128)
+    jhjinv = np.zeros(jhjinv_shape, dtype=model_arr.dtype)
 
     tmp_out = np.empty_like(model_arr)
     tmp_out2 = np.empty_like(model_arr)
@@ -127,14 +129,14 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
         reduced_shape[0] = int(math.ceil(reduced_shape[0]/t_int))
         reduced_shape[1] = int(math.ceil(reduced_shape[1]/f_int))
 
-        m = np.zeros(reduced_shape, dtype=np.complex128)
+        m = np.zeros(reduced_shape, dtype=obser_arr.dtype)
         cyfull.model_reduce(model_arr, m, t_int, f_int)
 
-        data = np.zeros(reduced_shape, dtype=np.complex128)
+        data = np.zeros(reduced_shape, dtype=obser_arr.dtype)
         cyfull.model_reduce(obser_arr, data, t_int, f_int)
 
-        gm = np.empty(reduced_shape, dtype=np.complex128)
-        gmgh = np.empty(reduced_shape, dtype=np.complex128)
+        gm = np.empty(reduced_shape, dtype=obser_arr.dtype)
+        gmgh = np.empty(reduced_shape, dtype=obser_arr.dtype)
 
         cyfull.compute_bbyA(gains, m, gm, 1, 1)
         cyfull.compute_Abyb(gm, gains.transpose(0,1,2,4,3).conj(), gmgh, 1, 1)
@@ -177,7 +179,7 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
     gain_shape[0] = int(math.ceil(gain_shape[0]/t_int))
     gain_shape[1] = int(math.ceil(gain_shape[1]/f_int))
 
-    gains = np.zeros(gain_shape, dtype=np.complex128)
+    gains = np.zeros(gain_shape, dtype=obser_arr.dtype)
     gains[...,(0,1),(0,1)] = 1
 
     old_gains = np.empty_like(gains)
@@ -297,6 +299,8 @@ if __name__ == "__main__":
                         help='Selects a particular FIELD_ID.')
     parser.add_argument('-d', '--ddid', type=int,
                         help='Selects a particular DATA_DESC_ID.')
+    parser.add_argument('-p', '--precision', type=str,
+                        help='Selects a particular data type.')
     parser.add_argument('--ddid-to', type=int,
                         help='Selects range from --ddid to a particular DATA_DESC_ID.')
 
@@ -310,8 +314,9 @@ if __name__ == "__main__":
     else:
         ddid = None
 
-    ms = DataHandler(args.msname, field=args.field, ddid=ddid)
-    ms.fetch_all()
+    ms = ReadModelHandler(args.msname, fid=args.field, ddid=ddid,
+                          precision=args.precision)
+    ms.mass_fetch()
     ms.define_chunk(args.tchunk, args.fchunk)
 
     if args.applyflags:

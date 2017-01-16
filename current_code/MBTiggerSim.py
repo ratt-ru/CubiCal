@@ -162,10 +162,11 @@ class MSSourceProvider(SourceProvider):
 
 
 class ArraySinkProvider(SinkProvider):
-    def __init__(self, handler, ntime, nchan):
+    def __init__(self, handler, ntime, nchan, ndirs):
         self._name = "Measurement Set '{ms}'".format(ms=handler.ms_name)
-        self._sim_array = np.zeros([ntime, nchan, handler.nants,
+        self._sim_array = np.zeros([ndirs, ntime, nchan, handler.nants,
                                     handler.nants, 4], dtype=handler.ctype)
+        self._dir = 0
 
     def name(self):
         return self._name
@@ -178,8 +179,10 @@ class ArraySinkProvider(SinkProvider):
         a2 = context.input["antenna2"]
 
         for t in xrange(ntime):
-            self._sim_array[t,:,a1[t,:],a2[t,:],:] = context.data[t,...]
-            self._sim_array[t,:,a2[t,:],a1[t,:],:] = context.data[t,...].conj()[...,(0,2,1,3)]
+            self._sim_array[self._dir, t,:,a1[t,:],a2[t,:],:] = \
+                            context.data[t, ...]
+            self._sim_array[self._dir, t,:,a2[t,:],a1[t,:],:] = \
+                            context.data[t,...].conj()[...,(0,2,1,3)]
 
     def __str__(self):
         return self.__class__.__name__
@@ -201,7 +204,7 @@ def simulate(srcprov, sinkprov):
 
         source_provs = []
         # Read problem info from the MS, taking observed visibilities from MODEL_DAT
-        source_provs.extend([srcprov])
+        source_provs.extend(srcprov)
 
         # Add a beam when you're ready
         #source_provs.append(FitsBeamSourceProvider('beam_$(corr)_$(reim).fits'))
@@ -210,7 +213,7 @@ def simulate(srcprov, sinkprov):
         #source_provs.append(tsp)
 
         sink_provs = []
-        sink_provs.extend([sinkprov])
+        sink_provs.extend(sinkprov)
         # Dump model visibilities into CORRECTED_DATA
         # sink_provs.append(MSSinkProvider(ms_mgr, 'CORRECTED_DATA'))
         #ntime, nchan, na = ms_mgr._dim_sizes['ntime'], ms_mgr._dim_sizes[

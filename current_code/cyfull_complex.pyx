@@ -3,15 +3,19 @@ import numpy as np
 cimport numpy as np
 import cython
 
+ctypedef fused complex3264:
+    np.complex64_t
+    np.complex128_t
+
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def compute_jhr(double complex [:,:,:,:,:,:] in1,
-                double complex [:,:,:,:,:] in2,
-                double complex [:,:,:,:,:,:] in3,
-                double complex [:,:] tmp1,
-                double complex [:,:,:,:,:] out1,
+def compute_jhr(complex3264 [:,:,:,:,:,:] in1,
+                complex3264 [:,:,:,:,:] in2,
+                complex3264 [:,:,:,:,:,:] in3,
+                complex3264 [:,:] tmp1,
+                complex3264 [:,:,:,:,:] out1,
                 int t_int,
                 int f_int):
 
@@ -69,9 +73,9 @@ def compute_jhr(double complex [:,:,:,:,:,:] in1,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def compute_Abyb(double complex [:,:,:,:,:,:] in1,
-                 double complex [:,:,:,:,:] in2,
-                 double complex [:,:,:,:,:,:] out1,
+def compute_Abyb(complex3264 [:,:,:,:,:,:] in1,
+                 complex3264 [:,:,:,:,:] in2,
+                 complex3264 [:,:,:,:,:,:] out1,
                  int t_int,
                  int f_int):
     """
@@ -109,9 +113,9 @@ def compute_Abyb(double complex [:,:,:,:,:,:] in1,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def compute_AbyA(double complex [:,:,:,:,:,:] in1,
-                 double complex [:,:,:,:,:,:] in2,
-                 double complex [:,:,:,:,:,:] out1):
+def compute_AbyA(complex3264 [:,:,:,:,:,:] in1,
+                 complex3264 [:,:,:,:,:,:] in2,
+                 complex3264 [:,:,:,:,:,:] out1):
     """
     This takes the dot product of the elements of matrix in1 with the elements
     of matrix in2. Note that the elements of both are 2-by-2 blocks.
@@ -145,7 +149,7 @@ def compute_AbyA(double complex [:,:,:,:,:,:] in1,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def invert_jhj(double complex [:,:,:,:,:] jhj):
+def invert_jhj(complex3264 [:,:,:,:,:] jhj):
     """
     NOTE: THIS RIGHT-MULTIPLIES THE ENTRIES OF IN1 BY THE ENTRIES OF IN2.
     """
@@ -178,8 +182,8 @@ def invert_jhj(double complex [:,:,:,:,:] jhj):
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def reduce_6d(double complex [:,:,:,:,:,:] in1,
-              double complex [:,:,:,:,:,:] out1,
+def reduce_6d(complex3264 [:,:,:,:,:,:] in1,
+              complex3264 [:,:,:,:,:,:] out1,
               int t_int,
               int f_int):
 
@@ -209,9 +213,9 @@ def reduce_6d(double complex [:,:,:,:,:,:] in1,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def compute_update(double complex [:,:,:,:,:] in1,
-                   double complex [:,:,:,:,:] in2,
-                   double complex [:,:,:,:,:] out1):
+def compute_update(complex3264 [:,:,:,:,:] in1,
+                   complex3264 [:,:,:,:,:] in2,
+                   complex3264 [:,:,:,:,:] out1):
     """
     NOTE: THIS RIGHT-MULTIPLIES THE ENTRIES OF IN1 BY THE ENTRIES OF IN2.
     """
@@ -242,9 +246,9 @@ def compute_update(double complex [:,:,:,:,:] in1,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def compute_bbyA(double complex [:,:,:,:,:] in1,
-                 double complex [:,:,:,:,:,:] in2,
-                 double complex [:,:,:,:,:,:] out1,
+def compute_bbyA(complex3264 [:,:,:,:,:] in1,
+                 complex3264 [:,:,:,:,:,:] in2,
+                 complex3264 [:,:,:,:,:,:] out1,
                  int t_int,
                  int f_int):
     """
@@ -279,8 +283,8 @@ def compute_bbyA(double complex [:,:,:,:,:] in1,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def interval_reduce(double complex [:,:,:,:,:] in1,
-                    double complex [:,:,:,:,:] out1,
+def interval_reduce(complex3264 [:,:,:,:,:] in1,
+                    complex3264 [:,:,:,:,:] out1,
                     int t_int,
                     int f_int):
 
@@ -312,8 +316,8 @@ def interval_reduce(double complex [:,:,:,:,:] in1,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def model_reduce(double complex [:,:,:,:,:,:] in1,
-                 double complex [:,:,:,:,:,:] out1,
+def model_reduce(complex3264 [:,:,:,:,:,:] in1,
+                 complex3264 [:,:,:,:,:,:] out1,
                  int t_int,
                  int f_int):
 

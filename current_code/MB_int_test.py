@@ -42,9 +42,10 @@ if __name__ == '__main__':
     montblanc.log.setLevel(logging.DEBUG)
     [h.setLevel(logging.DEBUG) for h in montblanc.log.handlers]
 
-    slvr_cfg = montblanc.rime_solver_cfg(mem_budget=1024*1024*1024,
-                                         dtype='single',
-                                         version=args.version)
+    slvr_cfg = montblanc.rime_solver_cfg(
+        mem_budget=1024*1024*1024,
+        dtype='float',
+        version=args.version)
 
     with montblanc.rime_solver(slvr_cfg) as slvr:
         # Manages measurement sets

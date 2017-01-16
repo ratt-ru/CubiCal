@@ -2,6 +2,7 @@ import numpy as np
 from collections import Counter, OrderedDict
 import pyrap.tables as pt
 import MBTiggerSim as mbt
+import TiggerSourceProvider as tsp
 
 from time import time
 
@@ -11,6 +12,7 @@ class ReadModelHandler:
                  precision="32"):
 
         self.ms_name = ms_name
+        self.sm_name = "3C147-GdB-spw0+pybdsm.lsm.html"
         self.fid = fid if fid is not None else 0
 
         self.taql = self.build_taql(taql, fid, ddid)
@@ -215,10 +217,20 @@ class ReadModelHandler:
                 t_dim = self.chunk_tkey[i + 1] - self.chunk_tkey[i]
                 f_dim = self._last_f - self._first_f
 
-                srcprov = mbt.MSSourceProvider(self, t_dim, f_dim)
-                snkprov = mbt.ArraySinkProvider(self, t_dim, f_dim)
-                mbt.simulate(srcprov, snkprov)
+                mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
+                tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
+                                                    use_ddes=Truegit )
+                arsnk = mbt.ArraySinkProvider(self, t_dim, f_dim, tgsrc._nclus)
 
+                srcprov = [mssrc, tgsrc]
+                snkprov = [arsnk]
+
+                for i in xrange(tgsrc._nclus):
+                    mbt.simulate(srcprov, snkprov)
+                    tgsrc.update_target()
+                    arsnk._dir += 1
+
+                print arsnk._sim_array.shape
 
 
                 yield self.vis_to_array(t_dim, f_dim, self._first_t,

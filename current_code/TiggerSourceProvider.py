@@ -19,13 +19,14 @@ import pyrap.tables as pt
 class TiggerSourceProvider(SourceProvider):
     """ Simulates sources provided by a Tigger sky model. """
 
-    def __init__(self, handler, tigger_filename):
+    def __init__(self, phase_center, tigger_filename, use_ddes=False):
         """ Simulate sources in different directions """
 
         self._sm = Tigger.load(tigger_filename)
-        self._phase_center = handler._phadir
+        self._phase_center = phase_center
+        self._use_ddes = use_ddes
 
-        self._clusters = cluster_sources(self._sm)
+        self._clusters = cluster_sources(self._sm, self._use_ddes)
         self._cluster_keys = self._clusters.keys()
         self._nclus = len(self._cluster_keys)
 
@@ -39,12 +40,13 @@ class TiggerSourceProvider(SourceProvider):
 
     def update_target(self):
 
-        self._target_key += 1
-        self._target_cluster = self._cluster_keys[self._target_key]
-        self._pnt_sources = self._clusters[self._target_cluster]["pnt"]
-        self._npsrc = len(self._pnt_sources)
-        self._gau_sources = self._clusters[self._target_cluster]["gau"]
-        self._ngsrc = len(self._gau_sources)
+        if (self._target_key + 1)<self._nclus:
+            self._target_key += 1
+            self._target_cluster = self._cluster_keys[self._target_key]
+            self._pnt_sources = self._clusters[self._target_cluster]["pnt"]
+            self._npsrc = len(self._pnt_sources)
+            self._gau_sources = self._clusters[self._target_cluster]["gau"]
+            self._ngsrc = len(self._gau_sources)
 
     def name(self):
         return "Tigger sky model source provider"
@@ -168,7 +170,7 @@ class TiggerSourceProvider(SourceProvider):
         return [('npsrc', self._npsrc),
                 ('ngsrc', self._ngsrc)]
 
-def cluster_sources(sm, use_ddes=False):
+def cluster_sources(sm, use_ddes):
 
     ddes = {'True': [], 'False': []}
 
