@@ -219,7 +219,7 @@ class ReadModelHandler:
 
                 mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
                 tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
-                                                    use_ddes=Truegit )
+                                                    use_ddes=True)
                 arsnk = mbt.ArraySinkProvider(self, t_dim, f_dim, tgsrc._nclus)
 
                 srcprov = [mssrc, tgsrc]
@@ -230,12 +230,16 @@ class ReadModelHandler:
                     tgsrc.update_target()
                     arsnk._dir += 1
 
-                print arsnk._sim_array.shape
-
-
-                yield self.vis_to_array(t_dim, f_dim, self._first_t,
+                obs_arr, mod_arr = self.vis_to_array(t_dim, f_dim, self._first_t,
                                         self._last_t, self._first_f,
                                         self._last_f)
+
+                mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
+                mod_arr = arsnk._sim_array.reshape(mod_shape)
+
+                yield obs_arr, mod_arr
+
+
 
     def vis_to_array(self, chunk_tdim, chunk_fdim, f_t_row, l_t_row, f_f_col,
                      l_f_col):

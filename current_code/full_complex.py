@@ -125,15 +125,25 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     if (f_int>1) or (t_int>1):
 
-        reduced_shape = list(model_arr.shape)
-        reduced_shape[0] = int(math.ceil(reduced_shape[0]/t_int))
-        reduced_shape[1] = int(math.ceil(reduced_shape[1]/f_int))
+        n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
+
+        reduced_shape = [n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
 
         m = np.zeros(reduced_shape, dtype=obser_arr.dtype)
         cyfull.model_reduce(model_arr, m, t_int, f_int)
 
-        data = np.zeros(reduced_shape, dtype=obser_arr.dtype)
-        cyfull.model_reduce(obser_arr, data, t_int, f_int)
+        data = np.zeros(reduced_shape[1:], dtype=obser_arr.dtype)
+        cyfull.model_reduce(obser_arr[np.newaxis,...], data[np.newaxis,...],
+                            t_int, f_int)
+
+        #TODO: 24//01/2017 - Write a single kernel for this operation.
+
+        test = np.zeros_like(data)
+        print test.dtype
+        t0 = time()
+        cyfull.cycompute_residual(m, gains, gains.transpose(0,1,2,3,5,4).conj(),
+                                  test)
+        print time() - t0
 
         gm = np.empty(reduced_shape, dtype=obser_arr.dtype)
         gmgh = np.empty(reduced_shape, dtype=obser_arr.dtype)
@@ -173,19 +183,20 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
         gains (np.array): Array containing the final gain estimates.
     """
 
+    n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = model_arr.shape
 
-    gain_shape = list(model_arr.shape)
-    gain_shape[-3:] = [2, 2]
-    gain_shape[0] = int(math.ceil(gain_shape[0]/t_int))
-    gain_shape[1] = int(math.ceil(gain_shape[1]/f_int))
+    n_tim = int(math.ceil(n_tim/t_int))
+    n_fre = int(math.ceil(n_fre/f_int))
 
-    gains = np.zeros(gain_shape, dtype=obser_arr.dtype)
-    gains[...,(0,1),(0,1)] = 1
+    gain_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
+
+    gains = np.empty(gain_shape, dtype=obser_arr.dtype)
+    gains[:] = np.eye(2)
 
     old_gains = np.empty_like(gains)
     old_gains[:] = np.inf
     n_quor = 0
-    n_sols = float(gain_shape[0]*gain_shape[1])
+    n_sols = float(n_dir*n_tim*n_fre)
     iters = 1
 
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
@@ -299,7 +310,7 @@ if __name__ == "__main__":
                         help='Selects a particular FIELD_ID.')
     parser.add_argument('-d', '--ddid', type=int,
                         help='Selects a particular DATA_DESC_ID.')
-    parser.add_argument('-p', '--precision', type=str,
+    parser.add_argument('-p', '--precision', type=str, default='32',
                         help='Selects a particular data type.')
     parser.add_argument('--ddid-to', type=int,
                         help='Selects range from --ddid to a particular DATA_DESC_ID.')
@@ -328,6 +339,7 @@ if __name__ == "__main__":
 
     t0 = time()
     for obs, mod in ms:
+        print obs.shape, mod.shape
         print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
                                                        ms._first_f, ms._last_f)
         gains = full_pol_phase_only(obs, mod, t_int=t_int, f_int=f_int,
