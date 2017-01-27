@@ -123,7 +123,7 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
         residual (np.array): Array containing the result of computing D-GMG^H.
     """
 
-    if (f_int>1) or (t_int>1):
+    if (f_int>0) or (t_int>0):
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
 
@@ -138,12 +138,26 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
         #TODO: 24//01/2017 - Write a single kernel for this operation.
 
-        test = np.zeros_like(data)
-        print test.dtype
+        w = np.ones_like(obser_arr, dtype=np.float32)
+
+        r = np.zeros(reduced_shape[1:], dtype=obser_arr.dtype)
+        cyfull.reduce_wobs(obser_arr, w, r, t_int, f_int)
+
+        temp = r[0,0,4,7,:]
+        for i in range(n_dir):
+            temp = temp - model_arr[i,0,0,4,7,:] - model_arr[i,1,0,4,7,:] - \
+                          model_arr[i,0,1,4,7,:] - model_arr[i,1,1,4,7,:]
+        print temp
+
+
         t0 = time()
-        cyfull.cycompute_residual(m, gains, gains.transpose(0,1,2,3,5,4).conj(),
-                                  test)
+        cyfull.cycompute_residual(model_arr, gains,
+                                  gains.transpose(0,1,2,3,5,4).conj(),
+                                  r, w, t_int, f_int)
         print time() - t0
+        print r[0,0,4,7,:]
+
+
 
         gm = np.empty(reduced_shape, dtype=obser_arr.dtype)
         gmgh = np.empty(reduced_shape, dtype=obser_arr.dtype)
