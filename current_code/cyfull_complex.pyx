@@ -7,6 +7,9 @@ ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
 
+cdef extern from "complex.h":
+    double complex conj(double complex m)
+
 # @cython.cdivision(True)
 # @cython.wraparound(False)
 # @cython.boundscheck(False)
@@ -441,6 +444,134 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:] m,
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+
+
+def cycompute_jh(complex3264 [:,:,:,:,:,:,:] m,
+                 complex3264 [:,:,:,:,:,:] g,
+                 complex3264 [:,:,:,:,:,:,:] jh,
+                 int t_int,
+                 int f_int):
+
+    """
+    This reduces the dimension of in1 to match out1. This is achieved by a
+    summation of blocks of dimension (t_int, f_int).
+    """
+
+    cdef int d, t, f, aa, ab, rr, rc = 0
+    cdef int n_dir, n_tim, n_fre, n_ant
+
+    n_dir = m.shape[0]
+    n_tim = m.shape[1]
+    n_fre = m.shape[2]
+    n_ant = m.shape[3]
+
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        jh[d,rr,rc,aa,ab,0,0] = jh[d,rr,rc,aa,ab,0,0] + \
+                                 g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0] + \
+                                 g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]
+
+                        jh[d,rr,rc,aa,ab,0,1] = jh[d,rr,rc,aa,ab,0,1] + \
+                                 g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1] + \
+                                 g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]
+
+                        jh[d,rr,rc,aa,ab,1,0] = jh[d,rr,rc,aa,ab,1,0] + \
+                                 g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0] + \
+                                 g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]
+
+                        jh[d,rr,rc,aa,ab,1,1] = jh[d,rr,rc,aa,ab,1,1] + \
+                                 g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1] + \
+                                 g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]
+
+def cycompute_jhr(complex3264 [:,:,:,:,:,:,:] jh,
+                  complex3264 [:,:,:,:,:,:] r,
+                  complex3264 [:,:,:,:,:,:] jhr,
+                  int t_int,
+                  int f_int):
+
+    """
+    This reduces the dimension of in1 to match out1. This is achieved by a
+    summation of blocks of dimension (t_int, f_int).
+    """
+
+    cdef int d, t, f, aa, ab, rr, rc = 0
+    cdef int n_dir, n_tim, n_fre, n_ant
+
+    n_dir = jh.shape[0]
+    n_tim = r.shape[0]
+    n_fre = r.shape[1]
+    n_ant = r.shape[2]
+
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        jhr[d,rr,rc,aa,0,0] = jhr[d,rr,rc,aa,0,0] + \
+                              r[t,f,aa,ab,0,0]*jh[d,rr,rc,ab,aa,0,0] + \
+                              r[t,f,aa,ab,0,1]*jh[d,rr,rc,ab,aa,1,0]
+
+                        jhr[d,rr,rc,aa,0,1] = jhr[d,rr,rc,aa,0,1] + \
+                              r[t,f,aa,ab,0,0]*jh[d,rr,rc,ab,aa,0,1] + \
+                              r[t,f,aa,ab,0,1]*jh[d,rr,rc,ab,aa,1,1]
+
+                        jhr[d,rr,rc,aa,1,0] = jhr[d,rr,rc,aa,1,0] + \
+                              r[t,f,aa,ab,1,0]*jh[d,rr,rc,ab,aa,0,0] + \
+                              r[t,f,aa,ab,1,1]*jh[d,rr,rc,ab,aa,1,0]
+
+                        jhr[d,rr,rc,aa,1,1] = jhr[d,rr,rc,aa,1,1] + \
+                              r[t,f,aa,ab,1,0]*jh[d,rr,rc,ab,aa,0,1] + \
+                              r[t,f,aa,ab,1,1]*jh[d,rr,rc,ab,aa,1,1]
+
+
+# @cython.cdivision(True)
+# @cython.wraparound(False)
+# @cython.boundscheck(False)
+# @cython.nonecheck(False)
+def cycompute_jhjinv(complex3264 [:,:,:,:,:,:,:] jh,
+                     complex3264 [:,:,:,:,:,:] jhj):
+
+    """
+    This reduces the dimension of in1 to match out1. This is achieved by a
+    summation of blocks of dimension (t_int, f_int).
+    """
+
+    cdef int d, t, f, aa, ab = 0
+    cdef int n_dir, n_tim, n_fre, n_ant
+
+    n_dir = jh.shape[0]
+    n_tim = jh.shape[1]
+    n_fre = jh.shape[2]
+    n_ant = jh.shape[3]
+
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            for f in xrange(n_fre):
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+
+                        jhj[d,t,f,aa,0,0] = jhj[d,t,f,aa,0,0] + \
+                            conj(jh[d,t,f,ab,aa,0,0])*jh[d,t,f,ab,aa,0,0] + \
+                            conj(jh[d,t,f,ab,aa,1,0])*jh[d,t,f,ab,aa,1,0]
+
+                        jhj[d,t,f,aa,0,1] = jhj[d,t,f,aa,0,1] + \
+                            conj(jh[d,t,f,ab,aa,0,0])*jh[d,t,f,ab,aa,0,1] + \
+                            conj(jh[d,t,f,ab,aa,1,0])*jh[d,t,f,ab,aa,1,1]
+
+                        jhj[d,t,f,aa,1,0] = jhj[d,t,f,aa,1,0] + \
+                            conj(jh[d,t,f,ab,aa,0,1])*jh[d,t,f,ab,aa,0,0] + \
+                            conj(jh[d,t,f,ab,aa,1,1])*jh[d,t,f,ab,aa,1,0]
+
+                        jhj[d,t,f,aa,1,1] = jhj[d,t,f,aa,1,1] + \
+                            conj(jh[d,t,f,ab,aa,0,1])*jh[d,t,f,ab,aa,0,1] + \
+                            conj(jh[d,t,f,ab,aa,1,1])*jh[d,t,f,ab,aa,1,1]
 
 # @cython.cdivision(True)
 # @cython.wraparound(False)

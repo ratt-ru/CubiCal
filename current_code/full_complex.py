@@ -20,26 +20,30 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
         jhr (np.array): Array containing the result of computing (J^H)R.
     """
 
-    out_shape = list(obser_arr.shape)
-    out_shape[-3:] = [2,2]
+    n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
 
-    tmp_array1 = np.empty([2,2], dtype=obser_arr.dtype)
-    tmp_array2 = np.zeros(out_shape, dtype=obser_arr.dtype)
+    jh_shape = [n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
 
-    cyfull.compute_jhr(obser_arr, gains, model_arr,
-                       tmp_array1, tmp_array2, t_int, f_int)
+    jh = np.zeros(jh_shape, dtype=obser_arr.dtype)
 
-    if (f_int>1) or (t_int>1):
+    cyfull.cycompute_jh(model_arr, gains, jh, t_int, f_int)
 
-        reduced_shape = list(tmp_array2.shape)
-        reduced_shape[0] = int(math.ceil(reduced_shape[0]/t_int))
-        reduced_shape[1] = int(math.ceil(reduced_shape[1]/f_int))
+    jhr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
 
-        interval_array = np.zeros(reduced_shape, dtype=obser_arr.dtype)
-        cyfull.interval_reduce(tmp_array2, interval_array, t_int, f_int)
-        tmp_array2 = interval_array
+    jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
 
-    jhr = tmp_array2
+    cyfull.cycompute_jhr(jh, obser_arr, jhr, t_int, f_int)
+
+    jhj = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+
+    cyfull.cycompute_jhjinv(jh, jhj)
+
+    temp = np.zeros([2,2], dtype=obser_arr.dtype)
+    for i in range(14):
+        temp += jh[0,0,0,i,0,:].T.conj().dot(jh[0,0,0,i,0,:])
+    print temp
+    print jhj[0,0,0,0,:]
+
 
     return jhr
 
@@ -98,7 +102,7 @@ def compute_update(model_arr, obser_arr, gains, t_int=1, f_int=1):
             (((J^H)J)^-1)(J^H)R
     """
 
-    jhjinv = compute_jhjinv(model_arr, gains, t_int, f_int)
+    # jhjinv = compute_jhjinv(model_arr, gains, t_int, f_int)
 
     jhr = compute_jhr(obser_arr, model_arr, gains, t_int, f_int)
 
@@ -123,58 +127,19 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
         residual (np.array): Array containing the result of computing D-GMG^H.
     """
 
-    if (f_int>0) or (t_int>0):
+    n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
 
-        n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
+    reduced_shape = [n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
 
-        reduced_shape = [n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
+    weights = np.ones_like(obser_arr, dtype=np.float32)
 
-        m = np.zeros(reduced_shape, dtype=obser_arr.dtype)
-        cyfull.model_reduce(model_arr, m, t_int, f_int)
+    residual = np.zeros(reduced_shape[1:], dtype=obser_arr.dtype)
+    cyfull.reduce_wobs(obser_arr, weights, residual, t_int, f_int)
 
-        data = np.zeros(reduced_shape[1:], dtype=obser_arr.dtype)
-        cyfull.model_reduce(obser_arr[np.newaxis,...], data[np.newaxis,...],
-                            t_int, f_int)
+    gains_h = gains.transpose(0,1,2,3,5,4).conj()
 
-        #TODO: 24//01/2017 - Write a single kernel for this operation.
-
-        w = np.ones_like(obser_arr, dtype=np.float32)
-
-        r = np.zeros(reduced_shape[1:], dtype=obser_arr.dtype)
-        cyfull.reduce_wobs(obser_arr, w, r, t_int, f_int)
-
-        temp = r[0,0,4,7,:]
-        for i in range(n_dir):
-            temp = temp - model_arr[i,0,0,4,7,:] - model_arr[i,1,0,4,7,:] - \
-                          model_arr[i,0,1,4,7,:] - model_arr[i,1,1,4,7,:]
-        print temp
-
-
-        t0 = time()
-        cyfull.cycompute_residual(model_arr, gains,
-                                  gains.transpose(0,1,2,3,5,4).conj(),
-                                  r, w, t_int, f_int)
-        print time() - t0
-        print r[0,0,4,7,:]
-
-
-
-        gm = np.empty(reduced_shape, dtype=obser_arr.dtype)
-        gmgh = np.empty(reduced_shape, dtype=obser_arr.dtype)
-
-        cyfull.compute_bbyA(gains, m, gm, 1, 1)
-        cyfull.compute_Abyb(gm, gains.transpose(0,1,2,4,3).conj(), gmgh, 1, 1)
-
-    else:
-        gm = np.empty_like(obser_arr)
-        gmgh = np.empty_like(obser_arr)
-        data = obser_arr
-
-        cyfull.compute_bbyA(gains, model_arr, gm, t_int, f_int)
-        cyfull.compute_Abyb(gm, gains.transpose(0,1,2,4,3).conj(), gmgh,
-                            t_int, f_int)
-
-    residual = data - gmgh
+    cyfull.cycompute_residual(model_arr, gains, gains_h, residual,
+                              weights, t_int, f_int)
 
     return residual
 
@@ -216,9 +181,6 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
 
     chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
-
-    # chi = np.linalg.norm(residual, axis=(-4,-3))
-    # chi = np.linalg.norm(chi, axis=(-2,-1))
 
     min_quorum = 0.99
 
