@@ -6,7 +6,7 @@ import argparse
 import MBTiggerSim as mbt
 import TiggerSourceProvider as tsp
 
-def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
+def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
     This function computes the (J^H)R term of the GN/LM method for the
     full-polarisation, phase-only case.
@@ -34,18 +34,18 @@ def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     cyfull.cycompute_jhr(jh, obser_arr, jhr, t_int, f_int)
 
-    jhj = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+    jhjinv = np.zeros(jhr_shape, dtype=obser_arr.dtype)
 
-    cyfull.cycompute_jhjinv(jh, jhj)
+    cyfull.cycompute_jhjinv(jh, jhjinv)
 
-    temp = np.zeros([2,2], dtype=obser_arr.dtype)
-    for i in range(14):
-        temp += jh[0,0,0,i,0,:].T.conj().dot(jh[0,0,0,i,0,:])
-    print temp
-    print jhj[0,0,0,0,:]
+    # temp = np.zeros([2,2], dtype=obser_arr.dtype)
+    # for i in range(14):
+    #     temp += jh[0,0,0,i,0,:].T.conj().dot(jh[0,0,0,i,0,:])
+    # print temp
+    # print jhjinv[0,0,0,0,:]
+    # print jhjinv[0,0,0,0,:].dot(temp)
 
-
-    return jhr
+    return jhr, jhjinv
 
 def compute_jhjinv(model_arr, gains, t_int=1, f_int=1):
     """
@@ -102,13 +102,12 @@ def compute_update(model_arr, obser_arr, gains, t_int=1, f_int=1):
             (((J^H)J)^-1)(J^H)R
     """
 
-    # jhjinv = compute_jhjinv(model_arr, gains, t_int, f_int)
 
-    jhr = compute_jhr(obser_arr, model_arr, gains, t_int, f_int)
+    jhr, jhjinv = compute_js(obser_arr, model_arr, gains, t_int, f_int)
 
     update = np.empty_like(jhr)
 
-    cyfull.compute_update(jhr, jhjinv, update)
+    cyfull.cycompute_update(jhr, jhjinv, update)
 
     return update
 
@@ -179,6 +178,7 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
     iters = 1
 
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
+    print residual[0,0,0,1,:]
 
     chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
 
@@ -193,6 +193,10 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
                 compute_update(model_arr, obser_arr, gains, t_int, f_int))
         else:
             gains = compute_update(model_arr, obser_arr, gains, t_int, f_int)
+
+        print compute_residual(obser_arr, model_arr, gains, t_int, f_int)[0,
+                                                                          0,
+                                                                          0,1,:]
 
         diff_g = np.sum(np.square(np.abs(old_gains - gains)), axis=(-1,-2,-3))
         norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
@@ -320,8 +324,8 @@ if __name__ == "__main__":
                                                        ms._first_f, ms._last_f)
         gains = full_pol_phase_only(obs, mod, t_int=t_int, f_int=f_int,
                                     maxiter=args.maxiter)
-        corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
-        ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
+        # corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
+        # ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
     print "Time taken: {} seconds".format(time() - t0)
 
     ms.save(ms.covis, "CORRECTED_DATA")

@@ -545,6 +545,7 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:,:] jh,
 
     cdef int d, t, f, aa, ab = 0
     cdef int n_dir, n_tim, n_fre, n_ant
+    cdef complex3264 denom, cache = 0
 
     n_dir = jh.shape[0]
     n_tim = jh.shape[1]
@@ -572,6 +573,55 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:,:] jh,
                         jhj[d,t,f,aa,1,1] = jhj[d,t,f,aa,1,1] + \
                             conj(jh[d,t,f,ab,aa,0,1])*jh[d,t,f,ab,aa,0,1] + \
                             conj(jh[d,t,f,ab,aa,1,1])*jh[d,t,f,ab,aa,1,1]
+
+                    denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
+                            jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
+
+                    cache = jhj[d,t,f,aa,0,0]
+
+                    if denom==0:
+                        denom = 1
+
+                    jhj[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
+                    jhj[d,t,f,aa,1,1] = cache/denom
+                    jhj[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
+                    jhj[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
+
+# @cython.cdivision(True)
+# @cython.wraparound(False)
+# @cython.boundscheck(False)
+# @cython.nonecheck(False)
+def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
+                     complex3264 [:,:,:,:,:,:] jhj,
+                     complex3264 [:,:,:,:,:,:] upd):
+    """
+    NOTE: THIS RIGHT-MULTIPLIES THE ENTRIES OF IN1 BY THE ENTRIES OF IN2.
+    """
+
+    cdef int d, t, f, aa = 0
+    cdef int n_dir, n_tim, n_fre, n_ant
+
+    n_dir = jhr.shape[0]
+    n_tim = jhr.shape[1]
+    n_fre = jhr.shape[2]
+    n_ant = jhr.shape[3]
+
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            for f in xrange(n_fre):
+                for aa in xrange(n_ant):
+
+                    upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,0] + \
+                                        jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,0]
+
+                    upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,1] + \
+                                        jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,1]
+
+                    upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,0] + \
+                                        jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,0]
+
+                    upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,1] + \
+                                        jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,1]
 
 # @cython.cdivision(True)
 # @cython.wraparound(False)

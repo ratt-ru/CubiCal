@@ -12,7 +12,7 @@ class ReadModelHandler:
                  precision="32"):
 
         self.ms_name = ms_name
-        self.sm_name = "3C147-GdB-spw0+pybdsm.lsm.html"
+        self.sm_name = "test_sky.lsm.html"#"3C147-GdB-spw0+pybdsm.lsm.html"
         self.fid = fid if fid is not None else 0
 
         self.taql = self.build_taql(taql, fid, ddid)
@@ -219,7 +219,7 @@ class ReadModelHandler:
 
                 mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
                 tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
-                                                    use_ddes=True)
+                                                    use_ddes=False)
                 arsnk = mbt.ArraySinkProvider(self, t_dim, f_dim, tgsrc._nclus)
 
                 srcprov = [mssrc, tgsrc]
