@@ -267,6 +267,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Basic full-polarisation '
                                                  'calibration script.')
     parser.add_argument('msname', help='Name and location of MS.')
+    parser.add_argument('smname', help='Name and location of sky model.',
+                        type=str)
     parser.add_argument('-tc','--tchunk', type=int, default=1,
                         help='Determines time chunk size.')
     parser.add_argument('-fc','--fchunk', type=int, default=1,
@@ -289,6 +291,8 @@ if __name__ == "__main__":
                         help='Selects a particular data type.')
     parser.add_argument('--ddid-to', type=int,
                         help='Selects range from --ddid to a particular DATA_DESC_ID.')
+    parser.add_argument('-ddes','--use_ddes', action="store_true",
+                        help='Simulate and solve for directions in sky model')
 
     args = parser.parse_args()
 
@@ -300,8 +304,8 @@ if __name__ == "__main__":
     else:
         ddid = None
 
-    ms = ReadModelHandler(args.msname, fid=args.field, ddid=ddid,
-                          precision=args.precision)
+    ms = ReadModelHandler(args.msname, args.smname, fid=args.field, ddid=ddid,
+                          precision=args.precision, ddes=args.use_ddes)
     ms.mass_fetch()
     ms.define_chunk(args.tchunk, args.fchunk)
 

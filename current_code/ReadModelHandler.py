@@ -8,11 +8,11 @@ from time import time
 
 class ReadModelHandler:
 
-    def __init__(self, ms_name, taql=None, fid=None, ddid=None,
-                 precision="32"):
+    def __init__(self, ms_name, sm_name, taql=None, fid=None, ddid=None,
+                 precision="32", ddes=False):
 
         self.ms_name = ms_name
-        self.sm_name = "test_sky.lsm.html"#"3C147-GdB-spw0+pybdsm.lsm.html"
+        self.sm_name = sm_name
         self.fid = fid if fid is not None else 0
 
         self.taql = self.build_taql(taql, fid, ddid)
@@ -66,6 +66,7 @@ class ReadModelHandler:
         self._first_f = None
         self._last_f = None
 
+        self.use_ddes = ddes
         self.apply_flags = False
         self.bitmask = None
 
@@ -219,7 +220,7 @@ class ReadModelHandler:
 
                 mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
                 tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
-                                                    use_ddes=False)
+                                                    use_ddes=self.use_ddes)
                 arsnk = mbt.ArraySinkProvider(self, t_dim, f_dim, tgsrc._nclus)
 
                 srcprov = [mssrc, tgsrc]
