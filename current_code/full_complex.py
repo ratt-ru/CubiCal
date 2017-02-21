@@ -178,7 +178,6 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
     iters = 1
 
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
-    print residual[0,0,0,1,:]
 
     chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
 
@@ -193,10 +192,6 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
                 compute_update(model_arr, obser_arr, gains, t_int, f_int))
         else:
             gains = compute_update(model_arr, obser_arr, gains, t_int, f_int)
-
-        print compute_residual(obser_arr, model_arr, gains, t_int, f_int)[0,
-                                                                          0,
-                                                                          0,1,:]
 
         diff_g = np.sum(np.square(np.abs(old_gains - gains)), axis=(-1,-2,-3))
         norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
@@ -319,7 +314,6 @@ if __name__ == "__main__":
 
     t0 = time()
     for obs, mod in ms:
-        print obs.shape, mod.shape
         print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
                                                        ms._first_f, ms._last_f)
         gains = full_pol_phase_only(obs, mod, t_int=t_int, f_int=f_int,
