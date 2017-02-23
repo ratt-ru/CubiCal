@@ -387,14 +387,10 @@ def reduce_obs(complex3264 [:,:,:,:,:,:] obs,
                     robs[rr,rc,aa,ab,1,1] = robs[rr,rc,aa,ab,1,1] + \
                                              obs[t,f,aa,ab,1,1]
 
-
-@cython.cdivision(True)
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 def cycompute_residual(complex3264 [:,:,:,:,:,:,:] m,
                        complex3264 [:,:,:,:,:,:] g,
                        complex3264 [:,:,:,:,:,:] gh,
+                       complex3264 [:,:,:,:,:,:] o,
                        complex3264 [:,:,:,:,:,:] r,
                        int t_int,
                        int f_int):
@@ -419,29 +415,89 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:] m,
                 rc = f/f_int
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
-                        r[rr,rc,aa,ab,0,0] = r[rr,rc,aa,ab,0,0] - (
+                        r[rr,rc,aa,ab,0,0] = \
+                            r[rr,rc,aa,ab,0,0] + o[t,f,aa,ab,0,0] - (
                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-                        r[rr,rc,aa,ab,0,1] = r[rr,rc,aa,ab,0,1] - (
+                        r[rr,rc,aa,ab,0,1] = \
+                            r[rr,rc,aa,ab,0,1] + o[t,f,aa,ab,0,1] - (
                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
-                        r[rr,rc,aa,ab,1,0] = r[rr,rc,aa,ab,1,0] - (
+                        r[rr,rc,aa,ab,1,0] = \
+                            r[rr,rc,aa,ab,1,0] + o[t,f,aa,ab,1,0] - (
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-                        r[rr,rc,aa,ab,1,1] = r[rr,rc,aa,ab,1,1] - (
+                        r[rr,rc,aa,ab,1,1] = \
+                            r[rr,rc,aa,ab,1,1] + o[t,f,aa,ab,1,1] - (
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+
+
+# @cython.cdivision(True)
+# @cython.wraparound(False)
+# @cython.boundscheck(False)
+# @cython.nonecheck(False)
+# def cycompute_residual(complex3264 [:,:,:,:,:,:,:] m,
+#                        complex3264 [:,:,:,:,:,:] g,
+#                        complex3264 [:,:,:,:,:,:] gh,
+#                        complex3264 [:,:,:,:,:,:] r,
+#                        int t_int,
+#                        int f_int):
+#
+#     """
+#     This reduces the dimension of in1 to match out1. This is achieved by a
+#     summation of blocks of dimension (t_int, f_int).
+#     """
+#
+#     cdef int d, t, f, aa, ab, rr, rc = 0
+#     cdef int n_dir, n_tim, n_fre, n_ant
+#
+#     n_dir = m.shape[0]
+#     n_tim = m.shape[1]
+#     n_fre = m.shape[2]
+#     n_ant = m.shape[3]
+#
+#     for d in xrange(n_dir):
+#         for t in xrange(n_tim):
+#             rr = t/t_int
+#             for f in xrange(n_fre):
+#                 rc = f/f_int
+#                 for aa in xrange(n_ant):
+#                     for ab in xrange(n_ant):
+#                         r[rr,rc,aa,ab,0,0] = r[rr,rc,aa,ab,0,0] - (
+#                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+#                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+#                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+#                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+#
+#                         r[rr,rc,aa,ab,0,1] = r[rr,rc,aa,ab,0,1] - (
+#                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+#                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+#                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+#                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+#
+#                         r[rr,rc,aa,ab,1,0] = r[rr,rc,aa,ab,1,0] - (
+#                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+#                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+#                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+#                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+#
+#                         r[rr,rc,aa,ab,1,1] = r[rr,rc,aa,ab,1,1] - (
+#                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+#                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+#                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+#                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
 
 def cycompute_jh(complex3264 [:,:,:,:,:,:,:] m,
