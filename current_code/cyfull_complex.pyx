@@ -373,7 +373,7 @@ def reduce_obs(complex3264 [:,:,:,:,:,:] obs,
     n_ant = obs.shape[2]
 
     for t in xrange(n_tim):
-        rr = t/t_intgit add 
+        rr = t/t_int
         for f in xrange(n_fre):
             rc = f/f_int
             for aa in xrange(n_ant):
