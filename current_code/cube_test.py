@@ -175,6 +175,9 @@ if __name__=="__main__":
 
     cycompute_jhr(cyjh, obs, cyjhr, t_int, f_int)
 
+    print cyjh.shape, obs.shape
+
+
     jhj = compute_jhj(jh, t_int, f_int)
 
     jhjinv = compute_jhjinv(jhj)

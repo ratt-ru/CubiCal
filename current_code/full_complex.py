@@ -22,9 +22,7 @@ def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
 
-    jh_shape = [n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
-
-    jh = np.zeros(jh_shape, dtype=obser_arr.dtype)
+    jh = np.zeros_like(model_arr)
 
     cyfull.cycompute_jh(model_arr, gains, jh, t_int, f_int)
 
@@ -32,20 +30,20 @@ def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
 
-    #TODO: IS THIS HORRIBLY WRONG?
-
     if n_dir > 1:
         r = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
     else:
-        r_shape = [n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
-        r = np.zeros(r_shape, dtype=obser_arr.dtype)
-        cyfull.reduce_obs(obser_arr, r, t_int, f_int)
+        r = obser_arr
 
     cyfull.cycompute_jhr(jh, r, jhr, t_int, f_int)
 
-    jhjinv = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+    jhj = np.zeros(jhr_shape, dtype=obser_arr.dtype)
 
-    cyfull.cycompute_jhjinv(jh, jhjinv)
+    cyfull.cycompute_jhj(jh, jhj, t_int, f_int)
+
+    jhjinv = np.empty(jhr_shape, dtype=obser_arr.dtype)
+
+    cyfull.cycompute_jhjinv(jhj, jhjinv)
 
     return jhr, jhjinv
 
@@ -91,14 +89,13 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
 
-    reduced_shape = [n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
+    residual_shape = [n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
 
-    residual = np.zeros(reduced_shape[1:], dtype=obser_arr.dtype)
-    cyfull.reduce_obs(obser_arr, residual, t_int, f_int)
-
+    residual = np.zeros(residual_shape, dtype=obser_arr.dtype)
     gains_h = gains.transpose(0,1,2,3,5,4).conj()
 
-    cyfull.cycompute_residual(model_arr, gains, gains_h, residual, t_int, f_int)
+    cyfull.cycompute_residual(model_arr, gains, gains_h, obser_arr, residual,
+                              t_int, f_int)
 
     return residual
 
@@ -176,8 +173,6 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
 
             residual = compute_residual(obser_arr, model_arr, gains,
                                                   t_int, f_int)
-
-            print residual[0,0,0,1,:]
 
             chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
 
