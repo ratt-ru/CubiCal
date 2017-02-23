@@ -201,6 +201,8 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
         inv_gdgh (np.array): Array containing (G^-1)D(G^-H).
     """
 
+    #TODO: VERY BROKEN!!!
+
     inv_gains = gains.copy()
 
     cyfull.invert_jhj(inv_gains)
