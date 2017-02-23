@@ -1,10 +1,12 @@
 from time import time,sleep
 import math
 from cyfull import cycompute_jh, cycompute_jhr, cycompute_jhjinv, \
-                   cycompute_update, cycompute_residual
+                   cycompute_update, cycompute_residual, cycompute_jhj, \
+                   reduce_obs
 import numpy as np
 
-def create_data(n_dir=1, n_tim=1, n_fre=1, n_ant=3, d_type=np.complex64):
+def create_data(n_dir=1, n_tim=1, n_fre=1, n_ant=3, t_int=1, f_int=1,
+                d_type=np.complex64):
 
     vis_dims = [n_dir, n_tim, n_fre, n_ant, n_ant, 2, 2]
 
@@ -19,7 +21,7 @@ def create_data(n_dir=1, n_tim=1, n_fre=1, n_ant=3, d_type=np.complex64):
     vis[:,:,:,r_ind,c_ind,:,:] = vis[:,:,:,c_ind,r_ind,:,:].transpose(
                                                            0,1,2,3,5,4).conj()
 
-    gain_dims = [n_dir, n_tim, n_fre, n_ant, 2, 2]
+    gain_dims = [n_dir, n_tim//t_int, n_fre//f_int, n_ant, 2, 2]
 
     gains = np.empty(gain_dims, dtype=d_type)
 
@@ -40,7 +42,7 @@ def create_data(n_dir=1, n_tim=1, n_fre=1, n_ant=3, d_type=np.complex64):
 
     return vis, gains, obs
 
-def compute_jh(model, gains):
+def compute_jh(model, gains, t_int, f_int):
 
     n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = model.shape
 
@@ -48,44 +50,59 @@ def compute_jh(model, gains):
 
     for d in xrange(n_dir):
         for t in xrange(n_tim):
+            rt = t//t_int
             for f in xrange(n_fre):
+                rf = f//f_int
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
-                        jh[d,t,f,aa,ab,:,:] = gains[d,t,f,aa,:,:].dot(
+                        jh[d,t,f,aa,ab,:,:] = gains[d,rt,rf,aa,:,:].dot(
                                               model[d,t,f,aa,ab,:,:])
 
     return jh
 
-def compute_jhr(jh, r):
+def compute_jhr(jh, r, t_int, f_int):
 
     n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = jh.shape
 
-    jhr = np.zeros([n_dir, n_tim, n_fre, n_ant, 2, 2], dtype=jh.dtype)
+    jhr = np.zeros([n_dir, n_tim//t_int, n_fre//f_int, n_ant, 2, 2],
+                   dtype=jh.dtype)
 
     for d in xrange(n_dir):
         for t in xrange(n_tim):
+            rt = t//t_int
             for f in xrange(n_fre):
+                rf = f//f_int
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
-                        jhr[d,t,f,aa,:,:] += r[t,f,aa,ab,:,:].dot(
-                                            jh[d,t,f,ab,aa,:,:])
+                        jhr[d,rt,rf,aa,:,:] += r[t,f,aa,ab,:,:].dot(
+                                              jh[d,t,f,ab,aa,:,:])
 
     return jhr
 
-def compute_jhjinv(jh):
+def compute_jhj(jh, t_int=1, f_int=1):
 
     n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = jh.shape
 
-    jhj = np.zeros([n_dir, n_tim, n_fre, n_ant, 2, 2], dtype=jh.dtype)
-    jhjinv = np.empty_like(jhj)
+    jhj = np.zeros([n_dir, n_tim//t_int, n_fre//f_int, n_ant, 2, 2],
+                   dtype=jh.dtype)
 
     for d in xrange(n_dir):
         for t in xrange(n_tim):
+            rt = t//t_int
             for f in xrange(n_fre):
+                rf = f//f_int
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
-                        jhj[d,t,f,ab,:,:] += jh[d,t,f,aa,ab,:,:].T.conj().dot(
-                                             jh[d,t,f,aa,ab,:,:])
+                        jhj[d,rt,rf,ab,:,:] += jh[d,t,f,aa,ab,:,:].T.conj().dot(
+                                               jh[d,t,f,aa,ab,:,:])
+
+    return jhj
+
+def compute_jhjinv(jhj):
+
+    n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = jhj.shape
+
+    jhjinv = np.empty_like(jhj)
 
     for d in xrange(n_dir):
         for t in xrange(n_tim):
@@ -109,50 +126,66 @@ def compute_jhjinvjhr(jhjinv, jhr):
 
     return update
 
-def compute_residual(obs, model, gains):
+def compute_residual(obs, model, gains, t_int=1, f_int=1):
 
     n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = model.shape
 
-    residual = np.zeros_like(obs)
+    residual_shape = [n_tim//t_int, n_fre//f_int, n_ant, n_ant, 2, 2]
+    residual = np.zeros(residual_shape, dtype=obs.dtype)
 
     for d in xrange(n_dir):
         for t in xrange(n_tim):
+            rt = t//t_int
             for f in xrange(n_fre):
+                rf = f//f_int
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
-                        residual[t,f,aa,ab,:] += gains[d,t,f,aa,:].dot(
-                                                 model[d,t,f,aa,ab,:]).dot(
-                                                 gains[d,t,f,ab,:].T.conj())
+                        residual[rt,rf,aa,ab,:] += obs[t,f,aa,ab,:] - \
+                                                   gains[d,rt,rf,aa,:].dot(
+                                                   model[d,t,f,aa,ab,:]).dot(
+                                                   gains[d,rt,rf,ab,:].T.conj())
 
-    return obs - residual
+    return residual
 
 if __name__=="__main__":
 
     n_dir = 1
-    n_tim = 1
-    n_fre = 1
+    n_tim = 2
+    n_fre = 2
     n_ant = 3
     d_type = np.complex128
 
-    vis, gains, obs = create_data(n_dir, n_tim, n_fre, n_ant, d_type)
+    t_int = 2
+    f_int = 2
+
+    vis, gains, obs = create_data(n_dir, n_tim, n_fre, n_ant, t_int,
+                                  f_int, d_type)
 
     cyjh = np.zeros(vis.shape, dtype=d_type)
 
-    cycompute_jh(vis, gains, cyjh, 1, 1)
+    cycompute_jh(vis, gains, cyjh, t_int, f_int)
 
-    jh = compute_jh(vis, gains)
+    jh = compute_jh(vis, gains, t_int, f_int)
 
-    jhr = compute_jhr(jh, obs)
+    jhr = compute_jhr(jh, obs, t_int, f_int)
 
-    cyjhr = np.zeros([n_dir, n_tim, n_fre, n_ant, 2, 2], dtype=d_type)
+    cyjhr = np.zeros([n_dir, n_tim//t_int, n_fre//f_int, n_ant, 2, 2], dtype=d_type)
 
-    cycompute_jhr(cyjh, obs, cyjhr, 1, 1)
+    cycompute_jhr(cyjh, obs, cyjhr, t_int, f_int)
 
-    jhjinv = compute_jhjinv(jh)
+    jhj = compute_jhj(jh, t_int, f_int)
 
-    cyjhjinv = np.zeros([n_dir, n_tim, n_fre, n_ant, 2, 2], dtype=d_type)
+    jhjinv = compute_jhjinv(jhj)
 
-    cycompute_jhjinv(cyjh, cyjhjinv)
+    cyjhj = np.zeros([n_dir, n_tim//t_int, n_fre//f_int, n_ant, 2, 2],
+                        dtype=d_type)
+
+    cycompute_jhj(cyjh, cyjhj, t_int, f_int)
+
+    cyjhjinv = np.empty([n_dir, n_tim//t_int, n_fre//f_int, n_ant, 2, 2],
+                        dtype=d_type)
+
+    cycompute_jhjinv(cyjhj, cyjhjinv)
 
     update = compute_jhjinvjhr(jhjinv, jhr)
 
@@ -160,17 +193,26 @@ if __name__=="__main__":
 
     cycompute_update(cyjhr, cyjhjinv, cyupdate)
 
-    residual = compute_residual(obs, vis, gains)
+    residual = compute_residual(obs, vis, gains, t_int, f_int)
 
-    cyresidual = obs.copy()
+    cyresidual = np.zeros_like(residual)
+
+    reduce_obs(obs, cyresidual, t_int, f_int)
 
     cycompute_residual(vis, gains, gains.transpose(0,1,2,3,5,4).conj(),
-                       cyresidual, np.ones_like(obs, dtype=np.float32), 1, 1)
+                       cyresidual, t_int, f_int)
 
     print np.allclose(cyjh,jh)
     print np.allclose(cyjhr,jhr)
+    print np.allclose(cyjhj, jhj)
     print np.allclose(cyjhjinv, jhjinv)
     print np.allclose(cyupdate, update)
     print np.allclose(cyresidual, residual)
 
+    print cyresidual
+    print residual
+
+
     # print cyjhjinv - jhjinv
+
+

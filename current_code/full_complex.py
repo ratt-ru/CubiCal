@@ -32,59 +32,22 @@ def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
 
-    cyfull.cycompute_jhr(jh, obser_arr, jhr, t_int, f_int)
+    #TODO: IS THIS HORRIBLY WRONG?
+
+    if n_dir > 1:
+        r = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
+    else:
+        r_shape = [n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
+        r = np.zeros(r_shape, dtype=obser_arr.dtype)
+        cyfull.reduce_obs(obser_arr, r, t_int, f_int)
+
+    cyfull.cycompute_jhr(jh, r, jhr, t_int, f_int)
 
     jhjinv = np.zeros(jhr_shape, dtype=obser_arr.dtype)
 
     cyfull.cycompute_jhjinv(jh, jhjinv)
 
-    # temp = np.zeros([2,2], dtype=obser_arr.dtype)
-    # for i in range(14):
-    #     temp += jh[0,0,0,i,0,:].T.conj().dot(jh[0,0,0,i,0,:])
-    # print temp
-    # print jhjinv[0,0,0,0,:]
-    # print jhjinv[0,0,0,0,:].dot(temp)
-
     return jhr, jhjinv
-
-def compute_jhjinv(model_arr, gains, t_int=1, f_int=1):
-    """
-    This function computes the ((J^H)J)^-1 term of the GN/LM method for the
-    full-polarisation, phase-only case. Note that this depends only on the
-    model visibilities.
-
-    Args:
-        model_arr (np.array): Array containing the model visibilities.
-
-    Returns:
-        jhjinv (np.array): Array containing the result of computing ((J^H)J)^-1.
-    """
-
-    jhjinv_shape = list(model_arr.shape)
-    jhjinv_shape[0] = int(math.ceil(jhjinv_shape[0]/t_int))
-    jhjinv_shape[1] = int(math.ceil(jhjinv_shape[1]/f_int))
-
-    jhjinv = np.zeros(jhjinv_shape, dtype=model_arr.dtype)
-
-    tmp_out = np.empty_like(model_arr)
-    tmp_out2 = np.empty_like(model_arr)
-
-    gains_h = gains.transpose(0,1,2,4,3).conj()
-
-    cyfull.compute_Abyb(model_arr, gains_h, tmp_out, t_int, f_int)
-
-    cyfull.compute_Abyb(tmp_out, gains, tmp_out2, t_int, f_int)
-
-    cyfull.compute_AbyA(tmp_out2, model_arr, tmp_out)   
-
-    cyfull.reduce_6d(tmp_out, jhjinv, t_int, f_int)
-
-    jhjinv = np.sum(jhjinv, axis=-3)
-
-    cyfull.invert_jhj(jhjinv)
-
-    return jhjinv
-
 
 def compute_update(model_arr, obser_arr, gains, t_int=1, f_int=1):
     """
@@ -130,15 +93,12 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     reduced_shape = [n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
 
-    weights = np.ones_like(obser_arr, dtype=np.float32)
-
     residual = np.zeros(reduced_shape[1:], dtype=obser_arr.dtype)
-    cyfull.reduce_wobs(obser_arr, weights, residual, t_int, f_int)
+    cyfull.reduce_obs(obser_arr, residual, t_int, f_int)
 
     gains_h = gains.transpose(0,1,2,3,5,4).conj()
 
-    cyfull.cycompute_residual(model_arr, gains, gains_h, residual,
-                              weights, t_int, f_int)
+    cyfull.cycompute_residual(model_arr, gains, gains_h, residual, t_int, f_int)
 
     return residual
 
@@ -197,7 +157,6 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
         norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
         n_quor = np.sum(diff_g/norm_g <= min_delta_g**2)
         n_quor += np.sum(norm_g==0)
-        
 
         old_gains = gains.copy()
 
@@ -217,6 +176,8 @@ def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
 
             residual = compute_residual(obser_arr, model_arr, gains,
                                                   t_int, f_int)
+
+            print residual[0,0,0,1,:]
 
             chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
 
