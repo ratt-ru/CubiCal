@@ -5,6 +5,7 @@ import cyfull
 import argparse
 import MBTiggerSim as mbt
 import TiggerSourceProvider as tsp
+import cPickle
 
 def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
@@ -120,8 +121,8 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
 
     n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = model_arr.shape
 
-    n_tim = int(math.ceil(n_tim/t_int))
-    n_fre = int(math.ceil(n_fre/f_int))
+    n_tim = int(math.ceil(float(n_tim)/t_int))
+    n_fre = int(math.ceil(float(n_fre)/f_int))
 
     gain_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
 
@@ -280,8 +281,10 @@ if __name__ == "__main__":
                                                        ms._first_f, ms._last_f)
         gains = solve_gains(obs, mod, t_int=t_int, f_int=f_int,
                                     maxiter=args.maxiter)
+        ms.add_to_gain_dict(gains, t_int, f_int)
         # corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
         # ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
     print "Time taken: {} seconds".format(time() - t0)
 
-    ms.save(ms.covis, "CORRECTED_DATA")
+    ms.write_gain_dict()
+    # ms.save(ms.covis, "CORRECTED_DATA")

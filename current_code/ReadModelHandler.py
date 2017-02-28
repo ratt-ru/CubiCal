@@ -3,6 +3,7 @@ from collections import Counter, OrderedDict
 import pyrap.tables as pt
 import MBTiggerSim as mbt
 import TiggerSourceProvider as tsp
+import cPickle
 
 from time import time
 
@@ -69,7 +70,7 @@ class ReadModelHandler:
         self.use_ddes = ddes
         self.apply_flags = False
         self.bitmask = None
-
+        self.gain_dict = {}
 
     def build_taql(self, taql=None, fid=None, ddid=None):
 
@@ -212,6 +213,8 @@ class ReadModelHandler:
                 self._first_t = self.chunk_tind[i]
                 self._last_t = self.chunk_tind[i + 1]
 
+                print "HERE AND EQUAL TO", len(self.chunk_tind[:-1])
+
                 self._first_f = self.chunk_find[j]
                 self._last_f = self.chunk_find[j + 1]
 
@@ -226,14 +229,14 @@ class ReadModelHandler:
                 srcprov = [mssrc, tgsrc]
                 snkprov = [arsnk]
 
-                for i in xrange(tgsrc._nclus):
+                for clus in xrange(tgsrc._nclus):
                     mbt.simulate(srcprov, snkprov)
                     tgsrc.update_target()
                     arsnk._dir += 1
 
-                obs_arr, mod_arr = self.vis_to_array(t_dim, f_dim, self._first_t,
-                                        self._last_t, self._first_f,
-                                        self._last_f)
+                obs_arr, mod_arr = self.vis_to_array(t_dim, f_dim,
+                                                     self._first_t,self._last_t,
+                                                     self._first_f,self._last_f)
 
                 mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
                 mod_arr = arsnk._sim_array.reshape(mod_shape)
@@ -353,6 +356,36 @@ class ReadModelHandler:
 
         self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
             in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)
+
+    def add_to_gain_dict(self, gains, t_int=1, f_int=1):
+
+        n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
+
+        times = np.unique(self.rtime[self._first_t: self._last_t])
+        time_indices = [[] for i in xrange(n_tim)]
+
+        for t, time in enumerate(times):
+            time_indices[t//t_int].append(time)
+
+        freqs = range(self._first_f,self._last_f)
+        freq_indices = [[] for i in xrange(n_fre)]
+
+        for f, freq in enumerate(freqs):
+            freq_indices[f//f_int].append(freq)
+
+        for d in xrange(n_dir):
+            for t in xrange(n_tim):
+                for f in xrange(n_fre):
+                    comp_idx = (d,tuple(time_indices[t]),tuple(freq_indices[f]))
+                    self.gain_dict[comp_idx] = gains[d,t,f,:]
+
+    def write_gain_dict(self, output_name=None):
+
+        if output_name is None:
+            output_name = self.ms_name + "gains.p"
+
+        cPickle.dump(self.gain_dict, open(output_name, "wb"))
+
 
     def save(self, values, col_name):
         """
