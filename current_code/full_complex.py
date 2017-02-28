@@ -100,8 +100,8 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
     return residual
 
 
-def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
-                        chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
+def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
+                chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
@@ -278,7 +278,7 @@ if __name__ == "__main__":
     for obs, mod in ms:
         print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
                                                        ms._first_f, ms._last_f)
-        gains = full_pol_phase_only(obs, mod, t_int=t_int, f_int=f_int,
+        gains = solve_gains(obs, mod, t_int=t_int, f_int=f_int,
                                     maxiter=args.maxiter)
         # corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
         # ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)

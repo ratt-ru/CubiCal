@@ -217,7 +217,7 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
 
     cdef int d, t, f, aa, ab = 0
     cdef int n_dir, n_tim, n_fre, n_ant
-    cdef complex3264 denom, cache = 0
+    cdef complex3264 denom = 0
 
     n_dir = jhj.shape[0]
     n_tim = jhj.shape[1]
