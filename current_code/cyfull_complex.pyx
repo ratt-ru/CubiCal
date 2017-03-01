@@ -10,10 +10,10 @@ ctypedef fused complex3264:
 cdef extern from "complex.h":
     double complex conj(double complex m)
 
-# @cython.cdivision(True)
-# @cython.wraparound(False)
-# @cython.boundscheck(False)
-# @cython.nonecheck(False)
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def cycompute_residual(complex3264 [:,:,:,:,:,:,:] m,
                        complex3264 [:,:,:,:,:,:] g,
                        complex3264 [:,:,:,:,:,:] gh,
@@ -70,10 +70,10 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:] m,
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
-# @cython.cdivision(True)
-# @cython.wraparound(False)
-# @cython.boundscheck(False)
-# @cython.nonecheck(False)
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def cycompute_jh(complex3264 [:,:,:,:,:,:,:] m,
                  complex3264 [:,:,:,:,:,:] g,
                  complex3264 [:,:,:,:,:,:,:] jh,
@@ -116,10 +116,10 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:] m,
                                  g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1] + \
                                  g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]
 
-# @cython.cdivision(True)
-# @cython.wraparound(False)
-# @cython.boundscheck(False)
-# @cython.nonecheck(False)
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def cycompute_jhr(complex3264 [:,:,:,:,:,:,:] jh,
                   complex3264 [:,:,:,:,:,:] r,
                   complex3264 [:,:,:,:,:,:] jhr,
@@ -162,10 +162,10 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:,:] jh,
                              r[t,f,aa,ab,1,0]*jh[d,t,f,ab,aa,0,1] + \
                              r[t,f,aa,ab,1,1]*jh[d,t,f,ab,aa,1,1]
 
-# @cython.cdivision(True)
-# @cython.wraparound(False)
-# @cython.boundscheck(False)
-# @cython.nonecheck(False)
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def cycompute_jhj(complex3264 [:,:,:,:,:,:,:] jh,
                   complex3264 [:,:,:,:,:,:] jhj,
                   int t_int,
@@ -208,10 +208,10 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:] jh,
                             conj(jh[d,t,f,ab,aa,0,1])*jh[d,t,f,ab,aa,0,1] + \
                             conj(jh[d,t,f,ab,aa,1,1])*jh[d,t,f,ab,aa,1,1]
 
-# @cython.cdivision(True)
-# @cython.wraparound(False)
-# @cython.boundscheck(False)
-# @cython.nonecheck(False)
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
                      complex3264 [:,:,:,:,:,:] jhjinv):
 
@@ -241,10 +241,10 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
                     jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
 
 
-# @cython.cdivision(True)
-# @cython.wraparound(False)
-# @cython.boundscheck(False)
-# @cython.nonecheck(False)
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
                      complex3264 [:,:,:,:,:,:] jhj,
                      complex3264 [:,:,:,:,:,:] upd):

@@ -158,9 +158,6 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
 
         old_gains = gains.copy()
 
-        residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
-        print residual[0,0,1,6,:]
-
         iters += 1
         
         if iters ==maxiter:
@@ -181,8 +178,8 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
             n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
 
             if n_conv/n_sols > 0.99:
-                print iters, "Static residual in {:.2%} of " \
-                             "visibilities.".format(n_conv/n_sols)
+                print "Iteration {}: Static residual in {:.2%} of " \
+                             "visibilities.".format(iters, n_conv/n_sols)
                 return gains
 
     print "Iteration {}: Quorum reached: {:.2%} solutions " \
