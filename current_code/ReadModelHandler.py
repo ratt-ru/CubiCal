@@ -10,7 +10,7 @@ from time import time
 class ReadModelHandler:
 
     def __init__(self, ms_name, sm_name, taql=None, fid=None, ddid=None,
-                 precision="32", ddes=False):
+                 precision="32", ddes=False, simulate=False):
 
         self.ms_name = ms_name
         self.sm_name = sm_name
@@ -67,6 +67,7 @@ class ReadModelHandler:
         self._first_f = None
         self._last_f = None
 
+        self.simulate = simulate
         self.use_ddes = ddes
         self.apply_flags = False
         self.bitmask = None
@@ -213,36 +214,34 @@ class ReadModelHandler:
                 self._first_t = self.chunk_tind[i]
                 self._last_t = self.chunk_tind[i + 1]
 
-                print "HERE AND EQUAL TO", len(self.chunk_tind[:-1])
-
                 self._first_f = self.chunk_find[j]
                 self._last_f = self.chunk_find[j + 1]
 
                 t_dim = self.chunk_tkey[i + 1] - self.chunk_tkey[i]
                 f_dim = self._last_f - self._first_f
 
-                mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
-                tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
-                                                    use_ddes=self.use_ddes)
-                arsnk = mbt.ArraySinkProvider(self, t_dim, f_dim, tgsrc._nclus)
-
-                srcprov = [mssrc, tgsrc]
-                snkprov = [arsnk]
-
-                for clus in xrange(tgsrc._nclus):
-                    mbt.simulate(srcprov, snkprov)
-                    tgsrc.update_target()
-                    arsnk._dir += 1
-
                 obs_arr, mod_arr = self.vis_to_array(t_dim, f_dim,
                                                      self._first_t,self._last_t,
                                                      self._first_f,self._last_f)
 
-                mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
-                mod_arr = arsnk._sim_array.reshape(mod_shape)
+                if self.simulate is True:
+                    mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
+                    tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
+                                                         use_ddes=self.use_ddes)
+                    arsnk = mbt.ArraySinkProvider(self, t_dim, f_dim, tgsrc._nclus)
+
+                    srcprov = [mssrc, tgsrc]
+                    snkprov = [arsnk]
+
+                    for clus in xrange(tgsrc._nclus):
+                        mbt.simulate(srcprov, snkprov)
+                        tgsrc.update_target()
+                        arsnk._dir += 1
+
+                    mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
+                    mod_arr = arsnk._sim_array.reshape(mod_shape)
 
                 yield obs_arr, mod_arr
-
 
 
     def vis_to_array(self, chunk_tdim, chunk_fdim, f_t_row, l_t_row, f_f_col,
@@ -305,7 +304,7 @@ class ReadModelHandler:
 
         obser_arr = obser_arr.reshape([chunk_tdim, chunk_fdim,
                                        self.nants, self.nants, 2, 2])
-        model_arr = model_arr.reshape([chunk_tdim, chunk_fdim,
+        model_arr = model_arr.reshape([1, chunk_tdim, chunk_fdim,
                                        self.nants, self.nants, 2, 2])
 
         return obser_arr, model_arr

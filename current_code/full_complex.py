@@ -127,7 +127,7 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
     gain_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
 
     gains = np.empty(gain_shape, dtype=obser_arr.dtype)
-    gains[:] = np.eye(2)
+    gains[:] = np.eye(n_cor)
 
     old_gains = np.empty_like(gains)
     old_gains[:] = np.inf
@@ -158,7 +158,8 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
 
         old_gains = gains.copy()
 
-        # print iters, n_quor/n_sols, n_quor
+        residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
+        print residual[0,0,1,6,:]
 
         iters += 1
         
@@ -252,6 +253,8 @@ if __name__ == "__main__":
                         help='Selects range from --ddid to a particular DATA_DESC_ID.')
     parser.add_argument('-ddes','--use_ddes', action="store_true",
                         help='Simulate and solve for directions in sky model')
+    parser.add_argument('-sim','--simulate', action="store_true",
+                        help='Simulate visibilities using Montblanc.')
 
     args = parser.parse_args()
 
@@ -264,7 +267,8 @@ if __name__ == "__main__":
         ddid = None
 
     ms = ReadModelHandler(args.msname, args.smname, fid=args.field, ddid=ddid,
-                          precision=args.precision, ddes=args.use_ddes)
+                          precision=args.precision, ddes=args.use_ddes,
+                          simulate=args.simulate)
     ms.mass_fetch()
     ms.define_chunk(args.tchunk, args.fchunk)
 
