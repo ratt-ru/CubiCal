@@ -2,8 +2,7 @@ from __future__ import division
 from time import time,sleep
 from math import *
 from cyfull import cycompute_jh, cycompute_jhr, cycompute_jhjinv, \
-                   cycompute_update, cycompute_residual, cycompute_jhj, \
-                   reduce_obs
+                   cycompute_update, cycompute_residual, cycompute_jhj
 import numpy as np
 
 def create_data(n_dir=1, n_tim=1, n_fre=1, n_ant=3, t_int=1, f_int=1,

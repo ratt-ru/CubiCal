@@ -1,3 +1,5 @@
+#cython:profile=True
+
 from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
@@ -6,9 +8,6 @@ import cython
 ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
-
-cdef extern from "complex.h":
-    double complex conj(double complex m)
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -191,22 +190,21 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:] jh,
                 rc = f/f_int
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
-
                         jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
-                            conj(jh[d,t,f,ab,aa,0,0])*jh[d,t,f,ab,aa,0,0] + \
-                            conj(jh[d,t,f,ab,aa,1,0])*jh[d,t,f,ab,aa,1,0]
+                        jh[d,t,f,ab,aa,0,0].conjugate()*jh[d,t,f,ab,aa,0,0] + \
+                        jh[d,t,f,ab,aa,1,0].conjugate()*jh[d,t,f,ab,aa,1,0]
 
                         jhj[d,rr,rc,aa,0,1] = jhj[d,rr,rc,aa,0,1] + \
-                            conj(jh[d,t,f,ab,aa,0,0])*jh[d,t,f,ab,aa,0,1] + \
-                            conj(jh[d,t,f,ab,aa,1,0])*jh[d,t,f,ab,aa,1,1]
+                        jh[d,t,f,ab,aa,0,0].conjugate()*jh[d,t,f,ab,aa,0,1] + \
+                        jh[d,t,f,ab,aa,1,0].conjugate()*jh[d,t,f,ab,aa,1,1]
 
                         jhj[d,rr,rc,aa,1,0] = jhj[d,rr,rc,aa,1,0] + \
-                            conj(jh[d,t,f,ab,aa,0,1])*jh[d,t,f,ab,aa,0,0] + \
-                            conj(jh[d,t,f,ab,aa,1,1])*jh[d,t,f,ab,aa,1,0]
+                        jh[d,t,f,ab,aa,0,1].conjugate()*jh[d,t,f,ab,aa,0,0] + \
+                        jh[d,t,f,ab,aa,1,1].conjugate()*jh[d,t,f,ab,aa,1,0]
 
                         jhj[d,rr,rc,aa,1,1] = jhj[d,rr,rc,aa,1,1] + \
-                            conj(jh[d,t,f,ab,aa,0,1])*jh[d,t,f,ab,aa,0,1] + \
-                            conj(jh[d,t,f,ab,aa,1,1])*jh[d,t,f,ab,aa,1,1]
+                        jh[d,t,f,ab,aa,0,1].conjugate()*jh[d,t,f,ab,aa,0,1] + \
+                        jh[d,t,f,ab,aa,1,1].conjugate()*jh[d,t,f,ab,aa,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
