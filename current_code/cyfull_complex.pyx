@@ -1,5 +1,3 @@
-#cython:profile=True
-
 from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np

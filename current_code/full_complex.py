@@ -6,6 +6,7 @@ import argparse
 import MBTiggerSim as mbt
 import TiggerSourceProvider as tsp
 import cPickle
+import concurrent.futures as cf
 
 def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
@@ -252,6 +253,18 @@ if __name__ == "__main__":
                         help='Simulate and solve for directions in sky model')
     parser.add_argument('-sim','--simulate', action="store_true",
                         help='Simulate visibilities using Montblanc.')
+    parser.add_argument('-delg','--min_delta_g', type=float, default=1e-6,
+                        help='Stopping criteria for delta G - stop when '
+                             'solutions change less than this value.')
+    parser.add_argument('-delchi','--min_delta_chi', type=float, default=1e-6,
+                        help='Stopping criteria for delta chi - stop when '
+                             'the residual changes less than this value.')
+    parser.add_argument('-chiint','--chi_interval', type=float, default=1e-6,
+                        help='Interval at which to check the chi squared '
+                             'value - expensive computation.')
+    parser.add_argument('-nproc','--processes', type=int, default=1,
+                        help='Interval at which to check the chi squared '
+                             'value - expensive computation.')
 
     args = parser.parse_args()
 
@@ -274,18 +287,41 @@ if __name__ == "__main__":
     if args.bitmask != 0:
         ms.bitmask = args.bitmask
 
-    t_int, f_int = args.tint, args.fint
-
     t0 = time()
-    for obs, mod in ms:
-        print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
-                                                       ms._first_f, ms._last_f)
-        gains = solve_gains(obs, mod, t_int=t_int, f_int=f_int,
-                                    maxiter=args.maxiter)
-        ms.add_to_gain_dict(gains, t_int, f_int)
-        # corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
-        # ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
+
+    with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
+        future_gains = {executor.submit(solve_gains,
+                                        obser,
+                                        model,
+                                        args.min_delta_g,
+                                        args.maxiter,
+                                        args.min_delta_chi,
+                                        args.chi_interval,
+                                        args.tint,
+                                        args.fint) :
+                                       [ms._first_t,
+                                        ms._last_t,
+                                        ms._first_f,
+                                        ms._last_f] for obser, model in ms}
+
+        for future in cf.as_completed(future_gains):
+            ms.add_to_gain_dict(future.result(), future_gains[future],
+                                args.tint, args.fint)
+
     print "Time taken: {} seconds".format(time() - t0)
 
     ms.write_gain_dict()
+
+    # t0 = time()
+    # for obs, mod in ms:
+    #     # print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
+    #     #                                                ms._first_f, ms._last_f)
+    #     gains = solve_gains(obs, mod, t_int=t_int, f_int=f_int,
+    #                                 maxiter=args.maxiter)
+    #     # ms.add_to_gain_dict(gains, t_int, f_int)
+    #     # corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
+    #     # ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
+    # print "Time taken: {} seconds".format(time() - t0)
+
+
     # ms.save(ms.covis, "CORRECTED_DATA")

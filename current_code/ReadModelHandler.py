@@ -356,17 +356,19 @@ class ReadModelHandler:
         self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
             in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)
 
-    def add_to_gain_dict(self, gains, t_int=1, f_int=1):
+    def add_to_gain_dict(self, gains, bounds, t_int=1, f_int=1):
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
 
-        times = np.unique(self.rtime[self._first_t: self._last_t])
+        first_t, last_t, first_f, last_f = bounds
+
+        times = np.unique(self.rtime[first_t: last_t])
         time_indices = [[] for i in xrange(n_tim)]
 
         for t, time in enumerate(times):
             time_indices[t//t_int].append(time)
 
-        freqs = range(self._first_f,self._last_f)
+        freqs = range(first_f,last_f)
         freq_indices = [[] for i in xrange(n_fre)]
 
         for f, freq in enumerate(freqs):
