@@ -1,14 +1,20 @@
 import numpy as np
 from collections import Counter, OrderedDict
 import pyrap.tables as pt
+import MBTiggerSim as mbt
+import TiggerSourceProvider as tsp
+import cPickle
 
 from time import time
 
 class ReadModelHandler:
 
-    def __init__(self, ms_name, taql=None, fid=None, ddid=None):
+    def __init__(self, ms_name, sm_name, taql=None, fid=None, ddid=None,
+                 precision="32", ddes=False, simulate=False):
 
         self.ms_name = ms_name
+        self.sm_name = sm_name
+        self.fid = fid if fid is not None else 0
 
         self.taql = self.build_taql(taql, fid, ddid)
 
@@ -20,20 +26,36 @@ class ReadModelHandler:
         else:
             self.data = self.ms
 
+        self.ctype = np.complex128 if precision=="64" else np.complex64
+        self.ftype = np.float64 if precision=="64" else np.float32
         self.nrows = self.data.nrows()
         self.ntime = len(np.unique(self.fetch("TIME")))
         self.nfreq, self.ncorr = self.data.getcoldesc("DATA")["shape"]
         self.nants = pt.table(self.ms_name + "::ANTENNA").nrows()
+
+        self._anttab = pt.table(self.ms_name + "::ANTENNA")
+        self._fldtab = pt.table(self.ms_name + "::FIELD")
+        self._spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW")
+
+        self._nchans = self._spwtab.getcol("NUM_CHAN")
+        self._rfreqs = self._spwtab.getcol("REF_FREQUENCY")
+        self._chanfr = self._spwtab.getcol("CHAN_FREQ")
+        self._antpos = self._anttab.getcol("POSITION")
+        self._phadir = self._fldtab.getcol("PHASE_DIR", startrow=self.fid,
+                                           nrow=1)[0][0]
 
         self.obvis = None
         self.movis = None
         self.covis = None
         self.antea = None
         self.anteb = None
+        self.rtime = None
         self.times = None
         self.tdict = None
         self.flags = None
         self.bflag = None
+        self.weigh = None
+        self.uvwco = None
 
         self.chunk_tdim = None
         self.chunk_fdim = None
@@ -45,9 +67,11 @@ class ReadModelHandler:
         self._first_f = None
         self._last_f = None
 
+        self.simulate = simulate
+        self.use_ddes = ddes
         self.apply_flags = False
         self.bitmask = None
-
+        self.gain_dict = {}
 
     def build_taql(self, taql=None, fid=None, ddid=None):
 
@@ -83,7 +107,7 @@ class ReadModelHandler:
 
     def mass_fetch(self, *args, **kwargs):
         """
-        Convenenience function for grabbing all the necessary data from the MS.
+        Convenience function for grabbing all the necessary data from the MS.
         Assigns values to initialised attributes.
 
         Args:
@@ -91,14 +115,17 @@ class ReadModelHandler:
             **kwargs: Arbitrary keyword arguments.
         """
 
-        self.obvis = self.fetch("DATA", *args, **kwargs)
-        self.movis = self.fetch("MODEL_DATA", *args, **kwargs)
+        self.obvis = self.fetch("DATA", *args, **kwargs).astype(self.ctype)
+        self.movis = self.fetch("MODEL_DATA", *args, **kwargs).astype(self.ctype)
         self.antea = self.fetch("ANTENNA1", *args, **kwargs)
         self.anteb = self.fetch("ANTENNA2", *args, **kwargs)
-        self.times = self.t_to_ind(self.fetch("TIME", *args, **kwargs))
+        self.rtime = self.fetch("TIME", *args, **kwargs)
+        self.times = self.t_to_ind(self.rtime)
         self.tdict = OrderedDict(sorted(Counter(self.times).items()))
         self.covis = np.empty_like(self.obvis)
         self.flags = self.fetch("FLAG", *args, **kwargs)
+        self.weigh = self.fetch("WEIGHT", *args, **kwargs)
+        self.uvwco = self.fetch("UVW", *args, **kwargs)
 
         try:
             self.bflag = self.fetch("BITFLAG", *args, **kwargs)
@@ -148,8 +175,8 @@ class ReadModelHandler:
         self.chunk_tkey = self.tdict.keys()[::self.chunk_tdim]
         self.chunk_tkey.append(self.ntime)
 
-        self.chunk_tkey.extend(break_t)
-        self.chunk_tind.extend(break_i)
+        # self.chunk_tkey.extend(break_t)
+        # self.chunk_tind.extend(break_i)
 
         self.chunk_tkey = sorted(np.unique(self.chunk_tkey))
         self.chunk_tind = sorted(np.unique(self.chunk_tind))
@@ -193,9 +220,29 @@ class ReadModelHandler:
                 t_dim = self.chunk_tkey[i + 1] - self.chunk_tkey[i]
                 f_dim = self._last_f - self._first_f
 
-                yield self.vis_to_array(t_dim, f_dim, self._first_t,
-                                        self._last_t, self._first_f,
-                                        self._last_f)
+                obs_arr, mod_arr = self.vis_to_array(t_dim, f_dim,
+                                                     self._first_t,self._last_t,
+                                                     self._first_f,self._last_f)
+
+                if self.simulate is True:
+                    mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
+                    tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
+                                                         use_ddes=self.use_ddes)
+                    arsnk = mbt.ArraySinkProvider(self, t_dim, f_dim, tgsrc._nclus)
+
+                    srcprov = [mssrc, tgsrc]
+                    snkprov = [arsnk]
+
+                    for clus in xrange(tgsrc._nclus):
+                        mbt.simulate(srcprov, snkprov)
+                        tgsrc.update_target()
+                        arsnk._dir += 1
+
+                    mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
+                    mod_arr = arsnk._sim_array.reshape(mod_shape)
+
+                yield obs_arr, mod_arr
+
 
     def vis_to_array(self, chunk_tdim, chunk_fdim, f_t_row, l_t_row, f_f_col,
                      l_f_col):
@@ -218,10 +265,10 @@ class ReadModelHandler:
         # be packed. TODO: 6D? dtype?
 
         obser_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
-                              self.nants, self.ncorr], dtype=np.complex64)
+                              self.nants, self.ncorr], dtype=self.ctype)
 
         model_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
-                              self.nants, self.ncorr], dtype=np.complex64)
+                              self.nants, self.ncorr], dtype=self.ctype)
 
         # Grabs the relevant time and antenna info.
 
@@ -257,7 +304,7 @@ class ReadModelHandler:
 
         obser_arr = obser_arr.reshape([chunk_tdim, chunk_fdim,
                                        self.nants, self.nants, 2, 2])
-        model_arr = model_arr.reshape([chunk_tdim, chunk_fdim,
+        model_arr = model_arr.reshape([1, chunk_tdim, chunk_fdim,
                                        self.nants, self.nants, 2, 2])
 
         return obser_arr, model_arr
@@ -309,6 +356,38 @@ class ReadModelHandler:
         self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
             in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)
 
+    def add_to_gain_dict(self, gains, bounds, t_int=1, f_int=1):
+
+        n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
+
+        first_t, last_t, first_f, last_f = bounds
+
+        times = np.unique(self.rtime[first_t: last_t])
+        time_indices = [[] for i in xrange(n_tim)]
+
+        for t, time in enumerate(times):
+            time_indices[t//t_int].append(time)
+
+        freqs = range(first_f,last_f)
+        freq_indices = [[] for i in xrange(n_fre)]
+
+        for f, freq in enumerate(freqs):
+            freq_indices[f//f_int].append(freq)
+
+        for d in xrange(n_dir):
+            for t in xrange(n_tim):
+                for f in xrange(n_fre):
+                    comp_idx = (d,tuple(time_indices[t]),tuple(freq_indices[f]))
+                    self.gain_dict[comp_idx] = gains[d,t,f,:]
+
+    def write_gain_dict(self, output_name=None):
+
+        if output_name is None:
+            output_name = self.ms_name + "gains.p"
+
+        cPickle.dump(self.gain_dict, open(output_name, "wb"))
+
+
     def save(self, values, col_name):
         """
         Saves values to column in MS.
@@ -322,9 +401,9 @@ class ReadModelHandler:
 
 
 
-ms = ReadModelHandler("~/measurements/WESTERBORK_POL_2.MS")
-ms.mass_fetch()
-ms.define_chunk(100,64)
-
-for obs, mod in ms:
-    pass
+# ms = ReadModelHandler("~/measurements/WESTERBORK_POL_2.MS")
+# ms.mass_fetch()
+# ms.define_chunk(100,64)
+#
+# for obs, mod in ms:
+#     pass

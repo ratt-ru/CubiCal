@@ -1,14 +1,10 @@
-from ReadModelHandler import *
+from cyfullms import *
 from time import time,sleep
 import math
 import cyfull
 import argparse
-import MBTiggerSim as mbt
-import TiggerSourceProvider as tsp
-import cPickle
-import concurrent.futures as cf
 
-def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
+def compute_jhr(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
     This function computes the (J^H)R term of the GN/LM method for the
     full-polarisation, phase-only case.
@@ -22,32 +18,67 @@ def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
         jhr (np.array): Array containing the result of computing (J^H)R.
     """
 
-    n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
+    out_shape = list(obser_arr.shape)
+    out_shape[-3:] = [2,2]
 
-    jh = np.zeros_like(model_arr)
+    tmp_array1 = np.empty([2,2], dtype=np.complex128)
+    tmp_array2 = np.zeros(out_shape, dtype=np.complex128)
 
-    cyfull.cycompute_jh(model_arr, gains, jh, t_int, f_int)
+    cyfull.compute_jhr(obser_arr, gains, model_arr,
+                       tmp_array1, tmp_array2, t_int, f_int)
 
-    jhr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
+    if (f_int>1) or (t_int>1):
 
-    jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+        reduced_shape = list(tmp_array2.shape)
+        reduced_shape[0] = int(math.ceil(reduced_shape[0]/t_int))
+        reduced_shape[1] = int(math.ceil(reduced_shape[1]/f_int))
 
-    if n_dir > 1:
-        r = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
-    else:
-        r = obser_arr
+        interval_array = np.zeros(reduced_shape, dtype=np.complex128)
+        cyfull.interval_reduce(tmp_array2, interval_array, t_int, f_int)
+        tmp_array2 = interval_array
 
-    cyfull.cycompute_jhr(jh, r, jhr, t_int, f_int)
+    jhr = tmp_array2
 
-    jhj = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+    return jhr
 
-    cyfull.cycompute_jhj(jh, jhj, t_int, f_int)
+def compute_jhjinv(model_arr, gains, t_int=1, f_int=1):
+    """
+    This function computes the ((J^H)J)^-1 term of the GN/LM method for the
+    full-polarisation, phase-only case. Note that this depends only on the
+    model visibilities.
 
-    jhjinv = np.empty(jhr_shape, dtype=obser_arr.dtype)
+    Args:
+        model_arr (np.array): Array containing the model visibilities.
 
-    cyfull.cycompute_jhjinv(jhj, jhjinv)
+    Returns:
+        jhjinv (np.array): Array containing the result of computing ((J^H)J)^-1.
+    """
 
-    return jhr, jhjinv
+    jhjinv_shape = list(model_arr.shape)
+    jhjinv_shape[0] = int(math.ceil(jhjinv_shape[0]/t_int))
+    jhjinv_shape[1] = int(math.ceil(jhjinv_shape[1]/f_int))
+
+    jhjinv = np.zeros(jhjinv_shape, dtype=np.complex128)
+
+    tmp_out = np.empty_like(model_arr)
+    tmp_out2 = np.empty_like(model_arr)
+
+    gains_h = gains.transpose(0,1,2,4,3).conj()
+
+    cyfull.compute_Abyb(model_arr, gains_h, tmp_out, t_int, f_int)
+
+    cyfull.compute_Abyb(tmp_out, gains, tmp_out2, t_int, f_int)
+
+    cyfull.compute_AbyA(tmp_out2, model_arr, tmp_out)   
+
+    cyfull.reduce_6d(tmp_out, jhjinv, t_int, f_int)
+
+    jhjinv = np.sum(jhjinv, axis=-3)
+
+    cyfull.invert_jhj(jhjinv)
+
+    return jhjinv
+
 
 def compute_update(model_arr, obser_arr, gains, t_int=1, f_int=1):
     """
@@ -65,12 +96,13 @@ def compute_update(model_arr, obser_arr, gains, t_int=1, f_int=1):
             (((J^H)J)^-1)(J^H)R
     """
 
+    jhjinv = compute_jhjinv(model_arr, gains, t_int, f_int)
 
-    jhr, jhjinv = compute_js(obser_arr, model_arr, gains, t_int, f_int)
+    jhr = compute_jhr(obser_arr, model_arr, gains, t_int, f_int)
 
     update = np.empty_like(jhr)
 
-    cyfull.cycompute_update(jhr, jhjinv, update)
+    cyfull.compute_update(jhr, jhjinv, update)
 
     return update
 
@@ -89,21 +121,40 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
         residual (np.array): Array containing the result of computing D-GMG^H.
     """
 
-    n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
+    if (f_int>1) or (t_int>1):
 
-    residual_shape = [n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
+        reduced_shape = list(model_arr.shape)
+        reduced_shape[0] = int(math.ceil(reduced_shape[0]/t_int))
+        reduced_shape[1] = int(math.ceil(reduced_shape[1]/f_int))
 
-    residual = np.zeros(residual_shape, dtype=obser_arr.dtype)
-    gains_h = gains.transpose(0,1,2,3,5,4).conj()
+        m = np.zeros(reduced_shape, dtype=np.complex128)
+        cyfull.model_reduce(model_arr, m, t_int, f_int)
 
-    cyfull.cycompute_residual(model_arr, gains, gains_h, obser_arr, residual,
-                              t_int, f_int)
+        data = np.zeros(reduced_shape, dtype=np.complex128)
+        cyfull.model_reduce(obser_arr, data, t_int, f_int)
+
+        gm = np.empty(reduced_shape, dtype=np.complex128)
+        gmgh = np.empty(reduced_shape, dtype=np.complex128)
+
+        cyfull.compute_bbyA(gains, m, gm, 1, 1)
+        cyfull.compute_Abyb(gm, gains.transpose(0,1,2,4,3).conj(), gmgh, 1, 1)
+
+    else:
+        gm = np.empty_like(obser_arr)
+        gmgh = np.empty_like(obser_arr)
+        data = obser_arr
+
+        cyfull.compute_bbyA(gains, model_arr, gm, t_int, f_int)
+        cyfull.compute_Abyb(gm, gains.transpose(0,1,2,4,3).conj(), gmgh,
+                            t_int, f_int)
+
+    residual = data - gmgh
 
     return residual
 
 
-def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
-                chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
+def full_pol_phase_only(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
+                        chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
@@ -120,25 +171,27 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
         gains (np.array): Array containing the final gain estimates.
     """
 
-    n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = model_arr.shape
 
-    n_tim = int(math.ceil(float(n_tim)/t_int))
-    n_fre = int(math.ceil(float(n_fre)/f_int))
+    gain_shape = list(model_arr.shape)
+    gain_shape[-3:] = [2, 2]
+    gain_shape[0] = int(math.ceil(gain_shape[0]/t_int))
+    gain_shape[1] = int(math.ceil(gain_shape[1]/f_int))
 
-    gain_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
-
-    gains = np.empty(gain_shape, dtype=obser_arr.dtype)
-    gains[:] = np.eye(n_cor)
+    gains = np.zeros(gain_shape, dtype=np.complex128)
+    gains[...,(0,1),(0,1)] = 1
 
     old_gains = np.empty_like(gains)
     old_gains[:] = np.inf
     n_quor = 0
-    n_sols = float(n_dir*n_tim*n_fre)
+    n_sols = float(gain_shape[0]*gain_shape[1])
     iters = 1
 
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
 
     chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
+
+    # chi = np.linalg.norm(residual, axis=(-4,-3))
+    # chi = np.linalg.norm(chi, axis=(-2,-1))
 
     min_quorum = 0.99
 
@@ -156,8 +209,11 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
         norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
         n_quor = np.sum(diff_g/norm_g <= min_delta_g**2)
         n_quor += np.sum(norm_g==0)
+        
 
         old_gains = gains.copy()
+
+        # print iters, n_quor/n_sols, n_quor
 
         iters += 1
         
@@ -179,8 +235,8 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
             n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
 
             if n_conv/n_sols > 0.99:
-                print "Iteration {}: Static residual in {:.2%} of " \
-                             "visibilities.".format(iters, n_conv/n_sols)
+                print iters, "Static residual in {:.2%} of " \
+                             "visibilities.".format(n_conv/n_sols)
                 return gains
 
     print "Iteration {}: Quorum reached: {:.2%} solutions " \
@@ -200,8 +256,6 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
     Returns:
         inv_gdgh (np.array): Array containing (G^-1)D(G^-H).
     """
-
-    #TODO: VERY BROKEN!!!
 
     inv_gains = gains.copy()
 
@@ -225,8 +279,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Basic full-polarisation '
                                                  'calibration script.')
     parser.add_argument('msname', help='Name and location of MS.')
-    parser.add_argument('smname', help='Name and location of sky model.',
-                        type=str)
     parser.add_argument('-tc','--tchunk', type=int, default=1,
                         help='Determines time chunk size.')
     parser.add_argument('-fc','--fchunk', type=int, default=1,
@@ -245,26 +297,8 @@ if __name__ == "__main__":
                         help='Selects a particular FIELD_ID.')
     parser.add_argument('-d', '--ddid', type=int,
                         help='Selects a particular DATA_DESC_ID.')
-    parser.add_argument('-p', '--precision', type=str, default='32',
-                        help='Selects a particular data type.')
     parser.add_argument('--ddid-to', type=int,
                         help='Selects range from --ddid to a particular DATA_DESC_ID.')
-    parser.add_argument('-ddes','--use_ddes', action="store_true",
-                        help='Simulate and solve for directions in sky model')
-    parser.add_argument('-sim','--simulate', action="store_true",
-                        help='Simulate visibilities using Montblanc.')
-    parser.add_argument('-delg','--min_delta_g', type=float, default=1e-6,
-                        help='Stopping criteria for delta G - stop when '
-                             'solutions change less than this value.')
-    parser.add_argument('-delchi','--min_delta_chi', type=float, default=1e-6,
-                        help='Stopping criteria for delta chi - stop when '
-                             'the residual changes less than this value.')
-    parser.add_argument('-chiint','--chi_interval', type=float, default=1e-6,
-                        help='Interval at which to check the chi squared '
-                             'value - expensive computation.')
-    parser.add_argument('-nproc','--processes', type=int, default=1,
-                        help='Interval at which to check the chi squared '
-                             'value - expensive computation.')
 
     args = parser.parse_args()
 
@@ -276,10 +310,8 @@ if __name__ == "__main__":
     else:
         ddid = None
 
-    ms = ReadModelHandler(args.msname, args.smname, fid=args.field, ddid=ddid,
-                          precision=args.precision, ddes=args.use_ddes,
-                          simulate=args.simulate)
-    ms.mass_fetch()
+    ms = DataHandler(args.msname, field=args.field, ddid=ddid)
+    ms.fetch_all()
     ms.define_chunk(args.tchunk, args.fchunk)
 
     if args.applyflags:
@@ -287,41 +319,16 @@ if __name__ == "__main__":
     if args.bitmask != 0:
         ms.bitmask = args.bitmask
 
+    t_int, f_int = args.tint, args.fint
+
     t0 = time()
-
-    with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
-        future_gains = {executor.submit(solve_gains,
-                                        obser,
-                                        model,
-                                        args.min_delta_g,
-                                        args.maxiter,
-                                        args.min_delta_chi,
-                                        args.chi_interval,
-                                        args.tint,
-                                        args.fint) :
-                                       [ms._first_t,
-                                        ms._last_t,
-                                        ms._first_f,
-                                        ms._last_f] for obser, model in ms}
-
-        for future in cf.as_completed(future_gains):
-            ms.add_to_gain_dict(future.result(), future_gains[future],
-                                args.tint, args.fint)
-
+    for obs, mod in ms:
+        print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
+                                                       ms._first_f, ms._last_f)
+        gains = full_pol_phase_only(obs, mod, t_int=t_int, f_int=f_int,
+                                    maxiter=args.maxiter)
+        corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
+        ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
     print "Time taken: {} seconds".format(time() - t0)
 
-    ms.write_gain_dict()
-
-    # t0 = time()
-    # for obs, mod in ms:
-    #     # print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
-    #     #                                                ms._first_f, ms._last_f)
-    #     gains = solve_gains(obs, mod, t_int=t_int, f_int=f_int,
-    #                                 maxiter=args.maxiter)
-    #     # ms.add_to_gain_dict(gains, t_int, f_int)
-    #     # corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
-    #     # ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
-    # print "Time taken: {} seconds".format(time() - t0)
-
-
-    # ms.save(ms.covis, "CORRECTED_DATA")
+    ms.save(ms.covis, "CORRECTED_DATA")
