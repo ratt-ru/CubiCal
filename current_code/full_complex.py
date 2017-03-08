@@ -201,23 +201,17 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
         inv_gdgh (np.array): Array containing (G^-1)D(G^-H).
     """
 
-    #TODO: VERY BROKEN!!!
+    g_inv = np.empty_like(gains)
 
-    inv_gains = gains.copy()
+    cyfull.cycompute_jhjinv(gains, g_inv) #Function can invert G.
 
-    cyfull.invert_jhj(inv_gains)
+    gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
 
-    tmp_out = np.empty_like(obser_arr)
+    corr_vis = np.empty_like(obser_arr)
 
-    cyfull.compute_bbyA(inv_gains, obser_arr, tmp_out, t_int, f_int)
+    cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, t_int, f_int)
 
-    inv_gains = inv_gains.transpose(0,1,2,4,3).conj()
-
-    inv_gdgh = np.empty_like(obser_arr)
-
-    cyfull.compute_Abyb(tmp_out, inv_gains, inv_gdgh, t_int, f_int)
-
-    return inv_gdgh
+    return corr_vis
 
 
 if __name__ == "__main__":
@@ -316,10 +310,13 @@ if __name__ == "__main__":
     # for obs, mod in ms:
     #     # print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
     #     #                                                ms._first_f, ms._last_f)
-    #     gains = solve_gains(obs, mod, t_int=t_int, f_int=f_int,
-    #                                 maxiter=args.maxiter)
+    #     gains = solve_gains(obs, mod, args.min_delta_g, args.maxiter,
+    #                         args.min_delta_chi, args.chi_interval,
+    #                         args.tint, args.fint)
+    #     corr_vis = apply_gains(obs, gains, t_int=args.tint, f_int=args.fint)
+    #
     #     # ms.add_to_gain_dict(gains, t_int, f_int)
-    #     # corr_vis = apply_gains(obs, gains, t_int=t_int, f_int=f_int)
+    #
     #     # ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
     # print "Time taken: {} seconds".format(time() - t0)
 
