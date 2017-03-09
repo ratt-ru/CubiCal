@@ -334,7 +334,7 @@ class ReadModelHandler:
         return flags_arr
 
 
-    def array_to_vis(self, in_arr, f_t_row, l_t_row, f_f_col, l_f_col):
+    def array_to_vis(self, in_arr, bounds):
         """
         Converts the calibrated measurement matrix back into the MS style.
 
@@ -346,6 +346,8 @@ class ReadModelHandler:
             l_f_col (int): Last frequency in MS to which the data belongs.
 
         """
+
+        f_t_row, l_t_row, f_f_col, l_f_col = bounds
 
         new_shape = [l_t_row - f_t_row, l_f_col - f_f_col, 4]
 

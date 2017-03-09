@@ -213,6 +213,16 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
 
     return corr_vis
 
+def solve_and_save(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
+                   chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
+
+    gains = solve_gains(obser_arr, model_arr, min_delta_g, maxiter,
+                        chi_tol, chi_interval, t_int, f_int)
+
+    corr_vis = apply_gains(obser_arr, gains, t_int, f_int)
+
+    return gains, corr_vis
+
 
 if __name__ == "__main__":
 
@@ -259,6 +269,9 @@ if __name__ == "__main__":
     parser.add_argument('-nproc','--processes', type=int, default=1,
                         help='Interval at which to check the chi squared '
                              'value - expensive computation.')
+    parser.add_argument('-savco','--save_corrected', action="store_true",
+                        help='Save corrected visibilities to MS.')
+
 
     args = parser.parse_args()
 
@@ -281,30 +294,40 @@ if __name__ == "__main__":
     if args.bitmask != 0:
         ms.bitmask = args.bitmask
 
+    target = solve_and_save if args.save_corrected else solve_gains
+
+    opts = { "min_delta_g"  : args.min_delta_g,
+             "maxiter"      : args.maxiter,
+             "chi_tol"      : args.min_delta_chi,
+             "chi_interval" : args.chi_interval,
+             "t_int"        : args.tint,
+             "f_int"        : args.fint }
+
+
     t0 = time()
 
     with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
-        future_gains = {executor.submit(solve_gains,
-                                        obser,
-                                        model,
-                                        args.min_delta_g,
-                                        args.maxiter,
-                                        args.min_delta_chi,
-                                        args.chi_interval,
-                                        args.tint,
-                                        args.fint) :
-                                       [ms._first_t,
-                                        ms._last_t,
-                                        ms._first_f,
-                                        ms._last_f] for obser, model in ms}
+        future_gains = { executor.submit(target, obser, model, **opts) :
+                         [ms._first_t, ms._last_t, ms._first_f, ms._last_f]
+                         for obser, model in ms }
 
         for future in cf.as_completed(future_gains):
-            ms.add_to_gain_dict(future.result(), future_gains[future],
+            
+            if target is solve_and_save:
+                gains, covis = future.result()
+                ms.array_to_vis(covis, future_gains[future])
+            else:
+                gains = future.result()
+
+            ms.add_to_gain_dict(gains, future_gains[future],
                                 args.tint, args.fint)
 
     print "Time taken: {} seconds".format(time() - t0)
 
     ms.write_gain_dict()
+    
+    if target is solve_and_save:
+        ms.save(ms.covis, "CORRECTED_DATA")
 
     # t0 = time()
     # for obs, mod in ms:
