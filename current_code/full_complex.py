@@ -251,8 +251,8 @@ if __name__ == "__main__":
                         help='Selects a particular DATA_DESC_ID.')
     parser.add_argument('-p', '--precision', type=str, default='32',
                         help='Selects a particular data type.')
-    parser.add_argument('--ddid-to', type=int,
-                        help='Selects range from --ddid to a particular DATA_DESC_ID.')
+    parser.add_argument('--ddid-to', type=int, help='Selects range from' 
+                        '--ddid to a particular DATA_DESC_ID.')
     parser.add_argument('-ddes','--use_ddes', action="store_true",
                         help='Simulate and solve for directions in sky model')
     parser.add_argument('-sim','--simulate', action="store_true",
