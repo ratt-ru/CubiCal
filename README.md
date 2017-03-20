@@ -26,7 +26,7 @@
 * CubeCal can be run from command line using: 
 
 ```
-	$ gocubecal
+   $ gocubecal
 ```	 
 
 If this doesn't work, add path/to/your/virtual/env/bin/gocubecal to your path.
