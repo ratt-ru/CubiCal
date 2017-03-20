@@ -11,7 +11,7 @@
 
 * Create and activate a virtualenv as described below.
 * Clone the repository and switch to the _installable_ branch. 
-* To install all requirements NOT including montblanc:
+* To install all requirements EXCLUDING montblanc:
 
 ```
    $ pip install -r phd_code/requirements.txt
@@ -23,8 +23,13 @@
    $ pip install phd_code
 ```
 
-* CubeCal can be run from command line using gocubecal. If this doesn't work, 
-add yourvirtualenv/bin/gocubecal to your path.
+* CubeCal can be run from command line using: 
+
+```
+	$ gocubecal
+```	 
+
+If this doesn't work, add path/to/your/virtual/env/bin/gocubecal to your path.
 
 * -h or --help will display the currently available options.
 
