@@ -31,7 +31,7 @@ class custom_install(install):
 		install.run(self)
 
 extensions = [Extension(
-						"cubecal.cyfull", ["cubecal/cyfull.pyx"],
+						"cubecal.cyfull_complex", ["cubecal/cyfull_complex.pyx"],
         				include_dirs=[np.get_include()],
 						extra_compile_args=['-fopenmp', '-ffast-math', '-O2', '-march=native',	'-mtune=native', '-ftree-vectorize'],
 						extra_link_args=['-lgomp']
@@ -59,7 +59,7 @@ setup(name='cubecal',
       install_requires=['numpy', 'cython', 'futures', 'python-casacore'],
       include_package_data=True,
       package_data={'cubecal':['full_complex.py', 'MBTiggerSim.py', 'ReadModelHandler.py', 
-      						   'TiggerSourceProvider.py', '__init__.py', 'cyfull.pyx', 'bin/gocubecal', 'initcyfull']},
+      						   'TiggerSourceProvider.py', '__init__.py', 'cyfull_complex.pyx', 'bin/gocubecal']},
       zip_safe=False,
       ext_modules = cythonize(extensions),
       scripts=['cubecal/bin/gocubecal'],
