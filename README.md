@@ -2,27 +2,27 @@
 
 ## Requirements
 
-* cython 0.23.4
-* numpy 1.10.1
-* python-casacore 2.1.2
+* numpy >= 1.11.3
+* cython >= 0.25.2
+* futures >= 3.0.5
+* python-casacore >= 2.1.2
 
 ## Instructions
 
-The repository is confusing; there are more files than are strictly necessary.  
-The important files at the moment are:
+* Create and activate a virtualenv as described below.
+* Clone the repository and switch to the _installable_ branch. 
+* To install all requirements NOT including montblanc:
 
-* full_complex.py
-* cyfullms.py
-* cyfull_complex.pyx
-* setup_full_complex.py
+    pip install -r phd_code/requirements.txt
 
-In order to make use of the code, it is first necessary to run:  
+* Install with:
 
-python setup_full_complex.py build_ext --inplace -f  
+    pip install phd_code
 
-in the code directory.
+* CubeCal can be run from command line using gocubecal. If this doesn't work, 
+add yourvirtualenv/bin/gocubecal to your path)
 
-The --help provides information on the currently available options.
+* -h or --help will display the currently available options.
 
 ## Setting up a virtual environment for the dependencies
 
