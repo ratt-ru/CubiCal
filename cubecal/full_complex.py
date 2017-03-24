@@ -251,7 +251,7 @@ def main():
                         help='Selects a particular DATA_DESC_ID.')
     parser.add_argument('-p', '--precision', type=str, default='32',
                         help='Selects a particular data type.')
-    parser.add_argument('--ddid-to', type=int, help='Selects range from' 
+    parser.add_argument('--ddid_to', type=int, help='Selects range from' 
                         '--ddid to a particular DATA_DESC_ID.')
     parser.add_argument('-ddes','--use_ddes', action="store_true",
                         help='Simulate and solve for directions in sky model')
@@ -263,7 +263,7 @@ def main():
     parser.add_argument('-delchi','--min_delta_chi', type=float, default=1e-6,
                         help='Stopping criteria for delta chi - stop when '
                              'the residual changes less than this value.')
-    parser.add_argument('-chiint','--chi_interval', type=float, default=1e-6,
+    parser.add_argument('-chiint','--chi_interval', type=int, default=5,
                         help='Interval at which to check the chi squared '
                              'value - expensive computation.')
     parser.add_argument('-nproc','--processes', type=int, default=1,
