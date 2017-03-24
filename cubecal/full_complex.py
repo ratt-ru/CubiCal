@@ -267,8 +267,7 @@ def main():
                         help='Interval at which to check the chi squared '
                              'value - expensive computation.')
     parser.add_argument('-nproc','--processes', type=int, default=1,
-                        help='Interval at which to check the chi squared '
-                             'value - expensive computation.')
+                        help='Number of processes to run.')
     parser.add_argument('-savco','--save_corrected', action="store_true",
                         help='Save corrected visibilities to MS.')
 
