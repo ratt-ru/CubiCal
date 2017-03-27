@@ -128,14 +128,16 @@ class ReadModelHandler:
         self.tdict = OrderedDict(sorted(Counter(self.times).items()))
         self.covis = np.empty_like(self.obvis)
         self.flags = self.fetch("FLAG", *args, **kwargs)
-        self.weigh = self.fetch("WEIGHT", *args, **kwargs)
         self.uvwco = self.fetch("UVW", *args, **kwargs)
 
-        try:
-            self.bflag = self.fetch("BITFLAG", *args, **kwargs)
-        except:
-            print "No BITFLAG column in MS."
+        if "WEIGHT_SPECTRUM" in self.ms.colnames():
+            self.weigh = self.fetch("WEIGHT_SPECTRUM", *args, **kwargs)
+        else:
+            self.weigh = self.fetch("WEIGHT", *args, **kwargs)
+            self.weigh = self.weigh[:,np.newaxis,:].repeat(self.nfreq, 1)
 
+        if "BITFLAG" in self.ms.colnames():
+            self.bflag = self.fetch("BITFLAG", *args, **kwargs)
 
     def t_to_ind(self, times):
         """
@@ -224,9 +226,8 @@ class ReadModelHandler:
                 t_dim = self.chunk_tkey[i + 1] - self.chunk_tkey[i]
                 f_dim = self._last_f - self._first_f
 
-                obs_arr, mod_arr = self.vis_to_array(t_dim, f_dim,
-                                                     self._first_t,self._last_t,
-                                                     self._first_f,self._last_f)
+                obs_arr = self.col_to_arr("obser", t_dim, f_dim)
+                mod_arr = self.col_to_arr("model", t_dim, f_dim)
 
                 if self.simulate is True:
                     mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
@@ -248,8 +249,7 @@ class ReadModelHandler:
                 yield obs_arr, mod_arr
 
 
-    def vis_to_array(self, chunk_tdim, chunk_fdim, f_t_row, l_t_row, f_f_col,
-                     l_f_col):
+    def col_to_arr(self, target, chunk_tdim, chunk_fdim):
         """
         Converts input data into N-dimensional measurement matrices.
 
@@ -265,80 +265,71 @@ class ReadModelHandler:
             flags_arr (np.array): Array containing flags for the active data.
         """
 
-        # Creates empty 5D arrays into which the model and observed data can
-        # be packed. TODO: 6D? dtype?
+        opts = {"model": self.movis, 
+                "obser": self.obvis,
+                "weigh": self.weigh}
 
-        obser_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
-                              self.nants, self.ncorr], dtype=self.ctype)
+        column = opts[target]
 
-        model_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
-                              self.nants, self.ncorr], dtype=self.ctype)
+        # Creates empty 5D array into which the column data can be packed.
+
+        out_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
+                            self.nants, self.ncorr], dtype=self.ctype)
 
         # Grabs the relevant time and antenna info.
 
-        tchunk = self.times[f_t_row:l_t_row]
+        achunk = self.antea[self._first_t:self._last_t]
+        bchunk = self.anteb[self._first_t:self._last_t]
+        tchunk = self.times[self._first_t:self._last_t]
         tchunk -= np.min(tchunk)
-        achunk = self.antea[f_t_row:l_t_row]
-        bchunk = self.anteb[f_t_row:l_t_row]
 
-        # The following takes the arbitrarily ordered data from the MS and
-        # places it into a 5D data structure (measurement matrix).
+        # Creates a tuple of slice objects to make subsequent slicing easier.
+
+        selection = (slice(self._first_t, self._last_t),
+                     slice(self._first_f, self._last_f),
+                     slice(None))
+
+        # This handles flagging.TODO: Make using basic flags optional.
 
         if self.apply_flags:
-            flags_arr = self.make_flag_array(f_t_row, l_t_row, f_f_col, l_f_col)
-            self.obvis[f_t_row:l_t_row, f_f_col:l_f_col, :][flags_arr] = 0
-            self.movis[f_t_row:l_t_row, f_f_col:l_f_col, :][flags_arr] = 0
 
-        obser_arr[tchunk, :, achunk, bchunk, :] \
-            = self.obvis[f_t_row:l_t_row, f_f_col:l_f_col, :]
-        obser_arr[tchunk, :, bchunk, achunk, :] \
-            = self.obvis[f_t_row:l_t_row, f_f_col:l_f_col, :].conj()[...,(0,2,1,3)]
+            flags_arr = self.flags[selection]
 
-        model_arr[tchunk, :, achunk, bchunk, :] \
-            = self.movis[f_t_row:l_t_row, f_f_col:l_f_col, :]
-        model_arr[tchunk, :, bchunk, achunk, :] \
-            = self.movis[f_t_row:l_t_row, f_f_col:l_f_col, :].conj()[...,(0,2,1,3)]
+            if self.bitmask is not None:
+                flags_arr |= ((self.bflag[selection] & self.bitmask) != False)
+
+            column[selection][flags_arr] = 0
+            
+        # The following takes the arbitrarily ordered data from the MS and
+        # places it into tho 5D data structure (correlation matrix).
+
+        out_arr[tchunk, :, achunk, bchunk, :] = column[selection]
+        out_arr[tchunk, :, bchunk, achunk, :] = column[selection].conj()[...,(0,2,1,3)]
 
         # This zeros the diagonal elements in the "baseline" plane. This is
         # purely a precaution - we do not want autocorrelations on the
-        # diagonal. TODO: For loop with fill_diagonal?
+        # diagonal.
 
-        obser_arr[:,:,range(self.nants),range(self.nants),:] = 0
-        model_arr[:,:,range(self.nants),range(self.nants),:] = 0
+        out_arr[:,:,range(self.nants),range(self.nants),:] = 0
 
-        obser_arr = obser_arr.reshape([chunk_tdim, chunk_fdim,
+        # The final step here reshapes the output to ensure compatability
+        # with code elsewhere. 
+
+        if target is "obser":
+            out_arr = out_arr.reshape([chunk_tdim, chunk_fdim,
                                        self.nants, self.nants, 2, 2])
-        model_arr = model_arr.reshape([1, chunk_tdim, chunk_fdim,
+        elif target is "model":
+            out_arr = out_arr.reshape([1, chunk_tdim, chunk_fdim,
                                        self.nants, self.nants, 2, 2])
+        elif target is "weigh":
+            out_arr = np.average(out_arr.astype(self.ftype), axis=-1)
+            out_arr = out_arr.reshape([chunk_tdim, chunk_fdim,
+                                       self.nants, self.nants])
 
-        return obser_arr, model_arr
-
-    def make_flag_array(self, f_t_row, l_t_row, f_f_col, l_f_col):
-        """
-        Combines flags into a flag array which can be applied to the data.
-
-        Args:
-            f_t_row (int): First time row to be accessed in data.
-            l_t_row (int): Last time row to be accessed in data.
-            f_f_col (int): First frequency column to be accessed in data.
-            l_f_col (int): Last frequency column to be accessed in data.
-
-        Returns:
-            flags_arr (np.array): Array containing flags for the active data.
-        """
-
-        flags_arr = self.flags[f_t_row:l_t_row, f_f_col:l_f_col, :]
-
-        #MAY BE WRONG NOW!!!
-
-        if self.bitmask != 0:
-            flags_arr &= ((self.bflag[f_t_row:l_t_row, f_f_col:l_f_col,
-                           :] & self.bitmask) == True)
-
-        return flags_arr
+        return out_arr
 
 
-    def array_to_vis(self, in_arr, bounds):
+    def arr_to_col(self, in_arr, bounds):
         """
         Converts the calibrated measurement matrix back into the MS style.
 
@@ -404,12 +395,3 @@ class ReadModelHandler:
         """
 
         self.data.putcol(col_name, values)
-
-
-
-# ms = ReadModelHandler("~/measurements/WESTERBORK_POL_2.MS")
-# ms.mass_fetch()
-# ms.define_chunk(100,64)
-#
-# for obs, mod in ms:
-#     pass

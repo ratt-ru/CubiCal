@@ -314,7 +314,7 @@ def main():
             
             if target is solve_and_save:
                 gains, covis = future.result()
-                ms.array_to_vis(covis, future_gains[future])
+                ms.arr_to_col(covis, future_gains[future])
             else:
                 gains = future.result()
 
