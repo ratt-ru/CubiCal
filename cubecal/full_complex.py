@@ -1,10 +1,8 @@
 from ReadModelHandler import *
 from time import time,sleep
 import math
-import cyfull
+import cyfull_complex as cyfull
 import argparse
-import MBTiggerSim as mbt
-import TiggerSourceProvider as tsp
 import cPickle
 import concurrent.futures as cf
 
@@ -224,7 +222,9 @@ def solve_and_save(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
     return gains, corr_vis
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
+
+def main():
 
     parser = argparse.ArgumentParser(description='Basic full-polarisation '
                                                  'calibration script.')
@@ -251,7 +251,7 @@ if __name__ == "__main__":
                         help='Selects a particular DATA_DESC_ID.')
     parser.add_argument('-p', '--precision', type=str, default='32',
                         help='Selects a particular data type.')
-    parser.add_argument('--ddid-to', type=int, help='Selects range from' 
+    parser.add_argument('--ddid_to', type=int, help='Selects range from' 
                         '--ddid to a particular DATA_DESC_ID.')
     parser.add_argument('-ddes','--use_ddes', action="store_true",
                         help='Simulate and solve for directions in sky model')
@@ -263,12 +263,11 @@ if __name__ == "__main__":
     parser.add_argument('-delchi','--min_delta_chi', type=float, default=1e-6,
                         help='Stopping criteria for delta chi - stop when '
                              'the residual changes less than this value.')
-    parser.add_argument('-chiint','--chi_interval', type=float, default=1e-6,
+    parser.add_argument('-chiint','--chi_interval', type=int, default=5,
                         help='Interval at which to check the chi squared '
                              'value - expensive computation.')
     parser.add_argument('-nproc','--processes', type=int, default=1,
-                        help='Interval at which to check the chi squared '
-                             'value - expensive computation.')
+                        help='Number of processes to run.')
     parser.add_argument('-savco','--save_corrected', action="store_true",
                         help='Save corrected visibilities to MS.')
 

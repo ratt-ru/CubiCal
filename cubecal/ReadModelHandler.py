@@ -1,9 +1,13 @@
 import numpy as np
 from collections import Counter, OrderedDict
 import pyrap.tables as pt
-import MBTiggerSim as mbt
-import TiggerSourceProvider as tsp
 import cPickle
+
+try:
+    import MBTiggerSim as mbt
+    import TiggerSourceProvider as tsp
+except:
+    print "Montblanc is not installed - simulation mode will crash."
 
 from time import time
 
