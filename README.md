@@ -10,7 +10,7 @@
 ## Instructions
 
 * Create and activate a virtualenv as described below.
-* Clone the repository and switch to the _installable_ branch. 
+* Clone the repository.
 * To install all requirements EXCLUDING montblanc:
 
 ```
