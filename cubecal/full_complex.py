@@ -270,6 +270,8 @@ def main():
                         help='Number of processes to run.')
     parser.add_argument('-savco','--save_corrected', action="store_true",
                         help='Save corrected visibilities to MS.')
+    parser.add_argument('-weigh','--apply_weights', action="store_true",
+                        help='Use weighted least squares.')
 
 
     args = parser.parse_args()
@@ -284,7 +286,7 @@ def main():
 
     ms = ReadModelHandler(args.msname, args.smname, fid=args.field, ddid=ddid,
                           precision=args.precision, ddes=args.use_ddes,
-                          simulate=args.simulate)
+                          simulate=args.simulate, apply_weights=args.apply_weights)
     ms.mass_fetch()
     ms.define_chunk(args.tchunk, args.fchunk)
 
@@ -308,7 +310,7 @@ def main():
     with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
         future_gains = { executor.submit(target, obser, model, **opts) :
                          [ms._first_t, ms._last_t, ms._first_f, ms._last_f]
-                         for obser, model in ms }
+                         for obser, model, weight in ms }
 
         for future in cf.as_completed(future_gains):
             
