@@ -35,12 +35,9 @@ If this doesn't work, add path/to/your/virtual/env/bin/gocubecal to your path.
 
 ## Setting up a virtual environment for the dependencies
 
-On Ubuntu 14, make sure ``libcasacore2-dev`` is installed (not casacore21!). Then:
-
 ```
-$ virtualenv cubecal
-$ source cubecal/bin/activate
-$ pip install -U numpy cython python-casacore
+$ virtualenv cubeenv
+$ source cubeenv/bin/activate
 ```
 
 
