@@ -33,7 +33,15 @@ If this doesn't work, add path/to/your/virtual/env/bin/gocubecal to your path.
 
 * -h or --help will display the currently available options.
 
-## Setting up a virtual environment for the dependencies
+## Setting up a virtual environment
+
+* To install virtualenv with pip:
+
+```
+$ pip install virtualenv
+```
+
+* To create and activate a virtual environment:
 
 ```
 $ virtualenv cubeenv
