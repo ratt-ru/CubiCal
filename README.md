@@ -14,13 +14,13 @@
 * To install all requirements EXCLUDING montblanc:
 
 ```
-   $ pip install -r phd_code/requirements.txt
+   $ pip install -r CubeCal/requirements.txt
 ```
 
 * Install with:
 
 ```
-   $ pip install phd_code
+   $ pip install CubeCal
 ```
 
 * CubeCal can be run from command line using: 
