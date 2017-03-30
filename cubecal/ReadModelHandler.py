@@ -359,8 +359,16 @@ class ReadModelHandler:
         achunk = self.antea[f_t_row:l_t_row]
         bchunk = self.anteb[f_t_row:l_t_row]
 
-        self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
-            in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)
+        if self.ncorr==4:
+            self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
+                in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)
+        elif self.ncorr==2:
+            self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
+                in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)[:,:,::3]
+        elif self.ncorr==1:
+            self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
+                in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)[:,:,::4]
+
 
     def add_to_gain_dict(self, gains, bounds, t_int=1, f_int=1):
 
