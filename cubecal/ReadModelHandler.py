@@ -30,16 +30,18 @@ class ReadModelHandler:
         else:
             self.data = self.ms
 
+        self._anttab = pt.table(self.ms_name + "::ANTENNA")
+        self._fldtab = pt.table(self.ms_name + "::FIELD")
+        self._spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW")
+        self._poltab = pt.table(self.ms_name + "::POLARIZATION")
+
         self.ctype = np.complex128 if precision=="64" else np.complex64
         self.ftype = np.float64 if precision=="64" else np.float32
         self.nrows = self.data.nrows()
         self.ntime = len(np.unique(self.fetch("TIME")))
-        self.nfreq, self.ncorr = self.data.getcoldesc("DATA")["shape"]
+        self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
+        self.ncorr = self._poltab.getcol("NUM_CORR")[0]
         self.nants = pt.table(self.ms_name + "::ANTENNA").nrows()
-
-        self._anttab = pt.table(self.ms_name + "::ANTENNA")
-        self._fldtab = pt.table(self.ms_name + "::FIELD")
-        self._spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW")
 
         self._nchans = self._spwtab.getcol("NUM_CHAN")
         self._rfreqs = self._spwtab.getcol("REF_FREQUENCY")
@@ -380,9 +382,9 @@ class ReadModelHandler:
     def write_gain_dict(self, output_name=None):
 
         if output_name is None:
-            output_name = self.ms_name + "gains.p"
+            output_name = self.ms_name + "/gains.p"
 
-        cPickle.dump(self.gain_dict, open(output_name, "wb"))
+        cPickle.dump(self.gain_dict, open(output_name, "wb"), protocol=2)
 
 
     def save(self, values, col_name):
