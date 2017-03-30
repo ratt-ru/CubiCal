@@ -14,7 +14,7 @@ from time import time
 class ReadModelHandler:
 
     def __init__(self, ms_name, sm_name, taql=None, fid=None, ddid=None,
-                 precision="32", ddes=False, simulate=False):
+                 precision="32", ddes=False, simulate=False, apply_weights=False):
 
         self.ms_name = ms_name
         self.sm_name = sm_name
@@ -75,6 +75,7 @@ class ReadModelHandler:
 
         self.simulate = simulate
         self.use_ddes = ddes
+        self.apply_weights = apply_weights
         self.apply_flags = False
         self.bitmask = None
         self.gain_dict = {}
@@ -216,6 +217,10 @@ class ReadModelHandler:
             np.array: The next N-dimensional measurement matrix to be processed.
         """
 
+        obs_arr = None
+        mod_arr = None
+        wgt_arr = None 
+
         for i in xrange(len(self.chunk_tind[:-1])):
             for j in xrange(len(self.chunk_find[:-1])):
 
@@ -231,7 +236,10 @@ class ReadModelHandler:
                 obs_arr = self.col_to_arr("obser", t_dim, f_dim)
                 mod_arr = self.col_to_arr("model", t_dim, f_dim)
 
-                if self.simulate is True:
+                if self.apply_weights:
+                    wgt_arr = self.col_to_arr("weigh", t_dim, f_dim)
+
+                if self.simulate:
                     mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
                     tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
                                                          use_ddes=self.use_ddes)
@@ -248,7 +256,7 @@ class ReadModelHandler:
                     mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
                     mod_arr = arsnk._sim_array.reshape(mod_shape)
 
-                yield obs_arr, mod_arr
+                yield obs_arr, mod_arr, wgt_arr
 
 
     def col_to_arr(self, target, chunk_tdim, chunk_fdim):
