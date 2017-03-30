@@ -133,11 +133,12 @@ class ReadModelHandler:
         self.flags = self.fetch("FLAG", *args, **kwargs)
         self.uvwco = self.fetch("UVW", *args, **kwargs)
 
-        if "WEIGHT_SPECTRUM" in self.ms.colnames():
-            self.weigh = self.fetch("WEIGHT_SPECTRUM", *args, **kwargs)
-        else:
-            self.weigh = self.fetch("WEIGHT", *args, **kwargs)
-            self.weigh = self.weigh[:,np.newaxis,:].repeat(self.nfreq, 1)
+        if self.apply_weights:
+            if "WEIGHT_SPECTRUM" in self.ms.colnames():
+                self.weigh = self.fetch("WEIGHT_SPECTRUM", *args, **kwargs)
+            else:
+                self.weigh = self.fetch("WEIGHT", *args, **kwargs)
+                self.weigh = self.weigh[:,np.newaxis,:].repeat(self.nfreq, 1)
 
         if "BITFLAG" in self.ms.colnames():
             self.bflag = self.fetch("BITFLAG", *args, **kwargs)
