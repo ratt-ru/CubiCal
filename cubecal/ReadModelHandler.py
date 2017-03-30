@@ -276,7 +276,7 @@ class ReadModelHandler:
         # Creates empty 5D array into which the column data can be packed.
 
         out_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
-                            self.nants, self.ncorr], dtype=self.ctype)
+                            self.nants, 4], dtype=self.ctype)
 
         # Grabs the relevant time and antenna info.
 
@@ -303,10 +303,17 @@ class ReadModelHandler:
             column[selection][flags_arr] = 0
             
         # The following takes the arbitrarily ordered data from the MS and
-        # places it into tho 5D data structure (correlation matrix).
+        # places it into tho 5D data structure (correlation matrix). 
 
-        out_arr[tchunk, :, achunk, bchunk, :] = column[selection]
-        out_arr[tchunk, :, bchunk, achunk, :] = column[selection].conj()[...,(0,2,1,3)]
+        if self.ncorr==4:
+            out_arr[tchunk, :, achunk, bchunk, :] = column[selection]
+            out_arr[tchunk, :, bchunk, achunk, :] = column[selection].conj()[...,(0,2,1,3)]
+        elif self.ncorr==2:
+            out_arr[tchunk, :, achunk, bchunk, ::3] = column[selection]
+            out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection].conj()
+        elif self.ncorr==1:
+            out_arr[tchunk, :, achunk, bchunk, ::3] = column[selection][:,:,(0,0)]
+            out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection][:,:,(0,0)].conj()
 
         # This zeros the diagonal elements in the "baseline" plane. This is
         # purely a precaution - we do not want autocorrelations on the
