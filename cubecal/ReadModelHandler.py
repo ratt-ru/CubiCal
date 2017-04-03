@@ -87,8 +87,6 @@ class ReadModelHandler:
         self.chunk_tind = None
         self.chunk_find = None
         self.chunk_tkey = None
-        self._first_t = None
-        self._last_t = None
         self._first_f = None
         self._last_f = None
 
@@ -150,7 +148,7 @@ class ReadModelHandler:
         self.ddid_col = self.fetch("DATA_DESC_ID", *args, **kwargs)
         # list of unique times
         self.uniq_times = np.unique(self.time_col)
-        # timeslot index (each element gives index of timeslot)
+        # timeslot index (per row, each element gives index of timeslot)
         self.times = np.empty_like(self.time_col, dtype=np.int32)
         for i, t in enumerate(self.uniq_times):
             self.times[self.time_col == t] = i
@@ -193,12 +191,15 @@ class ReadModelHandler:
 
         # number of timeslots per each time chunk
         self.chunk_ntimes = []
+        # unique timestamps per each time chunk
+        self.chunk_timestamps = []
         # for each time chunk, make mask of rows associated with that chunk
         timechunk_mask = {}
         for tchunk in range(len(timechunks) - 1):
             ts0, ts1 = timechunks[tchunk:tchunk + 2]
             timechunk_mask[tchunk] = (self.times>=ts0) & (self.times<ts1)
             self.chunk_ntimes.append(ts1-ts0)
+            self.chunk_timestamps.append(np.unique(self.times[timechunk_mask[tchunk]]))
 
         # now, chunk_rind (chunk row index) will be an ordered dict, keyed by ddid,timechunk tuple.
         # Per each such tuple, it gives a _list of row indices_ corresponding to that chunk
@@ -421,13 +422,9 @@ class ReadModelHandler:
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
 
-        first_t, last_t, first_f, last_f = bounds
+        ddid, timechunk, first_f, last_f = bounds
 
-        times = np.unique(self.rtime[first_t: last_t])
-        time_indices = [[] for i in xrange(n_tim)]
-
-        for t, time in enumerate(times):
-            time_indices[t//t_int].append(time)
+        timestamps = self.chunk_timestamps[timechunk]
 
         freqs = range(first_f,last_f)
         freq_indices = [[] for i in xrange(n_fre)]
@@ -438,7 +435,7 @@ class ReadModelHandler:
         for d in xrange(n_dir):
             for t in xrange(n_tim):
                 for f in xrange(n_fre):
-                    comp_idx = (d,tuple(time_indices[t]),tuple(freq_indices[f]))
+                    comp_idx = (d,tuple(timestamps),tuple(freq_indices[f]))
                     self.gain_dict[comp_idx] = gains[d,t,f,:]
 
     def write_gain_dict(self, output_name=None):
