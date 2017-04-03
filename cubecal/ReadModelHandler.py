@@ -40,6 +40,7 @@ class ReadModelHandler:
         self._fldtab = pt.table(self.ms_name + "::FIELD", ack=False)
         self._spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW", ack=False)
         self._poltab = pt.table(self.ms_name + "::POLARIZATION", ack=False)
+        self._ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
 
         self.ctype = np.complex128 if precision=="64" else np.complex64
         self.ftype = np.float64 if precision=="64" else np.float32
@@ -56,8 +57,17 @@ class ReadModelHandler:
         self._phadir = self._fldtab.getcol("PHASE_DIR", startrow=self.fid,
                                            nrow=1)[0][0]
 
-        print>>log,"%d antennas, %d rows, %d timeslots, %d channels, %d corrs" % (self.nants,
-                    self.nrows,self.ntime, self.nfreq, self.ncorr)
+        # figure out DDID range
+        if ddid is not None:
+            if isinstance(ddid, (tuple, list)) and len(ddid) == 2:
+                self._ddids = range(*ddid)
+            else:
+                self._ddids = [ddid]
+        else:
+            self._ddids = range(self._ddesctab.nrows())
+
+        print>>log,"%d antennas, %d rows, %d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
+                    self.nrows, len(self._ddids), self.ntime, self.nfreq, self.ncorr)
 
         self.obvis = None
         self.movis = None
@@ -135,9 +145,20 @@ class ReadModelHandler:
         self.movis = self.fetch("MODEL_DATA", *args, **kwargs).astype(self.ctype)
         self.antea = self.fetch("ANTENNA1", *args, **kwargs)
         self.anteb = self.fetch("ANTENNA2", *args, **kwargs)
-        self.rtime = self.fetch("TIME", *args, **kwargs)
-        self.times = self.t_to_ind(self.rtime)
-        self.tdict = OrderedDict(sorted(Counter(self.times).items()))
+        # time & DDID columns
+        self.time_col = self.fetch("TIME", *args, **kwargs)
+        self.ddid_col = self.fetch("DATA_DESC_ID", *args, **kwargs)
+        # list of unique times
+        self.uniq_times = np.unique(self.time_col)
+        # timeslot index (each element gives index of timeslot)
+        self.times = np.empty_like(self.time_col, dtype=np.int32)
+        for i, t in enumerate(self.uniq_times):
+            self.times[self.time_col == t] = i
+        # not that timeslot does not need to be monotonic, but must be monotonic within each DDID
+        # # check that times increase monotonically
+        # if min(self.times[1:]-self.times[:-1]) < 0:
+        #     print>>log, ModColor.Str("TIME column is not in increasing order. Cannot deal with this MS!")
+        #     raise RuntimeError
         self.covis = np.empty_like(self.obvis)
         self.flags = self.fetch("FLAG", *args, **kwargs)
         self.uvwco = self.fetch("UVW", *args, **kwargs)
@@ -152,24 +173,6 @@ class ReadModelHandler:
         if "BITFLAG" in self.ms.colnames():
             self.bflag = self.fetch("BITFLAG", *args, **kwargs)
 
-    def t_to_ind(self, times):
-        """
-        Converts times into indices.
-
-        Args:
-            times (np.array): Time data.
-
-        Returns:
-            times (np.array): Time data as indices.
-        """
-
-        indices = np.empty_like(times, dtype=np.int32)
-
-        for i, j in enumerate(np.unique(times)):
-            indices[times == j] = i
-
-        return indices
-
     def define_chunk(self, tdim=1, fdim=1):
         """
         Defines the chunk dimensions for the data.
@@ -182,24 +185,41 @@ class ReadModelHandler:
         self.chunk_tdim = tdim
         self.chunk_fdim = fdim
 
-        self.chunk_tind = [0]
-        self.chunk_tind.extend(self.tdict.values())
-        self.chunk_tind = list(np.cumsum(self.chunk_tind)[::self.chunk_tdim])
+        # make list of timeslots at which we cut our time chunks
+        # JK: when you start dealing with SCAN_NUMBER, you'll need to massage this list
+        timechunks = range(self.times[0], self.times[-1]+1, self.chunk_tdim)
+        timechunks.append(self.times[-1]+1)
+        print>>log,"using %d time chunks: %s"%(len(timechunks)-1, " ".join(map(str, timechunks)))
 
-        break_i, break_t = self.check_contig()
+        # number of timeslots per each time chunk
+        self.chunk_ntimes = []
+        # for each time chunk, make mask of rows associated with that chunk
+        timechunk_mask = {}
+        for tchunk in range(len(timechunks) - 1):
+            ts0, ts1 = timechunks[tchunk:tchunk + 2]
+            timechunk_mask[tchunk] = (self.times>=ts0) & (self.times<ts1)
+            self.chunk_ntimes.append(ts1-ts0)
 
-        if self.chunk_tind[-1] != self.nrows:
-            self.chunk_tind.append(self.nrows)
+        # now, chunk_rind (chunk row index) will be an ordered dict, keyed by ddid,timechunk tuple.
+        # Per each such tuple, it gives a _list of row indices_ corresponding to that chunk
+        self.chunk_rind = OrderedDict()
+        for ddid in self._ddids:
+            ddid_rowmask = self.ddid_col==ddid
+            for tchunk in range(len(timechunks)-1):
+                self.chunk_rind[ddid,tchunk] = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
 
-        self.chunk_tkey = self.tdict.keys()[::self.chunk_tdim]
-        self.chunk_tkey.append(self.ntime)
+        # retiring this for now
+        # break_i, break_t = self.check_contig()
+
+        # self.chunk_tkey = self.tdict.keys()[::self.chunk_tdim]
+        # self.chunk_tkey.append(self.ntime)
 
         # self.chunk_tkey.extend(break_t)
         # self.chunk_tind.extend(break_i)
 
-        self.chunk_tkey = sorted(np.unique(self.chunk_tkey))
-        self.chunk_tind = sorted(np.unique(self.chunk_tind))
-        print>>log,"using %d time chunks: %s"%(len(self.chunk_tind)-1, " ".join(map(str, self.chunk_tind)))
+        # self.chunk_tkey = sorted(np.unique(self.chunk_tkey))
+        # self.chunk_tind = sorted(np.unique(self.chunk_tind))
+        print>>log,"using %d row chunks"%(len(self.chunk_rind),)
 
         self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
         self.chunk_find.append(self.nfreq)
@@ -233,25 +253,28 @@ class ReadModelHandler:
         mod_arr = None
         wgt_arr = None 
 
-        for i in xrange(len(self.chunk_tind[:-1])):
+        for (ddid, tchunk), rows  in self.chunk_rind.iteritems():
+            nrows = len(rows)
+            if not nrows:
+                continue
+
             for j in xrange(len(self.chunk_find[:-1])):
 
-                self._chunk_label = "T%dF%d" % (i,j)
+                self._chunk_label = "D%dT%dF%d" % (ddid, tchunk, j)
 
-                self._first_t = self.chunk_tind[i]
-                self._last_t = self.chunk_tind[i + 1]
-
+                self._chunk_ddid = ddid
+                self._chunk_tchunk = tchunk
                 self._first_f = self.chunk_find[j]
                 self._last_f = self.chunk_find[j + 1]
 
-                t_dim = self.chunk_tkey[i + 1] - self.chunk_tkey[i]
+                t_dim = self.chunk_ntimes[tchunk]
                 f_dim = self._last_f - self._first_f
 
-                obs_arr = self.col_to_arr("obser", t_dim, f_dim)
-                mod_arr = self.col_to_arr("model", t_dim, f_dim)
+                obs_arr = self.col_to_arr("obser", t_dim, f_dim, rows)
+                mod_arr = self.col_to_arr("model", t_dim, f_dim, rows)
 
                 if self.apply_weights:
-                    wgt_arr = self.col_to_arr("weigh", t_dim, f_dim)
+                    wgt_arr = self.col_to_arr("weigh", t_dim, f_dim, rows)
 
                 if self.simulate:
                     mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
@@ -273,7 +296,7 @@ class ReadModelHandler:
                 yield obs_arr, mod_arr, wgt_arr, self._chunk_label
 
 
-    def col_to_arr(self, target, chunk_tdim, chunk_fdim):
+    def col_to_arr(self, target, chunk_tdim, chunk_fdim, rows):
         """
         Converts input data into N-dimensional measurement matrices.
 
@@ -302,14 +325,14 @@ class ReadModelHandler:
 
         # Grabs the relevant time and antenna info.
 
-        achunk = self.antea[self._first_t:self._last_t]
-        bchunk = self.anteb[self._first_t:self._last_t]
-        tchunk = self.times[self._first_t:self._last_t]
+        achunk = self.antea[rows]
+        bchunk = self.anteb[rows]
+        tchunk = self.times[rows]
         tchunk -= np.min(tchunk)
 
         # Creates a tuple of slice objects to make subsequent slicing easier.
 
-        selection = (slice(self._first_t, self._last_t),
+        selection = (rows,
                      slice(self._first_f, self._last_f),
                      slice(None))
 
@@ -327,7 +350,6 @@ class ReadModelHandler:
         # The following takes the arbitrarily ordered data from the MS and
         # places it into tho 5D data structure (correlation matrix). 
 
-        print column.shape
         if self.ncorr==4:
             out_arr[tchunk, :, achunk, bchunk, :] = column[selection]
             out_arr[tchunk, :, bchunk, achunk, :] = column[selection].conj()[...,(0,2,1,3)]
@@ -374,22 +396,24 @@ class ReadModelHandler:
 
         """
 
-        f_t_row, l_t_row, f_f_col, l_f_col = bounds
+        ddid, timechunk, f_f_col, l_f_col = bounds
 
-        new_shape = [l_t_row - f_t_row, l_f_col - f_f_col, 4]
+        rows = self.chunk_rind[ddid,timechunk]
+        new_shape = [len(rows), l_f_col - f_f_col, 4]
 
-        tchunk = self.times[f_t_row:l_t_row]
-        achunk = self.antea[f_t_row:l_t_row]
-        bchunk = self.anteb[f_t_row:l_t_row]
+        tchunk = self.times[rows]
+        tchunk -= tchunk[0]        # is this correct -- does in_array start from beginning of chunk?
+        achunk = self.antea[rows]
+        bchunk = self.anteb[rows]
 
         if self.ncorr==4:
-            self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
+            self.covis[rows, f_f_col:l_f_col, :] = \
                 in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)
         elif self.ncorr==2:
-            self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
+            self.covis[rows, f_f_col:l_f_col, :] = \
                 in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)[:,:,::3]
         elif self.ncorr==1:
-            self.covis[f_t_row:l_t_row, f_f_col:l_f_col, :] = \
+            self.covis[rows, f_f_col:l_f_col, :] = \
                 in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)[:,:,::4]
 
 

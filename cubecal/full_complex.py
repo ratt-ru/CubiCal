@@ -312,7 +312,7 @@ def main():
 
     with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
         future_gains = { executor.submit(target, obser, model, label=chunk_label, **opts) :
-                         [ms._first_t, ms._last_t, ms._first_f, ms._last_f]
+                         [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
                          for obser, model, weight, chunk_label in ms }
 
         for future in cf.as_completed(future_gains):
