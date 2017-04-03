@@ -5,6 +5,9 @@ import cyfull_complex as cyfull
 import argparse
 import cPickle
 import concurrent.futures as cf
+from Tools import logger
+log = logger.getLogger("full_complex")
+
 
 def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
@@ -101,7 +104,7 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
 
 def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
-                chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
+                chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1, label=""):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
@@ -177,12 +180,12 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
             n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
 
             if n_conv/n_sols > 0.99:
-                print "Iteration {}: Static residual in {:.2%} of " \
-                             "visibilities.".format(iters, n_conv/n_sols)
+                print "{} iteration {}: Static residual in {:.2%} of " \
+                             "visibilities.".format(label, iters, n_conv/n_sols)
                 return gains
 
-    print "Iteration {}: Quorum reached: {:.2%} solutions " \
-                           "acceptable.".format(iters, n_quor/n_sols)
+    print>>log, "{} iteration {}: Quorum reached: {:.2%} solutions " \
+                           "acceptable.".format(label, iters, n_quor/n_sols)
 
     return gains
 
@@ -212,10 +215,10 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
     return corr_vis
 
 def solve_and_save(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
-                   chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1):
+                   chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1, label=""):
 
     gains = solve_gains(obser_arr, model_arr, min_delta_g, maxiter,
-                        chi_tol, chi_interval, t_int, f_int)
+                        chi_tol, chi_interval, t_int, f_int, label=label)
 
     corr_vis = apply_gains(obser_arr, gains, t_int, f_int)
 
@@ -308,9 +311,9 @@ def main():
     t0 = time()
 
     with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
-        future_gains = { executor.submit(target, obser, model, **opts) :
+        future_gains = { executor.submit(target, obser, model, label=chunk_label, **opts) :
                          [ms._first_t, ms._last_t, ms._first_f, ms._last_f]
-                         for obser, model, weight in ms }
+                         for obser, model, weight, chunk_label in ms }
 
         for future in cf.as_completed(future_gains):
             
@@ -323,7 +326,7 @@ def main():
             ms.add_to_gain_dict(gains, future_gains[future],
                                 args.tint, args.fint)
 
-    print "Time taken: {} seconds".format(time() - t0)
+    print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
 
     ms.write_gain_dict()
     

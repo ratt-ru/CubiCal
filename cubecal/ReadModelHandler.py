@@ -2,12 +2,16 @@ import numpy as np
 from collections import Counter, OrderedDict
 import pyrap.tables as pt
 import cPickle
+import better_exceptions
+
+from Tools import logger, ModColor
+log = logger.getLogger("ReadModelHandler")
 
 try:
     import MBTiggerSim as mbt
     import TiggerSourceProvider as tsp
 except:
-    print "Montblanc is not installed - simulation mode will crash."
+    print>>log, ModColor.Str("Montblanc is not installed - simulation mode will crash.")
 
 from time import time
 
@@ -22,18 +26,20 @@ class ReadModelHandler:
 
         self.taql = self.build_taql(taql, fid, ddid)
 
-        self.ms = pt.table(self.ms_name, readonly=False)
+        self.ms = pt.table(self.ms_name, readonly=False, ack=False)
 
         if self.taql:
-            print "Applying TAQL command: " , self.taql
+            print>>log, "Applying TAQL query: %s"%self.taql
             self.data = self.ms.query(self.taql)
         else:
             self.data = self.ms
 
-        self._anttab = pt.table(self.ms_name + "::ANTENNA")
-        self._fldtab = pt.table(self.ms_name + "::FIELD")
-        self._spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW")
-        self._poltab = pt.table(self.ms_name + "::POLARIZATION")
+        print>>log, ModColor.Str("reading MS %s"%self.ms_name, col="green")
+
+        self._anttab = pt.table(self.ms_name + "::ANTENNA", ack=False)
+        self._fldtab = pt.table(self.ms_name + "::FIELD", ack=False)
+        self._spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW", ack=False)
+        self._poltab = pt.table(self.ms_name + "::POLARIZATION", ack=False)
 
         self.ctype = np.complex128 if precision=="64" else np.complex64
         self.ftype = np.float64 if precision=="64" else np.float32
@@ -41,7 +47,7 @@ class ReadModelHandler:
         self.ntime = len(np.unique(self.fetch("TIME")))
         self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
         self.ncorr = self._poltab.getcol("NUM_CORR")[0]
-        self.nants = pt.table(self.ms_name + "::ANTENNA").nrows()
+        self.nants = self._anttab.nrows()
 
         self._nchans = self._spwtab.getcol("NUM_CHAN")
         self._rfreqs = self._spwtab.getcol("REF_FREQUENCY")
@@ -49,6 +55,9 @@ class ReadModelHandler:
         self._antpos = self._anttab.getcol("POSITION")
         self._phadir = self._fldtab.getcol("PHASE_DIR", startrow=self.fid,
                                            nrow=1)[0][0]
+
+        print>>log,"%d antennas, %d rows, %d timeslots, %d channels, %d corrs" % (self.nants,
+                    self.nrows,self.ntime, self.nfreq, self.ncorr)
 
         self.obvis = None
         self.movis = None
@@ -190,9 +199,11 @@ class ReadModelHandler:
 
         self.chunk_tkey = sorted(np.unique(self.chunk_tkey))
         self.chunk_tind = sorted(np.unique(self.chunk_tind))
+        print>>log,"using %d time chunks: %s"%(len(self.chunk_tind)-1, " ".join(map(str, self.chunk_tind)))
 
         self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
         self.chunk_find.append(self.nfreq)
+        print>>log,"using %d freq chunks: %s"%(len(self.chunk_find)-1, " ".join(map(str, self.chunk_find)))
 
     def check_contig(self):
 
@@ -224,6 +235,8 @@ class ReadModelHandler:
 
         for i in xrange(len(self.chunk_tind[:-1])):
             for j in xrange(len(self.chunk_find[:-1])):
+
+                self._chunk_label = "T%dF%d" % (i,j)
 
                 self._first_t = self.chunk_tind[i]
                 self._last_t = self.chunk_tind[i + 1]
@@ -257,7 +270,7 @@ class ReadModelHandler:
                     mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
                     mod_arr = arsnk._sim_array.reshape(mod_shape)
 
-                yield obs_arr, mod_arr, wgt_arr
+                yield obs_arr, mod_arr, wgt_arr, self._chunk_label
 
 
     def col_to_arr(self, target, chunk_tdim, chunk_fdim):
@@ -314,6 +327,7 @@ class ReadModelHandler:
         # The following takes the arbitrarily ordered data from the MS and
         # places it into tho 5D data structure (correlation matrix). 
 
+        print column.shape
         if self.ncorr==4:
             out_arr[tchunk, :, achunk, bchunk, :] = column[selection]
             out_arr[tchunk, :, bchunk, achunk, :] = column[selection].conj()[...,(0,2,1,3)]
