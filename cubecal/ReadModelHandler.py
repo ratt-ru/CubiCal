@@ -171,17 +171,19 @@ class ReadModelHandler:
         if "BITFLAG" in self.ms.colnames():
             self.bflag = self.fetch("BITFLAG", *args, **kwargs)
 
-    def define_chunk(self, tdim=1, fdim=1):
+    def define_chunk(self, tdim=1, fdim=1, maxchunk=None):
         """
         Defines the chunk dimensions for the data.
 
         Args:
             tdim (int): Timeslots per chunk.
             fdim (int): Frequencies per chunk.
+            maxchunk:   Max number of chunks to produce. (1 is useful for debugging). 0/None for all.
         """
 
         self.chunk_tdim = tdim
         self.chunk_fdim = fdim
+        self.maxchunk = maxchunk
 
         # Constructs a list of timeslots at which we cut our time chunks.
 
@@ -192,7 +194,7 @@ class ReadModelHandler:
             timechunks.extend(range(scan_chunks[scan_num], scan_chunks[scan_num+1], self.chunk_tdim))
         timechunks.append(self.times[-1]+1)        
         
-        print>>log,"using %d time chunks: %s"%(len(timechunks)-1, " ".join(map(str, timechunks)))
+        print>>log,"found %d time chunks: %s"%(len(timechunks)-1, " ".join(map(str, timechunks)))
 
         # Number of timeslots per time chunk
         self.chunk_ntimes = []
@@ -220,7 +222,7 @@ class ReadModelHandler:
             for tchunk in range(len(timechunks)-1):
                 self.chunk_rind[ddid,tchunk] = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
 
-        print>>log,"using %d row chunks"%(len(self.chunk_rind),)
+        print>>log,"will generate %d row chunks"%(len(self.chunk_rind),)
 
         self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
         self.chunk_find.append(self.nfreq)
@@ -250,14 +252,18 @@ class ReadModelHandler:
 
         obs_arr = None
         mod_arr = None
-        wgt_arr = None 
+        wgt_arr = None
+        ichunk = 0
 
-        for (ddid, tchunk), rows  in self.chunk_rind.iteritems():
+        for (ddid, tchunk), rows in self.chunk_rind.iteritems():
             nrows = len(rows)
             if not nrows:
                 continue
 
             for j in xrange(len(self.chunk_find[:-1])):
+                ichunk += 1
+                if self.maxchunk and ichunk > self.maxchunk:
+                    continue
 
                 self._chunk_label = "D%dT%dF%d" % (ddid, tchunk, j)
 

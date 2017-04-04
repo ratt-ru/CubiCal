@@ -9,6 +9,7 @@ import concurrent.futures as cf
 from Tools import logger
 log = logger.getLogger("full_complex")
 
+verbose_iterations = False
 
 def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
@@ -141,6 +142,9 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
 
     chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
+    init_chi = chi.mean()
+    if verbose_iterations:
+        print>> log, "{} initial chi-sq is  {}".format(label, init_chi)
 
     min_quorum = 0.99
 
@@ -179,14 +183,15 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
             chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
 
             n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
+            if verbose_iterations:
+                print>> log, "{} iteration {} chi-sq is {}, max gain update {}".format(label, iters, chi.mean(), diff_g.max())
 
             if n_conv/n_sols > 0.99:
                 print>>log, "{} iteration {}: Static residual in {:.2%} of " \
-                             "visibilities.".format(label, iters, n_conv/n_sols)
+                             "visibilities. Chisq {} -> {}".format(label, iters, n_conv/n_sols, init_chi, chi.mean())
                 return gains
 
-    print>>log, "{} iteration {}: Quorum reached: {:.2%} solutions " \
-                           "acceptable.".format(label, iters, n_quor/n_sols)
+    print>>log, "{} iteration {}: Quorum {:.2%}. Chisq {} -> {}".format(label, iters, n_quor/n_sols, init_chi, chi.mean())
 
     return gains
 
@@ -239,6 +244,8 @@ def main():
                         help='Determines time chunk size.')
     parser.add_argument('-fc','--fchunk', type=int, default=1,
                         help='Determines frequency chunk size.')
+    parser.add_argument('--maxchunk', type=int, default=0,
+                        help='Process only this many chunks, then stop. Useful for debugging.')
     parser.add_argument('-ti','--tint', type=int, default=1,
                         help='Determines time solution intervals.')
     parser.add_argument('-fi','--fint', type=int, default=1,
@@ -297,8 +304,10 @@ def main():
     ms = ReadModelHandler(args.msname, args.smname, fid=args.field, ddid=ddid,
                           precision=args.precision, ddes=args.use_ddes,
                           simulate=args.simulate, apply_weights=args.apply_weights)
+    print>>log, "reading MS columns"
     ms.mass_fetch()
-    ms.define_chunk(args.tchunk, args.fchunk)
+    print>>log, "defining chunks"
+    ms.define_chunk(args.tchunk, args.fchunk, maxchunk=args.maxchunk)
 
     if args.applyflags:
         ms.apply_flags = True
