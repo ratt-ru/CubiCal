@@ -3,6 +3,7 @@ from time import time,sleep
 import math
 import cyfull_complex as cyfull
 import argparse
+import sys
 import cPickle
 import concurrent.futures as cf
 from Tools import logger
@@ -275,9 +276,15 @@ def main():
                         help='Save corrected visibilities to MS.')
     parser.add_argument('-weigh','--apply_weights', action="store_true",
                         help='Use weighted least squares.')
-
+    parser.add_argument('-l', '--log', type=str, default="log",
+                        help='Write output to log file.')
 
     args = parser.parse_args()
+
+    # init logger
+    logger.logToFile(args.log, append=False)
+    logger.enableMemoryLogging(True)
+    print>>log, "started: "+" ".join(sys.argv)
 
     if args.ddid is not None:
         if args.ddid_to is not None:
