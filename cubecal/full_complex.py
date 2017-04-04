@@ -140,11 +140,15 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
     iters = 1
 
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
-
+    # S = slice(166,176)
+    # print obser_arr.flatten()[S]
+    # print model_arr.flatten()[S]
+    # print residual.flatten()[S]
+    # print abs(residual).max(),abs(residual).argmax()
     chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
     init_chi = chi.mean()
     if verbose_iterations:
-        print>> log, "{} initial chi-sq is  {}".format(label, init_chi)
+        print>> log, "{} initial chi-sq is {}".format(label, init_chi)
 
     min_quorum = 0.99
 
@@ -233,65 +237,77 @@ def solve_and_save(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
 
 # if __name__ == "__main__":
 
-def main():
+def debug():
+    main(debugging=True)
 
-    parser = argparse.ArgumentParser(description='Basic full-polarisation '
-                                                 'calibration script.')
-    parser.add_argument('msname', help='Name and location of MS.')
-    parser.add_argument('smname', help='Name and location of sky model.',
-                        type=str)
-    parser.add_argument('-tc','--tchunk', type=int, default=1,
-                        help='Determines time chunk size.')
-    parser.add_argument('-fc','--fchunk', type=int, default=1,
-                        help='Determines frequency chunk size.')
-    parser.add_argument('--maxchunk', type=int, default=0,
-                        help='Process only this many chunks, then stop. Useful for debugging.')
-    parser.add_argument('-ti','--tint', type=int, default=1,
-                        help='Determines time solution intervals.')
-    parser.add_argument('-fi','--fint', type=int, default=1,
-                        help='Determines frequency solution intervals.')
-    parser.add_argument('-af','--applyflags', action="store_true",
-                        help='Apply FLAG column to data.')
-    parser.add_argument('-bm','--bitmask', type=int, default=0,
-                        help='Apply masked bitflags to data.')
-    parser.add_argument('-maxit','--maxiter', type=int, default=50,
-                        help='Maximum number of iterations.')
-    parser.add_argument('-f', '--field', type=int,
-                        help='Selects a particular FIELD_ID.')
-    parser.add_argument('-d', '--ddid', type=int,
-                        help='Selects a particular DATA_DESC_ID.')
-    parser.add_argument('-p', '--precision', type=str, default='32',
-                        help='Selects a particular data type.')
-    parser.add_argument('--ddid_to', type=int, help='Selects range from' 
-                        '--ddid to a particular DATA_DESC_ID.')
-    parser.add_argument('-ddes','--use_ddes', action="store_true",
-                        help='Simulate and solve for directions in sky model')
-    parser.add_argument('-sim','--simulate', action="store_true",
-                        help='Simulate visibilities using Montblanc.')
-    parser.add_argument('-delg','--min_delta_g', type=float, default=1e-6,
-                        help='Stopping criteria for delta G - stop when '
-                             'solutions change less than this value.')
-    parser.add_argument('-delchi','--min_delta_chi', type=float, default=1e-6,
-                        help='Stopping criteria for delta chi - stop when '
-                             'the residual changes less than this value.')
-    parser.add_argument('-chiint','--chi_interval', type=int, default=5,
-                        help='Interval at which to check the chi squared '
-                             'value - expensive computation.')
-    parser.add_argument('-nproc','--processes', type=int, default=1,
-                        help='Number of processes to run.')
-    parser.add_argument('-savco','--save_corrected', action="store_true",
-                        help='Save corrected visibilities to MS.')
-    parser.add_argument('-weigh','--apply_weights', action="store_true",
-                        help='Use weighted least squares.')
-    parser.add_argument('-l', '--log', type=str, default="log",
-                        help='Write output to log file.')
-
-    args = parser.parse_args()
+def main(debugging=False):
 
     # init logger
-    logger.logToFile(args.log, append=False)
     logger.enableMemoryLogging(True)
-    print>>log, "started: "+" ".join(sys.argv)
+
+    if debugging:
+        print>> log, "initializing from cubecal.last"
+        args = cPickle.load(open("cubecal.last"))
+        logger.logToFile(args.log, append=False)
+    else:
+        parser = argparse.ArgumentParser(description='Basic full-polarisation '
+                                                     'calibration script.')
+        parser.add_argument('msname', help='Name and location of MS.')
+        parser.add_argument('smname', help='Name and location of sky model.',
+                            type=str)
+        parser.add_argument('-tc','--tchunk', type=int, default=1,
+                            help='Determines time chunk size.')
+        parser.add_argument('-fc','--fchunk', type=int, default=1,
+                            help='Determines frequency chunk size.')
+        parser.add_argument('--single-chunk-id', type=str,
+                            help='Process only the specified chunk, then stop. Useful for debugging.')
+        parser.add_argument('-ti','--tint', type=int, default=1,
+                            help='Determines time solution intervals.')
+        parser.add_argument('-fi','--fint', type=int, default=1,
+                            help='Determines frequency solution intervals.')
+        parser.add_argument('-af','--applyflags', action="store_true",
+                            help='Apply FLAG column to data.')
+        parser.add_argument('-bm','--bitmask', type=int, default=0,
+                            help='Apply masked bitflags to data.')
+        parser.add_argument('-maxit','--maxiter', type=int, default=50,
+                            help='Maximum number of iterations.')
+        parser.add_argument('-f', '--field', type=int,
+                            help='Selects a particular FIELD_ID.')
+        parser.add_argument('-d', '--ddid', type=int,
+                            help='Selects a particular DATA_DESC_ID.')
+        parser.add_argument('-p', '--precision', type=str, default='32',
+                            help='Selects a particular data type.')
+        parser.add_argument('--ddid_to', type=int, help='Selects range from'
+                            '--ddid to a particular DATA_DESC_ID.')
+        parser.add_argument('-ddes','--use_ddes', action="store_true",
+                            help='Simulate and solve for directions in sky model')
+        parser.add_argument('-sim','--simulate', action="store_true",
+                            help='Simulate visibilities using Montblanc.')
+        parser.add_argument('-delg','--min_delta_g', type=float, default=1e-6,
+                            help='Stopping criteria for delta G - stop when '
+                                 'solutions change less than this value.')
+        parser.add_argument('-delchi','--min_delta_chi', type=float, default=1e-6,
+                            help='Stopping criteria for delta chi - stop when '
+                                 'the residual changes less than this value.')
+        parser.add_argument('-chiint','--chi_interval', type=int, default=5,
+                            help='Interval at which to check the chi squared '
+                                 'value - expensive computation.')
+        parser.add_argument('-nproc','--processes', type=int, default=1,
+                            help='Number of processes to run.')
+        parser.add_argument('-savco','--save_corrected', action="store_true",
+                            help='Save corrected visibilities to MS.')
+        parser.add_argument('-weigh','--apply_weights', action="store_true",
+                            help='Use weighted least squares.')
+        parser.add_argument('-l', '--log', type=str, default="log",
+                            help='Write output to log file.')
+
+        args = parser.parse_args()
+
+        cPickle.dump(args, open("cubecal.last","w"))
+
+        logger.logToFile(args.log, append=False)
+        print>> log, "started: " + " ".join(sys.argv)
+
 
     if args.ddid is not None:
         if args.ddid_to is not None:
@@ -307,7 +323,7 @@ def main():
     print>>log, "reading MS columns"
     ms.mass_fetch()
     print>>log, "defining chunks"
-    ms.define_chunk(args.tchunk, args.fchunk, maxchunk=args.maxchunk)
+    ms.define_chunk(args.tchunk, args.fchunk, single_chunk_id=args.single_chunk_id)
 
     if args.applyflags:
         ms.apply_flags = True
@@ -326,21 +342,30 @@ def main():
 
     t0 = time()
 
-    with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
-        future_gains = { executor.submit(target, obser, model, label=chunk_label, **opts) :
-                         [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
-                         for obser, model, weight, chunk_label in ms }
-
-        for future in cf.as_completed(future_gains):
-            
-            if target is solve_and_save:
-                gains, covis = future.result()
-                ms.arr_to_col(covis, future_gains[future])
-            else:
-                gains = future.result()
-
-            ms.add_to_gain_dict(gains, future_gains[future],
+    # debugging mode: run serially (also if nproc not set)
+    if debugging or not args.processes:
+        for obser, model, weight, chunk_label in ms:
+            gains = target(obser, model, label = chunk_label, **opts)
+            ms.add_to_gain_dict(gains, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f],
                                 args.tint, args.fint)
+
+    # normal mode: use futures to run in parallel
+    else:
+        with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
+            future_gains = { executor.submit(target, obser, model, label=chunk_label, **opts) :
+                             [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
+                             for obser, model, weight, chunk_label in ms }
+
+            for future in cf.as_completed(future_gains):
+
+                if target is solve_and_save:
+                    gains, covis = future.result()
+                    ms.arr_to_col(covis, future_gains[future])
+                else:
+                    gains = future.result()
+
+                ms.add_to_gain_dict(gains, future_gains[future],
+                                    args.tint, args.fint)
 
     print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
 

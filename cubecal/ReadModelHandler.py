@@ -171,19 +171,19 @@ class ReadModelHandler:
         if "BITFLAG" in self.ms.colnames():
             self.bflag = self.fetch("BITFLAG", *args, **kwargs)
 
-    def define_chunk(self, tdim=1, fdim=1, maxchunk=None):
+    def define_chunk(self, tdim=1, fdim=1, single_chunk_id=None):
         """
         Defines the chunk dimensions for the data.
 
         Args:
             tdim (int): Timeslots per chunk.
             fdim (int): Frequencies per chunk.
-            maxchunk:   Max number of chunks to produce. (1 is useful for debugging). 0/None for all.
+            single_chunk_id:   If set, iterator will yield only the one specified chunk. Useful for debugging.
         """
 
         self.chunk_tdim = tdim
         self.chunk_fdim = fdim
-        self.maxchunk = maxchunk
+        self._single_chunk_id  = single_chunk_id
 
         # Constructs a list of timeslots at which we cut our time chunks.
 
@@ -262,10 +262,9 @@ class ReadModelHandler:
 
             for j in xrange(len(self.chunk_find[:-1])):
                 ichunk += 1
-                if self.maxchunk and ichunk > self.maxchunk:
-                    continue
-
                 self._chunk_label = "D%dT%dF%d" % (ddid, tchunk, j)
+                if self._single_chunk_id and self._single_chunk_id != self._chunk_label:
+                    continue
 
                 self._chunk_ddid = ddid
                 self._chunk_tchunk = tchunk
@@ -325,7 +324,7 @@ class ReadModelHandler:
 
         # Creates empty 5D array into which the column data can be packed.
 
-        out_arr = np.empty([chunk_tdim, chunk_fdim, self.nants,
+        out_arr = np.zeros([chunk_tdim, chunk_fdim, self.nants,
                             self.nants, 4], dtype=self.ctype)
 
         # Grabs the relevant time and antenna info.
