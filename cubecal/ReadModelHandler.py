@@ -183,18 +183,27 @@ class ReadModelHandler:
         self.chunk_tdim = tdim
         self.chunk_fdim = fdim
 
-        # make list of timeslots at which we cut our time chunks
-        # JK: when you start dealing with SCAN_NUMBER, you'll need to massage this list
-        timechunks = range(self.times[0], self.times[-1]+1, self.chunk_tdim)
-        timechunks.append(self.times[-1]+1)
+        # Constructs a list of timeslots at which we cut our time chunks.
+
+        scan_chunks = self.check_contig()
+        
+        timechunks = []
+        for scan_num in xrange(len(scan_chunks) - 1):
+            timechunks.extend(range(scan_chunks[scan_num], scan_chunks[scan_num+1], self.chunk_tdim))
+        timechunks.append(self.times[-1]+1)        
+        
         print>>log,"using %d time chunks: %s"%(len(timechunks)-1, " ".join(map(str, timechunks)))
 
-        # number of timeslots per each time chunk
+        # Number of timeslots per time chunk
         self.chunk_ntimes = []
-        # unique timestamps per each time chunk
+        
+        # Unique timestamps per time chunk
         self.chunk_timestamps = []
-        # for each time chunk, make mask of rows associated with that chunk
+        
+        # For each time chunk, create a mask for associated rows.
+        
         timechunk_mask = {}
+        
         for tchunk in range(len(timechunks) - 1):
             ts0, ts1 = timechunks[tchunk:tchunk + 2]
             timechunk_mask[tchunk] = (self.times>=ts0) & (self.times<ts1)
@@ -203,41 +212,30 @@ class ReadModelHandler:
 
         # now, chunk_rind (chunk row index) will be an ordered dict, keyed by ddid,timechunk tuple.
         # Per each such tuple, it gives a _list of row indices_ corresponding to that chunk
+        
         self.chunk_rind = OrderedDict()
+        
         for ddid in self._ddids:
             ddid_rowmask = self.ddid_col==ddid
             for tchunk in range(len(timechunks)-1):
                 self.chunk_rind[ddid,tchunk] = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
 
-        # retiring this for now
-        # break_i, break_t = self.check_contig()
-
-        # self.chunk_tkey = self.tdict.keys()[::self.chunk_tdim]
-        # self.chunk_tkey.append(self.ntime)
-
-        # self.chunk_tkey.extend(break_t)
-        # self.chunk_tind.extend(break_i)
-
-        # self.chunk_tkey = sorted(np.unique(self.chunk_tkey))
-        # self.chunk_tind = sorted(np.unique(self.chunk_tind))
         print>>log,"using %d row chunks"%(len(self.chunk_rind),)
 
         self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
         self.chunk_find.append(self.nfreq)
+
         print>>log,"using %d freq chunks: %s"%(len(self.chunk_find)-1, " ".join(map(str, self.chunk_find)))
 
     def check_contig(self):
 
-        ddid = self.fetch("SCAN_NUMBER")
+        scan = self.fetch("SCAN_NUMBER")
 
-        break_i, break_t = [], []
+        scan_i = np.where(np.roll(scan,1)!=scan)[0]
+        scan_t = list(self.times[scan_i])
+        scan_t.append(self.ntime)
 
-        for i in xrange(len(ddid) - 1):
-            if ddid[i] != ddid[i + 1]:
-                break_i.append(i + 1)
-                break_t.append(self.times[i + 1])
-
-        return break_i, break_t
+        return scan_t
 
     def __iter__(self):
         return next(self)

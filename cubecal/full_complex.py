@@ -181,7 +181,7 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
             n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
 
             if n_conv/n_sols > 0.99:
-                print "{} iteration {}: Static residual in {:.2%} of " \
+                print>>log, "{} iteration {}: Static residual in {:.2%} of " \
                              "visibilities.".format(label, iters, n_conv/n_sols)
                 return gains
 
