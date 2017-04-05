@@ -39,29 +39,25 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:] m,
                 rc = f/f_int
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
-                        r[rr,rc,aa,ab,0,0] = \
-                            r[rr,rc,aa,ab,0,0] + o[t,f,aa,ab,0,0] - (
+                        r[t,f,aa,ab,0,0] = o[t,f,aa,ab,0,0] - (
                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-                        r[rr,rc,aa,ab,0,1] = \
-                            r[rr,rc,aa,ab,0,1] + o[t,f,aa,ab,0,1] - (
+                        r[t,f,aa,ab,0,1] = o[t,f,aa,ab,0,1] - (
                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
                         g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
-                        r[rr,rc,aa,ab,1,0] = \
-                            r[rr,rc,aa,ab,1,0] + o[t,f,aa,ab,1,0] - (
+                        r[t,f,aa,ab,1,0] = o[t,f,aa,ab,1,0] - (
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-                        r[rr,rc,aa,ab,1,1] = \
-                            r[rr,rc,aa,ab,1,1] + o[t,f,aa,ab,1,1] - (
+                        r[t,f,aa,ab,1,1] = o[t,f,aa,ab,1,1] - (
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \

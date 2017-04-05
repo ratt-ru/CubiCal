@@ -94,7 +94,7 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
 
-    residual_shape = [n_tim, n_fre, n_ant, n_ant, n_cor, n_cor]
+    residual_shape = obser_arr.shape
 
     residual = np.zeros(residual_shape, dtype=obser_arr.dtype)
     gains_h = gains.transpose(0,1,2,3,5,4).conj()
@@ -130,7 +130,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
         flags_arr (np.array: n_tim, n_fre, n_ant, n_ant): int array flagging invalid points
         min_delta_g (float): Gain improvement threshold.
         maxiter (int): Maximum number of iterations allowed.
-        chi_tol (float): Chi-squared improvement threshold.
+        chi_tol (float): Chi-squared improvement threshold (relative)
         chi_interval (int): Interval at which the chi-squared test is performed.
 
     Returns:
@@ -251,7 +251,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
             chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4)) * chisq_norm
             mean_chi = chi.sum() / num_valid_slots
 
-            n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
+            n_conv = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
             if verbose > 1:
                 print>> log, "{} iteration {} chi-sq is {}, max gain update {}".format(label, iters, mean_chi, diff_g.max())
 
