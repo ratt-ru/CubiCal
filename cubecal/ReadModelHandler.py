@@ -17,13 +17,14 @@ from time import time
 
 class FL(object):
     """Namespace for flag bits"""
-    PRIOR   = 1       # prior flags (i.e. from MS)
-    MISSING = 1<<1    # missing data
-    INVALID = 1<<2    # invalid data or model (inf, nan)
-    NOCONV  = 1<<4    # no convergence
-    CHISQ   = 1<<5    # excessive chisq
-    OOB     = 1<<6    # solution out of bounds
-    BOOM    = 1<<7    # solution exploded (i.e. went to inf/nan)
+    PRIOR    = 1       # prior flags (i.e. from MS)
+    MISSING  = 1<<1    # missing data
+    INVALID  = 1<<2    # invalid data or model (inf, nan)
+    NOCONV   = 1<<4    # no convergence
+    CHISQ    = 1<<5    # excessive chisq
+    GOOB     = 1<<6    # gain solution out of bounds
+    BOOM     = 1<<7    # gain solution exploded (i.e. went to inf/nan)
+    GNULL    = 1<<8    # gain solution gone to zero
 
     @staticmethod
     def categories():
@@ -360,8 +361,7 @@ class ReadModelHandler:
 
         # Creates empty 5D array into which the column data can be packed.
 
-        out_arr = np.zeros([chunk_tdim, chunk_fdim, self.nants,
-                            self.nants, 4], dtype=dtype)
+        out_arr = np.zeros([chunk_tdim, chunk_fdim, self.nants, self.nants, 4], dtype=dtype)
         # initial state of flags is FL.MISSING -- to be filled by actual flags where data is available
         if target is "flags":
             out_arr[:] = FL.MISSING
@@ -383,46 +383,45 @@ class ReadModelHandler:
         # places it into tho 5D data structure (correlation matrix). 
 
         if self.ncorr==4:
-            out_arr[tchunk, :, achunk, bchunk, :] = column[selection]
+            out_arr[tchunk, :, achunk, bchunk, :] = colsel = column[selection]
             if dtype == self.ctype:
-                out_arr[tchunk, :, bchunk, achunk, :] = column[selection].conj()[...,(0,2,1,3)]
+                out_arr[tchunk, :, bchunk, achunk, :] = colsel.conj()[...,(0,2,1,3)]
             else:
-                out_arr[tchunk, :, bchunk, achunk, :] = column[selection][..., (0, 2, 1, 3)]
+                out_arr[tchunk, :, bchunk, achunk, :] = colsel[..., (0, 2, 1, 3)]
         elif self.ncorr==2:
-            out_arr[tchunk, :, achunk, bchunk, ::3] = column[selection]
+            out_arr[tchunk, :, achunk, bchunk, ::3] = colsel = column[selection]
             if dtype == self.ctype:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection].conj()
+                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel.conj()
             else:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection]
+                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel
         elif self.ncorr==1:
-            out_arr[tchunk, :, achunk, bchunk, ::3] = column[selection][:,:,(0,0)]
+            out_arr[tchunk, :, achunk, bchunk, ::3] = colsel = column[selection][:,:,(0,0)]
             if dtype == self.ctype:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection][:,:,(0,0)].conj()
+                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel.conj()
             else:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection][:,:,(0,0)]
+                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel
 
         # This zeros the diagonal elements in the "baseline" plane. This is
         # purely a precaution - we do not want autocorrelations on the
         # diagonal.
-
-        out_arr[:,:,range(self.nants),range(self.nants),:] = 0
+        if target is "flags":
+            out_arr[:,:,range(self.nants),range(self.nants),:] = FL.MISSING
+        else:
+            out_arr[:,:,range(self.nants),range(self.nants),:] = 0
 
         # The final step here reshapes the output to ensure compatability
         # with code elsewhere. 
 
         if target is "obser":
-            out_arr = out_arr.reshape([chunk_tdim, chunk_fdim,
-                           self.nants, self.nants, 2, 2])
+            out_arr = out_arr.reshape([chunk_tdim, chunk_fdim, self.nants, self.nants, 2, 2])
+
         elif target is "flags":
             out_arr = np.bitwise_or.reduce(out_arr, axis=-1)
 
         elif target is "model":
-            out_arr = out_arr.reshape([1, chunk_tdim, chunk_fdim,
-                                       self.nants, self.nants, 2, 2])
+            out_arr = out_arr.reshape([1, chunk_tdim, chunk_fdim, self.nants, self.nants, 2, 2])
         elif target is "weigh":
-            out_arr = np.average(out_arr.astype(self.ftype), axis=-1)
-            out_arr = out_arr.reshape([chunk_tdim, chunk_fdim,
-                                       self.nants, self.nants])
+            out_arr = np.sum(out_arr, axis=-1)
 
         return out_arr
 
