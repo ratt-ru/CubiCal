@@ -15,6 +15,22 @@ except:
 
 from time import time
 
+class FL(object):
+    """Namespace for flag bits"""
+    PRIOR   = 1       # prior flags (i.e. from MS)
+    MISSING = 1<<1    # missing data
+    INVALID = 1<<2    # invalid data or model (inf, nan)
+    NOCONV  = 1<<4    # no convergence
+    CHISQ   = 1<<5    # excessive chisq
+    OOB     = 1<<6    # solution out of bounds
+    BOOM    = 1<<7    # solution exploded (i.e. went to inf/nan)
+
+    @staticmethod
+    def categories():
+        """Returns dict of all flag categories defined above"""
+        return OrderedDict([(attr, value) for attr, value in FL.__dict__.iteritems() if attr[0] != "_" and type(value) is int])
+
+
 class ReadModelHandler:
 
     def __init__(self, ms_name, sm_name, taql=None, fid=None, ddid=None,
@@ -44,6 +60,7 @@ class ReadModelHandler:
 
         self.ctype = np.complex128 if precision=="64" else np.complex64
         self.ftype = np.float64 if precision=="64" else np.float32
+        self.flagtype = np.int32
         self.nrows = self.data.nrows()
         self.ntime = len(np.unique(self.fetch("TIME")))
         self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
@@ -158,7 +175,6 @@ class ReadModelHandler:
         #     print>>log, ModColor.Str("TIME column is not in increasing order. Cannot deal with this MS!")
         #     raise RuntimeError
         self.covis = np.empty_like(self.obvis)
-        self.flags = self.fetch("FLAG", *args, **kwargs)
         self.uvwco = self.fetch("UVW", *args, **kwargs)
 
         if self.apply_weights:
@@ -168,8 +184,18 @@ class ReadModelHandler:
                 self.weigh = self.fetch("WEIGHT", *args, **kwargs)
                 self.weigh = self.weigh[:,np.newaxis,:].repeat(self.nfreq, 1)
 
-        if "BITFLAG" in self.ms.colnames():
-            self.bflag = self.fetch("BITFLAG", *args, **kwargs)
+        # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
+        self.flags = np.zeros(self.obvis.shape, dtype=self.flagtype)
+        if self.apply_flags:
+            flags = self.fetch("FLAG", *args, **kwargs)
+            # apply FLAG_ROW on top
+            flags[self.fetch("FLAG_ROW", *args, **kwargs),:,:] = True
+            # apply BITFLAG on top, if present
+            if "BITFLAG" in self.ms.colnames():
+                bflag = self.fetch("BITFLAG", *args, **kwargs)
+                bflag |= self.fetch("BITFLAG_ROW", *args, **kwargs)[:, np.newaxis, np.newaxis]
+                flags |= ((bflag&(self.bitmask or 0)) != 0)
+            self.flags[flags] = FL.PRIOR
 
     def define_chunk(self, tdim=1, fdim=1, single_chunk_id=None):
         """
@@ -274,11 +300,20 @@ class ReadModelHandler:
                 t_dim = self.chunk_ntimes[tchunk]
                 f_dim = self._last_f - self._first_f
 
+                # validity array has the inverse meaning of flags (True if value is present and not flagged)
+                flags = self.col_to_arr("flags", t_dim, f_dim, rows)
                 obs_arr = self.col_to_arr("obser", t_dim, f_dim, rows)
                 mod_arr = self.col_to_arr("model", t_dim, f_dim, rows)
+                # flag invalid data or model
+                flags[(~np.isfinite(obs_arr)).any(axis=(-2,-1))] |= FL.INVALID
+                flags[(~np.isfinite(mod_arr[0,...])).any(axis=(-2,-1))] |= FL.INVALID
+                # zero flagged entries in data and model
+                obs_arr[flags!=0, :, :] = 0
+                mod_arr[0, flags!=0, :, :] = 0
 
                 if self.apply_weights:
                     wgt_arr = self.col_to_arr("weigh", t_dim, f_dim, rows)
+                    wgt_arr[flags!=0] = 0
 
                 if self.simulate:
                     mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
@@ -297,7 +332,7 @@ class ReadModelHandler:
                     mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
                     mod_arr = arsnk._sim_array.reshape(mod_shape)
 
-                yield obs_arr, mod_arr, wgt_arr, self._chunk_label
+                yield obs_arr, mod_arr, flags, wgt_arr, self._chunk_label
 
 
     def col_to_arr(self, target, chunk_tdim, chunk_fdim, rows):
@@ -316,16 +351,20 @@ class ReadModelHandler:
             flags_arr (np.array): Array containing flags for the active data.
         """
 
-        opts = {"model": self.movis, 
-                "obser": self.obvis,
-                "weigh": self.weigh}
+        opts = {"model": (self.movis, self.ctype),
+                "obser": (self.obvis, self.ctype),
+                "weigh": (self.weigh, self.ftype),
+                "flags": (self.flags, self.flagtype) }
 
-        column = opts[target]
+        column, dtype = opts[target]
 
         # Creates empty 5D array into which the column data can be packed.
 
         out_arr = np.zeros([chunk_tdim, chunk_fdim, self.nants,
-                            self.nants, 4], dtype=self.ctype)
+                            self.nants, 4], dtype=dtype)
+        # initial state of flags is FL.MISSING -- to be filled by actual flags where data is available
+        if target is "flags":
+            out_arr[:] = FL.MISSING
 
         # Grabs the relevant time and antenna info.
 
@@ -340,29 +379,27 @@ class ReadModelHandler:
                      slice(self._first_f, self._last_f),
                      slice(None))
 
-        # This handles flagging.TODO: Make using basic flags optional.
-
-        if self.apply_flags:
-
-            flags_arr = self.flags[selection]
-
-            if self.bitmask is not None:
-                flags_arr |= ((self.bflag[selection] & self.bitmask) != False)
-
-            column[selection][flags_arr] = 0
-            
         # The following takes the arbitrarily ordered data from the MS and
         # places it into tho 5D data structure (correlation matrix). 
 
         if self.ncorr==4:
             out_arr[tchunk, :, achunk, bchunk, :] = column[selection]
-            out_arr[tchunk, :, bchunk, achunk, :] = column[selection].conj()[...,(0,2,1,3)]
+            if dtype == self.ctype:
+                out_arr[tchunk, :, bchunk, achunk, :] = column[selection].conj()[...,(0,2,1,3)]
+            else:
+                out_arr[tchunk, :, bchunk, achunk, :] = column[selection][..., (0, 2, 1, 3)]
         elif self.ncorr==2:
             out_arr[tchunk, :, achunk, bchunk, ::3] = column[selection]
-            out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection].conj()
+            if dtype == self.ctype:
+                out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection].conj()
+            else:
+                out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection]
         elif self.ncorr==1:
             out_arr[tchunk, :, achunk, bchunk, ::3] = column[selection][:,:,(0,0)]
-            out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection][:,:,(0,0)].conj()
+            if dtype == self.ctype:
+                out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection][:,:,(0,0)].conj()
+            else:
+                out_arr[tchunk, :, bchunk, achunk, ::3] = column[selection][:,:,(0,0)]
 
         # This zeros the diagonal elements in the "baseline" plane. This is
         # purely a precaution - we do not want autocorrelations on the
@@ -375,7 +412,10 @@ class ReadModelHandler:
 
         if target is "obser":
             out_arr = out_arr.reshape([chunk_tdim, chunk_fdim,
-                                       self.nants, self.nants, 2, 2])
+                           self.nants, self.nants, 2, 2])
+        elif target is "flags":
+            out_arr = np.bitwise_or.reduce(out_arr, axis=-1)
+
         elif target is "model":
             out_arr = out_arr.reshape([1, chunk_tdim, chunk_fdim,
                                        self.nants, self.nants, 2, 2])

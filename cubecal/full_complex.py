@@ -9,7 +9,7 @@ import concurrent.futures as cf
 from Tools import logger
 log = logger.getLogger("full_complex")
 
-verbose_iterations = False
+verbose = 0
 
 def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
@@ -105,15 +105,16 @@ def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
     return residual
 
 
-def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
+def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
                 chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1, label=""):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
 
     Args:
-        obser_arr (np.array): Array containing the observed visibilities.
-        model_arr (np.array): Array containing the model visibilities.
+        obser_arr (np.array: n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): Array containing the observed visibilities.
+        model_arr (np.array: n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): Array containing the model visibilities.
+        flags_arr (np.array: n_tim, n_fre, n_ant, n_ant): int array flagging invalid points
         min_delta_g (float): Gain improvement threshold.
         maxiter (int): Maximum number of iterations allowed.
         chi_tol (float): Chi-squared improvement threshold.
@@ -137,18 +138,39 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
     old_gains[:] = np.inf
     n_quor = 0
     n_sols = float(n_dir*n_tim*n_fre)
+    n_vis2x2 = n_tim*n_fre*n_ant*n_ant
     iters = 1
 
+    # n_tim,n_fre array: number of valid equations per each time/freq slot
+    # TODO: check number of equations per solution interval, and flag intervals where we don't have enough
+    eqs_per_tf_slot = np.sum(flags_arr==0, axis=(-1, -2))*n_cor*n_cor
+    mineqs = eqs_per_tf_slot[eqs_per_tf_slot>0].min()
+    maxeqs = eqs_per_tf_slot.max()
+    chisq_norm = np.ones_like(eqs_per_tf_slot, dtype=obser_arr.real.dtype)
+    with np.errstate(divide='ignore'):  # ignore division by 0
+        chisq_norm /= eqs_per_tf_slot
+    chisq_norm[eqs_per_tf_slot==0] = 0
+
+    # number of valid time/freq slots (i.e. with equations in them)
+    valid_slots = (eqs_per_tf_slot > 0).sum()
+
     residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
-    # S = slice(166,176)
-    # print obser_arr.flatten()[S]
-    # print model_arr.flatten()[S]
-    # print residual.flatten()[S]
-    # print abs(residual).max(),abs(residual).argmax()
-    chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
-    init_chi = chi.mean()
-    if verbose_iterations:
-        print>> log, "{} initial chi-sq is {}".format(label, init_chi)
+    chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4)) * chisq_norm
+    init_chi = chi.sum() / valid_slots
+    if verbose > 0:
+        flagstats = OrderedDict()
+        for cat, bitmask in FL.categories().iteritems():
+            flagstats[cat] = (flags_arr&bitmask != 0).sum()/(n_cor*n_cor)
+        flagstat_strings = ["%s:%d(%.2f%%)" % (cat, total, total*100./n_vis2x2) for cat, total in flagstats.iteritems() if total]
+        print>> log, "{} initial chisq {:.4}, {}/{} valid slots (min {}/max {} eqs per slot). Flags are {}".format(label,
+                        init_chi, valid_slots, n_tim*n_fre, mineqs, maxeqs,
+                        " ".join(flagstat_strings or ["none"]))
+        # amax = abs(residual).argmax()
+        # print>>log, "max init residual {} at index {} {}".format(abs(residual).max(),amax, np.unravel_index(amax, residual.shape))
+        # S = slice(amax-2,amax+2)
+        # print obser_arr.flatten()[S]
+        # print model_arr.flatten()[S]
+        # print residual.flatten()[S]
 
     min_quorum = 0.99
 
@@ -161,10 +183,13 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
                 compute_update(model_arr, obser_arr, gains, t_int, f_int))
         else:
             gains = compute_update(model_arr, obser_arr, gains, t_int, f_int)
-
+        # TODO: various infs and NaNs here indicate something wrong with a solution
+        # These should be flagged, and accounted for properly in the statistics
         diff_g = np.sum(np.square(np.abs(old_gains - gains)), axis=(-1,-2,-3))
         norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
-        n_quor = np.sum(diff_g/norm_g <= min_delta_g**2)
+        with np.errstate(divide='ignore', invalid='ignore'):  # ignore division by 0
+            norm_diff_g = diff_g/norm_g
+        n_quor = np.sum(norm_diff_g <= min_delta_g**2)
         n_quor += np.sum(norm_g==0)
 
         old_gains = gains.copy()
@@ -184,18 +209,20 @@ def solve_gains(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
             residual = compute_residual(obser_arr, model_arr, gains,
                                                   t_int, f_int)
 
-            chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4))
+            # TODO: some residuals blow up (maybe due to bad data?) and cause np.square() to overflow -- need to flag these
+            chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4)) * chisq_norm
+            mean_chi = chi.sum() / valid_slots
 
             n_conv = float(np.sum(((old_chi - chi) < chi_tol)))
-            if verbose_iterations:
-                print>> log, "{} iteration {} chi-sq is {}, max gain update {}".format(label, iters, chi.mean(), diff_g.max())
+            if verbose > 1:
+                print>> log, "{} iteration {} chi-sq is {}, max gain update {}".format(label, iters, mean_chi, diff_g.max())
 
             if n_conv/n_sols > 0.99:
                 print>>log, "{} iteration {}: Static residual in {:.2%} of " \
-                             "visibilities. Chisq {} -> {}".format(label, iters, n_conv/n_sols, init_chi, chi.mean())
+                             "visibilities. Chisq {:.4} -> {:.4}".format(label, iters, n_conv/n_sols, init_chi, mean_chi)
                 return gains
 
-    print>>log, "{} iteration {}: Quorum {:.2%}. Chisq {} -> {}".format(label, iters, n_quor/n_sols, init_chi, chi.mean())
+    print>>log, "{} iteration {}: Quorum {:.2%}. Chisq {:.4} -> {:.4}".format(label, iters, n_quor/n_sols, init_chi, mean_chi)
 
     return gains
 
@@ -300,6 +327,8 @@ def main(debugging=False):
                             help='Use weighted least squares.')
         parser.add_argument('-l', '--log', type=str, default="log",
                             help='Write output to log file.')
+        parser.add_argument('-v', '--verbose', type=int, default=0,
+                            help='Verbosity level for messages.')
 
         args = parser.parse_args()
 
@@ -308,6 +337,8 @@ def main(debugging=False):
         logger.logToFile(args.log, append=False)
         print>> log, "started: " + " ".join(sys.argv)
 
+    global verbose
+    verbose = args.verbose
 
     if args.ddid is not None:
         if args.ddid_to is not None:
@@ -320,15 +351,15 @@ def main(debugging=False):
     ms = ReadModelHandler(args.msname, args.smname, fid=args.field, ddid=ddid,
                           precision=args.precision, ddes=args.use_ddes,
                           simulate=args.simulate, apply_weights=args.apply_weights)
-    print>>log, "reading MS columns"
-    ms.mass_fetch()
-    print>>log, "defining chunks"
-    ms.define_chunk(args.tchunk, args.fchunk, single_chunk_id=args.single_chunk_id)
-
     if args.applyflags:
         ms.apply_flags = True
     if args.bitmask != 0:
         ms.bitmask = args.bitmask
+
+    print>>log, "reading MS columns"
+    ms.mass_fetch()
+    print>>log, "defining chunks"
+    ms.define_chunk(args.tchunk, args.fchunk, single_chunk_id=args.single_chunk_id)
 
     target = solve_and_save if args.save_corrected else solve_gains
 
@@ -342,19 +373,19 @@ def main(debugging=False):
 
     t0 = time()
 
-    # debugging mode: run serially (also if nproc not set)
-    if debugging or not args.processes:
-        for obser, model, weight, chunk_label in ms:
-            gains = target(obser, model, label = chunk_label, **opts)
+    # debugging mode: run serially (also if nproc not set, or single chunk is specified)
+    if debugging or not args.processes or args.single_chunk_id:
+        for obser, model, flags, weight, chunk_label in ms:
+            gains = target(obser, model, flags, label = chunk_label, **opts)
             ms.add_to_gain_dict(gains, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f],
                                 args.tint, args.fint)
 
     # normal mode: use futures to run in parallel
     else:
         with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
-            future_gains = { executor.submit(target, obser, model, label=chunk_label, **opts) :
+            future_gains = { executor.submit(target, obser, model, flags, label=chunk_label, **opts) :
                              [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
-                             for obser, model, weight, chunk_label in ms }
+                             for obser, model, flags, weight, chunk_label in ms }
 
             for future in cf.as_completed(future_gains):
 
