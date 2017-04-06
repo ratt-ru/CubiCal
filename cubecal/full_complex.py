@@ -78,31 +78,31 @@ def compute_update(model_arr, obser_arr, gains, t_int=1, f_int=1):
     return update
 
 
-def compute_residual(obser_arr, model_arr, gains, t_int=1, f_int=1):
+def compute_residual(resid_arr, obser_arr, model_arr, gains, t_int=1, f_int=1):
     """
     This function computes the residual. This is the difference between the
     observed data, and the model data with the gains applied to it.
 
     Args:
+        resid_arr (np.array): Array which will receive residuals.
+                          Shape is n_dir, n_tim, n_fre, n_ant, a_ant, n_cor, n_cor
         obser_arr (np.array): Array containing the observed visibilities.
+                          Same shape
         model_arr (np.array): Array containing the model visibilities.
+                          Same shape
         gains (np.array): Array containing the current gain estimates.
+                          Shape of n_dir, n_timint, n_freint, n_ant, n_cor, n_cor
+                          Where n_timint = ceil(n_tim/t_int), n_fre = ceil(n_fre/t_int)
 
     Returns:
         residual (np.array): Array containing the result of computing D-GMG^H.
     """
-
-    n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
-
-    residual_shape = obser_arr.shape
-
-    residual = np.zeros(residual_shape, dtype=obser_arr.dtype)
     gains_h = gains.transpose(0,1,2,3,5,4).conj()
 
-    cyfull.cycompute_residual(model_arr, gains, gains_h, obser_arr, residual,
+    cyfull.cycompute_residual(model_arr, gains, gains_h, obser_arr, resid_arr,
                               t_int, f_int)
 
-    return residual
+    return resid_arr
 
 def retile_array (array, m1, m2, n1, n2):
     """Retiles a 2D array of shape m, n into shape m1, m2, n1, n2. If tiling is perfect, i.e. m1*m2 = m, n1*n2 =n,
@@ -117,9 +117,8 @@ def retile_array (array, m1, m2, n1, n2):
         out.reshape((m1*m2, n1*n2))[:m,:n] = array
         return out
 
-
 def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
-                chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1, label=""):
+                chi_tol=1e-5, chi_interval=5, t_int=1, f_int=1, label=""):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
@@ -137,13 +136,16 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
         gains (np.array): Array containing the final gain estimates.
     """
 
-    n_dir, n_tim0, n_fre0, n_ant, n_ant, n_cor, n_cor = model_arr.shape
+    n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = model_arr.shape
 
-    n_tim = int(math.ceil(float(n_tim0)/t_int)) # number of time intervals
-    n_fre = int(math.ceil(float(n_fre0)/f_int)) # number of freq intervals
-    n_tf0 = n_fre0*n_tim0                       # number of time-freq slots
+    # n_tim, n_fre is shape of data
+    # n_timint, n_freInt is shape of gains
+    n_timint = int(math.ceil(float(n_tim)/t_int)) # number of time intervals
+    n_freint = int(math.ceil(float(n_fre)/f_int)) # number of freq intervals
+    n_tf  = n_fre*n_tim                           # number of time-freq slots
+    n_int = n_timint*n_freint                     # number of solution intervals
 
-    gain_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
+    gain_shape = [n_dir, n_timint, n_freint, n_ant, n_cor, n_cor]
 
     gains = np.empty(gain_shape, dtype=obser_arr.dtype)
     gains[:] = np.eye(n_cor)
@@ -151,10 +153,11 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
     old_gains = gains.copy()
     #old_gains = np.empty_like(gains)
     #old_gains[:] = np.inf
-    n_quor = 0
-    n_sols = float(n_dir*n_tim*n_fre)
-    n_vis2x2 = n_tim*n_fre*n_ant*n_ant
-    iters = 1
+    n_conv = 0   # number of converged solutions
+    n_stall = 0  # number of intervals with stalled chi-sq
+    n_sols = float(n_dir*n_int)
+    n_vis2x2 = n_tf*n_ant*n_ant
+    iters = 0
 
     # TODO: check number of equations per solution interval, and flag intervals where we don't have enough
     valid = flags_arr==0
@@ -163,24 +166,33 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
     # 2D array: number of valid equations per each time/freq slot
     eqs_per_tf_slot = np.sum(valid, axis=(-1, -2))*n_cor*n_cor
     # 2D array: number of valid equations per each time/freq interval
-    eqs_per_interval = retile_array(eqs_per_tf_slot, n_tim, t_int, n_fre, f_int).sum(axis=(1,3))
+    eqs_per_interval = retile_array(eqs_per_tf_slot, n_timint, t_int, n_freint, f_int).sum(axis=(1,3))
 
     valid_slots = eqs_per_tf_slot>0
     valid_intervals = eqs_per_interval>0
     mineqs = eqs_per_interval[valid_intervals].min()
     maxeqs = eqs_per_interval.max()
-    chisq_norm = np.ones_like(eqs_per_tf_slot, dtype=obser_arr.real.dtype)
+    # compute chi-sq normalization term per each solution interval
+    chisq_norm = np.ones_like(eqs_per_interval, dtype=obser_arr.real.dtype)
     with np.errstate(divide='ignore'):  # ignore division by 0
-        chisq_norm /= eqs_per_tf_slot
-    chisq_norm[~valid_slots] = 0
+        chisq_norm /= eqs_per_interval
+    chisq_norm[~valid_intervals] = 0
 
     # number of valid TF slots and intervals
     num_valid_slots = valid_slots.sum()
     num_valid_intervals = valid_intervals.sum()
 
-    residual = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
-    chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4)) * chisq_norm
-    init_chi = chi.sum() / num_valid_slots
+    # make tiled residual array (tiled by whole time/freq intervals)
+    residual_tiled = np.zeros((n_timint,t_int,n_freint,f_int,n_ant,n_ant,n_cor,n_cor), obser_arr.dtype)
+    # make ntim,nfreq view into this array
+    residual = residual_tiled.reshape((n_timint*t_int,n_freint*f_int,n_ant,n_ant,n_cor,n_cor))[:n_tim,:n_fre,...]
+
+    # compute initial residual
+    compute_residual(residual, obser_arr, model_arr, gains, t_int, f_int)
+
+    # chi^2 is computed by summing over antennas, correlations and intervals. Shape is n_timint, n_freint
+    chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1,3,4,5,6,7)) * chisq_norm
+    init_chi = mean_chi = chi.sum() / num_valid_intervals
 
     print obser_arr.shape, residual.shape, gain_shape
 
@@ -190,7 +202,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
             flagstats[cat] = (flags_arr&bitmask != 0).sum()/(n_cor*n_cor)
         flagstat_strings = ["%s:%d(%.2f%%)" % (cat, total, total*100./n_vis2x2) for cat, total in flagstats.iteritems() if total]
         print>> log, "{} initial chisq {:.4}, {}/{} valid intervals (min {}/max {} eqs per int). {}/{} valid antennas. Flags are {}".format(label,
-                        init_chi, num_valid_intervals, n_tim*n_fre, mineqs, maxeqs,
+                        init_chi, num_valid_intervals, n_int, mineqs, maxeqs,
                         (eqs_per_antenna!=0).sum(), n_ant,
                         " ".join(flagstat_strings or ["none"]))
         # amax = abs(residual).argmax()
@@ -205,8 +217,8 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
 
     # TODO: Add better messages.
 
-    while n_quor/n_sols < min_quorum:
-
+    while n_conv/n_sols < min_quorum and n_stall/n_int < min_quorum and iters < maxiter:
+        iters += 1
         if iters % 2 == 0:
             gains = 0.5*(gains + \
                 compute_update(model_arr, obser_arr, gains, t_int, f_int))
@@ -216,7 +228,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
         # These should be flagged, and accounted for properly in the statistics
         diff_g = np.sum(np.square(np.abs(old_gains - gains)), axis=(-1,-2,-3))
         norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
-        # diff_g and norm_g have shape of n_dir, n_tim, n_fre; TF slots with no equations
+        # diff_g and norm_g have shape of n_dir, n_timint, n_freint; TF slots with no equations
         # will be 0/0, so reset the norm to 1 to avoid division by 0
         norm_g[:,~valid_intervals] = 1
         # any more null Gs? This is unexpected -- report
@@ -227,40 +239,28 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
                 print>>log, ModColor.Str('{} iteration {} WARNING: {} null gain solution(s) encountered'.format(label, iters, null_g.sum()))
                 warned_null_gain = True
         norm_diff_g = diff_g/norm_g
-        n_quor = np.sum(norm_diff_g <= min_delta_g**2)
-        n_quor += np.sum(norm_g==0)
+        # count converged solutions. Note that flagged solutions will have a norm_diff_g of 0 by construction
+
+        n_conv = np.sum(norm_diff_g <= min_delta_g**2)
 
         old_gains = gains.copy()
 
-        iters += 1
-        
-        if iters ==maxiter:
-            break
-
-        if iters > maxiter:
-            print "Maxiter exceeded."
-            return gains
-
         if (iters % chi_interval) == 0:
-            old_chi = chi
+            old_chi, old_mean_chi = chi, mean_chi
 
-            residual = compute_residual(obser_arr, model_arr, gains,
-                                                  t_int, f_int)
+            compute_residual(residual, obser_arr, model_arr, gains, t_int, f_int)
 
             # TODO: some residuals blow up (maybe due to bad data?) and cause np.square() to overflow -- need to flag these
-            chi = np.sum(np.square(np.abs(residual)), axis=(-1,-2,-3,-4)) * chisq_norm
-            mean_chi = chi.sum() / num_valid_slots
+            chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1, 3, 4, 5, 6, 7)) * chisq_norm
+            mean_chi = chi.sum() / num_valid_intervals
 
-            n_conv = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
+            n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
             if verbose > 1:
-                print>> log, "{} iteration {} chi-sq is {}, max gain update {}".format(label, iters, mean_chi, diff_g.max())
+                print>> log, "{} iteration {} chi-sq is {:.4} delta {:.4}, max gain update {:.4}, converged {:.2%}, stalled {:.2%}".format(label,
+                            iters, mean_chi, (old_mean_chi-mean_chi)/old_mean_chi, diff_g.max(), n_conv/n_sols, n_stall/n_int)
 
-            if n_conv/n_sols > 0.99:
-                print>>log, "{} iteration {}: Static residual in {:.2%} of " \
-                             "visibilities. Chisq {:.4} -> {:.4}".format(label, iters, n_conv/n_sols, init_chi, mean_chi)
-                return gains
-
-    print>>log, "{} iteration {}: Quorum {:.2%}. Chisq {:.4} -> {:.4}".format(label, iters, n_quor/n_sols, init_chi, mean_chi)
+    print>>log, "{}: {} iterations done. Converged {:.2%}, stalled {:.2%}. Chisq {:.4} -> {:.4}".format(label,
+                iters, n_conv/n_sols, n_stall/n_int, init_chi, mean_chi)
 
     return gains
 
@@ -351,7 +351,7 @@ def main(debugging=False):
         parser.add_argument('-delg','--min_delta_g', type=float, default=1e-6,
                             help='Stopping criteria for delta G - stop when '
                                  'solutions change less than this value.')
-        parser.add_argument('-delchi','--min_delta_chi', type=float, default=1e-6,
+        parser.add_argument('-delchi','--min_delta_chi', type=float, default=1e-5,
                             help='Stopping criteria for delta chi - stop when '
                                  'the residual changes less than this value.')
         parser.add_argument('-chiint','--chi_interval', type=int, default=5,
