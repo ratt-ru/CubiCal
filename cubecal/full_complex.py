@@ -117,6 +117,22 @@ def retile_array (array, m1, m2, n1, n2):
         out.reshape((m1*m2, n1*n2))[:m,:n] = array
         return out
 
+def estimate_noise (data, flags):
+    """Given a data cube (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
+    and a flag cube (n_tim, n_fre, n_ant, n_ant), estimates the noise in the data."""
+    n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
+    # take per-channel difference**2, for noise estimates
+    deltaflags = flags!=0
+    deltaflags[:, 1:, ...] |= deltaflags[:, :-1, ...]
+    deltaflags[:, 0, ...] = deltaflags[:, 1, ...]
+    deltavis2 = np.zeros_like(data, np.float32)
+    # take difference, sum over correlations, and normalize
+    # (times four, because real and imaginary, and because two noise terms are added together)
+    deltavis2[:, 1:, ...] = np.square(abs(obvis[:, 1:, ...] - obvis[:, :-1, ...])).sum(axis=(-2,-1)) / (n_cor*n_cor*4)
+    deltavis2[:, 0, ...]  = deltavis2[:, 1, ...]
+    deltavis2[deltaflags] = 0
+
+
 def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
                 chi_tol=1e-5, chi_interval=5, t_int=1, f_int=1, label=""):
     """
