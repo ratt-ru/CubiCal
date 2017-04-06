@@ -2,7 +2,7 @@ import numpy as np
 from collections import Counter, OrderedDict
 import pyrap.tables as pt
 import cPickle
-import better_exceptions
+#import better_exceptions
 
 from Tools import logger, ModColor
 log = logger.getLogger("ReadModelHandler")
@@ -392,12 +392,16 @@ class ReadModelHandler:
                 out_arr[tchunk, :, bchunk, achunk, :] = colsel[..., (0, 2, 1, 3)]
         elif self.ncorr==2:
             out_arr[tchunk, :, achunk, bchunk, ::3] = colsel = column[selection]
+            out_arr[tchunk, :, achunk, bchunk, 1:3] = 0
+            out_arr[tchunk, :, bchunk, achunk, 1:3] = 0
             if dtype == self.ctype:
                 out_arr[tchunk, :, bchunk, achunk, ::3] = colsel.conj()
             else:
                 out_arr[tchunk, :, bchunk, achunk, ::3] = colsel
         elif self.ncorr==1:
             out_arr[tchunk, :, achunk, bchunk, ::3] = colsel = column[selection][:,:,(0,0)]
+            out_arr[tchunk, :, achunk, bchunk, 1:3] = 0
+            out_arr[tchunk, :, bchunk, achunk, 1:3] = 0
             if dtype == self.ctype:
                 out_arr[tchunk, :, bchunk, achunk, ::3] = colsel.conj()
             else:
