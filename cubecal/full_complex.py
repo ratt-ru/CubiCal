@@ -174,6 +174,9 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
     num_valid_slots = valid_slots.sum()
     num_valid_intervals = valid_intervals.sum()
 
+    #print num_valid_intervals
+    #import pdb; pdb.set_trace()
+
     if not num_valid_intervals:
         flagstats = OrderedDict()
         for cat, bitmask in FL.categories().iteritems():
@@ -297,10 +300,10 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
 
     return corr_vis
 
-def solve_and_save(obser_arr, model_arr, min_delta_g=1e-6, maxiter=30,
+def solve_and_save(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
                    chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1, label=""):
 
-    gains = solve_gains(obser_arr, model_arr, min_delta_g, maxiter,
+    gains = solve_gains(obser_arr, model_arr, flags_arr, min_delta_g, maxiter,
                         chi_tol, chi_interval, t_int, f_int, label=label)
 
     corr_vis = apply_gains(obser_arr, gains, t_int, f_int)
@@ -422,7 +425,11 @@ def main(debugging=False):
     # debugging mode: run serially (also if nproc not set, or single chunk is specified)
     if debugging or not args.processes or args.single_chunk_id:
         for obser, model, flags, weight, chunk_label in ms:
-            gains = target(obser, model, flags, label = chunk_label, **opts)
+            if target is solve_and_save:
+                gains, covis = target(obser, model, flags, label = chunk_label, **opts)
+                ms.arr_to_col(covis, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f])
+            else:
+                gains = target(obser, model, flags, label = chunk_label, **opts)
             ms.add_to_gain_dict(gains, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f],
                                 args.tint, args.fint)
 
