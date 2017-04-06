@@ -197,6 +197,7 @@ class ReadModelHandler:
                 bflag |= self.fetch("BITFLAG_ROW", *args, **kwargs)[:, np.newaxis, np.newaxis]
                 flags |= ((bflag&(self.bitmask or 0)) != 0)
             self.flags[flags] = FL.PRIOR
+        #
 
     def define_chunk(self, tdim=1, fdim=1, single_chunk_id=None):
         """

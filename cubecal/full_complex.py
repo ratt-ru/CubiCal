@@ -170,6 +170,19 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
 
     valid_slots = eqs_per_tf_slot>0
     valid_intervals = eqs_per_interval>0
+    # number of valid TF slots and intervals
+    num_valid_slots = valid_slots.sum()
+    num_valid_intervals = valid_intervals.sum()
+
+    if not num_valid_intervals:
+        flagstats = OrderedDict()
+        for cat, bitmask in FL.categories().iteritems():
+            flagstats[cat] = (flags_arr&bitmask != 0).sum()/(n_cor*n_cor)
+        flagstat_strings = ["%s:%d(%.2f%%)" % (cat, total, total*100./n_vis2x2) for cat, total in flagstats.iteritems() if total]
+        print>> log, "{} no valid solution intervals. Flags are {}".format(label, " ".join(flagstat_strings or ["none"]))
+        print>> log, "{}: no valid solution intervals. All data flagged perhaps?".format(label)
+        return gains
+
     mineqs = eqs_per_interval[valid_intervals].min()
     maxeqs = eqs_per_interval.max()
     # compute chi-sq normalization term per each solution interval
@@ -178,9 +191,6 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
         chisq_norm /= eqs_per_interval
     chisq_norm[~valid_intervals] = 0
 
-    # number of valid TF slots and intervals
-    num_valid_slots = valid_slots.sum()
-    num_valid_intervals = valid_intervals.sum()
 
     # make tiled residual array (tiled by whole time/freq intervals)
     residual_tiled = np.zeros((n_timint,t_int,n_freint,f_int,n_ant,n_ant,n_cor,n_cor), obser_arr.dtype)
@@ -193,8 +203,6 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
     # chi^2 is computed by summing over antennas, correlations and intervals. Shape is n_timint, n_freint
     chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1,3,4,5,6,7)) * chisq_norm
     init_chi = mean_chi = chi.sum() / num_valid_intervals
-
-    print obser_arr.shape, residual.shape, gain_shape
 
     if verbose > 0:
         flagstats = OrderedDict()
