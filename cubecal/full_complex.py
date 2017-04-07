@@ -119,18 +119,33 @@ def retile_array (array, m1, m2, n1, n2):
 
 def estimate_noise (data, flags):
     """Given a data cube (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
-    and a flag cube (n_tim, n_fre, n_ant, n_ant), estimates the noise in the data."""
+    and a flag cube (n_tim, n_fre, n_ant, n_ant), estimates the noise in the data.
+
+    Returns tuple of noise, inverse_noise_per_antenna_squared, inverse_noise_per_channel_squared
+    """
     n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
     # take per-channel difference**2, for noise estimates
     deltaflags = flags!=0
-    deltaflags[:, 1:, ...] |= deltaflags[:, :-1, ...]
-    deltaflags[:, 0, ...] = deltaflags[:, 1, ...]
-    deltavis2 = np.zeros_like(data, np.float32)
-    # take difference, sum over correlations, and normalize
-    # (times four, because real and imaginary, and because two noise terms are added together)
-    deltavis2[:, 1:, ...] = np.square(abs(obvis[:, 1:, ...] - obvis[:, :-1, ...])).sum(axis=(-2,-1)) / (n_cor*n_cor*4)
+    deltaflags[:, 1:, ...] = deltaflags[:, 1:, ...] | deltaflags[:, :-1, ...]
+    deltaflags[:, 0, ...]  = deltaflags[:, 1, ...]
+    deltavis2 = np.zeros((n_tim, n_fre, n_ant, n_ant), np.float32)
+    # take difference, sum over correlations, and normalize by n_cor*n_cor*4
+    # (factor of 4, because Var<c1-c2> = Var<c1>+Var<c2>, and Var<c>=Var<r>+Var<i>, so the square of
+    # the abs difference between two complex visibilities has contributions from _four_ noise terms)
+    deltavis2[:, 1:, ...] = np.square(abs(data[:, 1:, ...] - data[:, :-1, ...])).sum(axis=(-2,-1)) / (n_cor*n_cor*4)
     deltavis2[:, 0, ...]  = deltavis2[:, 1, ...]
+    # and zero the flagged terms
     deltavis2[deltaflags] = 0
+    deltaflags = ~deltaflags
+    # now return the stddev per antenna, and per channel
+    with np.errstate(divide='ignore', invalid='ignore'):  # ignore division by 0
+        noise = math.sqrt(deltavis2.sum() / deltaflags.sum())
+        inv2_per_ant  = deltaflags.sum(axis=(0, 1, 2)) / deltavis2.sum(axis=(0, 1, 2))
+        inv2_per_chan = deltaflags.sum(axis=(0, 2, 3)) / deltavis2.sum(axis=(0, 2, 3))
+    # antennas/channels with no data end up with NaNs here, so replace them with 0
+    inv2_per_ant[~np.isfinite(inv2_per_ant)] = 0
+    inv2_per_chan[~np.isfinite(inv2_per_chan)] = 0
+    return noise, inv2_per_ant, inv2_per_chan
 
 
 def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
@@ -175,12 +190,18 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
     n_vis2x2 = n_tf*n_ant*n_ant
     iters = 0
 
+    # get noise estimates
+    # noise is likely to vary across the band, so we estimate it per channel as well, and use that to normalize chi^2
+    noise, inv_noise2_per_ant, inv_noise2_per_chan = estimate_noise(obser_arr, flags_arr)
+    # print>>log,inv_noise2_per_chan
+    noise2 = noise**2
+
     # TODO: check number of equations per solution interval, and flag intervals where we don't have enough
     valid = flags_arr==0
-    # n_ant vector: number of valid equations per each antenna
-    eqs_per_antenna = np.sum(valid, axis=(0, 1, 2))
+    # n_ant vector: number of valid equations per each antenna (x2 because each complex equation is one real, one imaginary)
+    eqs_per_antenna = np.sum(valid, axis=(0, 1, 2))*2
     # 2D array: number of valid equations per each time/freq slot
-    eqs_per_tf_slot = np.sum(valid, axis=(-1, -2))*n_cor*n_cor
+    eqs_per_tf_slot = np.sum(valid, axis=(-1, -2))*n_cor*n_cor*2
     # 2D array: number of valid equations per each time/freq interval
     eqs_per_interval = retile_array(eqs_per_tf_slot, n_timint, t_int, n_freint, f_int).sum(axis=(1,3))
 
@@ -219,8 +240,12 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
     # compute initial residual
     compute_residual(residual, obser_arr, model_arr, gains, t_int, f_int)
 
-    # chi^2 is computed by summing over antennas, correlations and intervals. Shape is n_timint, n_freint
-    chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1,3,4,5,6,7)) * chisq_norm
+    # chi^2 is computed by summing over antennas, correlations and intervals. Do time, antennas and corrs first,
+    # then normalize by per-channel noise-squared, then collapse freq intervals
+    chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1,4,5,6,7))
+    # chi is now reduced to n_timint,n_freint,f_int in shape --
+    chi.reshape((n_timint,n_freint*f_int))[:,:n_fre] *= inv_noise2_per_chan[np.newaxis,:]
+    chi = np.sum(chi, axis=2) * chisq_norm
     init_chi = mean_chi = chi.sum() / num_valid_intervals
 
     if verbose > 0:
@@ -278,7 +303,9 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
             compute_residual(residual, obser_arr, model_arr, gains, t_int, f_int)
 
             # TODO: some residuals blow up (maybe due to bad data?) and cause np.square() to overflow -- need to flag these
-            chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1, 3, 4, 5, 6, 7)) * chisq_norm
+            chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1, 4, 5, 6, 7))
+            chi.reshape((n_timint, n_freint * f_int))[:, :n_fre] *= inv_noise2_per_chan[np.newaxis, :]
+            chi = np.sum(chi, axis=2) * chisq_norm
             mean_chi = chi.sum() / num_valid_intervals
 
             n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
