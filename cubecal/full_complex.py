@@ -104,20 +104,31 @@ def compute_residual(resid_arr, obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     return resid_arr
 
-def retile_array (array, m1, m2, n1, n2):
-    """Retiles a 2D array of shape m, n into shape m1, m2, n1, n2. If tiling is perfect, i.e. m1*m2 = m, n1*n2 =n,
-    then returns a reshaped array. Else creates a new array and copies data."""
-    m, n = array.shape
-    # if tiling perfectly, then just reshape
-    if m1*m2 == m and n1*n2 == n:
-        return array.reshape((m1, m2, n1, n2))
-    # else create new array and copy
-    else:
-        out = np.zeros((m1, m2, n1, n2), dtype=array.dtype)
-        out.reshape((m1*m2, n1*n2))[:m,:n] = array
-        return out
+def retile_array(in_arr, m1, m2, n1, n2):
+    """
+    Retiles a 2D array of shape m, n into shape m1, m2, n1, n2. If tiling is perfect, 
+    i.e. m1*m2 = m, n1*n2 =n, then this returns a reshaped array. Otherwise, it creates a new 
+    array and copies data.
+    """
+    
+    # TODO: Investigate writing a kernel that accomplishes this and the relevant summation.
 
-def estimate_noise (data, flags):
+    m, n = in_arr.shape
+
+    new_shape = (m1, m2, n1, n2)
+
+    if (m1*m2 == m) and (n1*n2 == n):
+        
+        return in_arr.reshape(new_shape)
+    
+    else:
+        
+        out_arr = np.zeros(new_shape, dtype=in_arr.dtype)
+        out_arr.reshape((m1*m2, n1*n2))[:m,:n] = in_arr
+        
+        return out_arr
+
+def estimate_noise(data, flags):
     """
     Given a data cube with dimensions (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) and a flag cube 
     (n_tim, n_fre, n_ant, n_ant), this function estimates the noise in the data.
