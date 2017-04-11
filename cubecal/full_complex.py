@@ -97,10 +97,10 @@ def compute_residual(resid_arr, obser_arr, model_arr, gains, t_int=1, f_int=1):
     Returns:
         residual (np.array): Array containing the result of computing D-GMG^H.
     """
+    
     gains_h = gains.transpose(0,1,2,3,5,4).conj()
 
-    cyfull.cycompute_residual(model_arr, gains, gains_h, obser_arr, resid_arr,
-                              t_int, f_int)
+    cyfull.cycompute_residual(model_arr, gains, gains_h, obser_arr, resid_arr, t_int, f_int)
 
     return resid_arr
 
@@ -176,7 +176,7 @@ def estimate_noise(data, flags):
         inv_var_ant  = deltaflags.sum(axis=(0, 1, 2)) / deltavis2.sum(axis=(0, 1, 2))
         inv_var_chan = deltaflags.sum(axis=(0, 2, 3)) / deltavis2.sum(axis=(0, 2, 3))
     
-    # Elements may have been se to NaN due to division by zero. This simply zeroes those elements.
+    # Elements may have been set_trace to NaN due to division by zero. This simply zeroes those elements.
     
     inv_var_ant[~np.isfinite(inv_var_ant)] = 0
     inv_var_chan[~np.isfinite(inv_var_chan)] = 0
@@ -205,56 +205,69 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
 
     n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = model_arr.shape
 
-    # n_tim, n_fre is shape of data
-    # n_timint, n_freInt is shape of gains
-    n_timint = int(math.ceil(float(n_tim)/t_int)) # number of time intervals
-    n_freint = int(math.ceil(float(n_fre)/f_int)) # number of freq intervals
-    n_tf  = n_fre*n_tim                           # number of time-freq slots
-    n_int = n_timint*n_freint                     # number of solution intervals
+    # n_tim and n_fre are the time and frequency dimensions of the data arrays.
+    # n_timint and n_freint are the time and frequnecy dimensions of the gains.
+
+    n_timint = int(math.ceil(float(n_tim)/t_int))   # Number of time intervals
+    n_freint = int(math.ceil(float(n_fre)/f_int))   # Number of freq intervals
+    n_tf  = n_fre*n_tim                             # Number of time-freq slots
+    n_int = n_timint*n_freint                       # Number of solution intervals
+
+    # Initialize gains to the appropriate shape with all gains set to identity. Create a copy to 
+    # hold the gain of the previous iteration. 
 
     gain_shape = [n_dir, n_timint, n_freint, n_ant, n_cor, n_cor]
-
-    gains = np.empty(gain_shape, dtype=obser_arr.dtype)
-    gains[:] = np.eye(n_cor)
-
+    
+    gains     = np.empty(gain_shape, dtype=obser_arr.dtype)
+    gains[:]  = np.eye(n_cor) 
     old_gains = gains.copy()
-    #old_gains = np.empty_like(gains)
-    #old_gains[:] = np.inf
-    n_conv = 0   # number of converged solutions
-    n_stall = 0  # number of intervals with stalled chi-sq
-    n_sols = float(n_dir*n_int)
-    n_vis2x2 = n_tf*n_ant*n_ant
-    iters = 0
 
-    # get noise estimates
-    # noise is likely to vary across the band, so we estimate it per channel as well, and use that to normalize chi^2
-    noise, inv_noise2_per_ant, inv_noise2_per_chan = estimate_noise(obser_arr, flags_arr)
-    # print>>log,inv_noise2_per_chan
-    noise2 = noise**2
+    # Initialize some numbers used in convergence testing.
 
-    # TODO: check number of equations per solution interval, and flag intervals where we don't have enough
-    valid = flags_arr==0
-    # n_ant vector: number of valid equations per each antenna (x2 because each complex equation is one real, one imaginary)
-    eqs_per_antenna = np.sum(valid, axis=(0, 1, 2))*2
-    # 2D array: number of valid equations per each time/freq slot
-    eqs_per_tf_slot = np.sum(valid, axis=(-1, -2))*n_cor*n_cor*2
-    # 2D array: number of valid equations per each time/freq interval
+    n_cnvgd = 0 # Number of converged solutions
+    n_stall = 0 # Number of intervals with stalled chi-sq
+    n_sols = float(n_dir*n_int) # Number of gains solutions
+    n_vis2x2 = n_tf*n_ant*n_ant # Number of 2x2 visbilities
+    iters = 0   
+
+    # Estimates the overall noise level and the inverse variance per channel and per antenna as 
+    # noise varies across the band. This is used to normalize chi^2.
+
+    noise_est, inv_var_ant, inv_var_chan = estimate_noise(obser_arr, flags_arr)
+
+    # TODO: Check number of equations per solution interval, and deficient flag intervals.
+    unflagged = (flags_arr==0)
+
+    # (n_ant) vector containing the number of valid equations per antenna.
+    # Factor of two is necessary as we have the conjugate of each equation too.
+
+    eqs_per_antenna = 2*np.sum(unflagged, axis=(0, 1, 2))
+
+    # (n_tim, n_fre) array containing number of valid equations per each time/freq slot.
+
+    eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2))*n_cor*n_cor*2
+
+    # (n_timint, n_freint) array containing number of valid equations per each time/freq interval.
+    
     eqs_per_interval = retile_array(eqs_per_tf_slot, n_timint, t_int, n_freint, f_int).sum(axis=(1,3))
 
-    valid_slots = eqs_per_tf_slot>0
+    # The following determines the number of valid (unflagged) time/frequency slots and the number 
+    # of valid solution intervals.
+
+    valid_tf_slots  = eqs_per_tf_slot>0
     valid_intervals = eqs_per_interval>0
-    # number of valid TF slots and intervals
-    num_valid_slots = valid_slots.sum()
+    num_valid_tf_slots  = valid_tf_slots.sum()
     num_valid_intervals = valid_intervals.sum()
 
-    #print num_valid_intervals
-    #import pdb; pdb.set_trace()
+    # In the event that there are no solution intervals with valid data, this will log some of the
+    # flag information.
 
-    if not num_valid_intervals:
+    if num_valid_intervals is 0:
         flagstats = OrderedDict()
         for cat, bitmask in FL.categories().iteritems():
-            flagstats[cat] = (flags_arr&bitmask != 0).sum()/(n_cor*n_cor)
-        flagstat_strings = ["%s:%d(%.2f%%)" % (cat, total, total*100./n_vis2x2) for cat, total in flagstats.iteritems() if total]
+            flagstats[cat] = ((flags_arr&bitmask) != 0).sum()/(n_cor*n_cor)
+        makestring = lambda cat,total,n_vis2x2: "%s:%d(%.2f%%)" % (cat, total, total*100./n_vis2x2)
+        flagstat_strings = [makestring(cat, total, n_vis2x2) for cat, total in flagstats.iteritems() if total]
         print>> log, "{} no valid solution intervals. Flags are {}".format(label, " ".join(flagstat_strings or ["none"]))
         print>> log, "{}: no valid solution intervals. All data flagged perhaps?".format(label)
         return gains
@@ -280,7 +293,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
     # then normalize by per-channel noise-squared, then collapse freq intervals
     chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1,4,5,6,7))
     # chi is now reduced to n_timint,n_freint,f_int in shape --
-    chi.reshape((n_timint,n_freint*f_int))[:,:n_fre] *= inv_noise2_per_chan[np.newaxis,:]
+    chi.reshape((n_timint,n_freint*f_int))[:,:n_fre] *= inv_var_chan[np.newaxis,:]
     chi = np.sum(chi, axis=2) * chisq_norm
     init_chi = mean_chi = chi.sum() / num_valid_intervals
 
@@ -305,7 +318,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
 
     # TODO: Add better messages.
 
-    while n_conv/n_sols < min_quorum and n_stall/n_int < min_quorum and iters < maxiter:
+    while n_cnvgd/n_sols < min_quorum and n_stall/n_int < min_quorum and iters < maxiter:
         iters += 1
         if iters % 2 == 0:
             gains = 0.5*(gains + \
@@ -329,7 +342,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
         norm_diff_g = diff_g/norm_g
         # count converged solutions. Note that flagged solutions will have a norm_diff_g of 0 by construction
 
-        n_conv = np.sum(norm_diff_g <= min_delta_g**2)
+        n_cnvgd = np.sum(norm_diff_g <= min_delta_g**2)
 
         old_gains = gains.copy()
 
@@ -340,17 +353,17 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
 
             # TODO: some residuals blow up (maybe due to bad data?) and cause np.square() to overflow -- need to flag these
             chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1, 4, 5, 6, 7))
-            chi.reshape((n_timint, n_freint * f_int))[:, :n_fre] *= inv_noise2_per_chan[np.newaxis, :]
+            chi.reshape((n_timint, n_freint * f_int))[:, :n_fre] *= inv_var_chan[np.newaxis, :]
             chi = np.sum(chi, axis=2) * chisq_norm
             mean_chi = chi.sum() / num_valid_intervals
 
             n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
             if verbose > 1:
                 print>> log, "{} iteration {} chi-sq is {:.4} delta {:.4}, max gain update {:.4}, converged {:.2%}, stalled {:.2%}".format(label,
-                            iters, mean_chi, (old_mean_chi-mean_chi)/old_mean_chi, diff_g.max(), n_conv/n_sols, n_stall/n_int)
+                            iters, mean_chi, (old_mean_chi-mean_chi)/old_mean_chi, diff_g.max(), n_cnvgd/n_sols, n_stall/n_int)
 
     print>>log, "{}: {} iterations done. Converged {:.2%}, stalled {:.2%}. Chisq {:.4} -> {:.4}".format(label,
-                iters, n_conv/n_sols, n_stall/n_int, init_chi, mean_chi)
+                iters, n_cnvgd/n_sols, n_stall/n_int, init_chi, mean_chi)
 
     return gains
 
