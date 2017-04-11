@@ -262,9 +262,12 @@ class ReadModelHandler:
 
         scan = self.fetch("SCAN_NUMBER")
 
-        scan_i = np.where(np.roll(scan,1)!=scan)[0]
-        scan_t = list(self.times[scan_i])
-        scan_t.append(self.ntime)
+        if np.all(scan==scan[0]):
+            scan_t = [0, self.ntime]
+        else:
+            scan_i = np.where(np.roll(scan,1)!=scan)[0]
+            scan_t = list(self.times[scan_i])
+            scan_t.append(self.ntime)
 
         return scan_t
 

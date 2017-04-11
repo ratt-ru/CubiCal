@@ -118,34 +118,59 @@ def retile_array (array, m1, m2, n1, n2):
         return out
 
 def estimate_noise (data, flags):
-    """Given a data cube (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
-    and a flag cube (n_tim, n_fre, n_ant, n_ant), estimates the noise in the data.
-
-    Returns tuple of noise, inverse_noise_per_antenna_squared, inverse_noise_per_channel_squared
     """
+    Given a data cube with dimensions (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) and a flag cube 
+    (n_tim, n_fre, n_ant, n_ant), this function estimates the noise in the data.
+
+    Returns tuple of noise, inverse_noise_per_antenna_squared and inverse_noise_per_channel_squared.
+    """
+
     n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
-    # take per-channel difference**2, for noise estimates
-    deltaflags = flags!=0
-    deltaflags[:, 1:, ...] = deltaflags[:, 1:, ...] | deltaflags[:, :-1, ...]
-    deltaflags[:, 0, ...]  = deltaflags[:, 1, ...]
+    
+    # Create a boolean flag array from the bitflags. Construct delta flags by or-ing flags in
+    # channel n with flags in channel n+1.
+
+    deltaflags = (flags!=0)
+    deltaflags[:, 1:, ...] |= deltaflags[:, :-1, ...]
+    deltaflags[:, 0 , ...]  = deltaflags[:,   1, ...]
+    
+    # Create array for the squared difference between channel-adjacent visibilities.
+
     deltavis2 = np.zeros((n_tim, n_fre, n_ant, n_ant), np.float32)
-    # take difference, sum over correlations, and normalize by n_cor*n_cor*4
-    # (factor of 4, because Var<c1-c2> = Var<c1>+Var<c2>, and Var<c>=Var<r>+Var<i>, so the square of
-    # the abs difference between two complex visibilities has contributions from _four_ noise terms)
-    deltavis2[:, 1:, ...] = np.square(abs(data[:, 1:, ...] - data[:, :-1, ...])).sum(axis=(-2,-1)) / (n_cor*n_cor*4)
-    deltavis2[:, 0, ...]  = deltavis2[:, 1, ...]
-    # and zero the flagged terms
+    
+    # Square the absolute value of the difference between channel-adjacent visibilities and sum 
+    # over correlations. Normalize the result by n_cor*n_cor*4. The factor of 4 arises because 
+    # Var<c1-c2> = Var<c1>+Var<c2> and Var<c>=Var<r>+Var<i>. Thus, the square of the abs difference
+    # between two complex visibilities has contributions from _four_ noise terms.
+
+    # TODO: When fewer than 4 correlations are provided, the normalisation needs to be different.
+
+    deltavis2[:, 1:, ...]  = np.square(abs(data[:, 1:, ...] - data[:, :-1, ...])).sum(axis=(-2,-1))
+    deltavis2[:, 1:, ...] /= n_cor*n_cor*4
+    deltavis2[:, 0 , ...]  = deltavis2[:, 1, ...]
+    
+    # The flagged elements are zeroed; we don't have an adequate noise estimate for those channels.
+
     deltavis2[deltaflags] = 0
+    
+    # This flag inversion gives a count of the valid estimates in deltavis2.
+
     deltaflags = ~deltaflags
-    # now return the stddev per antenna, and per channel
-    with np.errstate(divide='ignore', invalid='ignore'):  # ignore division by 0
-        noise = math.sqrt(deltavis2.sum() / deltaflags.sum())
-        inv2_per_ant  = deltaflags.sum(axis=(0, 1, 2)) / deltavis2.sum(axis=(0, 1, 2))
-        inv2_per_chan = deltaflags.sum(axis=(0, 2, 3)) / deltavis2.sum(axis=(0, 2, 3))
-    # antennas/channels with no data end up with NaNs here, so replace them with 0
-    inv2_per_ant[~np.isfinite(inv2_per_ant)] = 0
-    inv2_per_chan[~np.isfinite(inv2_per_chan)] = 0
-    return noise, inv2_per_ant, inv2_per_chan
+    
+    # This computes the inverse variance per antenna and per channel as well as an overall noise 
+    # estimate. Warnings are supressed as divide by zero is expected.
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        noise_est = math.sqrt(deltavis2.sum() / deltaflags.sum())
+        inv_var_ant  = deltaflags.sum(axis=(0, 1, 2)) / deltavis2.sum(axis=(0, 1, 2))
+        inv_var_chan = deltaflags.sum(axis=(0, 2, 3)) / deltavis2.sum(axis=(0, 2, 3))
+    
+    # Elements may have been se to NaN due to division by zero. This simply zeroes those elements.
+    
+    inv_var_ant[~np.isfinite(inv_var_ant)] = 0
+    inv_var_chan[~np.isfinite(inv_var_chan)] = 0
+    
+    return noise_est, inv_var_ant, inv_var_chan
 
 
 def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
