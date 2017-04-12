@@ -32,37 +32,36 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:] m,
     n_fre = m.shape[2]
     n_ant = m.shape[3]
 
-    with nogil:
-        for d in xrange(n_dir):
-            for t in xrange(n_tim):
-                rr = t/t_int
-                for f in xrange(n_fre):
-                    rc = f/f_int
-                    for aa in xrange(n_ant):
-                        for ab in xrange(n_ant):
-                            r[t,f,aa,ab,0,0] = o[t,f,aa,ab,0,0] - (
-                            g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
-                            g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        r[t,f,aa,ab,0,0] = o[t,f,aa,ab,0,0] - (
+                        g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                        g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                        g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                        g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-                            r[t,f,aa,ab,0,1] = o[t,f,aa,ab,0,1] - (
-                            g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
-                            g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+                        r[t,f,aa,ab,0,1] = o[t,f,aa,ab,0,1] - (
+                        g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                        g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                        g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                        g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
-                            r[t,f,aa,ab,1,0] = o[t,f,aa,ab,1,0] - (
-                            g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
-                            g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+                        r[t,f,aa,ab,1,0] = o[t,f,aa,ab,1,0] - (
+                        g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                        g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                        g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                        g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-                            r[t,f,aa,ab,1,1] = o[t,f,aa,ab,1,1] - (
-                            g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
-                            g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+                        r[t,f,aa,ab,1,1] = o[t,f,aa,ab,1,1] - (
+                        g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                        g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                        g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                        g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -87,29 +86,28 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:] m,
     n_fre = m.shape[2]
     n_ant = m.shape[3]
 
-    with nogil:
-        for d in xrange(n_dir):
-            for t in xrange(n_tim):
-                rr = t/t_int
-                for f in xrange(n_fre):
-                    rc = f/f_int
-                    for aa in xrange(n_ant):
-                        for ab in xrange(n_ant):
-                            jh[d,t,f,aa,ab,0,0] = \
-                                     g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0] + \
-                                     g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        jh[d,t,f,aa,ab,0,0] = \
+                                 g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,0] + \
+                                 g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,0]
 
-                            jh[d,t,f,aa,ab,0,1] = \
-                                     g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1] + \
-                                     g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]
+                        jh[d,t,f,aa,ab,0,1] = \
+                                 g[d,rr,rc,aa,0,0]*m[d,t,f,aa,ab,0,1] + \
+                                 g[d,rr,rc,aa,0,1]*m[d,t,f,aa,ab,1,1]
 
-                            jh[d,t,f,aa,ab,1,0] = \
-                                     g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0] + \
-                                     g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]
+                        jh[d,t,f,aa,ab,1,0] = \
+                                 g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,0] + \
+                                 g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,0]
 
-                            jh[d,t,f,aa,ab,1,1] = \
-                                     g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1] + \
-                                     g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]
+                        jh[d,t,f,aa,ab,1,1] = \
+                                 g[d,rr,rc,aa,1,0]*m[d,t,f,aa,ab,0,1] + \
+                                 g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -134,29 +132,28 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:,:] jh,
     n_fre = jh.shape[2]
     n_ant = jh.shape[3]
 
-    with nogil:
-        for d in xrange(n_dir):
-            for t in xrange(n_tim):
-                rr = t/t_int
-                for f in xrange(n_fre):
-                    rc = f/f_int
-                    for aa in xrange(n_ant):
-                        for ab in xrange(n_ant):
-                            jhr[d,rr,rc,aa,0,0] = jhr[d,rr,rc,aa,0,0] + \
-                                 r[t,f,aa,ab,0,0]*jh[d,t,f,ab,aa,0,0] + \
-                                 r[t,f,aa,ab,0,1]*jh[d,t,f,ab,aa,1,0]
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        jhr[d,rr,rc,aa,0,0] = jhr[d,rr,rc,aa,0,0] + \
+                             r[t,f,aa,ab,0,0]*jh[d,t,f,ab,aa,0,0] + \
+                             r[t,f,aa,ab,0,1]*jh[d,t,f,ab,aa,1,0]
 
-                            jhr[d,rr,rc,aa,0,1] = jhr[d,rr,rc,aa,0,1] + \
-                                 r[t,f,aa,ab,0,0]*jh[d,t,f,ab,aa,0,1] + \
-                                 r[t,f,aa,ab,0,1]*jh[d,t,f,ab,aa,1,1]
+                        jhr[d,rr,rc,aa,0,1] = jhr[d,rr,rc,aa,0,1] + \
+                             r[t,f,aa,ab,0,0]*jh[d,t,f,ab,aa,0,1] + \
+                             r[t,f,aa,ab,0,1]*jh[d,t,f,ab,aa,1,1]
 
-                            jhr[d,rr,rc,aa,1,0] = jhr[d,rr,rc,aa,1,0] + \
-                                 r[t,f,aa,ab,1,0]*jh[d,t,f,ab,aa,0,0] + \
-                                 r[t,f,aa,ab,1,1]*jh[d,t,f,ab,aa,1,0]
+                        jhr[d,rr,rc,aa,1,0] = jhr[d,rr,rc,aa,1,0] + \
+                             r[t,f,aa,ab,1,0]*jh[d,t,f,ab,aa,0,0] + \
+                             r[t,f,aa,ab,1,1]*jh[d,t,f,ab,aa,1,0]
 
-                            jhr[d,rr,rc,aa,1,1] = jhr[d,rr,rc,aa,1,1] + \
-                                 r[t,f,aa,ab,1,0]*jh[d,t,f,ab,aa,0,1] + \
-                                 r[t,f,aa,ab,1,1]*jh[d,t,f,ab,aa,1,1]
+                        jhr[d,rr,rc,aa,1,1] = jhr[d,rr,rc,aa,1,1] + \
+                             r[t,f,aa,ab,1,0]*jh[d,t,f,ab,aa,0,1] + \
+                             r[t,f,aa,ab,1,1]*jh[d,t,f,ab,aa,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -180,29 +177,28 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:] jh,
     n_fre = jh.shape[2]
     n_ant = jh.shape[3]
 
-    with nogil:
-        for d in xrange(n_dir):
-            for t in xrange(n_tim):
-                rr = t/t_int
-                for f in xrange(n_fre):
-                    rc = f/f_int
-                    for aa in xrange(n_ant):
-                        for ab in xrange(n_ant):
-                            jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
-                            jh[d,t,f,ab,aa,0,0].conjugate()*jh[d,t,f,ab,aa,0,0] + \
-                            jh[d,t,f,ab,aa,1,0].conjugate()*jh[d,t,f,ab,aa,1,0]
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
+                        jh[d,t,f,ab,aa,0,0].conjugate()*jh[d,t,f,ab,aa,0,0] + \
+                        jh[d,t,f,ab,aa,1,0].conjugate()*jh[d,t,f,ab,aa,1,0]
 
-                            jhj[d,rr,rc,aa,0,1] = jhj[d,rr,rc,aa,0,1] + \
-                            jh[d,t,f,ab,aa,0,0].conjugate()*jh[d,t,f,ab,aa,0,1] + \
-                            jh[d,t,f,ab,aa,1,0].conjugate()*jh[d,t,f,ab,aa,1,1]
+                        jhj[d,rr,rc,aa,0,1] = jhj[d,rr,rc,aa,0,1] + \
+                        jh[d,t,f,ab,aa,0,0].conjugate()*jh[d,t,f,ab,aa,0,1] + \
+                        jh[d,t,f,ab,aa,1,0].conjugate()*jh[d,t,f,ab,aa,1,1]
 
-                            jhj[d,rr,rc,aa,1,0] = jhj[d,rr,rc,aa,1,0] + \
-                            jh[d,t,f,ab,aa,0,1].conjugate()*jh[d,t,f,ab,aa,0,0] + \
-                            jh[d,t,f,ab,aa,1,1].conjugate()*jh[d,t,f,ab,aa,1,0]
+                        jhj[d,rr,rc,aa,1,0] = jhj[d,rr,rc,aa,1,0] + \
+                        jh[d,t,f,ab,aa,0,1].conjugate()*jh[d,t,f,ab,aa,0,0] + \
+                        jh[d,t,f,ab,aa,1,1].conjugate()*jh[d,t,f,ab,aa,1,0]
 
-                            jhj[d,rr,rc,aa,1,1] = jhj[d,rr,rc,aa,1,1] + \
-                            jh[d,t,f,ab,aa,0,1].conjugate()*jh[d,t,f,ab,aa,0,1] + \
-                            jh[d,t,f,ab,aa,1,1].conjugate()*jh[d,t,f,ab,aa,1,1]
+                        jhj[d,rr,rc,aa,1,1] = jhj[d,rr,rc,aa,1,1] + \
+                        jh[d,t,f,ab,aa,0,1].conjugate()*jh[d,t,f,ab,aa,0,1] + \
+                        jh[d,t,f,ab,aa,1,1].conjugate()*jh[d,t,f,ab,aa,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -220,22 +216,21 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
     n_fre = jhj.shape[2]
     n_ant = jhj.shape[3]
 
-    with nogil:
-        for d in xrange(n_dir):
-            for t in xrange(n_tim):
-                for f in xrange(n_fre):
-                    for aa in xrange(n_ant):
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            for f in xrange(n_fre):
+                for aa in xrange(n_ant):
 
-                        denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
-                                jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
+                    denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
+                            jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
 
-                        if denom==0:
-                            denom = 1
+                    if denom==0:
+                        denom = 1
 
-                        jhjinv[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
-                        jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
-                        jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
-                        jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
+                    jhjinv[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
+                    jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
+                    jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
+                    jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
 
 
 @cython.cdivision(True)
@@ -257,23 +252,22 @@ def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
     n_fre = jhr.shape[2]
     n_ant = jhr.shape[3]
 
-    with nogil:
-        for d in xrange(n_dir):
-            for t in xrange(n_tim):
-                for f in xrange(n_fre):
-                    for aa in xrange(n_ant):
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            for f in xrange(n_fre):
+                for aa in xrange(n_ant):
 
-                        upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,0] + \
-                                            jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,0]
+                    upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,0] + \
+                                        jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,0]
 
-                        upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,1] + \
-                                            jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,1]
+                    upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,1] + \
+                                        jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,1]
 
-                        upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,0] + \
-                                            jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,0]
+                    upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,0] + \
+                                        jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,0]
 
-                        upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,1] + \
-                                            jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,1]
+                    upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,1] + \
+                                        jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,1]
                     
 
 @cython.cdivision(True)
@@ -300,34 +294,33 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
     n_fre = o.shape[1]
     n_ant = o.shape[2]
 
-    with nogil:
-        for d in xrange(n_dir):
-            for t in xrange(n_tim):
-                rr = t/t_int
-                for f in xrange(n_fre):
-                    rc = f/f_int
-                    for aa in xrange(n_ant):
-                        for ab in xrange(n_ant):
-                            corr[t,f,aa,ab,0,0] = \
-                            g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
-                            g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0]
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        corr[t,f,aa,ab,0,0] = \
+                        g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                        g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                        g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                        g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0]
 
-                            corr[t,f,aa,ab,0,1] = \
-                            g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
-                            g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]
+                        corr[t,f,aa,ab,0,1] = \
+                        g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                        g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                        g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                        g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]
 
-                            corr[t,f,aa,ab,1,0] = \
-                            g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
-                            g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0]
+                        corr[t,f,aa,ab,1,0] = \
+                        g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                        g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                        g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                        g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0]
 
-                            corr[t,f,aa,ab,1,1] = \
-                            g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
-                            g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]
+                        corr[t,f,aa,ab,1,1] = \
+                        g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                        g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                        g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                        g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]

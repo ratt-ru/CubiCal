@@ -576,7 +576,7 @@ def main(debugging=False):
                                 args.tint, args.fint)
 
     else:
-        with cf.ThreadPoolExecutor(max_workers=args.processes) as executor:
+        with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
             future_gains = { executor.submit(target, obser, model, flags, label=chunk_label, **opts) :
                              [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
                              for obser, model, flags, weight, chunk_label in ms }
