@@ -307,6 +307,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
 
         mineqs = eqs_per_interval[valid_intervals].min()
         maxeqs = eqs_per_interval.max()
+        anteqs = np.sum(eqs_per_antenna!=0)
         
         fstats = ""
 
@@ -316,59 +317,101 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
             fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./n_vis2x2)) if n_flag else ""
 
         print>> log, ("{} Initial chisq = {:.4}, {}/{} valid intervals (min {}/max {} eqs per int)," 
-                      " {}/{} valid antennas. Flags are: {}").format(label, init_chi, 
-                        num_valid_intervals, n_int, mineqs, maxeqs, (eqs_per_antenna!=0).sum(),
-                        n_ant, fstats)
+                      " {}/{} valid antennas. Flags are: {}").format(   label, 
+                                                                        init_chi,
+                                                                        num_valid_intervals,
+                                                                        n_int, 
+                                                                        mineqs,
+                                                                        maxeqs,
+                                                                        anteqs,
+                                                                        n_ant,
+                                                                        fstats  )
 
     min_quorum = 0.99
     warned_null_gain = warned_boom_gain = False
 
+    # Main loop of the NNLS method. Terminates after quorum is reached in either converged or 
+    # stalled solutions or when the maximum number of iterations is exceeded.
+
     while n_cnvgd/n_sols < min_quorum and n_stall/n_int < min_quorum and iters < maxiter:
+        
         iters += 1
+        
         if iters % 2 == 0:
-            gains = 0.5*(gains + \
-                compute_update(model_arr, obser_arr, gains, t_int, f_int))
+            gains = 0.5*(gains + compute_update(model_arr, obser_arr, gains, t_int, f_int))
         else:
             gains = compute_update(model_arr, obser_arr, gains, t_int, f_int)
-        # TODO: various infs and NaNs here indicate something wrong with a solution
-        # These should be flagged, and accounted for properly in the statistics
+        
+        # TODO: various infs and NaNs here indicate something wrong with a solution. These should 
+        # be flagged and accounted for properly in the statistics.
+        
+        # Compute values used in convergence tests.
+
         diff_g = np.sum(np.square(np.abs(old_gains - gains)), axis=(-1,-2,-3))
         norm_g = np.sum(np.square(np.abs(gains)), axis=(-1,-2,-3))
-        # diff_g and norm_g have shape of n_dir, n_timint, n_freint; TF slots with no equations
-        # will be 0/0, so reset the norm to 1 to avoid division by 0
-        norm_g[:,~valid_intervals] = 1
-        # any more null Gs? This is unexpected -- report
-        null_g = norm_g==0
+        norm_g[:,~valid_intervals] = 1      # Prevents division by zero.
+        
+        # Checks for unexpected null gain solutions and logs a warning.
+
+        null_g = (norm_g==0)
+
         if null_g.any():
             norm_g[null_g] = 1
             if not warned_null_gain:
-                print>>log, ModColor.Str('{} iteration {} WARNING: {} null gain solution(s) encountered'.format(label, iters, null_g.sum()))
+                print>>log, ModColor.Str("{} iteration {} WARNING: {} null gain solution(s) "
+                                         "encountered".format(label, iters, null_g.sum()))
                 warned_null_gain = True
-        norm_diff_g = diff_g/norm_g
-        # count converged solutions. Note that flagged solutions will have a norm_diff_g of 0 by construction
 
+        # Count converged solutions based on norm_diff_g. Flagged solutions will have a norm_diff_g
+        # of 0 by construction.
+
+        norm_diff_g = diff_g/norm_g
         n_cnvgd = np.sum(norm_diff_g <= min_delta_g**2)
+
+        # Update old gains for subsequent convergence tests.
 
         old_gains = gains.copy()
 
+        # Check residual behaviour after a number of iterations equal to chi_interval. This is 
+        # expensive, so we do it as infrequently as possible.
+
         if (iters % chi_interval) == 0:
+
             old_chi, old_mean_chi = chi, mean_chi
 
             compute_residual(obser_arr, model_arr, resid_arr, gains, t_int, f_int)
 
-            # TODO: some residuals blow up (maybe due to bad data?) and cause np.square() to overflow -- need to flag these
+            # TODO: Some residuals blow up and cause np.square() to overflow -- need to flag these.
+            
             chi = np.sum(np.square(np.abs(tiled_resid_arr)), axis=(1, 4, 5, 6, 7))
             chi.reshape((n_timint, n_freint * f_int))[:, :n_fre] *= inv_var_chan[np.newaxis, :]
             chi = np.sum(chi, axis=2) * chisq_norm
             mean_chi = chi.sum() / num_valid_intervals
 
-            n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
-            if verbose > 1:
-                print>> log, "{} iteration {} chi-sq is {:.4} delta {:.4}, max gain update {:.4}, converged {:.2%}, stalled {:.2%}".format(label,
-                            iters, mean_chi, (old_mean_chi-mean_chi)/old_mean_chi, diff_g.max(), n_cnvgd/n_sols, n_stall/n_int)
+            # Check for stalled solutions - solutions for which the residual is no longer improving.
 
-    print>>log, "{}: {} iterations done. Converged {:.2%}, stalled {:.2%}. Chisq {:.4} -> {:.4}".format(label,
-                iters, n_cnvgd/n_sols, n_stall/n_int, init_chi, mean_chi)
+            n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
+
+            if verbose > 1:
+
+                delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
+
+                print>> log, ("{} iteration {} chi-sq is {:.4} delta {:.4}, max gain update {:.4}, "
+                              "converged {:.2%}, stalled {:.2%}").format(   label,
+                                                                            iters,
+                                                                            mean_chi,
+                                                                            delta_chi, 
+                                                                            diff_g.max(), 
+                                                                            n_cnvgd/n_sols, 
+                                                                            n_stall/n_int   )
+
+    print>>log, ("{}: {} iterations done. Converged {:.2%}, stalled {:.2%}. "
+                "Chisq {:.4} -> {:.4}").format( label, 
+                                                iters, 
+                                                n_cnvgd/n_sols,
+                                                n_stall/n_int, 
+                                                init_chi, 
+                                                mean_chi        )
 
     return gains
 
@@ -387,7 +430,7 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
 
     g_inv = np.empty_like(gains)
 
-    cyfull.cycompute_jhjinv(gains, g_inv) #Function can invert G.
+    cyfull.cycompute_jhjinv(gains, g_inv) # Function can invert G.
 
     gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
 
@@ -406,9 +449,6 @@ def solve_and_save(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30
     corr_vis = apply_gains(obser_arr, gains, t_int, f_int)
 
     return gains, corr_vis
-
-
-# if __name__ == "__main__":
 
 def debug():
     main(debugging=True)
@@ -519,18 +559,22 @@ def main(debugging=False):
 
     t0 = time()
 
-    # debugging mode: run serially (also if nproc not set, or single chunk is specified)
-    if debugging or not args.processes or args.single_chunk_id:
+    # Debugging mode: run serially if processes is not set, or if a single chunk is specified.
+    # Normal mode: use futures to run in parallel. TODO: Figure out if we can used shared memory to 
+    # improve performance.
+    
+    if debugging or args.processes==1 or args.single_chunk_id:
         for obser, model, flags, weight, chunk_label in ms:
+  
             if target is solve_and_save:
                 gains, covis = target(obser, model, flags, label = chunk_label, **opts)
                 ms.arr_to_col(covis, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f])
             else:
                 gains = target(obser, model, flags, label = chunk_label, **opts)
+            
             ms.add_to_gain_dict(gains, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f],
                                 args.tint, args.fint)
 
-    # normal mode: use futures to run in parallel
     else:
         with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
             future_gains = { executor.submit(target, obser, model, flags, label=chunk_label, **opts) :
@@ -554,20 +598,3 @@ def main(debugging=False):
     
     if target is solve_and_save:
         ms.save(ms.covis, "CORRECTED_DATA")
-
-    # t0 = time()
-    # for obs, mod in ms:
-    #     # print "Time: ({},{}) Frequncy: ({},{})".format(ms._first_t, ms._last_t,
-    #     #                                                ms._first_f, ms._last_f)
-    #     gains = solve_gains(obs, mod, args.min_delta_g, args.maxiter,
-    #                         args.min_delta_chi, args.chi_interval,
-    #                         args.tint, args.fint)
-    #     corr_vis = apply_gains(obs, gains, t_int=args.tint, f_int=args.fint)
-    #
-    #     # ms.add_to_gain_dict(gains, t_int, f_int)
-    #
-    #     # ms.array_to_vis(corr_vis, ms._first_t, ms._last_t, ms._first_f, ms._last_f)
-    # print "Time taken: {} seconds".format(time() - t0)
-
-
-    # ms.save(ms.covis, "CORRECTED_DATA")
