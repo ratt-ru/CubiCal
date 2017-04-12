@@ -35,6 +35,7 @@ def compute_js(obser_arr, model_arr, gains, t_int=1, f_int=1):
 
     jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
 
+    # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
     if n_dir > 1:
         r = compute_residual(obser_arr, model_arr, gains, t_int, f_int)
     else:
@@ -78,7 +79,7 @@ def compute_update(model_arr, obser_arr, gains, t_int=1, f_int=1):
     return update
 
 
-def compute_residual(resid_arr, obser_arr, model_arr, gains, t_int=1, f_int=1):
+def compute_residual(obser_arr, model_arr, resid_arr, gains, t_int=1, f_int=1):
     """
     This function computes the residual. This is the difference between the
     observed data, and the model data with the gains applied to it.
@@ -176,7 +177,8 @@ def estimate_noise(data, flags):
         inv_var_ant  = deltaflags.sum(axis=(0, 1, 2)) / deltavis2.sum(axis=(0, 1, 2))
         inv_var_chan = deltaflags.sum(axis=(0, 2, 3)) / deltavis2.sum(axis=(0, 2, 3))
     
-    # Elements may have been set_trace to NaN due to division by zero. This simply zeroes those elements.
+    # Elements may have been set_trace to NaN due to division by zero. This simply zeroes those
+    # elements.
     
     inv_var_ant[~np.isfinite(inv_var_ant)] = 0
     inv_var_chan[~np.isfinite(inv_var_chan)] = 0
@@ -260,63 +262,66 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
     num_valid_intervals = valid_intervals.sum()
 
     # In the event that there are no solution intervals with valid data, this will log some of the
-    # flag information.
+    # flag information. This also breaks out of the function.
 
     if num_valid_intervals is 0:
-        flagstats = OrderedDict()
-        for cat, bitmask in FL.categories().iteritems():
-            flagstats[cat] = ((flags_arr&bitmask) != 0).sum()/(n_cor*n_cor)
-        makestring = lambda cat,total,n_vis2x2: "%s:%d(%.2f%%)" % (cat, total, total*100./n_vis2x2)
-        flagstat_strings = [makestring(cat, total, n_vis2x2) for cat, total in flagstats.iteritems() if total]
-        print>> log, "{} no valid solution intervals. Flags are {}".format(label, " ".join(flagstat_strings or ["none"]))
-        print>> log, "{}: no valid solution intervals. All data flagged perhaps?".format(label)
+
+        fstats = ""
+
+        for flag, mask in FL.categories().iteritems():
+            
+            n_flag = np.sum((flags_arr & mask) != 0)/(n_cor*n_cor)
+            fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./n_vis2x2)) if n_flag else ""
+
+        print>> log, "{}: no valid solution intervals. Flags are: \n{}".format(label, fstats)
+        
         return gains
+    
+    # Compute chi-squared normalization factor for each solution interval.
+    
+    chisq_norm = np.zeros_like(eqs_per_interval, dtype=obser_arr.real.dtype)
+    chisq_norm[valid_intervals] = (1./eqs_per_interval[valid_intervals])
 
-    mineqs = eqs_per_interval[valid_intervals].min()
-    maxeqs = eqs_per_interval.max()
-    # compute chi-sq normalization term per each solution interval
-    chisq_norm = np.ones_like(eqs_per_interval, dtype=obser_arr.real.dtype)
-    with np.errstate(divide='ignore'):  # ignore division by 0
-        chisq_norm /= eqs_per_interval
-    chisq_norm[~valid_intervals] = 0
+    # Initialize a tiled residual array (tiled by whole time/freq intervals). Shapes correspond to 
+    # tiled array shape and the intermediate shape from which our view of the residual is selected.
+    
+    tiled_shape = [n_timint, t_int, n_freint, f_int, n_ant, n_ant, n_cor, n_cor]
+    inter_shape = [n_timint*t_int, n_freint*f_int, n_ant, n_ant, n_cor, n_cor]
+    
+    tiled_resid_arr = np.zeros(tiled_shape, obser_arr.dtype)
+    resid_arr = tiled_resid_arr.reshape(inter_shape)[:n_tim,:n_fre,...]
+    compute_residual(obser_arr, model_arr, resid_arr, gains, t_int, f_int)
 
+    # Chi-squared is computed by summation over antennas, correlations and intervals. Sum over 
+    # time intervals, antennas and correlations first. Normalize by per-channel variance and finally
+    # sum over frequency intervals.
 
-    # make tiled residual array (tiled by whole time/freq intervals)
-    residual_tiled = np.zeros((n_timint,t_int,n_freint,f_int,n_ant,n_ant,n_cor,n_cor), obser_arr.dtype)
-    # make ntim,nfreq view into this array
-    residual = residual_tiled.reshape((n_timint*t_int,n_freint*f_int,n_ant,n_ant,n_cor,n_cor))[:n_tim,:n_fre,...]
-
-    # compute initial residual
-    compute_residual(residual, obser_arr, model_arr, gains, t_int, f_int)
-
-    # chi^2 is computed by summing over antennas, correlations and intervals. Do time, antennas and corrs first,
-    # then normalize by per-channel noise-squared, then collapse freq intervals
-    chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1,4,5,6,7))
-    # chi is now reduced to n_timint,n_freint,f_int in shape --
+    chi = np.sum(np.square(np.abs(tiled_resid_arr)), axis=(1,4,5,6,7))
     chi.reshape((n_timint,n_freint*f_int))[:,:n_fre] *= inv_var_chan[np.newaxis,:]
     chi = np.sum(chi, axis=2) * chisq_norm
     init_chi = mean_chi = chi.sum() / num_valid_intervals
 
+    # The following provides some debugging information when verbose is set to > 0. 
+
     if verbose > 0:
-        flagstats = OrderedDict()
-        for cat, bitmask in FL.categories().iteritems():
-            flagstats[cat] = (flags_arr&bitmask != 0).sum()/(n_cor*n_cor)
-        flagstat_strings = ["%s:%d(%.2f%%)" % (cat, total, total*100./n_vis2x2) for cat, total in flagstats.iteritems() if total]
-        print>> log, "{} initial chisq {:.4}, {}/{} valid intervals (min {}/max {} eqs per int). {}/{} valid antennas. Flags are {}".format(label,
-                        init_chi, num_valid_intervals, n_int, mineqs, maxeqs,
-                        (eqs_per_antenna!=0).sum(), n_ant,
-                        " ".join(flagstat_strings or ["none"]))
-        # amax = abs(residual).argmax()
-        # print>>log, "max init residual {} at index {} {}".format(abs(residual).max(),amax, np.unravel_index(amax, residual.shape))
-        # S = slice(amax-2,amax+2)
-        # print obser_arr.flatten()[S]
-        # print model_arr.flatten()[S]
-        # print residual.flatten()[S]
+
+        mineqs = eqs_per_interval[valid_intervals].min()
+        maxeqs = eqs_per_interval.max()
+        
+        fstats = ""
+
+        for flag, mask in FL.categories().iteritems():
+            
+            n_flag = np.sum((flags_arr & mask) != 0)/(n_cor*n_cor)
+            fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./n_vis2x2)) if n_flag else ""
+
+        print>> log, ("{} Initial chisq = {:.4}, {}/{} valid intervals (min {}/max {} eqs per int)," 
+                      " {}/{} valid antennas. Flags are: {}").format(label, init_chi, 
+                        num_valid_intervals, n_int, mineqs, maxeqs, (eqs_per_antenna!=0).sum(),
+                        n_ant, fstats)
 
     min_quorum = 0.99
     warned_null_gain = warned_boom_gain = False
-
-    # TODO: Add better messages.
 
     while n_cnvgd/n_sols < min_quorum and n_stall/n_int < min_quorum and iters < maxiter:
         iters += 1
@@ -349,10 +354,10 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
         if (iters % chi_interval) == 0:
             old_chi, old_mean_chi = chi, mean_chi
 
-            compute_residual(residual, obser_arr, model_arr, gains, t_int, f_int)
+            compute_residual(obser_arr, model_arr, resid_arr, gains, t_int, f_int)
 
             # TODO: some residuals blow up (maybe due to bad data?) and cause np.square() to overflow -- need to flag these
-            chi = np.sum(np.square(np.abs(residual_tiled)), axis=(1, 4, 5, 6, 7))
+            chi = np.sum(np.square(np.abs(tiled_resid_arr)), axis=(1, 4, 5, 6, 7))
             chi.reshape((n_timint, n_freint * f_int))[:, :n_fre] *= inv_var_chan[np.newaxis, :]
             chi = np.sum(chi, axis=2) * chisq_norm
             mean_chi = chi.sum() / num_valid_intervals
