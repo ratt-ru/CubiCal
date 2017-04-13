@@ -117,7 +117,12 @@ def retile_array (array, m1, m2, n1, n2):
         out.reshape((m1*m2, n1*n2))[:m,:n] = array
         return out
 
-def estimate_noise (data, flags):
+# accumulates total variance per antenna/channel over the entire MS
+# this is per DDID
+total_deltavis2 = {}
+total_deltavalid = {}
+
+def estimate_noise (data, flags, ddid):
     """Given a data cube (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
     and a flag cube (n_tim, n_fre, n_ant, n_ant), estimates the noise in the data.
 
@@ -137,19 +142,31 @@ def estimate_noise (data, flags):
     # and zero the flagged terms
     deltavis2[deltaflags] = 0
     deltaflags = ~deltaflags
+    # sum into n_fre, n_ant arrays
+    deltavis2_chan_ant = deltavis2.sum(axis=(0, 2))
+    deltanum_chan_ant = deltaflags.sum(axis=(0, 2))
+    # add to global stats
+    if ddid not in total_deltavis2:
+        total_deltavis2[ddid] = deltavis2_chan_ant.copy()
+        total_deltavalid[ddid] = deltanum_chan_ant.copy()
+    else:
+        total_deltavis2[ddid] += deltavis2_chan_ant
+        total_deltavalid[ddid] += deltanum_chan_ant
     # now return the stddev per antenna, and per channel
     with np.errstate(divide='ignore', invalid='ignore'):  # ignore division by 0
-        noise = math.sqrt(deltavis2.sum() / deltaflags.sum())
-        inv2_per_ant  = deltaflags.sum(axis=(0, 1, 2)) / deltavis2.sum(axis=(0, 1, 2))
-        inv2_per_chan = deltaflags.sum(axis=(0, 2, 3)) / deltavis2.sum(axis=(0, 2, 3))
+        noise = math.sqrt(deltavis2_chan_ant.sum() / deltanum_chan_ant.sum())
+        inv2_per_antchan =  deltavis2_chan_ant / deltanum_chan_ant
+        inv2_per_ant  = deltanum_chan_ant.sum(axis=0) / deltavis2_chan_ant.sum(axis=0)
+        inv2_per_chan = deltanum_chan_ant.sum(axis=1) / deltavis2_chan_ant.sum(axis=1)
     # antennas/channels with no data end up with NaNs here, so replace them with 0
+    inv2_per_antchan[~np.isfinite(inv2_per_antchan)] = 0
     inv2_per_ant[~np.isfinite(inv2_per_ant)] = 0
     inv2_per_chan[~np.isfinite(inv2_per_chan)] = 0
-    return noise, inv2_per_ant, inv2_per_chan
+    return noise, inv2_per_antchan, inv2_per_ant, inv2_per_chan
 
 
 def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
-                chi_tol=1e-5, chi_interval=5, t_int=1, f_int=1, label=""):
+                chi_tol=1e-5, chi_interval=5, t_int=1, f_int=1, label="", ddid=None):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
@@ -192,7 +209,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
 
     # get noise estimates
     # noise is likely to vary across the band, so we estimate it per channel as well, and use that to normalize chi^2
-    noise, inv_noise2_per_ant, inv_noise2_per_chan = estimate_noise(obser_arr, flags_arr)
+    noise, inv_noise2_per_antchan, inv_noise2_per_ant, inv_noise2_per_chan = estimate_noise(obser_arr, flags_arr, ddid)
     # print>>log,inv_noise2_per_chan
     noise2 = noise**2
 
@@ -344,10 +361,10 @@ def apply_gains(obser_arr, gains, t_int=1, f_int=1):
     return corr_vis
 
 def solve_and_save(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30,
-                   chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1, label=""):
+                   chi_tol=1e-6, chi_interval=5, t_int=1, f_int=1, label="", ddid=None):
 
     gains = solve_gains(obser_arr, model_arr, flags_arr, min_delta_g, maxiter,
-                        chi_tol, chi_interval, t_int, f_int, label=label)
+                        chi_tol, chi_interval, t_int, f_int, label=label, ddid=ddid)
 
     corr_vis = apply_gains(obser_arr, gains, t_int, f_int)
 
@@ -417,6 +434,8 @@ def main(debugging=False):
                             help='Save corrected visibilities to MS.')
         parser.add_argument('-weigh','--apply_weights', action="store_true",
                             help='Use weighted least squares.')
+        parser.add_argument('--plot_noise', action="store_true",
+                            help='Plot noise stats.')
         parser.add_argument('-l', '--log', type=str, default="log",
                             help='Write output to log file.')
         parser.add_argument('-v', '--verbose', type=int, default=0,
@@ -469,7 +488,7 @@ def main(debugging=False):
     if debugging or not args.processes or args.single_chunk_id:
         for obser, model, flags, weight, chunk_label in ms:
             if target is solve_and_save:
-                gains, covis = target(obser, model, flags, label = chunk_label, **opts)
+                gains, covis = target(obser, model, flags, ddid=ms._chunk_ddid, label = chunk_label, **opts)
                 ms.arr_to_col(covis, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f])
             else:
                 gains = target(obser, model, flags, label = chunk_label, **opts)
@@ -479,7 +498,7 @@ def main(debugging=False):
     # normal mode: use futures to run in parallel
     else:
         with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
-            future_gains = { executor.submit(target, obser, model, flags, label=chunk_label, **opts) :
+            future_gains = { executor.submit(target, obser, model, flags, ddid=ms._chunk_ddid, label=chunk_label, **opts) :
                              [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
                              for obser, model, flags, weight, chunk_label in ms }
 
@@ -495,6 +514,25 @@ def main(debugging=False):
                                     args.tint, args.fint)
 
     print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
+
+    print total_deltavis2
+    if args.plot_noise:
+        import pylab
+        for ddid in total_deltavis2.iterkeys():
+            noise = np.sqrt(total_deltavis2[ddid] / total_deltavalid[ddid])
+            pylab.subplot(121)
+            for ant in xrange(noise.shape[1]):
+                pylab.plot(noise[:,ant])
+            pylab.title("DDID {}".format(ddid))
+            pylab.xlabel("channel")
+            pylab.ylabel("noise")
+            pylab.subplot(122)
+            pylab.title("DDID {}".format(ddid))
+            for chan in xrange(noise.shape[0]):
+                pylab.plot(noise[chan,:])
+            pylab.xlabel("antenna")
+            pylab.ylabel("noise")
+            pylab.show()
 
     ms.write_gain_dict()
     
