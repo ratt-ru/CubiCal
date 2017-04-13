@@ -34,8 +34,8 @@ class FL(object):
 
 class ReadModelHandler:
 
-    def __init__(self, ms_name, sm_name, taql=None, fid=None, ddid=None,
-                 precision="32", ddes=False, simulate=False, apply_weights=False):
+    def __init__(self, ms_name, data_column, sm_name, model_column, taql=None, fid=None, ddid=None,
+                 precision="32", ddes=False, weight_column=None):
 
         self.ms_name = ms_name
         self.sm_name = sm_name
@@ -108,9 +108,11 @@ class ReadModelHandler:
         self._first_f = None
         self._last_f = None
 
-        self.simulate = simulate
+        self.data_column = data_column
+        self.model_column = model_column
+        self.weight_column = weight_column
+        self.simulate = bool(self.sm_name)
         self.use_ddes = ddes
-        self.apply_weights = apply_weights
         self.apply_flags = False
         self.bitmask = None
         self.gain_dict = {}
@@ -157,8 +159,11 @@ class ReadModelHandler:
             **kwargs: Arbitrary keyword arguments.
         """
 
-        self.obvis = self.fetch("DATA", *args, **kwargs).astype(self.ctype)
-        self.movis = self.fetch("MODEL_DATA", *args, **kwargs).astype(self.ctype)
+        self.obvis = self.fetch(self.data_column, *args, **kwargs).astype(self.ctype)
+        if self.model_column:
+            self.movis = self.fetch(self.model_column, *args, **kwargs).astype(self.ctype)
+        else:
+            self.movis = np.zeros_like(self.obvis)
         self.antea = self.fetch("ANTENNA1", *args, **kwargs)
         self.anteb = self.fetch("ANTENNA2", *args, **kwargs)
         # time & DDID columns
@@ -178,11 +183,10 @@ class ReadModelHandler:
         self.covis = np.empty_like(self.obvis)
         self.uvwco = self.fetch("UVW", *args, **kwargs)
 
-        if self.apply_weights:
-            if "WEIGHT_SPECTRUM" in self.ms.colnames():
-                self.weigh = self.fetch("WEIGHT_SPECTRUM", *args, **kwargs)
-            else:
-                self.weigh = self.fetch("WEIGHT", *args, **kwargs)
+        if self.weight_column:
+            self.weigh = self.fetch(self.weight_column, *args, **kwargs)
+            # if column is WEIGHT, expand freq axis
+            if self.weight_column == "WEIGHT":
                 self.weigh = self.weigh[:,np.newaxis,:].repeat(self.nfreq, 1)
 
         # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
@@ -197,8 +201,6 @@ class ReadModelHandler:
                 bflag |= self.fetch("BITFLAG_ROW", *args, **kwargs)[:, np.newaxis, np.newaxis]
                 flags |= ((bflag&(self.bitmask or 0)) != 0)
             self.flags[flags] = FL.PRIOR
-        else:
-            flags = np.zeros(self.obvis.shape, dtype=np.bool)
 
     def define_chunk(self, tdim=1, fdim=1, single_chunk_id=None):
         """
@@ -317,7 +319,7 @@ class ReadModelHandler:
                 obs_arr[flags!=0, :, :] = 0
                 mod_arr[0, flags!=0, :, :] = 0
 
-                if self.apply_weights:
+                if self.weight_column:
                     wgt_arr = self.col_to_arr("weigh", t_dim, f_dim, rows)
                     wgt_arr[flags!=0] = 0
 
@@ -336,7 +338,10 @@ class ReadModelHandler:
                         arsnk._dir += 1
 
                     mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
-                    mod_arr = arsnk._sim_array.reshape(mod_shape)
+                    mod_arr1 = arsnk._sim_array.reshape(mod_shape)
+                    # add in MODEL_DATA column, if we had it
+                    mod_arr1[0,...] += mod_arr[0,...]
+                    mod_arr = mod_arr1
 
                 yield obs_arr, mod_arr, flags, wgt_arr, self._chunk_label
 

@@ -2,11 +2,11 @@ from ReadModelHandler import *
 from time import time
 import math
 import cyfull_complex as cyfull
-import argparse
+import os, os.path
 import sys
 import cPickle
 import concurrent.futures as cf
-from Tools import logger
+from Tools import logger, parsets, myoptparse
 log = logger.getLogger("full_complex")
 
 verbose = 0
@@ -464,110 +464,143 @@ def solve_and_save(obser_arr, model_arr, flags_arr, min_delta_g=1e-6, maxiter=30
 def debug():
     main(debugging=True)
 
-def main(debugging=False):
 
+def init_options(parset, savefile=None):
+    """
+    Creates an command-line option parser, populates it based on the content of the given Parset object,
+    and parses the command line.
+
+    If savefile is set, dumps the option settings to savefile.
+
+    Returns the option parser.
+    """
+
+    default_values = parset.value_dict
+    attrs = parset.attr_dict
+
+    desc = """Questions and suggestions: RATT"""
+
+    OP = myoptparse.MyOptParse(usage='Usage: %prog [parset file] <options>', version='%prog version 0.1',
+                               description=desc, defaults=default_values, attributes=attrs)
+
+    # create options based on contents of parset
+    for section in parset.sections:
+        values = default_values[section]
+        # "_Help" value in each section is its documentation string
+        OP.OptionGroup(values.get("_Help", section), section)
+        for name, value in default_values[section].iteritems():
+            if not attrs[section][name].get("no_cmdline"):
+                OP.add_option(name, value)
+
+    OP.Finalise()
+    OP.ReadInput()
+
+    if savefile:
+        cPickle.dump(OP, open(savefile,"w"))
+
+    return OP
+
+
+def main(debugging=False):
     # init logger
     logger.enableMemoryLogging(True)
 
+    # this will be set below if a custom parset is specified on the command line
+    parset_file = None
+    # "GD" is a global defaults dict, containing options set up from parset + command line
+    global GD
+
     if debugging:
         print>> log, "initializing from cubecal.last"
-        args = cPickle.load(open("cubecal.last"))
-        logger.logToFile(args.log, append=False)
+        optparser = cPickle.load(open("cubecal.last"))
+        # "GD" is a global defaults dict, containing options set up from parset + command line
+        GD = optparser.DicoConfig
     else:
-        parser = argparse.ArgumentParser(description='Basic full-polarisation '
-                                                     'calibration script.')
-        parser.add_argument('msname', help='Name and location of MS.')
-        parser.add_argument('smname', help='Name and location of sky model.',
-                            type=str)
-        parser.add_argument('-tc','--tchunk', type=int, default=1,
-                            help='Determines time chunk size.')
-        parser.add_argument('-fc','--fchunk', type=int, default=1,
-                            help='Determines frequency chunk size.')
-        parser.add_argument('--single-chunk-id', type=str,
-                            help='Process only the specified chunk, then stop. Useful for debugging.')
-        parser.add_argument('-ti','--tint', type=int, default=1,
-                            help='Determines time solution intervals.')
-        parser.add_argument('-fi','--fint', type=int, default=1,
-                            help='Determines frequency solution intervals.')
-        parser.add_argument('-af','--applyflags', action="store_true",
-                            help='Apply FLAG column to data.')
-        parser.add_argument('-bm','--bitmask', type=int, default=0,
-                            help='Apply masked bitflags to data.')
-        parser.add_argument('-maxit','--maxiter', type=int, default=50,
-                            help='Maximum number of iterations.')
-        parser.add_argument('-f', '--field', type=int,
-                            help='Selects a particular FIELD_ID.')
-        parser.add_argument('-d', '--ddid', type=int,
-                            help='Selects a particular DATA_DESC_ID.')
-        parser.add_argument('-p', '--precision', type=str, default='32',
-                            help='Selects a particular data type.')
-        parser.add_argument('--ddid_to', type=int, help='Selects range from'
-                            '--ddid to a particular DATA_DESC_ID.')
-        parser.add_argument('-ddes','--use_ddes', action="store_true",
-                            help='Simulate and solve for directions in sky model')
-        parser.add_argument('-sim','--simulate', action="store_true",
-                            help='Simulate visibilities using Montblanc.')
-        parser.add_argument('-delg','--min_delta_g', type=float, default=1e-6,
-                            help='Stopping criteria for delta G - stop when '
-                                 'solutions change less than this value.')
-        parser.add_argument('-delchi','--min_delta_chi', type=float, default=1e-5,
-                            help='Stopping criteria for delta chi - stop when '
-                                 'the residual changes less than this value.')
-        parser.add_argument('-chiint','--chi_interval', type=int, default=5,
-                            help='Interval at which to check the chi squared '
-                                 'value - expensive computation.')
-        parser.add_argument('-nproc','--processes', type=int, default=1,
-                            help='Number of processes to run.')
-        parser.add_argument('-savco','--save_corrected', action="store_true",
-                            help='Save corrected visibilities to MS.')
-        parser.add_argument('-weigh','--apply_weights', action="store_true",
-                            help='Use weighted least squares.')
-        parser.add_argument('--plot_noise', action="store_true",
-                            help='Plot noise stats.')
-        parser.add_argument('-l', '--log', type=str, default="log",
-                            help='Write output to log file.')
-        parser.add_argument('-v', '--verbose', type=int, default=0,
-                            help='Verbosity level for messages.')
+        default_parset = parsets.Parset("%s/DefaultParset.cfg" % os.path.dirname(__file__))
+        optparser = init_options(default_parset, "cubecal.last")
 
-        args = parser.parse_args()
+        positional_args = optparser.GiveArguments()
+        # if a single argument is given, treat it as a parset and see if we can read it
+        if len(positional_args) == 1:
+            parset_file = positional_args[0]
+            parset = parsets.Parset(parset_file)
+            if not parset.success:
+                optparser.ExitWithError("%s must be a valid parset file. Use -h for help."%parset_file)
+                sys.exit(1)
+            # update default parameters with values from parset
+            default_parset.update_values(parset, newval=False)
+            # re-read command-line options, since defaults will have been updated by the parset
+            optparser = init_options(default_parset, "cubecal.last")
+        elif len(positional_args):
+            optparser.ExitWithError("Incorrect number of arguments. Use -h for help.")
+            sys.exit(1)
 
-        cPickle.dump(args, open("cubecal.last","w"))
+        # "GD" is a global defaults dict, containing options set up from parset + command line
+        GD = optparser.DicoConfig
 
-        logger.logToFile(args.log, append=False)
-        print>> log, "started: " + " ".join(sys.argv)
+        # get basename for all output files
+        basename = GD["Output"]["Name"]
+        if not basename:
+            basename = "out"
 
+        # create directory for output files, if it doesn't exist
+        dirname = os.path.dirname(basename)
+        if not os.path.exists(dirname) and not dirname == "":
+            os.mkdir(dirname)
+
+        # save parset with all settings. We refuse to clobber a parset with itself
+        # (so e.g. "gocubecal test.parset --Section-Option foo" does not overwrite test.parset)
+        save_parset = basename + ".parset"
+        if parset_file and os.path.exists(parset_file) and os.path.samefile(save_parset, parset_file):
+            if optparser.DicoConfig["Output"]["Clobber"]:
+                print>> log, ModColor.Str(
+                    "WARNING: will overwrite existing parset, since --Output-Clobber is specified.")
+            else:
+                print>> log, ModColor.Str(
+                    "Your --Output-Name setting is the same as the base name of the parset, which would\n"
+                    "mean overwriting the parset. I'm sorry, Dave, I'm afraid I can't do that.\n"
+                    "Please re-run with the --Output-Clobber option if you're sure this is what\n"
+                    "you want to do, or set a different --Output-Name.")
+                sys.exit(1)
+        optparser.ToParset(save_parset)
+
+    # now setup logging
+    logger.logToFile(basename + ".log", append=GD["Log"]["Append"])
+    logger.enableMemoryLogging(GD["Log"]["Memory"])
+    if not debugging:
+        print>>log, "started " + " ".join(sys.argv)
+    # print current options
+    optparser.Print(dest=log)
+
+    # enable verbosity
     global verbose
-    verbose = args.verbose
+    verbose = GD["Debug"]["Verbose"]
 
-    if args.ddid is not None:
-        if args.ddid_to is not None:
-            ddid =  args.ddid, args.ddid_to+1
-        else:
-            ddid = args.ddid
-    else:
-        ddid = None
+    ddid, ddid_to = GD["Selection"]["DDID"], GD["Selection"]["DDID_TO"]
+    if ddid is not None and ddid_to is not None:
+        ddid = ddid, ddid_to+1
 
-    ms = ReadModelHandler(args.msname, args.smname, fid=args.field, ddid=ddid,
-                          precision=args.precision, ddes=args.use_ddes,
-                          simulate=args.simulate, apply_weights=args.apply_weights)
-    if args.applyflags:
-        ms.apply_flags = True
-    if args.bitmask != 0:
-        ms.bitmask = args.bitmask
+    ms = ReadModelHandler(GD["Data"]["MS"], GD["Data"]["Column"], GD["Model"]["LSM"], GD["Model"]["Column"],
+                          fid=GD["Selection"]["Field"], ddid=ddid,
+                          precision=GD["Solution"]["Precision"],
+                          ddes=GD["Model"]["DDEs"],
+                          weight_column=GD["Weight"]["Column"])
+    ms.apply_flags = bool(GD["Flags"]["Apply"])
+    ms.bitmask = GD["Flags"]["ApplyBitmask"]
 
     print>>log, "reading MS columns"
     ms.mass_fetch()
     print>>log, "defining chunks"
-    ms.define_chunk(args.tchunk, args.fchunk, single_chunk_id=args.single_chunk_id)
+    ms.define_chunk(GD["Data"]["TimeChunk"], GD["Data"]["FreqChunk"], single_chunk_id=GD["Data"]["SingleChunk"])
 
-    target = solve_and_save if args.save_corrected else solve_gains
+    target = solve_and_save if GD["Output"]["Vis"] else solve_gains
 
-    opts = { "min_delta_g"  : args.min_delta_g,
-             "maxiter"      : args.maxiter,
-             "chi_tol"      : args.min_delta_chi,
-             "chi_interval" : args.chi_interval,
-             "t_int"        : args.tint,
-             "f_int"        : args.fint }
+    opts = { "min_delta_g"  : GD["Solution"]["DeltaG"],
+             "maxiter"      : GD["Solution"]["MaxIter"],
+             "chi_tol"      : GD["Solution"]["DeltaChi"],
+             "chi_interval" : GD["Solution"]["ChiInt"],
+             "t_int"        : GD["Solution"]["TimeInt"],
+             "f_int"        : GD["Solution"]["FreqInt"] }
 
 
     t0 = time()
@@ -575,8 +608,9 @@ def main(debugging=False):
     # Debugging mode: run serially if processes is not set, or if a single chunk is specified.
     # Normal mode: use futures to run in parallel. TODO: Figure out if we can used shared memory to 
     # improve performance.
+    ncpu = GD["Parallel"]["NCPU"]
     
-    if debugging or args.processes<=1 or args.single_chunk_id:
+    if debugging or ncpu <= 1 or GD["Data"]["SingleChunk"]:
         for obser, model, flags, weight, chunk_label in ms:
   
             if target is solve_and_save:
@@ -586,10 +620,10 @@ def main(debugging=False):
                 gains = target(obser, model, flags, label = chunk_label, **opts)
             
             ms.add_to_gain_dict(gains, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f],
-                                args.tint, args.fint)
+                                GD["Solution"]["TimeInt"], GD["Solution"]["FreqInt"])
 
     else:
-        with cf.ProcessPoolExecutor(max_workers=args.processes) as executor:
+        with cf.ProcessPoolExecutor(max_workers=ncpu) as executor:
             future_gains = { executor.submit(target, obser, model, flags, ddid=ms._chunk_ddid, label=chunk_label, **opts) :
                              [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
                              for obser, model, flags, weight, chunk_label in ms }
@@ -603,12 +637,12 @@ def main(debugging=False):
                     gains = future.result()
 
                 ms.add_to_gain_dict(gains, future_gains[future],
-                                    args.tint, args.fint)
+                                    GD["Solution"]["TimeInt"], GD["Solution"]["FreqInt"])
 
     print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
 
     print total_deltavis2
-    if args.plot_noise:
+    if GD["Output"]["NoisePlots"]:
         import pylab
         for ddid in total_deltavis2.iterkeys():
             noise = np.sqrt(total_deltavis2[ddid] / total_deltavalid[ddid])
