@@ -255,6 +255,8 @@ class ReadModelHandler:
 
         print>>log,"will generate %d row chunks"%(len(self.chunk_rind),)
 
+        # TODO: this assumes each DDID has the same number of channels. I don't know of cases where it is not true,
+        # but, technically, this is not precluded by the MS standard. Need to handle this...
         self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
         self.chunk_find.append(self.nfreq)
 
@@ -302,6 +304,8 @@ class ReadModelHandler:
 
                 self._chunk_ddid = ddid
                 self._chunk_tchunk = tchunk
+                self._chunk_fchunk = ddid*self.nfreq + j
+
                 self._first_f = self.chunk_find[j]
                 self._last_f = self.chunk_find[j + 1]
 
@@ -343,7 +347,7 @@ class ReadModelHandler:
                     mod_arr1[0,...] += mod_arr[0,...]
                     mod_arr = mod_arr1
 
-                yield obs_arr, mod_arr, flags, wgt_arr, self._chunk_label
+                yield obs_arr, mod_arr, flags, wgt_arr, (self._chunk_tchunk, self._chunk_fchunk), self._chunk_label
 
 
     def col_to_arr(self, target, chunk_tdim, chunk_fdim, rows):
