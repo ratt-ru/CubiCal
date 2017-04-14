@@ -211,7 +211,7 @@ def main(debugging=False):
             DPI = 150.   # resolution: determines size of text relative to plots
             ZOOM = 10    # image zoom. Roughly determines size of "pixels" when rendering images
             def save_figure(name, width, height):
-                pylab.gcf().set_size_inches(width, height)
+                pylab.gcf().set_size_inches(min(width, 10000/DPI), min(height, 10000/DPI))
                 filename = "{}.{}.png".format(basename, name)
                 pylab.savefig(filename, dpi=DPI)
                 print>>log, "saved "+filename
