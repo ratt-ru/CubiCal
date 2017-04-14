@@ -119,7 +119,7 @@ class ReadModelHandler:
 
     def build_taql(self, taql=None, fid=None, ddid=None):
 
-        if taql is not None:
+        if taql:
             taqls = [ "(" + taql +")" ]
         else:
             taqls = []
