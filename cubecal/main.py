@@ -103,7 +103,7 @@ def main(debugging=False):
             GD = optparser.DicoConfig
 
             # get basename for all output files
-            basename = GD["output"]["name"]
+            basename = GD["out"]["name"]
             if not basename:
                 basename = "out"
 
@@ -135,14 +135,14 @@ def main(debugging=False):
         # enable verbosity
         logger.verbosity = GD["debug"]["verbose"]
 
-        ddid, ddid_to = GD["selection"]["ddid"], GD["selection"]["ddid-to"]
+        ddid, ddid_to = GD["sel"]["ddid"], GD["sel"]["ddid-to"]
         if ddid is not None and ddid_to is not None:
             ddid = ddid, ddid_to+1
 
         ms = ReadModelHandler(GD["data"]["ms"], GD["data"]["column"], GD["model"]["lsm"], GD["model"]["column"],
-                              taql=GD["selection"]["taql"],
-                              fid=GD["selection"]["field"], ddid=ddid,
-                              precision=GD["solution"]["precision"],
+                              taql=GD["sel"]["taql"],
+                              fid=GD["sel"]["field"], ddid=ddid,
+                              precision=GD["sol"]["precision"],
                               ddes=GD["model"]["ddes"],
                               weight_column=GD["weight"]["column"])
         ms.apply_flags = bool(GD["flags"]["apply"])
@@ -153,21 +153,21 @@ def main(debugging=False):
         print>>log, "defining chunks"
         ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"], single_chunk_id=GD["data"]["single-chunk"])
 
-        if GD["output"]["vis"] == "corrected":
+        if GD["out"]["vis"] == "corrected":
             target = solver.solve_and_correct
-        elif GD["output"]["vis"] == "residuals":
+        elif GD["out"]["vis"] == "residuals":
             target = solver.solve_and_correct_res
         else:
             target = solver.solve_gains
 
-        solver_opts = GD["solution"]
+        solver_opts = GD["sol"]
 
         t0 = time()
 
         # Debugging mode: run serially if processes is not set, or if a single chunk is specified.
         # Normal mode: use futures to run in parallel. TODO: Figure out if we can used shared memory to
         # improve performance.
-        ncpu = GD["parallel"]["ncpu"]
+        ncpu = GD["dist"]["ncpu"]
 
         # this accumulates SolverStats objects from each chunk, for summarizing later
         stats_dict = {}
@@ -180,7 +180,7 @@ def main(debugging=False):
                     ms.arr_to_col(covis, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f])
 
                 ms.add_to_gain_dict(gm.gains, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f],
-                                    GD["solution"]["time-int"], GD["solution"]["freq-int"])
+                                    GD["sol"]["time-int"], GD["sol"]["freq-int"])
 
         else:
             with cf.ProcessPoolExecutor(max_workers=ncpu) as executor:
@@ -195,12 +195,12 @@ def main(debugging=False):
                         ms.arr_to_col(covis, future_gains[future][1:])
 
                     ms.add_to_gain_dict(gm.gains, future_gains[future][1:],
-                                        GD["solution"]["time-int"], GD["solution"]["freq-int"])
+                                        GD["sol"]["time-int"], GD["sol"]["freq-int"])
 
         print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
 
         # now summarize the stats
-        if GD["output"]["plots"]:
+        if GD["out"]["plots"]:
             # summarize stats
             print>>log,"computing summary statistics"
             st = SolverStats(stats_dict)
@@ -215,7 +215,7 @@ def main(debugging=False):
                 filename = "{}.{}.png".format(basename, name)
                 pylab.savefig(filename, dpi=DPI)
                 print>>log, "saved "+filename
-                if GD["output"]["plots-show"]:
+                if GD["out"]["plots-show"]:
                     pylab.show()
 
             # plot noise per time/channel
@@ -255,8 +255,8 @@ def main(debugging=False):
         ms.write_gain_dict()
 
         if target is not solver.solve_gains:
-            print>>log, "saving visibilities to {}".format(GD["output"]["column"])
-            ms.save(ms.covis, GD["output"]["column"])
+            print>>log, "saving visibilities to {}".format(GD["out"]["column"])
+            ms.save(ms.covis, GD["out"]["column"])
     except Exception, exc:
         import traceback
         print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc()))

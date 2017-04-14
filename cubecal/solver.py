@@ -305,7 +305,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
                                                 float(stats.chunk.init_chi2),
                                                 mean_chi)
     if options['last-rites']:
-        message += " ({:.3}), noise {:.3} -> {:.3}".format(float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
+        message += " ({:.4}), noise {:.3} -> {:.3}".format(float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
 
     print>>log, message
 
