@@ -110,7 +110,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
     # In the event that there are no solution intervals with valid data, this will log some of the
     # flag information. This also breaks out of the function.
 
-    if num_valid_intervals is 0:
+    if num_valid_intervals == 0:  # "is 0" doesn't work because np.sum() is a 0-d array
 
         fstats = ""
 
@@ -260,8 +260,8 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
             old_chi, old_mean_chi = chi, mean_chi
 
             gm.compute_residual(obser_arr, model_arr, resid_arr)
-            have_residuals = True
             chi, mean_chi = compute_chisq()
+            have_residuals = True
 
             # Check for stalled solutions - solutions for which the residual is no longer improving.
 
@@ -280,34 +280,32 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
                                                                             n_cnvgd/gm.n_sols,
                                                                             n_stall/gm.n_int   )
 
-    recompute_chisq = False
-    # do we need to recompute the residuals one last time?
-    if (options['reestimate-noise'] or compute_residuals) and not have_residuals:
+    # do we need to recompute the final residuals?
+    if (options['last-rites'] or compute_residuals) and not have_residuals:
         gm.compute_residual(obser_arr, model_arr, resid_arr)
-        recompute_chisq = True
+        if options['last-rites']:
+            # recompute chi^2 based on original noise statistics
+            chi, mean_chi = compute_chisq(statfield='chi2')
 
-    # re-estimate the noise using residuals, if asked to.
-    if options['reestimate-noise']:
+    # re-estimate the noise using the final residuals, if last rites are needed
+    if options['last-rites']:
         stats.chunk.noise, inv_var_antchan, inv_var_ant, inv_var_chan = stats.estimate_noise(resid_arr, flags_arr, residuals=True)
-        recompute_chisq = True
-
-    if recompute_chisq:
-        chi, mean_chi = compute_chisq(statfield='chi2')
+        chi1, mean_chi1 = compute_chisq(statfield='chi2')
 
     stats.chunk.iters = iters
     stats.chunk.num_converged = n_cnvgd
     stats.chunk.num_stalled = n_stall
     stats.chunk.chi2 = mean_chi
 
-    message = ("{}: {} iters. Conv {:.2%}, stalled {:.2%}. "
-                "Chi2 {:.4} -> {:.4}").format(label,
+    message = ("{}: {} iters, conv {:.2%}, stalled {:.2%}, "
+                "chi2 {:.4} -> {:.4}").format(label,
                                                 iters,
                                                 n_cnvgd/gm.n_sols,
                                                 n_stall/gm.n_int,
                                                 float(stats.chunk.init_chi2),
-                                                float(stats.chunk.chi2))
-    if options['reestimate-noise']:
-        message += ". Noise {:.3} -> {:.3}".format(float(stats.chunk.init_noise), float(stats.chunk.noise))
+                                                mean_chi)
+    if options['last-rites']:
+        message += " ({:.3}), noise {:.3} -> {:.3}".format(float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
 
     print>>log, message
 

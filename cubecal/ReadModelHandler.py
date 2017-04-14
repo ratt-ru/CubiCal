@@ -84,8 +84,8 @@ class ReadModelHandler:
         else:
             self._ddids = range(self._ddesctab.nrows())
 
-        print>>log,"%d antennas, %d rows, %d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
-                    self.nrows, len(self._ddids), self.ntime, self.nfreq, self.ncorr)
+        print>>log,"%d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
+                    self.nrows, len(self._ddids), self._ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
 
         self.obvis = None
         self.movis = None
@@ -253,7 +253,7 @@ class ReadModelHandler:
             for tchunk in range(len(timechunks)-1):
                 self.chunk_rind[ddid,tchunk] = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
 
-        print>>log,"will generate %d row chunks"%(len(self.chunk_rind),)
+        print>>log,"will generate %d row chunks based on time and DDID"%(len(self.chunk_rind),)
 
         # TODO: this assumes each DDID has the same number of channels. I don't know of cases where it is not true,
         # but, technically, this is not precluded by the MS standard. Need to handle this...
