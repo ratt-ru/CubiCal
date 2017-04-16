@@ -2,18 +2,11 @@ import numpy as np
 from collections import Counter, OrderedDict
 import pyrap.tables as pt
 import cPickle
+import re
 #import better_exceptions
 
 from Tools import logger, ModColor
 log = logger.getLogger("ReadModelHandler")
-
-try:
-    import MBTiggerSim as mbt
-    import TiggerSourceProvider as tsp
-except:
-    print>>log, ModColor.Str("Montblanc is not installed - simulation mode will crash.")
-
-from time import time
 
 class FL(object):
     """Namespace for flag bits"""
@@ -30,6 +23,39 @@ class FL(object):
     def categories():
         """Returns dict of all flag categories defined above"""
         return OrderedDict([(attr, value) for attr, value in FL.__dict__.iteritems() if attr[0] != "_" and type(value) is int])
+
+
+def _parse_range(arg, nmax):
+    """Helper function. Parses an argument into a list of numbers. Nmax is max number.
+    Supports e.g. 5, "5", "5~7" (inclusive range), "5:8" (pythonic range), "5,6,7" (list)
+    """
+    fullrange = range(nmax)
+    if type(arg) is None:
+        return fullrange
+    elif type(arg) is int:
+        return [arg]
+    elif type(arg) is tuple:
+        return list(arg)
+    elif type(arg) is list:
+        return arg
+    elif type(arg) is not str:
+        raise TypeError("can't parse range of type '%s'"%type(arg))
+    arg = arg.strip()
+    if re.match("\d+$", arg):
+        return [ int(arg) ]
+    elif "," in arg:
+        return map(int,','.split(arg))
+    if re.match("(\d*)~(\d*)$", arg):
+        i0, i1 = arg.split("~", 1)
+        i0 = int(i0) if i0 else None
+        i1 = int(i1)+1 if i1 else None
+    elif re.match("(\d*):(\d*)$", arg):
+        i0, i1 = arg.split(":", 1)
+        i0 = int(i0) if i0 else None
+        i1 = int(i1) if i1 else None
+    else:
+        raise ValueError("can't parse range '%s'"%arg)
+    return fullrange[slice(i0,i1)]
 
 
 class ReadModelHandler:
@@ -70,8 +96,11 @@ class ReadModelHandler:
         self._spw_chanfreqs = self._spwtab.getcol("CHAN_FREQ")  # nspw x nfreq array of frequencies
         print>>log,"  {} spectral windows of {} channels each ".format(*self._spw_chanfreqs.shape)
 
+        # figure out DDID range
+        self._ddids = _parse_range(ddid, self._ddesctab.nrows())
+
         # use TaQL to select subset
-        self.taql = self.build_taql(taql, fid, ddid)
+        self.taql = self.build_taql(taql, fid, self._ddids)
 
         if self.taql:
             print>> log, "Applying TAQL query: %s" % self.taql
@@ -85,15 +114,6 @@ class ReadModelHandler:
             raise ValueError("MS selection returns no rows")
 
         self.ntime = len(np.unique(self.fetch("TIME")))
-
-        # figure out DDID range
-        if ddid is not None:
-            if isinstance(ddid, (tuple, list)) and len(ddid) == 2:
-                self._ddids = range(*ddid)
-            else:
-                self._ddids = [ddid]
-        else:
-            self._ddids = range(self._ddesctab.nrows())
 
         self._ddid_spw = self._ddesctab.getcol("SPECTRAL_WINDOW_ID")
         # select frequencies corresponding to DDID range
@@ -146,8 +166,8 @@ class ReadModelHandler:
             taqls.append("FIELD_ID == %d" % fid)
 
         if ddid is not None:
-            if isinstance(ddid,(tuple,list)) and len(ddid) == 2:
-                taqls.append("DATA_DESC_ID IN %d:%d" % (ddid[0], ddid[1]))
+            if isinstance(ddid,(tuple,list)):
+                taqls.append("DATA_DESC_ID IN [%s]" % ",".join(map(str,ddid)))
             else:
                 taqls.append("DATA_DESC_ID == %d" % ddid)
 
@@ -202,6 +222,7 @@ class ReadModelHandler:
         self.uvwco = self.fetch("UVW", *args, **kwargs)
 
         if self.weight_column:
+            print>>log,"using weights from column {}".format(self.weight_column)
             self.weigh = self.fetch(self.weight_column, *args, **kwargs)
             # if column is WEIGHT, expand freq axis
             if self.weight_column == "WEIGHT":
@@ -346,6 +367,13 @@ class ReadModelHandler:
                     wgt_arr[flags!=0] = 0
 
                 if self.simulate:
+                    try:
+                        import MBTiggerSim as mbt
+                        import TiggerSourceProvider as tsp
+                    except:
+                        print>> log, ModColor.Str("Montblanc failed to initialize. Can't predict from an LSM.")
+                        raise
+
                     mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
                     tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
                                                          use_ddes=self.use_ddes)
@@ -457,7 +485,7 @@ class ReadModelHandler:
         elif target is "model":
             out_arr = out_arr.reshape([1, chunk_tdim, chunk_fdim, self.nants, self.nants, 2, 2])
         elif target is "weigh":
-            out_arr = np.sum(out_arr, axis=-1)
+            out_arr = np.sqrt( np.sum(out_arr, axis=-1) )  # take the square root
 
         return out_arr
 

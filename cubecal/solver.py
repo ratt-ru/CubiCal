@@ -314,18 +314,39 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
 
 
 
-def solve_and_correct(obser_arr, model_arr, flags_arr, options, label=""):
+def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, options, label=""):
+    # if weights are set, multiply data and model by weights, but keep an unweighted copy
+    # of the data, since we need to correct
+    if weight_arr is not None:
+        obser_arr1 = obser_arr*weight_arr[..., np.newaxis, np.newaxis]
+        model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
+    else:
+        obser_arr1 = obser_arr
 
-    gm, _, stats = solve_gains(obser_arr, model_arr, flags_arr, options, label=label)
+    gm, _, stats = solve_gains(obser_arr1, model_arr, flags_arr, options, label=label)
 
     corr_vis = gm.apply_inv_gains(obser_arr)
 
     return gm, corr_vis, stats
 
 
-def solve_and_correct_res(obser_arr, model_arr, flags_arr, options, label=""):
+def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, options, label=""):
+    # if weights are set, multiply data and model by weights, but keep an unweighted copy
+    # of the model and data, since we need to correct the residuals
 
-    gm, resid_arr, stats = solve_gains(obser_arr, model_arr, flags_arr, options, label=label, compute_residuals=True)
+    if weight_arr is not None:
+        obser_arr1 = obser_arr * weight_arr[..., np.newaxis, np.newaxis]
+        model_arr1 = model_arr * weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
+    else:
+        obser_arr1, model_arr1 = obser_arr, model_arr
+
+    # use the residuals computed in solve_gains() only if no weights. Otherwise need
+    # to recompute them from unweighted versions
+    gm, resid_arr, stats = solve_gains(obser_arr, model_arr, flags_arr, options, label=label,
+                                       compute_residuals=(weight_arr is None))
+
+    if weight_arr is not None:
+        gm.compute_residual(obser_arr, model_arr, resid_arr)
 
     corr_vis = gm.apply_inv_gains(resid_arr)
 

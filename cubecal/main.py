@@ -18,6 +18,7 @@ import flagging
 from statistics import SolverStats
 
 
+
 def init_options(parset, savefile=None):
     """
     Creates an command-line option parser, populates it based on the content of the given Parset object,
@@ -141,13 +142,9 @@ def main(debugging=False):
         # enable verbosity
         logger.verbosity = GD["debug"]["verbose"]
 
-        ddid, ddid_to = GD["sel"]["ddid"], GD["sel"]["ddid-to"]
-        if ddid is not None and ddid_to is not None:
-            ddid = ddid, ddid_to+1
-
         ms = ReadModelHandler(GD["data"]["ms"], GD["data"]["column"], GD["model"]["lsm"], GD["model"]["column"],
                               taql=GD["sel"]["taql"],
-                              fid=GD["sel"]["field"], ddid=ddid,
+                              fid=GD["sel"]["field"], ddid=GD["sel"]["ddid"],
                               precision=GD["sol"]["precision"],
                               ddes=GD["model"]["ddes"],
                               weight_column=GD["weight"]["column"])
@@ -180,7 +177,7 @@ def main(debugging=False):
 
         if debugging or ncpu <= 1 or GD["data"]["single-chunk"]:
             for obser, model, flags, weight, tfkey, chunk_label in ms:
-                gm, covis, stats = target(obser, model, flags, solver_opts, label = chunk_label)
+                gm, covis, stats = target(obser, model, flags, weight, solver_opts, label = chunk_label)
                 stats_dict[tfkey] = stats
                 if covis is not None:
                     ms.arr_to_col(covis, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f])
@@ -190,7 +187,7 @@ def main(debugging=False):
 
         else:
             with cf.ProcessPoolExecutor(max_workers=ncpu) as executor:
-                future_gains = { executor.submit(target, obser, model, flags, solver_opts, label=chunk_label) :
+                future_gains = { executor.submit(target, obser, model, flags, weight, solver_opts, label=chunk_label) :
                                  [tfkey, ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
                                  for obser, model, flags, weight, tfkey, chunk_label in ms }
 
