@@ -41,15 +41,7 @@ class ReadModelHandler:
         self.sm_name = sm_name
         self.fid = fid if fid is not None else 0
 
-        self.taql = self.build_taql(taql, fid, ddid)
-
         self.ms = pt.table(self.ms_name, readonly=False, ack=False)
-
-        if self.taql:
-            print>>log, "Applying TAQL query: %s"%self.taql
-            self.data = self.ms.query(self.taql)
-        else:
-            self.data = self.ms
 
         print>>log, ModColor.Str("reading MS %s"%self.ms_name, col="green")
 
@@ -62,8 +54,6 @@ class ReadModelHandler:
         self.ctype = np.complex128 if precision=="64" else np.complex64
         self.ftype = np.float64 if precision=="64" else np.float32
         self.flagtype = np.int32
-        self.nrows = self.data.nrows()
-        self.ntime = len(np.unique(self.fetch("TIME")))
         self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
         self.ncorr = self._poltab.getcol("NUM_CORR")[0]
         self.nants = self._anttab.nrows()
@@ -75,6 +65,27 @@ class ReadModelHandler:
         self._phadir = self._fldtab.getcol("PHASE_DIR", startrow=self.fid,
                                            nrow=1)[0][0]
 
+        # print some info on MS layout
+        print>>log,"  fields are "+", ".join(["{}{}: {}".format('*' if i==fid else "",i,name) for i, name in enumerate(self._fldtab.getcol("NAME"))])
+        self._spw_chanfreqs = self._spwtab.getcol("CHAN_FREQ")  # nspw x nfreq array of frequencies
+        print>>log,"  {} spectral windows of {} channels each ".format(*self._spw_chanfreqs.shape)
+
+        # use TaQL to select subset
+        self.taql = self.build_taql(taql, fid, ddid)
+
+        if self.taql:
+            print>> log, "Applying TAQL query: %s" % self.taql
+            self.data = self.ms.query(self.taql)
+        else:
+            self.data = self.ms
+
+        self.nrows = self.data.nrows()
+
+        if not self.nrows:
+            raise ValueError("MS selection returns no rows")
+
+        self.ntime = len(np.unique(self.fetch("TIME")))
+
         # figure out DDID range
         if ddid is not None:
             if isinstance(ddid, (tuple, list)) and len(ddid) == 2:
@@ -83,6 +94,11 @@ class ReadModelHandler:
                 self._ddids = [ddid]
         else:
             self._ddids = range(self._ddesctab.nrows())
+
+        self._ddid_spw = self._ddesctab.getcol("SPECTRAL_WINDOW_ID")
+        # select frequencies corresponding to DDID range
+        self._ddid_chanfreqs = np.array([self._spw_chanfreqs[self._ddid_spw[ddid]] for ddid in self._ddids ])
+
 
         print>>log,"%d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
                     self.nrows, len(self._ddids), self._ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
