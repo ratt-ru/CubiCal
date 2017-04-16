@@ -99,9 +99,10 @@ class ReadModelHandler:
         # select frequencies corresponding to DDID range
         self._ddid_chanfreqs = np.array([self._spw_chanfreqs[self._ddid_spw[ddid]] for ddid in self._ddids ])
 
-
         print>>log,"%d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
                     self.nrows, len(self._ddids), self._ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
+        print>>log,"DDID central frequencies are at {} GHz".format(
+                    " ".join(["%.2f"%(self._ddid_chanfreqs[i][self.nfreq/2]*1e-9) for i in range(len(self._ddids))]))
 
         self.obvis = None
         self.movis = None
