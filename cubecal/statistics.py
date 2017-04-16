@@ -1,6 +1,9 @@
 import math
 import numpy as np
+import cPickle
+
 from Tools import logger
+
 
 log = logger.getLogger("stats")
 
@@ -32,6 +35,11 @@ class SolverStats (object):
                   ('num_intervals', 'i4'), ('num_converged', 'i4'), ('num_stalled', 'i4'),
                   ('init_chi2', 'f8'), ('init_noise', 'f8'), ('chi2', 'f8'), ('noise', 'f8') ]
         self.chunk = np.rec.array(np.zeros((), dtype))
+
+    def save(self, filename):
+        """Pickles contents to file. Better than pickling whole object, as the pickle then only contains
+        standard classes (i.e. don't need cubecal to read it)"""
+        cPickle.dump((self.chanant, self.timeant, self.timechan, self.chunk), open(filename, 'w'), 2)
 
     def estimate_noise (self, data, flags, residuals=False):
         """

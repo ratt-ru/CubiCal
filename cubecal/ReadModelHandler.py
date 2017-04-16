@@ -99,6 +99,7 @@ class ReadModelHandler:
         self.bflag = None
         self.weigh = None
         self.uvwco = None
+        self.nddid = len(self._ddids)
 
         self.chunk_tdim = None
         self.chunk_fdim = None

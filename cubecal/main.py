@@ -1,14 +1,20 @@
-from ReadModelHandler import *
-from time import time
-import os, os.path
-import sys
 import cPickle
+import os
+import os.path
+import sys
+from time import time
+
 import concurrent.futures as cf
+
+from ReadModelHandler import *
 from Tools import logger, parsets, myoptparse
+
 log = logger.getLogger("main")
 
 
 import solver
+import plots
+import flagging
 from statistics import SolverStats
 
 
@@ -200,57 +206,19 @@ def main(debugging=False):
         print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
 
         # now summarize the stats
+        print>> log, "computing summary statistics"
+        st = SolverStats(stats_dict)
+        filename = basename + ".stats.pickle"
+        st.save(filename)
+        print>> log, "saved summary statistics to %s" % filename
+
+        # flag based on summary stats
+        # TODO: write these flags out
+        flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid)
+
+        # make plots
         if GD["out"]["plots"]:
-            # summarize stats
-            print>>log,"computing summary statistics"
-            st = SolverStats(stats_dict)
-
-            import pylab
-
-            # these control the layout of saved plots
-            DPI = 150.   # resolution: determines size of text relative to plots
-            ZOOM = 10    # image zoom. Roughly determines size of "pixels" when rendering images
-            def save_figure(name, width, height):
-                pylab.gcf().set_size_inches(min(width, 10000/DPI), min(height, 10000/DPI))
-                filename = "{}.{}.png".format(basename, name)
-                pylab.savefig(filename, dpi=DPI)
-                print>>log, "saved "+filename
-                if GD["out"]["plots-show"]:
-                    pylab.show()
-
-            # plot noise per time/channel
-            pylab.subplot(121)
-            pylab.title("Noise on input data")
-            pylab.xlabel("channel")
-            pylab.ylabel("timeslot")
-            pylab.imshow(np.sqrt(st.timechan.dv2))
-            pylab.colorbar()
-            pylab.subplot(122)
-            pylab.title("Noise on residuals")
-            pylab.xlabel("channel")
-            pylab.ylabel("timeslot")
-            pylab.imshow(np.sqrt(st.timechan.dr2))
-            pylab.colorbar()
-            nt,nf = st.timechan.dv2.shape
-            save_figure("noise.tf", nf*ZOOM/DPI*2.5, nt*ZOOM/DPI*1.1)
-
-            # plot noise per antenna/channel
-            pylab.subplot(121)
-            noise = np.sqrt(st.chanant.dv2)
-            noise[noise==0] = np.inf
-            nf,nant = noise.shape
-            for ant in xrange(nant):
-                pylab.plot(noise[:,ant],'o-')
-            pylab.title("Noise by antenna".format(ddid))
-            pylab.xlabel("channel")
-            pylab.ylabel("noise")
-            pylab.subplot(122)
-            for chan in xrange(nf):
-                pylab.plot(noise[chan,:],'o-')
-            pylab.title("Noise by channel".format(ddid))
-            pylab.xlabel("antenna")
-            pylab.ylabel("noise")
-            save_figure("noise.antchan", 10, 5)
+            plots.make_summary_plots(st, GD, basename)
 
         ms.write_gain_dict()
 

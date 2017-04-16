@@ -116,7 +116,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
 
         for flag, mask in FL.categories().iteritems():
 
-            n_flag = np.sum((flags_arr & mask) != 0)/(gm.n_cor*gm.n_cor)
+            n_flag = np.sum((flags_arr & mask) != 0)
             fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./n_vis2x2)) if n_flag else ""
 
         print>> log, "{}: no valid solution intervals. Flags are: \n{}".format(label, fstats)
