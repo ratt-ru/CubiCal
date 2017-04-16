@@ -198,8 +198,10 @@ class ReadModelHandler:
         """
 
         self.obvis = self.fetch(self.data_column, *args, **kwargs).astype(self.ctype)
+        print>>log,"  read "+self.data_column
         if self.model_column:
             self.movis = self.fetch(self.model_column, *args, **kwargs).astype(self.ctype)
+            print>> log, "  read " + self.model_column
         else:
             self.movis = np.zeros_like(self.obvis)
         self.antea = self.fetch("ANTENNA1", *args, **kwargs)
@@ -220,24 +222,29 @@ class ReadModelHandler:
         #     raise RuntimeError
         self.covis = np.empty_like(self.obvis)
         self.uvwco = self.fetch("UVW", *args, **kwargs)
+        print>> log, "  read TIME, DATA_DESC_ID, UVW"
 
         if self.weight_column:
-            print>>log,"using weights from column {}".format(self.weight_column)
             self.weigh = self.fetch(self.weight_column, *args, **kwargs)
             # if column is WEIGHT, expand freq axis
             if self.weight_column == "WEIGHT":
                 self.weigh = self.weigh[:,np.newaxis,:].repeat(self.nfreq, 1)
+            print>> log, "  read weights from column {}".format(self.weight_column)
 
         # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
         self.flags = np.zeros(self.obvis.shape, dtype=self.flagtype)
         if self.apply_flags:
             flags = self.fetch("FLAG", *args, **kwargs)
+            print>> log, "  read FLAG"
             # apply FLAG_ROW on top
             flags[self.fetch("FLAG_ROW", *args, **kwargs),:,:] = True
+            print>> log, "  read FLAG_ROW"
             # apply BITFLAG on top, if present
             if "BITFLAG" in self.ms.colnames():
                 bflag = self.fetch("BITFLAG", *args, **kwargs)
+                print>> log, "  read BITFLAG"
                 bflag |= self.fetch("BITFLAG_ROW", *args, **kwargs)[:, np.newaxis, np.newaxis]
+                print>> log, "  read BITFLAG_ROW"
                 flags |= ((bflag&(self.bitmask or 0)) != 0)
             self.flags[flags] = FL.PRIOR
 
