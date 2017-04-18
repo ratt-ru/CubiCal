@@ -2,18 +2,11 @@ import numpy as np
 from collections import Counter, OrderedDict
 import pyrap.tables as pt
 import cPickle
+import re
 #import better_exceptions
 
 from Tools import logger, ModColor
 log = logger.getLogger("ReadModelHandler")
-
-try:
-    import MBTiggerSim as mbt
-    import TiggerSourceProvider as tsp
-except:
-    print>>log, ModColor.Str("Montblanc is not installed - simulation mode will crash.")
-
-from time import time
 
 class FL(object):
     """Namespace for flag bits"""
@@ -32,24 +25,49 @@ class FL(object):
         return OrderedDict([(attr, value) for attr, value in FL.__dict__.iteritems() if attr[0] != "_" and type(value) is int])
 
 
+def _parse_range(arg, nmax):
+    """Helper function. Parses an argument into a list of numbers. Nmax is max number.
+    Supports e.g. 5, "5", "5~7" (inclusive range), "5:8" (pythonic range), "5,6,7" (list)
+    """
+    fullrange = range(nmax)
+    if type(arg) is None:
+        return fullrange
+    elif type(arg) is int:
+        return [arg]
+    elif type(arg) is tuple:
+        return list(arg)
+    elif type(arg) is list:
+        return arg
+    elif type(arg) is not str:
+        raise TypeError("can't parse range of type '%s'"%type(arg))
+    arg = arg.strip()
+    if re.match("\d+$", arg):
+        return [ int(arg) ]
+    elif "," in arg:
+        return map(int,','.split(arg))
+    if re.match("(\d*)~(\d*)$", arg):
+        i0, i1 = arg.split("~", 1)
+        i0 = int(i0) if i0 else None
+        i1 = int(i1)+1 if i1 else None
+    elif re.match("(\d*):(\d*)$", arg):
+        i0, i1 = arg.split(":", 1)
+        i0 = int(i0) if i0 else None
+        i1 = int(i1) if i1 else None
+    else:
+        raise ValueError("can't parse range '%s'"%arg)
+    return fullrange[slice(i0,i1)]
+
+
 class ReadModelHandler:
 
-    def __init__(self, ms_name, sm_name, taql=None, fid=None, ddid=None,
-                 precision="32", ddes=False, simulate=False, apply_weights=False):
+    def __init__(self, ms_name, data_column, sm_name, model_column, taql=None, fid=None, ddid=None,
+                 precision="32", ddes=False, weight_column=None):
 
         self.ms_name = ms_name
         self.sm_name = sm_name
         self.fid = fid if fid is not None else 0
 
-        self.taql = self.build_taql(taql, fid, ddid)
-
         self.ms = pt.table(self.ms_name, readonly=False, ack=False)
-
-        if self.taql:
-            print>>log, "Applying TAQL query: %s"%self.taql
-            self.data = self.ms.query(self.taql)
-        else:
-            self.data = self.ms
 
         print>>log, ModColor.Str("reading MS %s"%self.ms_name, col="green")
 
@@ -62,8 +80,6 @@ class ReadModelHandler:
         self.ctype = np.complex128 if precision=="64" else np.complex64
         self.ftype = np.float64 if precision=="64" else np.float32
         self.flagtype = np.int32
-        self.nrows = self.data.nrows()
-        self.ntime = len(np.unique(self.fetch("TIME")))
         self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
         self.ncorr = self._poltab.getcol("NUM_CORR")[0]
         self.nants = self._anttab.nrows()
@@ -75,17 +91,38 @@ class ReadModelHandler:
         self._phadir = self._fldtab.getcol("PHASE_DIR", startrow=self.fid,
                                            nrow=1)[0][0]
 
-        # figure out DDID range
-        if ddid is not None:
-            if isinstance(ddid, (tuple, list)) and len(ddid) == 2:
-                self._ddids = range(*ddid)
-            else:
-                self._ddids = [ddid]
-        else:
-            self._ddids = range(self._ddesctab.nrows())
+        # print some info on MS layout
+        print>>log,"  fields are "+", ".join(["{}{}: {}".format('*' if i==fid else "",i,name) for i, name in enumerate(self._fldtab.getcol("NAME"))])
+        self._spw_chanfreqs = self._spwtab.getcol("CHAN_FREQ")  # nspw x nfreq array of frequencies
+        print>>log,"  {} spectral windows of {} channels each ".format(*self._spw_chanfreqs.shape)
 
-        print>>log,"%d antennas, %d rows, %d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
-                    self.nrows, len(self._ddids), self.ntime, self.nfreq, self.ncorr)
+        # figure out DDID range
+        self._ddids = _parse_range(ddid, self._ddesctab.nrows())
+
+        # use TaQL to select subset
+        self.taql = self.build_taql(taql, fid, self._ddids)
+
+        if self.taql:
+            print>> log, "Applying TAQL query: %s" % self.taql
+            self.data = self.ms.query(self.taql)
+        else:
+            self.data = self.ms
+
+        self.nrows = self.data.nrows()
+
+        if not self.nrows:
+            raise ValueError("MS selection returns no rows")
+
+        self.ntime = len(np.unique(self.fetch("TIME")))
+
+        self._ddid_spw = self._ddesctab.getcol("SPECTRAL_WINDOW_ID")
+        # select frequencies corresponding to DDID range
+        self._ddid_chanfreqs = np.array([self._spw_chanfreqs[self._ddid_spw[ddid]] for ddid in self._ddids ])
+
+        print>>log,"%d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
+                    self.nrows, len(self._ddids), self._ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
+        print>>log,"DDID central frequencies are at {} GHz".format(
+                    " ".join(["%.2f"%(self._ddid_chanfreqs[i][self.nfreq/2]*1e-9) for i in range(len(self._ddids))]))
 
         self.obvis = None
         self.movis = None
@@ -99,6 +136,7 @@ class ReadModelHandler:
         self.bflag = None
         self.weigh = None
         self.uvwco = None
+        self.nddid = len(self._ddids)
 
         self.chunk_tdim = None
         self.chunk_fdim = None
@@ -108,16 +146,18 @@ class ReadModelHandler:
         self._first_f = None
         self._last_f = None
 
-        self.simulate = simulate
+        self.data_column = data_column
+        self.model_column = model_column
+        self.weight_column = weight_column
+        self.simulate = bool(self.sm_name)
         self.use_ddes = ddes
-        self.apply_weights = apply_weights
         self.apply_flags = False
         self.bitmask = None
         self.gain_dict = {}
 
     def build_taql(self, taql=None, fid=None, ddid=None):
 
-        if taql is not None:
+        if taql:
             taqls = [ "(" + taql +")" ]
         else:
             taqls = []
@@ -126,8 +166,8 @@ class ReadModelHandler:
             taqls.append("FIELD_ID == %d" % fid)
 
         if ddid is not None:
-            if isinstance(ddid,(tuple,list)) and len(ddid) == 2:
-                taqls.append("DATA_DESC_ID IN %d:%d" % (ddid[0], ddid[1]))
+            if isinstance(ddid,(tuple,list)):
+                taqls.append("DATA_DESC_ID IN [%s]" % ",".join(map(str,ddid)))
             else:
                 taqls.append("DATA_DESC_ID == %d" % ddid)
 
@@ -157,8 +197,13 @@ class ReadModelHandler:
             **kwargs: Arbitrary keyword arguments.
         """
 
-        self.obvis = self.fetch("DATA", *args, **kwargs).astype(self.ctype)
-        self.movis = self.fetch("MODEL_DATA", *args, **kwargs).astype(self.ctype)
+        self.obvis = self.fetch(self.data_column, *args, **kwargs).astype(self.ctype)
+        print>>log,"  read "+self.data_column
+        if self.model_column:
+            self.movis = self.fetch(self.model_column, *args, **kwargs).astype(self.ctype)
+            print>> log, "  read " + self.model_column
+        else:
+            self.movis = np.zeros_like(self.obvis)
         self.antea = self.fetch("ANTENNA1", *args, **kwargs)
         self.anteb = self.fetch("ANTENNA2", *args, **kwargs)
         # time & DDID columns
@@ -177,28 +222,31 @@ class ReadModelHandler:
         #     raise RuntimeError
         self.covis = np.empty_like(self.obvis)
         self.uvwco = self.fetch("UVW", *args, **kwargs)
+        print>> log, "  read TIME, DATA_DESC_ID, UVW"
 
-        if self.apply_weights:
-            if "WEIGHT_SPECTRUM" in self.ms.colnames():
-                self.weigh = self.fetch("WEIGHT_SPECTRUM", *args, **kwargs)
-            else:
-                self.weigh = self.fetch("WEIGHT", *args, **kwargs)
+        if self.weight_column:
+            self.weigh = self.fetch(self.weight_column, *args, **kwargs)
+            # if column is WEIGHT, expand freq axis
+            if self.weight_column == "WEIGHT":
                 self.weigh = self.weigh[:,np.newaxis,:].repeat(self.nfreq, 1)
+            print>> log, "  read weights from column {}".format(self.weight_column)
 
         # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
         self.flags = np.zeros(self.obvis.shape, dtype=self.flagtype)
         if self.apply_flags:
             flags = self.fetch("FLAG", *args, **kwargs)
+            print>> log, "  read FLAG"
             # apply FLAG_ROW on top
             flags[self.fetch("FLAG_ROW", *args, **kwargs),:,:] = True
+            print>> log, "  read FLAG_ROW"
             # apply BITFLAG on top, if present
             if "BITFLAG" in self.ms.colnames():
                 bflag = self.fetch("BITFLAG", *args, **kwargs)
+                print>> log, "  read BITFLAG"
                 bflag |= self.fetch("BITFLAG_ROW", *args, **kwargs)[:, np.newaxis, np.newaxis]
+                print>> log, "  read BITFLAG_ROW"
                 flags |= ((bflag&(self.bitmask or 0)) != 0)
             self.flags[flags] = FL.PRIOR
-        else:
-            flags = np.zeros(self.obvis.shape, dtype=np.bool)
 
     def define_chunk(self, tdim=1, fdim=1, single_chunk_id=None):
         """
@@ -251,8 +299,10 @@ class ReadModelHandler:
             for tchunk in range(len(timechunks)-1):
                 self.chunk_rind[ddid,tchunk] = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
 
-        print>>log,"will generate %d row chunks"%(len(self.chunk_rind),)
+        print>>log,"will generate %d row chunks based on time and DDID"%(len(self.chunk_rind),)
 
+        # TODO: this assumes each DDID has the same number of channels. I don't know of cases where it is not true,
+        # but, technically, this is not precluded by the MS standard. Need to handle this...
         self.chunk_find = range(0, self.nfreq, self.chunk_fdim)
         self.chunk_find.append(self.nfreq)
 
@@ -300,6 +350,8 @@ class ReadModelHandler:
 
                 self._chunk_ddid = ddid
                 self._chunk_tchunk = tchunk
+                self._chunk_fchunk = ddid*self.nfreq + j
+
                 self._first_f = self.chunk_find[j]
                 self._last_f = self.chunk_find[j + 1]
 
@@ -317,11 +369,18 @@ class ReadModelHandler:
                 obs_arr[flags!=0, :, :] = 0
                 mod_arr[0, flags!=0, :, :] = 0
 
-                if self.apply_weights:
+                if self.weight_column:
                     wgt_arr = self.col_to_arr("weigh", t_dim, f_dim, rows)
                     wgt_arr[flags!=0] = 0
 
                 if self.simulate:
+                    try:
+                        import MBTiggerSim as mbt
+                        import TiggerSourceProvider as tsp
+                    except:
+                        print>> log, ModColor.Str("Montblanc failed to initialize. Can't predict from an LSM.")
+                        raise
+
                     mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
                     tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
                                                          use_ddes=self.use_ddes)
@@ -336,9 +395,12 @@ class ReadModelHandler:
                         arsnk._dir += 1
 
                     mod_shape = list(arsnk._sim_array.shape)[:-1] + [2,2]
-                    mod_arr = arsnk._sim_array.reshape(mod_shape)
+                    mod_arr1 = arsnk._sim_array.reshape(mod_shape)
+                    # add in MODEL_DATA column, if we had it
+                    mod_arr1[0,...] += mod_arr[0,...]
+                    mod_arr = mod_arr1
 
-                yield obs_arr, mod_arr, flags, wgt_arr, self._chunk_label
+                yield obs_arr, mod_arr, flags, wgt_arr, (self._chunk_tchunk, self._chunk_fchunk), self._chunk_label
 
 
     def col_to_arr(self, target, chunk_tdim, chunk_fdim, rows):
@@ -430,7 +492,7 @@ class ReadModelHandler:
         elif target is "model":
             out_arr = out_arr.reshape([1, chunk_tdim, chunk_fdim, self.nants, self.nants, 2, 2])
         elif target is "weigh":
-            out_arr = np.sum(out_arr, axis=-1)
+            out_arr = np.sqrt( np.sum(out_arr, axis=-1) )  # take the square root
 
         return out_arr
 
