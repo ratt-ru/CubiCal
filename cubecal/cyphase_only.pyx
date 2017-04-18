@@ -16,7 +16,7 @@ ctypedef fused float3264:
 # @cython.boundscheck(False)
 # @cython.nonecheck(False)
 def cycompute_jhj(complex3264 [:,:,:,:,:,:,:] m,
-                  float3264 [:,:,:,:,:,:] jhj,
+                  complex3264 [:,:,:,:,:,:] jhj,
                   int t_int,
                   int f_int):
 
@@ -28,10 +28,10 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:] m,
     cdef int d, t, f, aa, ab, rr, rc = 0
     cdef int n_dir, n_tim, n_fre, n_ant
 
-    n_dir = jh.shape[0]
-    n_tim = jh.shape[1]
-    n_fre = jh.shape[2]
-    n_ant = jh.shape[3]
+    n_dir = m.shape[0]
+    n_tim = m.shape[1]
+    n_fre = m.shape[2]
+    n_ant = m.shape[3]
 
     for d in xrange(n_dir):
         for t in xrange(n_tim):
@@ -42,12 +42,11 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:] m,
                     for ab in xrange(n_ant):
                         
                         jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
-                                              m[d,t,f,aa,ab,0,0]*m[d,t,f,ab,aa,0,0] + \
-                                              m[d,t,f,aa,ab,0,1]*m[d,t,f,ab,aa,1,0]
-
+                                                m[d,t,f,aa,ab,0,0]*m[d,t,f,ab,aa,0,0] + \
+                                                m[d,t,f,aa,ab,0,1]*m[d,t,f,ab,aa,1,0]
                         jhj[d,rr,rc,aa,1,1] = jhj[d,rr,rc,aa,0,0] + \
-                                              m[d,t,f,aa,ab,1,0]*m[d,t,f,ab,aa,0,1] + \
-                                              m[d,t,f,aa,ab,1,1]*m[d,t,f,ab,aa,1,1]
+                                                m[d,t,f,aa,ab,1,0]*m[d,t,f,ab,aa,0,1] + \
+                                                m[d,t,f,aa,ab,1,1]*m[d,t,f,ab,aa,1,1]
 
 # @cython.cdivision(True)
 # @cython.wraparound(False)
