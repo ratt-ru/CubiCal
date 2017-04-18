@@ -30,7 +30,7 @@ def _parse_range(arg, nmax):
     Supports e.g. 5, "5", "5~7" (inclusive range), "5:8" (pythonic range), "5,6,7" (list)
     """
     fullrange = range(nmax)
-    if type(arg) is None:
+    if arg is None:
         return fullrange
     elif type(arg) is int:
         return [arg]
