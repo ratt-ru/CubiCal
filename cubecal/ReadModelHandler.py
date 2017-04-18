@@ -559,13 +559,25 @@ class ReadModelHandler:
         cPickle.dump(self.gain_dict, open(output_name, "wb"), protocol=2)
 
 
-    def save(self, values, col_name):
+    def save(self, values, col_name, like_col="DATA"):
         """
         Saves values to column in MS.
 
         Args
         values (np.array): Values to be written to column.
         col_name (str): Name of target column.
+        like_col (str): If new column needs to be inserted, it will be patterned on the named column.
         """
+        if col_name not in self.ms.colnames():
+            # new column needs to be inserted -- get column description from column 'like_col'
+            print>>log, "  inserting new column %s" % (col_name)
+            desc = self.ms.getcoldesc(like_col)
+            desc["name"] = col_name
+            desc['comment'] = desc['comment'].replace(" ","_")  # got this from Cyril, not sure why
+            self.ms.addcols(desc)
+            # close and re-open MS. Otherwise the putcol() call below bombs out. (The python table object Somehow
+            # doesn't understand that the underlying column has been added.)
+            self.ms.close()
+            self.ms = pt.table(self.ms_name, readonly=False, ack=False)
 
         self.data.putcol(col_name, values)
