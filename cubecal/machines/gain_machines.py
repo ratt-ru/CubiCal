@@ -7,7 +7,7 @@ from Tools import logger
 import numpy as np
 import math
 
-log = logger.getLogger("full_complex")
+log = logger.getLogger("gain_machines")
 
 
 class PerIntervalGains(object):

@@ -5,7 +5,7 @@ import numpy as np
 
 setup(
 	cmdclass = {'build_ext': build_ext},
-    	ext_modules=[Extension("cyfull", ["cyfull_complex.pyx"],
+    	ext_modules=[Extension("cyphase_only", ["cyphase_only.pyx"],
                	include_dirs=[np.get_include()],
 		extra_compile_args=['-fopenmp','-ffast-math','-O2','-march=native',
 							'-mtune=native', '-ftree-vectorize'],
