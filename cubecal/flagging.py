@@ -1,5 +1,5 @@
 import numpy as np
-from Tools import logger
+from cubecal.tools import logger
 log = logger.getLogger("flagging")
 import plots
 

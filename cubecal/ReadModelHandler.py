@@ -5,7 +5,7 @@ import cPickle
 import re
 #import better_exceptions
 
-from Tools import logger, ModColor
+from cubecal.tools import logger, ModColor
 log = logger.getLogger("ReadModelHandler")
 
 class FL(object):
