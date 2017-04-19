@@ -7,7 +7,7 @@ from time import time
 import concurrent.futures as cf
 
 from ReadModelHandler import *
-from Tools import logger, parsets, myoptparse
+from cubecal.tools import logger, parsets, myoptparse
 
 log = logger.getLogger("main")
 

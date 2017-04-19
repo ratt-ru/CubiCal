@@ -2,7 +2,7 @@ import math
 import numpy as np
 import cPickle
 
-from Tools import logger
+from cubecal.tools import logger
 
 
 log = logger.getLogger("stats")
