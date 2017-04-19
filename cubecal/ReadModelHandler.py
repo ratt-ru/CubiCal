@@ -579,5 +579,7 @@ class ReadModelHandler:
             # doesn't understand that the underlying column has been added.)
             self.ms.close()
             self.ms = pt.table(self.ms_name, readonly=False, ack=False)
+            if self.data is not self.ms:
+                self.data = self.ms.query(self.taql)
 
         self.data.putcol(col_name, values)
