@@ -3,6 +3,7 @@ from collections import Counter, OrderedDict
 import pyrap.tables as pt
 import cPickle
 import re
+from cubecal.tools import shared_dict
 #import better_exceptions
 
 from cubecal.tools import logger, ModColor
@@ -471,6 +472,12 @@ class ReadModelHandler:
                 if self._single_chunk_id and self._single_chunk_id != self._chunk_label:
                     continue
 
+                # creates a shared_dict for data arrays
+                # TODO: would be more efficient to pass shdict to col_to_arr() and allocate
+                # arrays directly in shm (rather than copying them), but I'm too lazy to do that right now
+                # (primarily because of the way col_to_arr() currently does reshaping and such)
+                shdict = shared_dict.create(self._chunk_label)
+
                 self._chunk_ddid = ddid
                 self._chunk_tchunk = tchunk
                 self._chunk_fchunk = ddid*self.nfreq + j
@@ -482,9 +489,9 @@ class ReadModelHandler:
                 f_dim = self._last_f - self._first_f
 
                 # validity array has the inverse meaning of flags (True if value is present and not flagged)
-                flags = self.col_to_arr("flags", t_dim, f_dim, rows)
-                obs_arr = self.col_to_arr("obser", t_dim, f_dim, rows)
-                mod_arr = self.col_to_arr("model", t_dim, f_dim, rows)
+                flags =   shdict["flags"] = self.col_to_arr("flags", t_dim, f_dim, rows)
+                obs_arr = shdict["obser"] = self.col_to_arr("obser", t_dim, f_dim, rows)
+                mod_arr = shdict["model"] = self.col_to_arr("model", t_dim, f_dim, rows)
                 # flag invalid data or model
                 flags[(~np.isfinite(obs_arr)).any(axis=(-2,-1))] |= FL.INVALID
                 flags[(~np.isfinite(mod_arr[0,...])).any(axis=(-2,-1))] |= FL.INVALID
@@ -493,7 +500,7 @@ class ReadModelHandler:
                 mod_arr[0, flags!=0, :, :] = 0
 
                 if self.weight_column:
-                    wgt_arr = self.col_to_arr("weigh", t_dim, f_dim, rows)
+                    wgt_arr = shdict["weigh"] = self.col_to_arr("weigh", t_dim, f_dim, rows)
                     wgt_arr[flags!=0] = 0
 
                 if self.simulate:
@@ -523,7 +530,7 @@ class ReadModelHandler:
                     mod_arr1[0,...] += mod_arr[0,...]
                     mod_arr = mod_arr1
 
-                yield obs_arr, mod_arr, flags, wgt_arr, (self._chunk_tchunk, self._chunk_fchunk), self._chunk_label
+                yield shdict, (self._chunk_tchunk, self._chunk_fchunk), self._chunk_label
 
 
     def col_to_arr(self, target, chunk_tdim, chunk_fdim, rows):
@@ -531,6 +538,8 @@ class ReadModelHandler:
         Converts input data into N-dimensional measurement matrices.
 
         Args:
+            shdict:        SharedDict object in which the arrays are created
+            target:        type of array (model, obser, weigh, flags)
             chunk_tdim (int):  Timeslots per chunk.
             chunk_fdim (int): Frequencies per chunk.
             f_t_row (int): First time row to be accessed in data.
@@ -550,8 +559,8 @@ class ReadModelHandler:
         column, dtype = opts[target]
 
         # Creates empty 5D array into which the column data can be packed.
+        out_arr = np.zeros( [chunk_tdim, chunk_fdim, self.nants, self.nants, 4], dtype)
 
-        out_arr = np.zeros([chunk_tdim, chunk_fdim, self.nants, self.nants, 4], dtype=dtype)
         # initial state of flags is FL.MISSING -- to be filled by actual flags where data is available
         if target is "flags":
             out_arr[:] = FL.MISSING

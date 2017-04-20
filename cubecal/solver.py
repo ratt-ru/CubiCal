@@ -5,7 +5,7 @@ import numpy as np
 from cubecal.tools import logger, ModColor
 from ReadModelHandler import FL
 from cubecal.machines import complex_2x2_machine
-
+from cubecal.tools import shared_dict
 from statistics import SolverStats
 
 log = logger.getLogger("solver")
@@ -37,7 +37,7 @@ def retile_array(in_arr, m1, m2, n1, n2):
 
 
 
-def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_residuals=None):
+def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_residuals=None):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
@@ -314,7 +314,10 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
 
 
 
-def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, options, label=""):
+def solve_only(shdict_path, outpath, options, label=""):
+    shdict = shared_dict.attach(shdict_path)
+    obser_arr, model_arr, flags_arr, weight_arr = shdict['obser'], shdict['model'], shdict['flags'], shdict['weigh']
+
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the data, since we need to correct
     if weight_arr is not None:
@@ -323,14 +326,43 @@ def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, options, labe
     else:
         obser_arr1 = obser_arr
 
-    gm, _, stats = solve_gains(obser_arr1, model_arr, flags_arr, options, label=label)
+    gm, _, stats = _solve_gains(obser_arr1, model_arr, flags_arr, options, label=label)
 
-    corr_vis = gm.apply_inv_gains(obser_arr)
+    outdict = shared_dict.create(outpath)
+    outdict['gains'] = gm.gains  # unnecessary array copy, maybe better to make GainMachines allocate directly in shdict?
 
-    return gm, corr_vis, stats
+    shdict.delete()
+    return stats
 
 
-def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, options, label=""):
+def solve_and_correct(shdict_path, outpath, options, label=""):
+    shdict = shared_dict.attach(shdict_path)
+    obser_arr, model_arr, flags_arr, weight_arr = shdict['obser'], shdict['model'], shdict['flags'], shdict['weigh']
+
+    # if weights are set, multiply data and model by weights, but keep an unweighted copy
+    # of the data, since we need to correct
+    if weight_arr is not None:
+        obser_arr1 = obser_arr*weight_arr[..., np.newaxis, np.newaxis]
+        model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
+    else:
+        obser_arr1 = obser_arr
+
+    gm, _, stats = _solve_gains(obser_arr1, model_arr, flags_arr, options, label=label)
+
+    outdict = shared_dict.create(outpath)
+    outdict['gains'] = gm.gains  # unnecessary array copy, maybe better to make GainMachines allocate directly in shdict?
+
+    corr_vis = outdict.addSharedArray("covis", obser_arr.shape, obser_arr.dtype)
+    gm.apply_inv_gains(obser_arr, corr_vis)
+
+    shdict.delete()
+    return stats
+
+
+def solve_and_correct_res(shdict_path, outpath, options, label=""):
+    shdict = shared_dict.attach(shdict_path)
+    obser_arr, model_arr, flags_arr, weight_arr = shdict['obser'], shdict['model'], shdict['flags'], shdict['weigh']
+
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the model and data, since we need to correct the residuals
 
@@ -342,12 +374,17 @@ def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, options, 
 
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
-    gm, resid_arr, stats = solve_gains(obser_arr, model_arr, flags_arr, options, label=label,
+    gm, resid_arr, stats = _solve_gains(obser_arr1, model_arr1, flags_arr, options, label=label,
                                        compute_residuals=(weight_arr is None))
 
+    outdict = shared_dict.create(outpath)
+    outdict['gains'] = gm.gains  # unnecessary array copy, maybe better to make GainMachines allocate directly in shdict?
+
     if weight_arr is not None:
-        gm.compute_residual(obser_arr, model_arr, resid_arr)
+        resid = outdict.addSharedArray("covis", obser_arr.shape, obser_arr.dtype)
+        gm.compute_residual(obser_arr, model_arr, resid)
+    else:
+        outdict["covis"] = resid_arr
 
-    corr_vis = gm.apply_inv_gains(resid_arr)
-
-    return gm, corr_vis, stats
+    shdict.delete()
+    return stats

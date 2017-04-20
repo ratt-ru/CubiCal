@@ -7,7 +7,7 @@ from time import time
 import concurrent.futures as cf
 
 from ReadModelHandler import *
-from cubecal.tools import logger, parsets, myoptparse
+from cubecal.tools import logger, parsets, myoptparse, shm_utils
 
 log = logger.getLogger("main")
 
@@ -15,6 +15,8 @@ log = logger.getLogger("main")
 import solver
 import plots
 import flagging
+
+
 from statistics import SolverStats
 
 
@@ -72,6 +74,9 @@ def main(debugging=False):
 
     Reads options, sets up MS and solvers, calls the solver, etc.
     """
+    # cl;ean up shared memory from any previous runs
+    shm_utils.cleanupStaleShm()
+
     # init logger
     logger.enableMemoryLogging(True)
 
@@ -161,7 +166,7 @@ def main(debugging=False):
         elif GD["out"]["vis"] == "residuals":
             target = solver.solve_and_correct_res
         else:
-            target = solver.solve_gains
+            target = solver.solve_only
 
         solver_opts = GD["sol"]
 
@@ -175,30 +180,61 @@ def main(debugging=False):
         # this accumulates SolverStats objects from each chunk, for summarizing later
         stats_dict = {}
 
-        if debugging or ncpu <= 1 or GD["data"]["single-chunk"]:
-            for obser, model, flags, weight, tfkey, chunk_label in ms:
-                gm, covis, stats = target(obser, model, flags, weight, solver_opts, label = chunk_label)
-                stats_dict[tfkey] = stats
-                if covis is not None:
-                    ms.arr_to_col(covis, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f])
+        # target function has the following signature/behaviour
+        # inputs: shdict: path to a SharedDict containing obvis, model, flags, weigh arrays.
+        #                 this will be deleted when the worker is done with it.
+        #         shdict_out: path to an output SharedDict, which will be populated with
+        #                 arrays named 'covis' and 'gains'
+        #         solver_opts: dict of solver options
+        #         chunk_label: (str) label of current data chunk
+        # returns: stats object
 
-                ms.add_to_gain_dict(gm.gains, [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f],
+        if debugging or ncpu <= 1 or GD["data"]["single-chunk"]:
+            for shdict, tfkey, chunk_label in ms:
+                chunk_info = [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
+                outdict_path = shdict.path+"-out"
+                stats = target(shdict.path, outdict_path, solver_opts, label = chunk_label)
+                # reload the shared dict as it will have been updated by the executor
+                outdict = shared_dict.attach(outdict_path)
+                stats_dict[tfkey] = stats
+                if 'covis' in outdict:
+                    ms.arr_to_col(outdict['covis'], chunk_info)
+
+                ms.add_to_gain_dict(outdict['gains'], chunk_info,
                                     GD["sol"]["time-int"], GD["sol"]["freq-int"])
+                # delete dicts from shm
+                shdict.delete()
+                outdict.delete()
 
         else:
             with cf.ProcessPoolExecutor(max_workers=ncpu) as executor:
-                future_gains = { executor.submit(target, obser, model, flags, weight, solver_opts, label=chunk_label) :
-                                 [tfkey, ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
-                                 for obser, model, flags, weight, tfkey, chunk_label in ms }
+                # creates dict of { future: jobinfo } to keep track of outstanding jobs
+                futures = {}
+                for shdict, tfkey, chunk_label in ms:
+                    outpath = shdict.path + "-out"
+                    # create dict describing future job
+                    jobinfo = dict(inpath=shdict.path,
+                                   outpath=outpath,
+                                   tfkey = tfkey,
+                                   label = chunk_label,
+                                   chunk_info=[ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f])
+                    futures[executor.submit(target, shdict.path, outpath, solver_opts, label=chunk_label)] = jobinfo
 
-                for future in cf.as_completed(future_gains):
-                    gm, covis, stats = future.result()
-                    stats_dict[future_gains[future][0]] = stats
-                    if covis is not None:
-                        ms.arr_to_col(covis, future_gains[future][1:])
+                for future in cf.as_completed(futures):
+                    stats = future.result()
+                    jobinfo = futures[future]
+                    # attached to shared dict of results
+                    outdict = shared_dict.attach(jobinfo['outpath'])
+                    chunk_info = jobinfo['chunk_info']
+                    stats_dict[jobinfo['tfkey']] = stats
+                    if 'covis' in outdict:
+                        ms.arr_to_col(outdict['covis'], chunk_info)
 
-                    ms.add_to_gain_dict(gm.gains, future_gains[future][1:],
+                    ms.add_to_gain_dict(outdict['gains'], chunk_info,
                                         GD["sol"]["time-int"], GD["sol"]["freq-int"])
+                    # delete dict
+                    outdict.delete()
+                    print>>log,"handled result of chunk {}".format(jobinfo['label'])
 
         print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
 
@@ -223,7 +259,7 @@ def main(debugging=False):
 
         ms.write_gain_dict()
 
-        if target is not solver.solve_gains:
+        if target is not solver.solve_only:
             print>>log, "saving visibilities to {}".format(GD["out"]["column"])
             ms.save(ms.covis, GD["out"]["column"])
     except Exception, exc:
