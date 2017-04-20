@@ -1,7 +1,13 @@
+# this is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does, even if one is only
+# trying to save figures to .png...)
+import matplotlib
+matplotlib.use("Agg")
+
 import numpy as np
 from Tools import logger
 log = logger.getLogger("flagging")
 import plots
+
 
 def flag_chisq (st, GD, basename, nddid):
     """
