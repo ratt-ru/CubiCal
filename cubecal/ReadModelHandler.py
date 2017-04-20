@@ -24,6 +24,123 @@ class FL(object):
         """Returns dict of all flag categories defined above"""
         return OrderedDict([(attr, value) for attr, value in FL.__dict__.iteritems() if attr[0] != "_" and type(value) is int])
 
+class Flagsets (object):
+  """Flagsets implements a class to manage an MS's flagsets. Pasted from Cattery.Meow.MSUtils"""
+  def __init__ (self,ms):
+    self.msname = ms.name()
+    if not 'BITFLAG' in ms.colnames():
+      self.order = None;
+      self.bits = {};
+    else:
+      kws = ms.colkeywordnames('BITFLAG');
+      self.bits  = {};
+      # scan FLAGSET_xxx keywords and populate name->bitmask mappings
+      for kw in kws:
+        match = re.match('^FLAGSET_(.*)$',kw);
+        if match:
+          name = match.group(1);
+          bit = ms.getcolkeyword('BITFLAG',kw);
+          if isinstance(bit,int):
+            self.bits[name] = bit;
+          else:
+            print "Warning: unexpected type (%s) for %s keyword of BITFLAG column, ignoring"%(type(order),kw);
+      # have we found any FLAGSET_ specs?
+      if self.bits:
+        order = 'FLAGSETS' in kws and ms.getcolkeyword('BITFLAG','FLAGSETS');
+        if isinstance(order,str):
+          order = order.split(',');
+        else:
+          print "Warning: unexpected type (%s) for FLAGSETS keyword of BITFLAG column, ignoring"%type(order);
+          order = [];
+        # form up "natural" order by comparing bitmasks
+        bitwise_order = list(self.bits.iterkeys());
+        bitwise_order.sort(lambda a,b:cmp(self.bits[a],self.bits[b]));
+        # if an order is specified, make sure it is actually valid,
+        # and add any elements from bitwise_order that are not present
+        self.order = [ fs for fs in order if fs in self.bits ] + \
+                     [ fs for fs in bitwise_order if fs not in order ];
+        # if order was fixed compared to what was in MS, write back to MS
+        if ms.iswritable() and self.order != order:
+          ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order));
+          ms.flush();
+      # else if no flagsets found, try the old-style NAMES keyword
+      elif 'NAMES' in kws:
+        names = ms.getcolkeyword('BITFLAG','NAMES');
+        if isinstance(names,(list,tuple)):
+          self.order = map(str,names);
+          bit = 1;
+          for name in self.order:
+            self.bits[name] = bit;
+            bit <<= 1;
+          if ms.iswritable():
+            ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order));
+            for name,bit in self.bits.iteritems():
+              ms._putkeyword('BITFLAG','FLAGSET_%s'%name,-1,False,bit);
+            ms.flush();
+      else:
+        self.order = [];
+
+  def names (self):
+    """Returns a list of flagset names, in the order in which they were
+    created. Returns None if BITFLAG column is missing (so flagsets are
+    not available.)""";
+    return self.order;
+
+  def flagmask (self,name,create=False):
+    """Returns flagmask corresponding to named flagset. If flagset does not exist:
+      * if create is True, creates a new one
+      * if create is False, raises exception
+    """;
+    # lookup flagbit, return if found
+    if self.order is None:
+      raise TypeError,"MS does not contain a BITFLAG column. Please run the addbitflagcol utility on this MS.""";
+    bit = self.bits.get(name,None);
+    if bit is not None:
+      return bit;
+    # raise exception if not allowed to create a new one
+    if not create:
+      raise ValueError,"Flagset '%s' not found"%name;
+    # find empty bit
+    for bitnum in range(32):
+      bit = 1<<bitnum;
+      if bit not in self.bits.values():
+        self.order.append(name);
+        self.bits[name] = bit;
+        ms = pt.table(self.msname,readonly=False);
+        ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order));
+        ms._putkeyword('BITFLAG','FLAGSET_%s'%name,-1,False,bit);
+        ms.flush();
+        return bit;
+    # no free bit found, bummer
+    raise ValueError,"Too many flagsets in MS, cannot create another one";
+
+  def remove_flagset (self,*fsnames):
+    """Removes the named flagset(s). Returns flagmask corresponding to the removed
+    flagsets.""";
+    # lookup all flagsets, raise error if any not found
+    if self.bits is None:
+      raise TypeError,"MS does not contain a BITFLAG column, cannot use flagsets""";
+    removing = [];
+    for fs in fsnames:
+      bit = self.bits.get(fs,None);
+      if bit is None:
+        raise ValueError,"Flagset '%s' not found"%fs;
+      removing.append((fs,bit));
+    if not removing:
+      return;
+    # remove items, form up mask of bitflags to be cleared
+    ms = TABLE(self.msname,readonly=False);
+    mask = 0;
+    for name,bit in removing:
+      mask |= bit;
+      del self.bits[name];
+      del self.order[self.order.index(name)];
+      ms.removecolkeyword('BITFLAG','FLAGSET_%s'%name);
+    # write new list of bitflags
+    ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order));
+    ms.flush();
+    return mask;
+
 
 def _parse_range(arg, nmax):
     """Helper function. Parses an argument into a list of numbers. Nmax is max number.
@@ -233,6 +350,7 @@ class ReadModelHandler:
 
         # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
         self.flags = np.zeros(self.obvis.shape, dtype=self.flagtype)
+        self.bflag = None
         if self.apply_flags:
             flags = self.fetch("FLAG", *args, **kwargs)
             print>> log, "  read FLAG"
@@ -241,14 +359,14 @@ class ReadModelHandler:
             print>> log, "  read FLAG_ROW"
             # apply BITFLAG on top, if present
             if "BITFLAG" in self.ms.colnames():
-                bflag = self.fetch("BITFLAG", *args, **kwargs)
+                self.bflag = self.fetch("BITFLAG", *args, **kwargs)
                 print>> log, "  read BITFLAG"
-                bflag |= self.fetch("BITFLAG_ROW", *args, **kwargs)[:, np.newaxis, np.newaxis]
+                self.bflag |= self.fetch("BITFLAG_ROW", *args, **kwargs)[:, np.newaxis, np.newaxis]
                 print>> log, "  read BITFLAG_ROW"
-                flags |= ((bflag&(self.bitmask or 0)) != 0)
+                flags |= ((self.bflag&(self.bitmask or 0)) != 0)
             self.flags[flags] = FL.PRIOR
 
-    def define_chunk(self, tdim=1, fdim=1, single_chunk_id=None):
+    def define_chunk(self, tdim=1, fdim=1, single_chunk_id=None, chunk_by_scan=True):
         """
         Defines the chunk dimensions for the data.
 
@@ -256,19 +374,23 @@ class ReadModelHandler:
             tdim (int): Timeslots per chunk.
             fdim (int): Frequencies per chunk.
             single_chunk_id:   If set, iterator will yield only the one specified chunk. Useful for debugging.
+            chunk_by_scan:  If True, chunks will have boundaries by SCAN_NUMBER
         """
 
         self.chunk_tdim = tdim
         self.chunk_fdim = fdim
         self._single_chunk_id  = single_chunk_id
 
-        # Constructs a list of timeslots at which we cut our time chunks.
+        # Constructs a list of timeslots at which we cut our time chunks. Use scans if specified, else
+        # simply break up all timeslots
 
-        scan_chunks = self.check_contig()
-        
-        timechunks = []
-        for scan_num in xrange(len(scan_chunks) - 1):
-            timechunks.extend(range(scan_chunks[scan_num], scan_chunks[scan_num+1], self.chunk_tdim))
+        if chunk_by_scan:
+            scan_chunks = self.check_contig()
+            timechunks = []
+            for scan_num in xrange(len(scan_chunks) - 1):
+                timechunks.extend(range(scan_chunks[scan_num], scan_chunks[scan_num+1], self.chunk_tdim))
+        else:
+            timechunks = range(0, self.times[-1], self.chunk_tdim)
         timechunks.append(self.times[-1]+1)        
         
         print>>log,"found %d time chunks: %s"%(len(timechunks)-1, " ".join(map(str, timechunks)))
@@ -293,9 +415,10 @@ class ReadModelHandler:
         # Per each such tuple, it gives a _list of row indices_ corresponding to that chunk
         
         self.chunk_rind = OrderedDict()
-        
+
         for ddid in self._ddids:
             ddid_rowmask = self.ddid_col==ddid
+
             for tchunk in range(len(timechunks)-1):
                 self.chunk_rind[ddid,tchunk] = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
 
@@ -530,6 +653,29 @@ class ReadModelHandler:
             self.covis[rows, f_f_col:l_f_col, :] = \
                 in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)[:,:,::4]
 
+    def flag3_to_col(self, flag3):
+        """
+        Converts a 3D flag cube (ntime, nddid, nchan) back into the MS style.
+
+        Args:
+            flag3 (np.array): Input array which is to be made MS friendly.
+
+        Returns:
+            bool array, same shape as self.obvis
+        """
+
+        ntime, nddid, nchan = flag3.shape
+
+        flagout = np.zeros_like(self.obvis, np.bool)
+
+        for ddid in xrange(nddid):
+            ddid_rows = self.ddid_col == ddid
+            for ts in xrange(ntime):
+                # find all rows associated with this DDID and timeslot
+                rows = ddid_rows & (self.times == ts)
+                flagout[rows, :, :] = flag3[np.newaxis, ts, ddid, :, np.newaxis]
+
+        return flagout
 
     def add_to_gain_dict(self, gains, bounds, t_int=1, f_int=1):
 
@@ -558,8 +704,29 @@ class ReadModelHandler:
 
         cPickle.dump(self.gain_dict, open(output_name, "wb"), protocol=2)
 
+    def _add_column (self, col_name, like_col="DATA", like_type=None):
+        """
+        Inserts new column ionto MS.
+        col_name (str): Name of target column.
+        like_col (str): Column will be patterned on the named column.
+        like_type (str or None): if set, column type will be changed
 
-    def save(self, values, col_name, like_col="DATA"):
+        Returns True if new column was inserted
+        """
+        if col_name not in self.ms.colnames():
+            # new column needs to be inserted -- get column description from column 'like_col'
+            print>> log, "  inserting new column %s" % (col_name)
+            desc = self.ms.getcoldesc(like_col)
+            desc["name"] = col_name
+            desc['comment'] = desc['comment'].replace(" ", "_")  # got this from Cyril, not sure why
+            # if a different type is specified, insert that
+            if like_type:
+                desc['valueType'] = like_type
+            self.ms.addcols(desc)
+            return True
+        return False
+
+    def save(self, values, col_name, like_col="DATA", like_type=None):
         """
         Saves values to column in MS.
 
@@ -568,18 +735,53 @@ class ReadModelHandler:
         col_name (str): Name of target column.
         like_col (str): If new column needs to be inserted, it will be patterned on the named column.
         """
-        if col_name not in self.ms.colnames():
-            # new column needs to be inserted -- get column description from column 'like_col'
-            print>>log, "  inserting new column %s" % (col_name)
-            desc = self.ms.getcoldesc(like_col)
-            desc["name"] = col_name
-            desc['comment'] = desc['comment'].replace(" ","_")  # got this from Cyril, not sure why
-            self.ms.addcols(desc)
-            # close and re-open MS. Otherwise the putcol() call below bombs out. (The python table object Somehow
-            # doesn't understand that the underlying column has been added.)
-            self.ms.close()
-            self.ms = pt.table(self.ms_name, readonly=False, ack=False)
-            if self.data is not self.ms:
-                self.data = self.ms.query(self.taql)
-
+        self._add_column(col_name)
         self.data.putcol(col_name, values)
+
+
+    def save_flags(self, flags, bitflag):
+        """
+        Saves flags to column in MS.
+
+        Args
+        flags (np.array): Values to be written to column.
+        bitflag (str or int): Bitflag to save to.
+        """
+        print>>log,"Saving flags"
+        bitflag_valid = "BITFLAG" in self.ms.colnames()
+
+        try:
+            if self.bflag is None:
+                self._add_column("BITFLAG", like_type='int')
+                self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int')
+                self.bflag = np.zeros(self.obvis.shape, dtype=np.int32)
+
+            # resolve bitflag name into a bitmask
+            if type(bitflag) is str:
+                bitflag_name = bitflag
+                fset = Flagsets(self.ms)
+                bitflag = fset.flagmask(bitflag_name, create=True)
+                print>> log, "  flagset '%s' corresponds to flagbit %d" % (bitflag_name, bitflag)
+
+            # raise specified bitflag
+            print>> log, "  updating BITFLAG column with flagbit %d"%bitflag
+            self.bflag[flags] |= bitflag
+            self.data.putcol("BITFLAG", self.bflag)
+            bitflag_valid = True
+            print>>log, "  updating BITFLAG_ROW column"
+            self.data.putcol("BITFLAG_ROW", np.bitwise_and.reduce(self.bflag, axis=(-1,-2)))
+            flagcol = self.bflag != 0
+            print>> log, "  updating FLAG column ({:.2%} visibilities flagged)".format(flagcol.sum()/float(flagcol.size))
+            self.data.putcol("FLAG", flagcol)
+            flagrow = flagcol.all(axis=(-1,-2))
+            print>> log, "  updating FLAG_ROW column ({:.2%} rows flagged)".format(flagrow.sum()/float(flagrow.size))
+            self.data.putcol("FLAG_ROW", flagrow)
+
+        # bitflag_valid will be True if we had a valid BITFLAG column to begin with, or if we successfully filled it above.
+        # If it is False, then something went wrong -- in this case remove the column, because an inserted but unpopulated
+        # column can make us cry later.
+
+        except Exception:
+            if not bitflag_valid and "BITFLAG" in self.ms.colnames():
+                self.ms.removecols(["BITFLAG"])
+
