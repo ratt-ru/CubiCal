@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import numpy as np
-from Tools import logger
+from cubecal.tools import logger
 log = logger.getLogger("flagging")
 import plots
 
@@ -12,6 +12,8 @@ import plots
 def flag_chisq (st, GD, basename, nddid):
     """
     Flags timeslots and channels based on accumulated statistics
+
+    Returns flag cube of n_times, n_ddids, n_chans
 
     """
     chi2 = np.ma.masked_array(st.timechan.chi2, st.timechan.chi2==0)

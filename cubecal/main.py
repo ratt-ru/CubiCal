@@ -7,7 +7,7 @@ from time import time
 import concurrent.futures as cf
 
 from ReadModelHandler import *
-from Tools import logger, parsets, myoptparse
+from cubecal.tools import logger, parsets, myoptparse
 
 log = logger.getLogger("main")
 
@@ -212,6 +212,10 @@ def main(debugging=False):
         # flag based on summary stats
         # TODO: write these flags out
         flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid)
+        if GD["flags"]["save-bitflag"] and flag3.any() and not GD["data"]["single-chunk"]:
+            print>>log,"converting output flags"
+            flagcol = ms.flag3_to_col(flag3)
+            ms.save_flags(flagcol, GD["flags"]["save-bitflag"])
 
         # make plots
         if GD["out"]["plots"]:

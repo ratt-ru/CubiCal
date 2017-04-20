@@ -2,9 +2,9 @@
 Implements the solver loop
 """
 import numpy as np
-from Tools import logger, ModColor
+from cubecal.tools import logger, ModColor
 from ReadModelHandler import FL
-import full_complex
+from cubecal.machines import complex_2x2_machine
 
 from statistics import SolverStats
 
@@ -69,7 +69,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
     stats.chunk.label = label
 
     # init gains machine
-    gm = full_complex.Complex2x2Gains(model_arr, options)
+    gm = complex_2x2_machine.Complex2x2Gains(model_arr, options)
 
     # Initialize some numbers used in convergence testing.
 
