@@ -50,5 +50,5 @@ class PerIntervalGains(object):
     def apply_inv_gains(self):
         return NotImplementedError
 
-    def precompute_attributes(self):
+    def precompute_attributes(self, *args, **kwargs):
         return

@@ -1,6 +1,6 @@
 from abstract_gain_machine import PerIntervalGains
 import numpy as np
-import cyfull_complex as cyfull
+import cubecal.kernels.cyfull_complex as cyfull
 
 class Complex2x2Gains(PerIntervalGains):
     """
@@ -10,7 +10,6 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, model_arr, options)
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
-        self.old_gains = self.gains.copy()
 
     def compute_js(self, obser_arr, model_arr):
         """
