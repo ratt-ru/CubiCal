@@ -44,7 +44,7 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:] m,
                         jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
                                                 m[d,t,f,aa,ab,0,0]*m[d,t,f,ab,aa,0,0] + \
                                                 m[d,t,f,aa,ab,0,1]*m[d,t,f,ab,aa,1,0]
-                        jhj[d,rr,rc,aa,1,1] = jhj[d,rr,rc,aa,0,0] + \
+                        jhj[d,rr,rc,aa,1,1] = jhj[d,rr,rc,aa,1,1] + \
                                                 m[d,t,f,aa,ab,1,0]*m[d,t,f,ab,aa,0,1] + \
                                                 m[d,t,f,aa,ab,1,1]*m[d,t,f,ab,aa,1,1]
 
@@ -52,7 +52,7 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:] m,
 # @cython.wraparound(False)
 # @cython.boundscheck(False)
 # @cython.nonecheck(False)
-def cycompute_jhjinv(float3264 [:,:,:,:,:,:] jhj):
+def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj):
 
     cdef int d, t, f, aa, ab = 0
     cdef int n_dir, n_tim, n_fre, n_ant
@@ -143,7 +143,7 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:] gh,
                                                   r[t,f,aa,ab,0,0]*jh[d,t,f,ab,aa,0,0] + 
                                                   r[t,f,aa,ab,0,1]*jh[d,t,f,ab,aa,1,0]   )
 
-                        jhr[d,rr,rc,aa,1,1] = jhr[d,rr,rc,aa,1,1] + gh[d,rr,rc,aa,0,0] * (
+                        jhr[d,rr,rc,aa,1,1] = jhr[d,rr,rc,aa,1,1] + gh[d,rr,rc,aa,1,1] * (
                                                   r[t,f,aa,ab,1,0]*jh[d,t,f,ab,aa,0,1] + 
                                                   r[t,f,aa,ab,1,1]*jh[d,t,f,ab,aa,1,1]   )
 
@@ -218,3 +218,42 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:] m,
 
                         r[t,f,aa,ab,1,1] = o[t,f,aa,ab,1,1] - \
                                         (g[d,rr,rc,aa,1,1]*m[d,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+
+def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
+                        complex3264 [:,:,:,:,:,:] g,
+                        complex3264 [:,:,:,:,:,:] gh,
+                        complex3264 [:,:,:,:,:,:] corr,
+                        int t_int,
+                        int f_int):
+
+    """
+    This reduces the dimension of in1 to match out1. This is achieved by a
+    summation of blocks of dimension (t_int, f_int).
+    """
+
+    cdef int d, t, f, aa, ab, rr, rc = 0
+    cdef int n_dir, n_tim, n_fre, n_ant
+
+    n_dir = g.shape[0]
+    n_tim = o.shape[0]
+    n_fre = o.shape[1]
+    n_ant = o.shape[2]
+
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        corr[t,f,aa,ab,0,0] = \
+                        g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0]
+
+                        corr[t,f,aa,ab,0,1] = \
+                        g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1]
+
+                        corr[t,f,aa,ab,1,0] = \
+                        g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0]
+
+                        corr[t,f,aa,ab,1,1] = \
+                        g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]

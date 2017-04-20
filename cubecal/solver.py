@@ -5,6 +5,7 @@ import numpy as np
 from cubecal.tools import logger, ModColor
 from ReadModelHandler import FL
 from cubecal.machines import complex_2x2_machine
+from cubecal.machines import phase_diag_machine
 
 from statistics import SolverStats
 
@@ -70,6 +71,7 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
 
     # init gains machine
     gm = complex_2x2_machine.Complex2x2Gains(model_arr, options)
+    # gm = phase_diag_machine.PhaseDiagGains(model_arr, options)
 
     # Initialize some numbers used in convergence testing.
 
@@ -212,14 +214,19 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
 
+    gm.precompute_attributes(model_arr)
+
     while n_cnvgd/gm.n_sols < min_quorum and n_stall/gm.n_int < min_quorum and iters < maxiter:
 
         iters += 1
 
-        if iters % 2 == 0:
-            gm.gains = 0.5*(gm.gains + gm.compute_update(model_arr, obser_arr))
-        else:
-            gm.gains = gm.compute_update(model_arr, obser_arr)
+        gm.compute_update(model_arr, obser_arr, iters)
+
+        # if iters % 2 == 0:
+        #     gm.gains = 0.5*(gm.gains + gm.compute_update(model_arr, obser_arr))
+        # else:
+        #     gm.gains = gm.compute_update(model_arr, obser_arr)
+
         have_residuals = False
 
         # TODO: various infs and NaNs here indicate something wrong with a solution. These should
