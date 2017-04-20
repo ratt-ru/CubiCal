@@ -1,6 +1,6 @@
 from abstract_gain_machine import PerIntervalGains
 import numpy as np
-import cyfull_complex as cyfull
+import cubecal.kernels.cyfull_complex as cyfull
 
 class Complex2x2Gains(PerIntervalGains):
     """

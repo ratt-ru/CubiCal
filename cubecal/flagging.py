@@ -7,6 +7,8 @@ def flag_chisq (st, GD, basename, nddid):
     """
     Flags timeslots and channels based on accumulated statistics
 
+    Returns flag cube of n_times, n_ddids, n_chans
+
     """
     chi2 = np.ma.masked_array(st.timechan.chi2, st.timechan.chi2==0)
     total = (~chi2.mask).sum()
