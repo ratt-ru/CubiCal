@@ -472,12 +472,6 @@ class ReadModelHandler:
                 if self._single_chunk_id and self._single_chunk_id != self._chunk_label:
                     continue
 
-                # creates a shared_dict for data arrays
-                # TODO: would be more efficient to pass shdict to col_to_arr() and allocate
-                # arrays directly in shm (rather than copying them), but I'm too lazy to do that right now
-                # (primarily because of the way col_to_arr() currently does reshaping and such)
-                shdict = shared_dict.create(self._chunk_label)
-
                 self._chunk_ddid = ddid
                 self._chunk_tchunk = tchunk
                 self._chunk_fchunk = ddid*self.nfreq + j
@@ -489,19 +483,18 @@ class ReadModelHandler:
                 f_dim = self._last_f - self._first_f
 
                 # validity array has the inverse meaning of flags (True if value is present and not flagged)
-                flags =   shdict["flags"] = self.col_to_arr("flags", t_dim, f_dim, rows)
-                obs_arr = shdict["obser"] = self.col_to_arr("obser", t_dim, f_dim, rows)
-                mod_arr = shdict["model"] = self.col_to_arr("model", t_dim, f_dim, rows)
+                flags = self.col_to_arr("flags", t_dim, f_dim, rows)
+                obs_arr = self.col_to_arr("obser", t_dim, f_dim, rows)
+                mod_arr = self.col_to_arr("model", t_dim, f_dim, rows)
                 # flag invalid data or model
                 flags[(~np.isfinite(obs_arr)).any(axis=(-2,-1))] |= FL.INVALID
                 flags[(~np.isfinite(mod_arr[0,...])).any(axis=(-2,-1))] |= FL.INVALID
-                # zero flagged entries in data and model
-                obs_arr[flags!=0, :, :] = 0
-                mod_arr[0, flags!=0, :, :] = 0
+
+                flagged = flags!=0
 
                 if self.weight_column:
-                    wgt_arr = shdict["weigh"] = self.col_to_arr("weigh", t_dim, f_dim, rows)
-                    wgt_arr[flags!=0] = 0
+                    wgt_arr = self.col_to_arr("weigh", t_dim, f_dim, rows)
+                    wgt_arr[flagged] = 0
 
                 if self.simulate:
                     try:
@@ -529,6 +522,21 @@ class ReadModelHandler:
                     # add in MODEL_DATA column, if we had it
                     mod_arr1[0,...] += mod_arr[0,...]
                     mod_arr = mod_arr1
+
+                # zero flagged entries in data and model
+                obs_arr[flagged, :, :] = 0
+                mod_arr[:, flagged, :, :] = 0
+
+                # finally, copy arrays into shdict
+                # TODO: would be more efficient to pass shdict to col_to_arr() and allocate
+                # arrays directly in shm (rather than copying them), but I'm too lazy to do that right now
+                # (primarily because of the way col_to_arr() currently does reshaping and such)
+                shdict = shared_dict.create(self._chunk_label)
+
+                shdict["flags"] = flags
+                shdict["obser"] = obs_arr
+                shdict["model"] = mod_arr
+                shdict["weigh"] = wgt_arr
 
                 yield shdict, (self._chunk_tchunk, self._chunk_fchunk), self._chunk_label
 
