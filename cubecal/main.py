@@ -201,6 +201,7 @@ def main(debugging=False):
 
                     ms.add_to_gain_dict(gm.gains, future_gains[future][1:],
                                         GD["sol"]["time-int"], GD["sol"]["freq-int"])
+                    print>>log,"handled chunk {}".format(future_gains[future][0])
 
         print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
 
