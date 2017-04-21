@@ -177,6 +177,8 @@ def main(debugging=False):
 
         if debugging or ncpu <= 1 or GD["data"]["single-chunk"]:
             for obser, model, flags, weight, tfkey, chunk_label in ms:
+                import cPickle
+                cPickle.dump(obser, file("obs.cp", "w"), 2)
                 gm, covis, stats = target(obser, model, flags, weight, solver_opts, label = chunk_label)
                 stats_dict[tfkey] = stats
                 if covis is not None:
