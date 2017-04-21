@@ -191,6 +191,8 @@ def main(debugging=False):
 
         if debugging or ncpu <= 1 or GD["data"]["single-chunk"]:
             for shdict, tfkey, chunk_label in ms:
+                import cPickle
+                cPickle.dump(shdict["obser"],file("obs-shm.cp","w"),2)
                 chunk_info = [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
                 outdict_path = shdict.path+"-out"
                 stats = target(shdict.path, outdict_path, solver_opts, label = chunk_label)
