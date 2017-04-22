@@ -220,6 +220,10 @@ class SharedDict (dict):
         if os.path.exists(path+"d"):
             os.system("rm -fr "+path+"d")
 
+    def set_item (self, item, value):
+        """sets item, and returns it"""
+        self.__setitem__(item, value)
+        return dict.get(self, item)
 
     def __setitem__(self, item, value):
         if not self._readwrite:

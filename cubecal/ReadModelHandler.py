@@ -314,7 +314,6 @@ class ReadModelHandler:
             *args: Variable length argument list.
             **kwargs: Arbitrary keyword arguments.
         """
-
         self.obvis = self.fetch(self.data_column, *args, **kwargs).astype(self.ctype)
         print>>log,"  read "+self.data_column
         if self.model_column:
@@ -743,7 +742,14 @@ class ReadModelHandler:
             return True
         return False
 
-    def save(self, values, col_name, like_col="DATA", like_type=None):
+    def _reopen(self):
+        """Reopens the MS. Unfortunately, this is needed when new columns are added"""
+        self.ms.close()
+        self.ms = self.data = pt.table(self.ms_name, readonly=False, ack=False)
+        if self.taql:
+            self.data = self.ms.query(self.taql)
+
+    def save(self, values, col_name):
         """
         Saves values to column in MS.
 
@@ -752,7 +758,8 @@ class ReadModelHandler:
         col_name (str): Name of target column.
         like_col (str): If new column needs to be inserted, it will be patterned on the named column.
         """
-        self._add_column(col_name)
+        if self._add_column(col_name):
+            self._reopen()
         self.data.putcol(col_name, values)
 
 
@@ -769,8 +776,10 @@ class ReadModelHandler:
 
         try:
             if self.bflag is None:
-                self._add_column("BITFLAG", like_type='int')
-                self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int')
+                added = self._add_column("BITFLAG", like_type='int')
+                added = self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int') or added
+                if added:
+                    self._reopen()
                 self.bflag = np.zeros(self.obvis.shape, dtype=np.int32)
 
             # resolve bitflag name into a bitmask
