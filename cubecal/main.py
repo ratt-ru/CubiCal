@@ -2,12 +2,14 @@ import cPickle
 import os
 import os.path
 import sys
+import traceback
 from time import time
 
 import concurrent.futures as cf
 
-from ReadModelHandler import *
-from cubecal.tools import logger, parsets, myoptparse, shm_utils
+import data_handler
+from data_handler import ReadModelHandler, Tile
+from cubecal.tools import logger, parsets, myoptparse, shm_utils, ModColor
 
 log = logger.getLogger("main")
 
@@ -148,25 +150,29 @@ def main(debugging=False):
         logger.verbosity = GD["debug"]["verbose"]
 
         ms = ReadModelHandler(GD["data"]["ms"], GD["data"]["column"], GD["model"]["lsm"], GD["model"]["column"],
+                              output_column=GD["out"]["column"],
                               taql=GD["sel"]["taql"],
                               fid=GD["sel"]["field"], ddid=GD["sel"]["ddid"],
                               precision=GD["sol"]["precision"],
                               ddes=GD["model"]["ddes"],
                               weight_column=GD["weight"]["column"])
+
+        data_handler.global_handler = ms
         ms.apply_flags = bool(GD["flags"]["apply"])
         ms.bitmask = GD["flags"]["apply-bitmask"]
 
-        print>>log, "reading MS columns"
-        ms.mass_fetch()
         print>>log, "defining chunks"
-        ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"], single_chunk_id=GD["data"]["single-chunk"])
+        ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+                        min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
 
+        saving_data = True
         if GD["out"]["vis"] == "corrected":
             target = solver.solve_and_correct
         elif GD["out"]["vis"] == "residuals":
             target = solver.solve_and_correct_res
         else:
             target = solver.solve_only
+            saving_data = None
 
         solver_opts = GD["sol"]
 
@@ -180,63 +186,78 @@ def main(debugging=False):
         # this accumulates SolverStats objects from each chunk, for summarizing later
         stats_dict = {}
 
+        single_chunk = GD["data"]["single-chunk"]
+
         # target function has the following signature/behaviour
-        # inputs: shdict: path to a SharedDict containing obvis, model, flags, weigh arrays.
-        #                 this will be deleted when the worker is done with it.
-        #         shdict_out: path to an output SharedDict, which will be populated with
-        #                 arrays named 'covis' and 'gains'
+        # inputs: itile:       number of tile (in ms.tile_list)
+        #         key:         chunk key (as returned by tile.get_chunk_keys())
         #         solver_opts: dict of solver options
-        #         chunk_label: (str) label of current data chunk
         # returns: stats object
 
-        if debugging or ncpu <= 1 or GD["data"]["single-chunk"]:
-            for shdict, tfkey, chunk_label in ms:
-                chunk_info = [ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f]
-                outdict_path = shdict.path+"-out"
-                stats = target(shdict.path, outdict_path, solver_opts, label = chunk_label)
-                # reload the shared dict as it will have been updated by the executor
-                outdict = shared_dict.attach(outdict_path)
-                stats_dict[tfkey] = stats
-                if 'covis' in outdict:
-                    ms.arr_to_col(outdict['covis'], chunk_info)
-
-                ms.add_to_gain_dict(outdict['gains'], chunk_info,
-                                    GD["sol"]["time-int"], GD["sol"]["freq-int"])
-                # delete dicts from shm
-                shdict.delete()
-                outdict.delete()
+        if debugging or ncpu <= 1 or single_chunk:
+            for itile, tile in enumerate(Tile.tile_list):
+                tile.load()
+                for key in tile.get_chunk_keys():
+                    if not single_chunk or tile.get_chunk_label(key) == single_chunk:
+                        stats_dict[key] = target(itile, key, solver_opts)
+                tile.save()
+                    # ms.add_to_gain_dict(outdict['gains'], chunk_info,
+                    #                     GD["sol"]["time-int"], GD["sol"]["freq-int"])
+                tile.release()
 
         else:
-            with cf.ProcessPoolExecutor(max_workers=ncpu) as executor:
-                # creates dict of { future: jobinfo } to keep track of outstanding jobs
-                futures = {}
-                for shdict, tfkey, chunk_label in ms:
-                    outpath = shdict.path + "-out"
-                    # create dict describing future job
-                    jobinfo = dict(inpath=shdict.path,
-                                   outpath=outpath,
-                                   tfkey = tfkey,
-                                   label = chunk_label,
-                                   chunk_info=[ms._chunk_ddid, ms._chunk_tchunk, ms._first_f, ms._last_f])
-                    futures[executor.submit(target, shdict.path, outpath, solver_opts, label=chunk_label)] = jobinfo
+            # all I/O will be done by the io_executor, so we need to release the locks
+            ms.unlock()
 
-                for future in cf.as_completed(futures):
-                    stats = future.result()
-                    jobinfo = futures[future]
-                    # attached to shared dict of results
-                    outdict = shared_dict.attach(jobinfo['outpath'])
-                    chunk_info = jobinfo['chunk_info']
-                    stats_dict[jobinfo['tfkey']] = stats
-                    if 'covis' in outdict:
-                        ms.arr_to_col(outdict['covis'], chunk_info)
+            with cf.ProcessPoolExecutor(max_workers=ncpu-1) as executor, \
+                 cf.ProcessPoolExecutor(max_workers=1) as io_executor:
 
-                    ms.add_to_gain_dict(outdict['gains'], chunk_info,
-                                        GD["sol"]["time-int"], GD["sol"]["freq-int"])
-                    # delete dict
-                    outdict.delete()
-                    print>>log,"handled result of chunk {}".format(jobinfo['label'])
+                # this will be a dict of tile number: future loading that tile
+                io_futures = {}
+                # schedule I/O job to load tile 0
+                io_futures[0] = io_executor.submit(_io_handler, load=0, save=None)
+                for itile, tile in enumerate(Tile.tile_list):
+                    # wait for I/O job on current tile to finish
+                    print>>log(0),"waiting for I/O on tile {}".format(itile)
+                    done, not_done = cf.wait([io_futures[itile]])
+                    if not done or not io_futures[itile].result():
+                        raise RuntimeError("I/O job on tile {} failed".format(itile))
+                    del io_futures[itile]
+
+                    # immediately schedule I/O job to save previous/load next tile
+                    print>>log(0),"scheduling I/O on tile {}".format(itile+1)
+
+                    load_next = itile+1 if itile < len(Tile.tile_list)-1 else None
+                    save_prev = itile-1 if itile else None
+                    io_futures[itile+1] = io_executor.submit(_io_handler, load=load_next, save=save_prev)
+
+                    # submit solver jobs
+                    solver_futures = {}
+
+                    print>>log(0),"submitting solver jobs for tile {}".format(itile)
+
+                    for key in tile.get_chunk_keys():
+                        if not single_chunk or tile.get_chunk_label(key) == single_chunk:
+                            solver_futures[executor.submit(target, itile, key, solver_opts)] = key
+                            print>> log(3), "submitted solver job for chunk {}".format(tile.get_chunk_label(key))
+
+                    # wait for solvers to finish
+                    for future in cf.as_completed(solver_futures):
+                        key = solver_futures[future]
+                        stats = future.result()
+                        stats_dict[key] = stats
+                        print>>log(3),"handled result of chunk {}".format(tile.get_chunk_label(key))
+
+                    print>> log(0), "done with tile {}".format(itile)
+
+                # ok, at this stage we've iterated over all the tiles, but there's an outstanding
+                # I/O job saving the second-to-last tile (which was submitted with itile+1), and the last tile was
+                # never saved, so submit a job for that (also to close the MS), and wait
+                io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, unlock=True)
+                cf.wait(io_futures.values())
 
         print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
+        ms.lock()
 
         # now summarize the stats
         print>> log, "computing summary statistics"
@@ -270,3 +291,17 @@ def main(debugging=False):
             exc, value, tb = sys.exc_info()
             pdb.post_mortem(tb)  # more "modern"
         sys.exit(1)
+
+def _io_handler(save=None, load=None, unlock=False):
+    try:
+        if save is not None:
+            Tile.tile_list[save].save(unlock)
+            Tile.tile_list[save].release()
+        if load is not None:
+            Tile.tile_list[load].load()
+        return True
+    except Exception, exc:
+        print>> log, ModColor.Str("I/O handler for load {} save {} failed with exception: {}".format(load, save, exc))
+        print>> log, traceback.format_exc()
+        raise
+

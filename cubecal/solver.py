@@ -2,8 +2,9 @@
 Implements the solver loop
 """
 import numpy as np
+import traceback
 from cubecal.tools import logger, ModColor
-from ReadModelHandler import FL
+from data_handler import FL, Tile
 from cubecal.machines import complex_2x2_machine
 from cubecal.tools import shared_dict
 from statistics import SolverStats
@@ -335,28 +336,35 @@ def solve_only(shdict_path, outpath, options, label=""):
     return stats
 
 
-def solve_and_correct(shdict_path, outpath, options, label=""):
-    shdict = shared_dict.attach(shdict_path)
-    obser_arr, model_arr, flags_arr, weight_arr = shdict['obser'], shdict['model'], shdict['flags'], shdict['weigh']
+def solve_and_correct(itile, chunk_key, options):
+    label = None
+    try:
+        tile = Tile.tile_list[itile]
+        label = tile.get_chunk_label(chunk_key)
 
-    # if weights are set, multiply data and model by weights, but keep an unweighted copy
-    # of the data, since we need to correct
-    if weight_arr is not None:
-        obser_arr1 = obser_arr*weight_arr[..., np.newaxis, np.newaxis]
-        model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
-    else:
-        obser_arr1 = obser_arr
+        obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
 
-    gm, _, stats = _solve_gains(obser_arr1, model_arr, flags_arr, options, label=label)
+        # if weights are set, multiply data and model by weights, but keep an unweighted copy
+        # of the data, since we need to correct
+        if weight_arr is not None:
+            obser_arr1 = obser_arr*weight_arr[..., np.newaxis, np.newaxis]
+            model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
+        else:
+            obser_arr1 = obser_arr
 
-    outdict = shared_dict.create(outpath)
-    outdict['gains'] = gm.gains  # unnecessary array copy, maybe better to make GainMachines allocate directly in shdict?
+        gm, _, stats = _solve_gains(obser_arr1, model_arr, flags_arr, options, label=label)
 
-    corr_vis = outdict.addSharedArray("covis", obser_arr.shape, obser_arr.dtype)
-    gm.apply_inv_gains(obser_arr, corr_vis)
+        corr_vis = np.zeros_like(obser_arr)
+        gm.apply_inv_gains(obser_arr, corr_vis)
 
-    shdict.delete()
-    return stats
+        tile.set_chunk_cube(corr_vis, chunk_key)
+        tile.set_chunk_gains(gm.gains, chunk_key)
+
+        return stats
+    except Exception, exc:
+        print>>log,ModColor.Str("Solver for tile {} chunk {} failed with exception: {}".format(itile, label, exc))
+        print>>log,traceback.format_exc()
+        raise
 
 
 def solve_and_correct_res(shdict_path, outpath, options, label=""):
