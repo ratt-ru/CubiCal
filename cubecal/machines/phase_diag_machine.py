@@ -75,7 +75,7 @@ class PhaseDiagGains(PerIntervalGains):
         cyphase.cycompute_update(jhr, self.jhjinv, update)
 
         if iters%2 == 0:
-            self.phases = 0.5*(self.phases + update)
+            self.phases += 0.5*update
         else:
             self.phases += update
 
