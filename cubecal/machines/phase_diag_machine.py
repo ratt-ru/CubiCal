@@ -12,10 +12,10 @@ class PhaseDiagGains(PerIntervalGains):
 
         self.float_type = np.float64 if model_arr.dtype is np.complex128 else np.float32
 
-        self.phases     = np.empty(self.gain_shape, dtype=self.float_type)
-        self.phases[:]  = np.eye(self.n_cor)
+        self.phases = np.zeros(self.gain_shape, dtype=self.float_type)
 
-        self.gains = np.where(self.phases!=0, np.exp(1j*self.phases), 0)
+        self.gains = np.empty_like(self.phases, dtype=model_arr.dtype)
+        self.gains[:] = np.eye(self.n_cor) 
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -79,7 +79,10 @@ class PhaseDiagGains(PerIntervalGains):
         else:
             self.phases += update
 
-        self.gains = np.where(self.phases!=0, np.exp(1j*self.phases), 0)
+        self.phases = self.phases - self.phases[:,:,:,0:1,:,:]
+
+        self.gains = np.exp(1j*self.phases)
+        self.gains[...,(0,1),(1,0)] = 0 
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
