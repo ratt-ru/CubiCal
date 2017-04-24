@@ -10,7 +10,6 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, model_arr, options)
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
-        self.old_gains = self.gains.copy()
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -54,7 +53,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         return jhr, jhjinv
 
-    def compute_update(self, model_arr, obser_arr):
+    def compute_update(self, model_arr, obser_arr, iters):
         """
         This function computes the update step of the GN/LM method. This is
         equivalent to the complete (((J^H)J)^-1)(J^H)R.
@@ -77,7 +76,10 @@ class Complex2x2Gains(PerIntervalGains):
 
         cyfull.cycompute_update(jhr, jhjinv, update)
 
-        return update
+        if iters % 2 == 0:
+            self.gains = 0.5*(self.gains + update)
+        else:
+            self.gains = update
 
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):

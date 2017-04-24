@@ -4,6 +4,7 @@ import pyrap.tables as pt
 import cPickle
 import re
 from cubecal.tools import shared_dict
+import flagging
 from flagging import FL
 #import better_exceptions
 
@@ -163,21 +164,26 @@ class Tile(object):
 
         # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
         flag_arr = data.addSharedArray("flags", data['obvis'].shape, dtype=self.handler.flagtype)
+
+        # apply BITFLAG, if present
+        if self.handler.apply_bitflags and "BITFLAG" in self.handler.ms.colnames():
+            bflag = self.handler.fetch("BITFLAG", self.first_row, nrows)
+            print>> log(2), "  read BITFLAG"
+            bflag |= self.handler.fetch("BITFLAG_ROW", self.first_row, nrows)[:, np.newaxis, np.newaxis]
+            print>> log(2), "  read BITFLAG_ROW"
+            flag_arr[(bflag & self.handler.apply_bitflags) != 0] = FL.PRIOR
+
+        # apply FLAG/FLAG_ROW if explicitly asked to, or if apply_flag_auto is set and we don't have bitflags
+        # (this is a useful default)
+
         if self.handler.apply_flags:
             flags = self.handler.fetch("FLAG", self.first_row, nrows)
             print>> log(2), "  read FLAG"
             # apply FLAG_ROW on top
             flags[self.handler.fetch("FLAG_ROW", self.first_row, nrows), :, :] = True
             print>> log(2), "  read FLAG_ROW"
-            # apply BITFLAG on top, if present
-            if "BITFLAG" in self.handler.ms.colnames():
-                bflag = data.addSharedArray("bflag", data['obvis'].shape, dtype=np.int32)
-                bflag[:] = self.handler.fetch("BITFLAG", self.first_row, nrows)
-                print>> log(2), "  read BITFLAG"
-                bflag |= self.handler.fetch("BITFLAG_ROW", self.first_row, nrows)[:, np.newaxis, np.newaxis]
-                print>> log(2), "  read BITFLAG_ROW"
-                flags |= ((bflag & (self.handler.bitmask or 0)) != 0)
             flag_arr[flags] = FL.PRIOR
+
 
         # placeholder for gains
         data.addSubdict("gains")
@@ -185,7 +191,16 @@ class Tile(object):
 
     def get_chunk_cubes(self, key):
         """
-        Returns label, data, model, flags, weights for the given chunk. Label is a string, the rest are cubes
+        Returns label, data, model, flags, weights cubes for the given chunk key.
+
+        Shapes are as follows:
+            data:          [Nmod, Ntime, Nfreq, Nant, Nant, 2, 2]
+            model:   [Ndir, Nmod, Ntime, Nfreq, Nant, Nant, 2, 2]
+            flags:               [Ntime, Nfreq, Nant, Nant]
+            weights:       [Nmod, Ntime, Nfreq, Nant, Nant] or None for no weighting
+
+        Nmod refers to number of models simultaneously fitted.
+
         """
         data = shared_dict.attach(self._data_dict_name)
 
@@ -200,12 +215,12 @@ class Tile(object):
         flags = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice, self.handler.flagtype, FL.MISSING)
         flags = np.bitwise_or.reduce(flags, axis=-1)
         obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype)
-        obs_arr = obs_arr.reshape([t_dim, f_dim, nants, nants, 2, 2])
+        obs_arr = obs_arr.reshape([1, t_dim, f_dim, nants, nants, 2, 2])
         mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype)
-        mod_arr = mod_arr.reshape([1, t_dim, f_dim, nants, nants, 2, 2])
+        mod_arr = mod_arr.reshape([1, 1, t_dim, f_dim, nants, nants, 2, 2])
         # flag invalid data or model
-        flags[(~np.isfinite(obs_arr)).any(axis=(-2, -1))] |= FL.INVALID
-        flags[(~np.isfinite(mod_arr[0, ...])).any(axis=(-2, -1))] |= FL.INVALID
+        flags[(~np.isfinite(obs_arr[0, ])).any(axis=(-2, -1))] |= FL.INVALID
+        flags[(~np.isfinite(mod_arr[0, 0, ...])).any(axis=(-2, -1))] |= FL.INVALID
 
         flagged = flags != 0
 
@@ -213,12 +228,13 @@ class Tile(object):
             wgt_arr = self._column_to_cube(data['weigh'], t_dim, f_dim, rows, freq_slice, self.handler.ftype)
             wgt_arr = np.sqrt(np.sum(wgt_arr, axis=-1))  # take the square root of sum over correlations
             wgt_arr[flagged] = 0
+            wgt_arr = wgt_arr.reshape([1, t_dim, f_dim, nants, nants])
         else:
             wgt_arr = None
 
         # zero flagged entries in data and model
-        obs_arr[flagged, :, :] = 0
-        mod_arr[:, flagged, :, :] = 0
+        obs_arr[0, flagged, :, :] = 0
+        mod_arr[0, 0, flagged, :, :] = 0
 
         return obs_arr, mod_arr, flags, wgt_arr
 
@@ -353,6 +369,7 @@ class ReadModelHandler:
 
     def __init__(self, ms_name, data_column, sm_name, model_column, output_column=None,
                  taql=None, fid=None, ddid=None,
+                 apply_flags=False, apply_flags_auto=True, apply_bitflags=1,
                  precision="32", ddes=False, weight_column=None):
 
         self.ms_name = ms_name
@@ -402,6 +419,8 @@ class ReadModelHandler:
 
         self.nrows = self.data.nrows()
 
+        self._datashape = (self.nrows, self.nfreq, self.ncorr)
+
         if not self.nrows:
             raise ValueError("MS selection returns no rows")
 
@@ -424,8 +443,10 @@ class ReadModelHandler:
         self.output_column = output_column
         self.simulate = bool(self.sm_name)
         self.use_ddes = ddes
-        self.apply_flags = False
-        self.bitmask = None
+
+        self.apply_flags = apply_flags or apply_flags_auto and "BITFLAG" not in self.ms.colnames()
+        self.apply_bitflags = "BITFLAG" in self.ms.colnames() and apply_bitflags
+
         self.gain_dict = {}
 
     def build_taql(self, taql=None, fid=None, ddid=None):
@@ -606,14 +627,14 @@ class ReadModelHandler:
 
         ntime, nddid, nchan = flag3.shape
 
-        flagout = np.zeros_like(self.obvis, np.bool)
+        flagout = np.zeros(self._datashape, bool)
 
         for ddid in xrange(nddid):
             ddid_rows = self.ddid_col == ddid
             for ts in xrange(ntime):
                 # find all rows associated with this DDID and timeslot
                 rows = ddid_rows & (self.times == ts)
-                flagout[rows, :, :] = flag3[np.newaxis, ts, ddid, :, np.newaxis]
+                flagout[rows, :, :] = flag3[ts, ddid, :, np.newaxis]
 
         return flagout
 
@@ -683,20 +704,6 @@ class ReadModelHandler:
         if self.taql:
             self.data = self.ms.query(self.taql)
 
-    def save(self, values, col_name):
-        """
-        Saves values to column in MS.
-
-        Args
-        values (np.array): Values to be written to column.
-        col_name (str): Name of target column.
-        like_col (str): If new column needs to be inserted, it will be patterned on the named column.
-        """
-        if self._add_column(col_name):
-            self._reopen()
-        self.data.putcol(col_name, values)
-
-
     def save_flags(self, flags, bitflag):
         """
         Saves flags to column in MS.
@@ -705,37 +712,40 @@ class ReadModelHandler:
         flags (np.array): Values to be written to column.
         bitflag (str or int): Bitflag to save to.
         """
-        print>>log,"Saving flags"
-        bitflag_valid = "BITFLAG" in self.ms.colnames()
-
+        print>>log,"Writing out new flags"
+        bitflag_valid = False
+        if "BITFLAG" in self.ms.colnames():
+            print>> log, "  loading current BITFLAG content"
+            bflag_col = self.fetch("BITFLAG")
+            bitflag_valid = True
         try:
-            if self.bflag is None:
+            if not bitflag_valid:
                 added = self._add_column("BITFLAG", like_type='int')
                 added = self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int') or added
                 if added:
                     self._reopen()
-                self.bflag = np.zeros(self.obvis.shape, dtype=np.int32)
+                bflag_col = np.zeros(self._datashape, dtype=np.int32)
 
             # resolve bitflag name into a bitmask
             if type(bitflag) is str:
                 bitflag_name = bitflag
-                fset = Flagsets(self.ms)
+                fset = flagging.Flagsets(self.ms)
                 bitflag = fset.flagmask(bitflag_name, create=True)
                 print>> log, "  flagset '%s' corresponds to flagbit %d" % (bitflag_name, bitflag)
 
             # raise specified bitflag
             print>> log, "  updating BITFLAG column with flagbit %d"%bitflag
-            self.bflag[flags] |= bitflag
-            self.data.putcol("BITFLAG", self.bflag)
+            bflag_col[flags] |= bitflag
+            self.data.putcol("BITFLAG", bflag_col)
             bitflag_valid = True
             print>>log, "  updating BITFLAG_ROW column"
-            self.data.putcol("BITFLAG_ROW", np.bitwise_and.reduce(self.bflag, axis=(-1,-2)))
-            flagcol = self.bflag != 0
-            print>> log, "  updating FLAG column ({:.2%} visibilities flagged)".format(flagcol.sum()/float(flagcol.size))
-            self.data.putcol("FLAG", flagcol)
-            flagrow = flagcol.all(axis=(-1,-2))
-            print>> log, "  updating FLAG_ROW column ({:.2%} rows flagged)".format(flagrow.sum()/float(flagrow.size))
-            self.data.putcol("FLAG_ROW", flagrow)
+            self.data.putcol("BITFLAG_ROW", np.bitwise_and.reduce(bflag_col, axis=(-1,-2)))
+            flag_col = bflag_col != 0
+            print>> log, "  updating FLAG column ({:.2%} visibilities flagged)".format(flag_col.sum()/float(flag_col.size))
+            self.data.putcol("FLAG", flag_col)
+            flag_row = flag_col.all(axis=(-1,-2))
+            print>> log, "  updating FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum()/float(flag_row.size))
+            self.data.putcol("FLAG_ROW", flag_row)
 
         # bitflag_valid will be True if we had a valid BITFLAG column to begin with, or if we successfully filled it above.
         # If it is False, then something went wrong -- in this case remove the column, because an inserted but unpopulated
@@ -744,4 +754,5 @@ class ReadModelHandler:
         except Exception:
             if not bitflag_valid and "BITFLAG" in self.ms.colnames():
                 self.ms.removecols(["BITFLAG"])
+            raise
 

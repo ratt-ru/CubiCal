@@ -153,13 +153,28 @@ def main(debugging=False):
                               output_column=GD["out"]["column"],
                               taql=GD["sel"]["taql"],
                               fid=GD["sel"]["field"], ddid=GD["sel"]["ddid"],
+                              apply_flags=GD["flags"]["apply"] and GD["flags"]["apply"] != "auto",
+                              apply_flags_auto=(GD["flags"]["apply"] == "auto"),
+                              apply_bitflags=GD["flags"]["apply-bitmask"],
                               precision=GD["sol"]["precision"],
                               ddes=GD["model"]["ddes"],
                               weight_column=GD["weight"]["column"])
 
+        if ms.apply_flags and ms.apply_bitflags:
+            print>> log, ModColor.Str("WARNING: applying both FLAG and BITFLAG columns. Consider using --flag-apply auto.")
+        elif ms.apply_flags:
+            if GD["flags"]["save-bitflag"]:
+                print>> log, ModColor.Str("WARNING: applying FLAG column, while --save-bitflag is in effect.")
+                print>> log, ModColor.Str("This can lead to the dreaded 'flag creep' effect.")
+                print>> log, ModColor.Str("Consider using a BITFLAG column, and --flag-apply auto.")
+            else:
+                print>> log, ModColor.Str("Reading flags from FLAG column", col="green")
+        elif ms.apply_bitflags:
+            print>> log, ModColor.Str("Reading flags from BITFLAG column using mask %d"%ms.apply_bitflags, col="green")
+        else:
+            print>> log, ModColor.Str("Neither --flags-apply nor --flags-apply-bitmask set: no data flags will be read")
+
         data_handler.global_handler = ms
-        ms.apply_flags = bool(GD["flags"]["apply"])
-        ms.bitmask = GD["flags"]["apply-bitmask"]
 
         print>>log, "defining chunks"
         ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
@@ -167,12 +182,11 @@ def main(debugging=False):
 
         saving_data = True
         if GD["out"]["vis"] == "corrected":
-            target = solver.solve_and_correct
+            solver_type = 'solve-correct'
         elif GD["out"]["vis"] == "residuals":
-            target = solver.solve_and_correct_res
+            solver_type = 'solve-residual'
         else:
-            target = solver.solve_only
-            saving_data = None
+            solver_type = 'solve'
 
         solver_opts = GD["sol"]
 
@@ -199,7 +213,7 @@ def main(debugging=False):
                 tile.load()
                 for key in tile.get_chunk_keys():
                     if not single_chunk or tile.get_chunk_label(key) == single_chunk:
-                        stats_dict[key] = target(itile, key, solver_opts)
+                        stats_dict[key] = solver.run_solver(solver_type, itile, key, solver_opts)
                 tile.save()
                     # ms.add_to_gain_dict(outdict['gains'], chunk_info,
                     #                     GD["sol"]["time-int"], GD["sol"]["freq-int"])
@@ -238,7 +252,7 @@ def main(debugging=False):
 
                     for key in tile.get_chunk_keys():
                         if not single_chunk or tile.get_chunk_label(key) == single_chunk:
-                            solver_futures[executor.submit(target, itile, key, solver_opts)] = key
+                            solver_futures[executor.submit(solver.run_solver, solver_type, itile, key, solver_opts)] = key
                             print>> log(3), "submitted solver job for chunk {}".format(tile.get_chunk_label(key))
 
                     # wait for solvers to finish
@@ -256,7 +270,7 @@ def main(debugging=False):
                 io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, unlock=True)
                 cf.wait(io_futures.values())
 
-        print>>log, ModColor.Str("Time taken: {} seconds".format(time() - t0), col="green")
+        print>>log, ModColor.Str("Time taken for solve: {} seconds".format(time() - t0), col="green")
         ms.lock()
 
         # now summarize the stats
@@ -280,9 +294,8 @@ def main(debugging=False):
 
         ms.write_gain_dict()
 
-        if target is not solver.solve_only:
-            print>>log, "saving visibilities to {}".format(GD["out"]["column"])
-            ms.save(ms.covis, GD["out"]["column"])
+        print>>log, ModColor.Str("completed successfully", col="green")
+
     except Exception, exc:
         import traceback
         print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc()))

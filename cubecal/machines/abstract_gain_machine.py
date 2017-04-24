@@ -13,7 +13,7 @@ class PerIntervalGains(object):
         Given a model array, initializes various sizes relevant to the gain solutions.
         """
 
-        self.n_dir, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = model_arr.shape
+        self.n_dir, self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = model_arr.shape
         self.dtype = model_arr.dtype
         self.t_int = options["time-int"]
         self.f_int = options["freq-int"]
@@ -50,5 +50,5 @@ class PerIntervalGains(object):
     def apply_inv_gains(self):
         return NotImplementedError
 
-    def precompute_attributes(self):
+    def precompute_attributes(self, *args, **kwargs):
         return

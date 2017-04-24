@@ -1,4 +1,12 @@
+# this is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does, even if one is only
+# trying to save figures to .png...)
+import matplotlib
+matplotlib.use("Agg")
+
 import numpy as np
+import pyrap.tables as pt
+import re
+
 from cubecal.tools import logger
 log = logger.getLogger("flagging")
 import plots
@@ -102,7 +110,7 @@ class Flagsets (object):
       if bit not in self.bits.values():
         self.order.append(name);
         self.bits[name] = bit;
-        ms = pt.table(self.msname,readonly=False);
+        ms = pt.table(self.msname,readonly=False,ack=False);
         ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order));
         ms._putkeyword('BITFLAG','FLAGSET_%s'%name,-1,False,bit);
         ms.flush();
@@ -125,7 +133,7 @@ class Flagsets (object):
     if not removing:
       return;
     # remove items, form up mask of bitflags to be cleared
-    ms = TABLE(self.msname,readonly=False);
+    ms = pt.table(self.msname,readonly=False, ack=False);
     mask = 0;
     for name,bit in removing:
       mask |= bit;
@@ -136,6 +144,7 @@ class Flagsets (object):
     ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order));
     ms.flush();
     return mask;
+
 
 
 
