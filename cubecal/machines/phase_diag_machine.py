@@ -81,10 +81,8 @@ class PhaseDiagGains(PerIntervalGains):
 
         self.phases = self.phases - self.phases[:,:,:,0:1,:,:]
 
-        # self.phases[:,:,:,0,:,:] = 0
-
-        self.gains = np.where(self.phases!=0, np.exp(1j*self.phases), 0)
-        self.gains[:,:,:,0,:,:] = np.eye(2)
+        self.gains = np.exp(1j*self.phases)
+        self.gains[...,(0,1),(1,0)] = 0 
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
