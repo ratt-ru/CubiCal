@@ -10,7 +10,6 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, model_arr, options)
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
-        self.old_gains = self.gains.copy()
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -54,7 +53,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         return jhr, jhjinv
 
-    def compute_update(self, model_arr, obser_arr):
+    def compute_update(self, model_arr, obser_arr, iters):
         """
         This function computes the update step of the GN/LM method. This is
         equivalent to the complete (((J^H)J)^-1)(J^H)R.
@@ -77,7 +76,10 @@ class Complex2x2Gains(PerIntervalGains):
 
         cyfull.cycompute_update(jhr, jhjinv, update)
 
-        return update
+        if iters % 2 == 0:
+            self.gains = 0.5*(self.gains + update)
+        else:
+            self.gains = update
 
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
@@ -107,7 +109,7 @@ class Complex2x2Gains(PerIntervalGains):
         return resid_arr
 
 
-    def apply_inv_gains(self, obser_arr):
+    def apply_inv_gains(self, obser_arr, corr_vis=None):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -125,7 +127,8 @@ class Complex2x2Gains(PerIntervalGains):
 
         gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
 
-        corr_vis = np.empty_like(obser_arr)
+        if corr_vis is None:
+            corr_vis = np.empty_like(obser_arr)
 
         cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 

@@ -22,7 +22,7 @@ class SolverStats (object):
         """
         Initializes stats for a chunk of data.
         """
-        n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
+        n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
         # summary record arrays (per channel-antenna, time-antenna, time-channel)
         dtype = [ ('dv2', 'f8'), ('dr2', 'f8'), ('dv2n', 'i4'), ('dr2n', 'i4'),
                   ('chi2', 'f8'), ('chi2n', 'i4'),
@@ -53,11 +53,17 @@ class SolverStats (object):
         Returns tuple of noise, inverse_noise_per_antenna_channel_squared, inverse_noise_per_antenna_squared and inverse_noise_per_channel_squared.
         """
 
-        n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
+        n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
+
+        # if only one frequency channel, can't estimate noise -- return 1
+
+        if n_fre == 1:
+            return 1., np.ones((n_fre, n_ant), np.float32), np.ones(n_ant, np.float32), np.ones(n_fre, np.float32)
+
 
         deltaflags = (flags!=0)
         deltaflags[:, 1:, ...] = deltaflags[:, 1:, ...] | deltaflags[:, :-1, ...]
-        deltaflags[:, 0 , ...]  = deltaflags[:,   1, ...]
+        deltaflags[:, 0 , ...] = deltaflags[:,   1, ...]
 
         # Create array for the squared difference between channel-adjacent visibilities
 
@@ -70,7 +76,9 @@ class SolverStats (object):
 
         # TODO: When fewer than 4 correlations are provided, the normalisation needs to be different.
 
-        deltavis2[:, 1:, ...]  = np.square(abs(data[:, 1:, ...] - data[:, :-1, ...])).sum(axis=(-2,-1))
+        # TODO: something smart with multiple-model cal. Currently only the first dataset is used.
+
+        deltavis2[:, 1:, ...]  = np.square(abs(data[0, :, 1:, ...] - data[0, :, :-1, ...])).sum(axis=(-2,-1))
         deltavis2[:, 1:, ...] /= n_cor*n_cor*4
         deltavis2[:, 0 , ...]  = deltavis2[:, 1, ...]
 
@@ -153,5 +161,32 @@ class SolverStats (object):
 
         # make 2D array of per-chunk values
         self.chunk = np.rec.array([[stats[time, chan].chunk for chan in chans] for time in times])
+
+    def apply_flagcube(self, flag3):
+        """
+        Applies additional flag cube of shape n_times,n_ddid,n_chan to statistics. Basically if something
+        is flagged in the output based on chi-sq or other means, we want to take it out of the stats.
+        """
+
+        # out stats are n_tim, n_fre -- reform cube
+        n_tim, n_ddid, n_fre = flag3.shape
+        flag3 = flag3.reshape((n_tim, n_ddid*n_fre))
+
+        FIELDS = self.timeant.dtype.fields.keys()
+
+        flagged_times = flag3.all(axis=1)
+        flagged_chans = flag3.all(axis=0)
+
+        print>>log,"adjusting statistics based on output flags"
+        print>>log,"  {:.2%} of all timeslots are flagged".format(flagged_times.sum()/float(flagged_times.size))
+        print>>log,"  {:.2%} of all channels are flagged".format(flagged_chans.sum()/float(flagged_chans.size))
+
+        for field in FIELDS:
+            self.chanant[field][flagged_chans, :] = 0
+            self.timeant[field][flagged_times, :] = 0
+            self.timechan[field][flagged_times, :] = 0
+            self.timechan[field][:, flagged_chans] = 0
+
+
 
 
