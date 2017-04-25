@@ -109,7 +109,7 @@ class Complex2x2Gains(PerIntervalGains):
         return resid_arr
 
 
-    def apply_inv_gains(self, obser_arr):
+    def apply_inv_gains(self, obser_arr, corr_vis=None):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -127,7 +127,8 @@ class Complex2x2Gains(PerIntervalGains):
 
         gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
 
-        corr_vis = np.empty_like(obser_arr)
+        if corr_vis is None:
+            corr_vis = np.empty_like(obser_arr)
 
         cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 

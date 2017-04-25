@@ -2,11 +2,12 @@
 Implements the solver loop
 """
 import numpy as np
+import traceback
 from cubecal.tools import logger, ModColor
-from ReadModelHandler import FL
+from data_handler import FL, Tile
+from cubecal.tools import shared_dict
 from cubecal.machines import complex_2x2_machine
 from cubecal.machines import phase_diag_machine
-
 from statistics import SolverStats
 
 log = logger.getLogger("solver")
@@ -38,14 +39,14 @@ def retile_array(in_arr, m1, m2, n1, n2):
 
 
 
-def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_residuals=None):
+def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_residuals=None):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
 
     Args:
-        obser_arr (np.array: n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): Array containing the observed visibilities.
-        model_arr (np.array: n_dir, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): Array containing the model visibilities.
+        obser_arr (np.array: n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): Array containing the observed visibilities.
+        model_arr (np.array: n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): Array containing the model visibilities.
         flags_arr (np.array: n_tim, n_fre, n_ant, n_ant): int array flagging invalid points
 
         options: dict of various solver options (see [solution] section in DefaultParset.cfg)
@@ -91,11 +92,11 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
     # (n_ant) vector containing the number of valid equations per antenna.
     # Factor of two is necessary as we have the conjugate of each equation too.
 
-    eqs_per_antenna = 2*np.sum(unflagged, axis=(0, 1, 2))
+    eqs_per_antenna = 2*np.sum(unflagged, axis=(0, 1, 2))*gm.n_mod
 
     # (n_tim, n_fre) array containing number of valid equations per each time/freq slot.
 
-    eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2))*gm.n_cor*gm.n_cor*2
+    eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2))*gm.n_mod*gm.n_cor*gm.n_cor*2
 
     # (n_timint, n_freint) array containing number of valid equations per each time/freq interval.
 
@@ -132,11 +133,11 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
     # Initialize a tiled residual array (tiled by whole time/freq intervals). Shapes correspond to
     # tiled array shape and the intermediate shape from which our view of the residual is selected.
 
-    tiled_shape = [gm.n_timint, gm.t_int, gm.n_freint, gm.f_int, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
-    inter_shape = [gm.n_timint*gm.t_int, gm.n_freint*gm.f_int, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
+    tiled_shape = [gm.n_mod, gm.n_timint, gm.t_int, gm.n_freint, gm.f_int, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
+    inter_shape = [gm.n_mod, gm.n_timint*gm.t_int, gm.n_freint*gm.f_int, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
 
     tiled_resid_arr = np.zeros(tiled_shape, obser_arr.dtype)
-    resid_arr = tiled_resid_arr.reshape(inter_shape)[:gm.n_tim,:gm.n_fre,...]
+    resid_arr = tiled_resid_arr.reshape(inter_shape)[:, :gm.n_tim, :gm.n_fre, ...]
     gm.compute_residual(obser_arr, model_arr, resid_arr)
     # this flag is set to True when we have an up-to-date residual in resid_arr
     have_residuals = True
@@ -155,8 +156,8 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
         # time intervals, antennas and correlations first. Normalize by per-channel variance and finally
         # sum over frequency intervals.
         # TODO: Some residuals blow up and cause np.square() to overflow -- need to flag these.
-        # sum chi-square over correlations, and one antenna axis, to shape n_timint, t_int, n_freint, f_int, n_ant
-        chi0    = np.sum(np.square(np.abs(tiled_resid_arr)), axis=(5,6,7))
+        # sum chi-square over correlations, models, and one antenna axis, to shape n_timint, t_int, n_freint, f_int, n_ant
+        chi0    = np.sum(np.square(np.abs(tiled_resid_arr)), axis=(0,6,7,8))
         # take a view into this array, of shape n_tim, n_fre, n_ant
         chi1    = chi0.reshape((gm.n_timint*gm.t_int, gm.n_freint*gm.f_int, gm.n_ant))[:gm.n_tim, :gm.n_fre, :]
         # number of terms in this chi-square sum, shape n_tim, n_fre, n_ant
@@ -321,7 +322,18 @@ def solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_resi
 
 
 
-def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, options, label=""):
+def solve_only(obser_arr, model_arr, flags_arr, weight_arr, tile, key, label, options):
+    # apply weights
+    if weight_arr is not None:
+        obser_arr *= weight_arr[..., np.newaxis, np.newaxis]
+        model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
+
+    gm, _, stats = _solve_gains(obser_arr, model_arr, flags_arr, options, label=label)
+
+    return gm, None, stats
+
+
+def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, tile, key, label, options):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the data, since we need to correct
     if weight_arr is not None:
@@ -330,14 +342,16 @@ def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, options, labe
     else:
         obser_arr1 = obser_arr
 
-    gm, _, stats = solve_gains(obser_arr1, model_arr, flags_arr, options, label=label)
+    gm, _, stats = _solve_gains(obser_arr1, model_arr, flags_arr, options, label=label)
 
-    corr_vis = gm.apply_inv_gains(obser_arr)
+    # for corrected visibilities, take the first data/model pair only
+    corr_vis = np.zeros_like(obser_arr[0,...])
+    gm.apply_inv_gains(obser_arr[0,...], corr_vis)
 
     return gm, corr_vis, stats
 
 
-def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, options, label=""):
+def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, tile, key, label, options):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the model and data, since we need to correct the residuals
 
@@ -349,12 +363,53 @@ def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, options, 
 
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
-    gm, resid_arr, stats = solve_gains(obser_arr, model_arr, flags_arr, options, label=label,
-                                       compute_residuals=(weight_arr is None))
+    gm, resid_vis, stats = _solve_gains(obser_arr1, model_arr1, flags_arr, options, label=label,
+                                        compute_residuals=(weight_arr is None))
+
+    # if we reweighted things above, then recompute the residuals, else use returned residuals
+    # note that here we take the first data/model pair only
 
     if weight_arr is not None:
-        gm.compute_residual(obser_arr, model_arr, resid_arr)
+        resid_vis = np.zeros_like(obser_arr[0,...])
+        gm.compute_residual(obser_arr[0,...], model_arr[:,0,...], resid_vis)
+    else:
+        resid_vis = resid_vis[0,...]
 
-    corr_vis = gm.apply_inv_gains(resid_arr)
+    corr_vis = np.zeros_like(resid_vis)
+    gm.apply_inv_gains(resid_vis, corr_vis)
 
     return gm, corr_vis, stats
+
+
+SOLVERS = { 'solve':          solve_only,
+            'solve-correct':  solve_and_correct,
+            'solve-residual': solve_and_correct_res
+        }
+
+
+def run_solver(solver_type, itile, chunk_key, options):
+    label = None
+    try:
+        tile = Tile.tile_list[itile]
+        label = tile.get_chunk_label(chunk_key)
+        solver = SOLVERS[solver_type]
+
+        # invoke solver with cubes from tile
+
+        obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
+
+        gm, corr_vis, stats = solver(obser_arr, model_arr, flags_arr, weight_arr, tile, chunk_key, label, options)
+
+        # copy results back into tile
+
+        if corr_vis is not None:
+            tile.set_chunk_cube(corr_vis, chunk_key)
+
+        tile.set_chunk_gains(gm.gains, chunk_key)
+
+        return stats
+    except Exception, exc:
+        print>>log,ModColor.Str("Solver for tile {} chunk {} failed with exception: {}".format(itile, label, exc))
+        print>>log,traceback.format_exc()
+        raise
+

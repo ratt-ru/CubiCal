@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import logging
 import os
+import multiprocessing
 
 # global verbosity level
 verbosity = 0
@@ -112,9 +113,6 @@ def _stacksize(since=0.0):
 log_memory = False
 file_handler = None
 
-# if set, ID will be included in log messages
-subprocess_id = None
-
 def enableMemoryLogging (enable=True):
     global log_memory
     log_memory = enable
@@ -144,7 +142,9 @@ class LoggerMemoryFilter (logging.Filter):
         setattr(event,"shared_memory_gb",shm)
         if log_memory and hasattr(event,"msg"):
             event.msg = "[%.1f/%.1f %.1f/%.1f %.1fGb] "%(rss,rss_peak,vss,vss_peak,shm) + event.msg
-        if subprocess_id:
+        subprocess_id = multiprocessing.current_process().name
+        if subprocess_id != "MainProcess":
+            subprocess_id = subprocess_id.replace("Process-", "P")
             event.msg = ModColor.Str("[%s] "%subprocess_id, col="blue") + event.msg
         return True
 
