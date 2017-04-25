@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use("Agg")
+
 import numpy as np
 from cubecal.tools import logger
 log = logger.getLogger("plots")

@@ -153,26 +153,10 @@ def main(debugging=False):
                               output_column=GD["out"]["column"],
                               taql=GD["sel"]["taql"],
                               fid=GD["sel"]["field"], ddid=GD["sel"]["ddid"],
-                              apply_flags=GD["flags"]["apply"] and GD["flags"]["apply"] != "auto",
-                              apply_flags_auto=(GD["flags"]["apply"] == "auto"),
-                              apply_bitflags=GD["flags"]["apply-bitmask"],
+                              flagopts=GD["flags"],
                               precision=GD["sol"]["precision"],
                               ddes=GD["model"]["ddes"],
                               weight_column=GD["weight"]["column"])
-
-        if ms.apply_flags and ms.apply_bitflags:
-            print>> log, ModColor.Str("WARNING: applying both FLAG and BITFLAG columns. Consider using --flag-apply auto.")
-        elif ms.apply_flags:
-            if GD["flags"]["save-bitflag"]:
-                print>> log, ModColor.Str("WARNING: applying FLAG column, while --save-bitflag is in effect.")
-                print>> log, ModColor.Str("This can lead to the dreaded 'flag creep' effect.")
-                print>> log, ModColor.Str("Consider using a BITFLAG column, and --flag-apply auto.")
-            else:
-                print>> log, ModColor.Str("Reading flags from FLAG column", col="green")
-        elif ms.apply_bitflags:
-            print>> log, ModColor.Str("Reading flags from BITFLAG column using mask %d"%ms.apply_bitflags, col="green")
-        else:
-            print>> log, ModColor.Str("Neither --flags-apply nor --flags-apply-bitmask set: no data flags will be read")
 
         data_handler.global_handler = ms
 
@@ -283,10 +267,10 @@ def main(debugging=False):
         # flag based on summary stats
         # TODO: write these flags out
         flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid)
-        if GD["flags"]["save-bitflag"] and flag3.any() and not GD["data"]["single-chunk"]:
+        if GD["flags"]["save"] and flag3.any() and not GD["data"]["single-chunk"]:
             print>>log,"converting output flags"
             flagcol = ms.flag3_to_col(flag3)
-            ms.save_flags(flagcol, GD["flags"]["save-bitflag"])
+            ms.save_flags(flagcol)
 
         # make plots
         if GD["out"]["plots"]:
