@@ -139,7 +139,10 @@ class Tile(object):
         """
         # create shared dict for data arrays
         data = shared_dict.create(self._data_dict_name)
-        data['updated'] = False
+
+        # this flags indicates if the (corrected) data has been updated
+        # Gotcha for shared_dict users! The only truly shared objects are arrays. So we create a single-element bool array
+        data['updated'] = np.array([False])
 
         print>>log,"reading tile for MS rows {}~{}".format(self.first_row, self.last_row)
         nrows = self.last_row - self.first_row + 1
@@ -201,7 +204,7 @@ class Tile(object):
                 bflagrow[flagrow] = self.handler._auto_fill_bitflag
                 self.handler.data.putcol("BITFLAG", bflagcol, self.first_row, nrows)
                 self.handler.data.putcol("BITFLAG_ROW", bflagrow, self.first_row, nrows)
-                print>> log, "  filled BITFLAG/BITFLAG_ROW"
+                print>> log, "  filled BITFLAG/BITFLAG_ROW of shape %s"%str(bflagcol.shape)
 
             flag_arr[(bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
             flag_arr[(bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
@@ -263,7 +266,7 @@ class Tile(object):
     def set_chunk_cube(self, cube, key, column='covis'):
         """Copies a visibility cube back to tile column"""
         data = shared_dict.attach(self._data_dict_name)
-        data['updated'] = True
+        data['updated'][0] = True
         label, rowchunk, freq0, freq1 = self._chunk_dict[key]
         rows = rowchunk.rows
         freq_slice = slice(freq0, freq1)
@@ -283,7 +286,7 @@ class Tile(object):
         """
         if self.handler.output_column:
             data = shared_dict.attach(self._data_dict_name)
-            if data['updated']:
+            if data['updated'][0]:
                 print>> log, "saving tile for MS rows {}~{}".format(self.first_row, self.last_row)
                 if self.handler._add_column(self.handler.output_column):
                     self.handler._reopen()
@@ -468,7 +471,14 @@ class ReadModelHandler:
 
         # figure out flagging situation
         if "BITFLAG" in self.ms.colnames():
-            bitflags = flagging.Flagsets(self.ms)
+            if flagopts["reinit-bitflags"]:
+                self.ms.removecols("BITFLAG")
+                if "BITFLAG_ROW" in self.ms.colnames():
+                    self.ms.removecols("BITFLAG_ROW")
+                print>> log, ModColor.Str("Removing BITFLAG column, since --flags-reinit-bitflags is set.")
+                bitflags = None
+            else:
+                bitflags = flagging.Flagsets(self.ms)
         else:
             bitflags = None
         apply_flags  = flagopts.get("apply")
@@ -759,7 +769,6 @@ class ReadModelHandler:
             # if a different type is specified, insert that
             if like_type:
                 desc['valueType'] = like_type
-            print desc
             self.ms.addcols(desc)
             return True
         return False
