@@ -20,12 +20,42 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import logging
 import os
-import ModColor
+import multiprocessing
+
+# global verbosity level
+verbosity = 0
+
+
+class NullWriter(object):
+    """A null writer ignores messages"""
+    def write(self, message):
+        pass
+
+_null_writer = NullWriter()
 
 class LoggerWriter:
-    def __init__(self, logger, level):
+    def __init__(self, logger, level, verbose=None):
         self.logger = logger
         self.level = level
+        self.verbose = verbose
+
+    def verbosity(self):
+        global verbosity
+        return self.verbose if self.verbose is not None else verbosity
+
+    def __call__(self, level):
+        """
+        Function call operator on logger. Use to issue messages at different verbosity levels.
+        E.g. print>>log(2),"message" will only print message if the verbosity level is set to 2 or higher.
+
+        Returns:
+            Either the LoggerWriter itself (if level <= verbosity level), or a null writer which ignores messages.
+        """
+        # effective verbosity level is either set explicitly when the writer is created, or else use global level
+        if level <= self.verbosity():
+            return self
+        else:
+            return _null_writer
 
     def write(self, message):
         if message != '\n':
@@ -83,9 +113,6 @@ def _stacksize(since=0.0):
 log_memory = False
 file_handler = None
 
-# if set, ID will be included in log messages
-subprocess_id = None
-
 def enableMemoryLogging (enable=True):
     global log_memory
     log_memory = enable
@@ -115,15 +142,20 @@ class LoggerMemoryFilter (logging.Filter):
         setattr(event,"shared_memory_gb",shm)
         if log_memory and hasattr(event,"msg"):
             event.msg = "[%.1f/%.1f %.1f/%.1f %.1fGb] "%(rss,rss_peak,vss,vss_peak,shm) + event.msg
-        if subprocess_id:
+        subprocess_id = multiprocessing.current_process().name
+        if subprocess_id != "MainProcess":
+            subprocess_id = subprocess_id.replace("Process-", "P")
             event.msg = ModColor.Str("[%s] "%subprocess_id, col="blue") + event.msg
         return True
 
 
+# global verbosity level. Only messages issued at this level and below will be printed.
+verbosity = 0
+
 class MyLogger():
     def __init__(self):
 #       fmt="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s"
-        fmt = " - %(asctime)s - %(name)-25.25s | %(message)s"
+        fmt = " - %(asctime)s - %(name)-18.18s | %(message)s"
 #        fmt = "%(asctime)s %(name)-25.25s | %(message)s"
         datefmt = '%H:%M:%S'#'%H:%M:%S.%f'
         logging.basicConfig(level=logging.DEBUG,format=fmt,datefmt=datefmt)
@@ -133,7 +165,7 @@ class MyLogger():
         self._formatter = logging.Formatter(fmt, datefmt)
 
 
-    def getLogger(self,name,disable=False):
+    def getLogger(self, name, verbose=None):
 
         if not(name in self.Dico.keys()):
             logger = logging.getLogger(name)
@@ -142,7 +174,7 @@ class MyLogger():
                 file_handler.setLevel(logging.DEBUG)
                 file_handler.setFormatter(self._formatter)
                 # logger.addHandler(file_handler)
-            fp = LoggerWriter(logger, logging.INFO)
+            fp = LoggerWriter(logger, logging.INFO, verbose)
             self.Dico[name]=fp
             
         #self.Dico[name].logger.log(logging.DEBUG, "Get Logger for: %s"%name)
