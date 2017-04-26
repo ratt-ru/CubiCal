@@ -2,6 +2,7 @@ from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
 import cython
+from cpython cimport bool
 
 ctypedef fused complex3264:
     np.complex64_t
@@ -207,7 +208,9 @@ def cycompute_jhj(np.ndarray[complex3264, ndim=8] jh,
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
-                     np.ndarray[complex3264, ndim=6] jhjinv):
+                     np.ndarray[complex3264, ndim=6] jhjinv,
+                     np.ndarray[np.uint8_t, ndim=3, cast=True] flags,
+                     float eps):
     """
     This inverts the approximation to the Hessian, jhj. Note that asa as useful side effect, it is 
     also suitable for inverting the gains.
@@ -230,13 +233,21 @@ def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
                     denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
                             jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
 
-                    if denom==0:
-                        denom = 1
-
-                    jhjinv[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
-                    jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
-                    jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
-                    jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
+                    if (denom*denom.conjugate()).real<=eps:
+                        
+                        jhjinv[d,t,f,aa,0,0] = 0
+                        jhjinv[d,t,f,aa,1,1] = 0
+                        jhjinv[d,t,f,aa,0,1] = 0
+                        jhjinv[d,t,f,aa,1,0] = 0
+                        
+                        flags[t,f,aa] = 1
+                    
+                    else:
+                        
+                        jhjinv[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
+                        jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
+                        jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
+                        jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
 
 
 @cython.cdivision(True)
