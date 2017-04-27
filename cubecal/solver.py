@@ -371,13 +371,13 @@ def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, tile, key
                                         compute_residuals=(weight_arr is None))
 
     # if we reweighted things above, then recompute the residuals, else use returned residuals
-    # note that here we take the first data/model pair only
+    # note that here we take the first data/model pair only (hence the 0:1 slice)
 
     if weight_arr is not None:
-        resid_vis = np.zeros_like(obser_arr[0,...])
-        gm.compute_residual(obser_arr[0,...], model_arr[:,0,...], resid_vis)
-    else:
-        resid_vis = resid_vis[0,...]
+        resid_vis = np.zeros_like(obser_arr[0:1,...])
+        gm.compute_residual(obser_arr[0:1,...], model_arr[:,0:1,...], resid_vis)
+
+    resid_vis = resid_vis[0,...]
 
     corr_vis = np.zeros_like(resid_vis)
     gm.apply_inv_gains(resid_vis, corr_vis)
