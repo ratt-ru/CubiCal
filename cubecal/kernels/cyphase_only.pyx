@@ -118,7 +118,7 @@ def cycompute_jh(np.ndarray[complex3264, ndim=8] m,
 @cython.nonecheck(False)
 def cycompute_jhr(np.ndarray[complex3264, ndim=6] gh,
                   np.ndarray[complex3264, ndim=8] jh,
-                  np.ndarray[complex3264, ndim=6] r,
+                  np.ndarray[complex3264, ndim=7] r,
                   np.ndarray[complex3264, ndim=6] jhr,
                   int t_int,
                   int f_int):

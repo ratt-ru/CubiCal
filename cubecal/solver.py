@@ -71,8 +71,12 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
     stats.chunk.label = label
 
     # init gains machine
-    gm = complex_2x2_machine.Complex2x2Gains(model_arr, options)
-    # gm = phase_diag_machine.PhaseDiagGains(model_arr, options)
+    if options['jones-type'] == 'complex-2x2':
+        gm = complex_2x2_machine.Complex2x2Gains(model_arr, options)
+    elif options['jones-type'] == 'phase-diag':
+        gm = phase_diag_machine.PhaseDiagGains(model_arr, options)
+    else:
+        raise ValueError("unknown jones-type '{}'".format(options['jones-type']))
 
     # Initialize some numbers used in convergence testing.
 

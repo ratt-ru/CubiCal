@@ -508,13 +508,16 @@ class ReadModelHandler:
             self._apply_flags = None
             self._apply_bitflags = 0
             if apply_flags:
+                # --flags-apply specified as a bitmask, or a string, or a list of strings
                 if type(apply_flags) is int:
                     self._apply_bitflags = apply_flags
                 else:
-                    for fset in apply_flags.split(","):
+                    if type(apply_flags) is str:
+                        apply_flags = apply_flags.split(",")
+                    for fset in apply_flags:
                         self._apply_bitflags |= bitflags.flagmask(fset)
             if self._apply_bitflags:
-                print>> log, ModColor.Str("Applying BITFLAG '{}' ({}) to input data".format(apply_flags, self._apply_bitflags), col="green")
+                print>> log, ModColor.Str("Applying BITFLAG {} ({}) to input data".format(apply_flags, self._apply_bitflags), col="green")
             else:
                 print>> log, ModColor.Str("No flags will be read, since --flags-apply was not set.")
             if save_bitflag:
