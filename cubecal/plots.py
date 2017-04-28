@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use("Agg")
+
 import numpy as np
 from cubecal.tools import logger
 log = logger.getLogger("plots")
@@ -13,7 +16,6 @@ def make_summary_plots(st, GD, basename):
     Args:
         st:         statistics.SolverStats object
         GD:         dict of global options
-
     Returns:
 
     """

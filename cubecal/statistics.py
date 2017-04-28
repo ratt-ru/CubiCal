@@ -162,4 +162,31 @@ class SolverStats (object):
         # make 2D array of per-chunk values
         self.chunk = np.rec.array([[stats[time, chan].chunk for chan in chans] for time in times])
 
+    def apply_flagcube(self, flag3):
+        """
+        Applies additional flag cube of shape n_times,n_ddid,n_chan to statistics. Basically if something
+        is flagged in the output based on chi-sq or other means, we want to take it out of the stats.
+        """
+
+        # out stats are n_tim, n_fre -- reform cube
+        n_tim, n_ddid, n_fre = flag3.shape
+        flag3 = flag3.reshape((n_tim, n_ddid*n_fre))
+
+        FIELDS = self.timeant.dtype.fields.keys()
+
+        flagged_times = flag3.all(axis=1)
+        flagged_chans = flag3.all(axis=0)
+
+        print>>log,"adjusting statistics based on output flags"
+        print>>log,"  {:.2%} of all timeslots are flagged".format(flagged_times.sum()/float(flagged_times.size))
+        print>>log,"  {:.2%} of all channels are flagged".format(flagged_chans.sum()/float(flagged_chans.size))
+
+        for field in FIELDS:
+            self.chanant[field][flagged_chans, :] = 0
+            self.timeant[field][flagged_times, :] = 0
+            self.timechan[field][flagged_times, :] = 0
+            self.timechan[field][:, flagged_chans] = 0
+
+
+
 

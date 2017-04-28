@@ -213,7 +213,6 @@ def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
     also suitable for inverting the gains.
     """
 
-
     cdef int d, t, f, aa, ab = 0
     cdef int n_dir, n_tim, n_fre, n_ant
     cdef complex3264 denom = 0
