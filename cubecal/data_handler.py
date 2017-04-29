@@ -170,10 +170,8 @@ class Tile(object):
         # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
         flag_arr = data.addSharedArray("flags", data['obvis'].shape, dtype=FL.dtype)
 
-        # apply FLAG/FLAG_ROW if explicitly asked to, or if apply_flag_auto is set and we don't have bitflags
-        # (this is a useful default)
+        # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them
         flagcol = flagrow = None
-
         if self.handler._apply_flags or self.handler._auto_fill_bitflag:
             flagcol = self.handler.fetch("FLAG", self.first_row, nrows)
             flagrow = self.handler.fetch("FLAG_ROW", self.first_row, nrows)
@@ -183,9 +181,10 @@ class Tile(object):
             flag_arr[flagcol] = FL.PRIOR
             flag_arr[flagrow, :, :] = FL.PRIOR
 
-        # read BITFLAG, if needed
-        if self.handler._apply_bitflags or self.handler._save_bitflag:
+        # form up bitflag array, if needed
+        if self.handler._apply_bitflags or self.handler._save_bitflag or self.handler._auto_fill_bitflag:
             read_bitflags = False
+            # if not explicitly re-initializing, try to read column
             if not self.handler._reinit_bitflags:
                 self.bflagrow = self.handler.fetch("BITFLAG_ROW", self.first_row, nrows)
                 # if there's an error reading BITFLAG, it must be unfilled. This is a common occurrence so may
@@ -202,14 +201,16 @@ class Tile(object):
                     print>>log,"  error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
                     for line in traceback.format_exc().strip().split("\n"):
                         print>> log, "    "+line
+            # if column wasn't read, create arrays
             if not read_bitflags:
                 self.bflagcol = np.zeros(flagcol.shape, np.int32)
                 self.bflagrow = np.zeros(flagrow.shape, np.int32)
-                self.bflagcol[flagcol] = self.handler._auto_fill_bitflag
-                self.bflagrow[flagrow] = self.handler._auto_fill_bitflag
-                # mark flags as updated: they will be saved below
-                data['updated'][1] = True
-                print>> log, "  auto-filled BITFLAG/BITFLAG_ROW of shape %s"%str(self.bflagcol.shape)
+                if self.handler._auto_fill_bitflag:
+                    self.bflagcol[flagcol] = self.handler._auto_fill_bitflag
+                    self.bflagrow[flagrow] = self.handler._auto_fill_bitflag
+                    # mark flags as updated: they will be saved below
+                    data['updated'][1] = True
+                    print>> log, "  auto-filled BITFLAG/BITFLAG_ROW of shape %s"%str(self.bflagcol.shape)
             if self.handler._apply_bitflags:
                 flag_arr[(self.bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
                 flag_arr[(self.bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
