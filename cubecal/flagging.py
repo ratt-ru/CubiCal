@@ -7,7 +7,7 @@ import numpy as np
 import pyrap.tables as pt
 import re
 
-from cubecal.tools import logger
+from cubecal.tools import logger, ModColor
 log = logger.getLogger("flagging")
 import plots
 from collections import OrderedDict
@@ -162,6 +162,10 @@ def flag_chisq (st, GD, basename, nddid):
     """
     chi2 = np.ma.masked_array(st.timechan.chi2, st.timechan.chi2==0)
     total = (~chi2.mask).sum()
+    if not total:
+        print>> log, ModColor.Str("no valid solutions anywhere: skipping post-solution flagging.")
+        return None
+
     chi2n = st.timechan.chi2n
     chi2n = np.ma.masked_array(chi2n, chi2n == 0)
 
