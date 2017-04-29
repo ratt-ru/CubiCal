@@ -815,9 +815,14 @@ class ReadModelHandler:
         if self.taql:
             self.data.lock()
 
+    def close(self):
+        if self.taql:
+            self.data.close()
+        self.ms.close()
+
     def _reopen(self):
         """Reopens the MS. Unfortunately, this is needed when new columns are added"""
-        self.ms.close()
+        self.close()
         self.ms = self.data = pt.table(self.ms_name, readonly=False, ack=False)
         if self.taql:
             self.data = self.ms.query(self.taql)
