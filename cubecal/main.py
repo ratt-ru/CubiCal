@@ -279,6 +279,7 @@ def main(debugging=False):
             plots.make_summary_plots(st, GD, basename)
 
         ms.write_gain_dict()
+        ms.close()
 
         print>>log, ModColor.Str("completed successfully", col="green")
 

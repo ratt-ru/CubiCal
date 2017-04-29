@@ -14,20 +14,23 @@ from collections import OrderedDict
 
 class FL(object):
     """Namespace for flag bits"""
-    PRIOR    = 1       # prior flags (i.e. from MS)
-    MISSING  = 1<<1    # missing data
-    INVALID  = 1<<2    # invalid data or model (inf, nan)
-    ILLCOND  = 1<<3    # Ill conditioned - bad inverse
-    NOCONV   = 1<<4    # no convergence
-    CHISQ    = 1<<5    # excessive chisq
-    GOOB     = 1<<6    # gain solution out of bounds
-    BOOM     = 1<<7    # gain solution exploded (i.e. went to inf/nan)
-    GNULL    = 1<<8    # gain solution gone to zero
+    dtype = np.uint16   # dtype used for flag arrays
+
+    PRIOR    = dtype(1<<0)    # prior flags (i.e. from MS)
+    MISSING  = dtype(1<<1)    # missing data
+    INVALID  = dtype(1<<2)    # invalid data or model (inf, nan)
+    ILLCOND  = dtype(1<<3)    # solution ill conditioned - bad inverse
+    NOCONV   = dtype(1<<4)    # no convergence
+    CHISQ    = dtype(1<<5)    # excessive chisq
+    GOOB     = dtype(1<<6)    # gain solution out of bounds
+    BOOM     = dtype(1<<7)    # gain solution exploded (i.e. went to inf/nan)
+    GNULL    = dtype(1<<8)    # gain solution gone to zero
 
     @staticmethod
     def categories():
         """Returns dict of all flag categories defined above"""
-        return OrderedDict([(attr, value) for attr, value in FL.__dict__.iteritems() if attr[0] != "_" and type(value) is int])
+        return OrderedDict([(attr, value) for attr, value in FL.__dict__.iteritems()
+                            if attr[0] != "_" and type(value) is FL.dtype])
 
 class Flagsets (object):
   """Flagsets implements a class to manage an MS's flagsets. Pasted from Cattery.Meow.MSUtils"""
@@ -175,7 +178,6 @@ def flag_chisq (st, GD, basename, nddid):
 
     make_plots = GD["out"]["plots"]
     show_plots = GD["out"]["plots-show"]
-
 
     if make_plots:
         import pylab

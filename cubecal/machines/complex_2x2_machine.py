@@ -10,7 +10,6 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, model_arr, options)
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
-        self.gflags    = np.zeros(self.flag_shape, dtype=np.uint8)
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -24,6 +23,8 @@ class Complex2x2Gains(PerIntervalGains):
 
         Returns:
             jhr (np.array): Array containing the result of computing (J^H)R.
+            jhjinv (np.array): Array containing the result of computing (J^H.J)^-1
+            flag_count:     Number of flagged (ill-conditioned) elements
         """
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
@@ -50,9 +51,9 @@ class Complex2x2Gains(PerIntervalGains):
 
         jhjinv = np.empty(jhr_shape, dtype=obser_arr.dtype)
 
-        cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps)  
+        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, self.flagbit)
 
-        return jhr, jhjinv
+        return jhr, jhjinv, flag_count
 
     def compute_update(self, model_arr, obser_arr, iters):
         """
@@ -71,7 +72,7 @@ class Complex2x2Gains(PerIntervalGains):
         """
 
 
-        jhr, jhjinv = self.compute_js(obser_arr, model_arr)
+        jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
         update = np.empty_like(jhr)
 
@@ -81,6 +82,8 @@ class Complex2x2Gains(PerIntervalGains):
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
+
+        return flag_count
 
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
@@ -124,7 +127,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         g_inv = np.empty_like(self.gains)
 
-        cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps) # Function can invert G.
+        flag_count = cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps, self.flagbit) # Function can invert G.
 
         gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
 
@@ -133,4 +136,4 @@ class Complex2x2Gains(PerIntervalGains):
 
         cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 
-        return corr_vis
+        return corr_vis, flag_count
