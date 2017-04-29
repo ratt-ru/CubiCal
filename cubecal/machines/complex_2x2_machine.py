@@ -10,6 +10,7 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, model_arr, options)
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
+        self.gflags    = np.zeros(self.flag_shape, dtype=np.uint8)
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -49,7 +50,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         jhjinv = np.empty(jhr_shape, dtype=obser_arr.dtype)
 
-        cyfull.cycompute_jhjinv(jhj, jhjinv)
+        cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps)  
 
         return jhr, jhjinv
 
@@ -123,7 +124,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         g_inv = np.empty_like(self.gains)
 
-        cyfull.cycompute_jhjinv(self.gains, g_inv) # Function can invert G.
+        cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps) # Function can invert G.
 
         gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
 

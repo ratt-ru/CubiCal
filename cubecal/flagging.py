@@ -17,6 +17,7 @@ class FL(object):
     PRIOR    = 1       # prior flags (i.e. from MS)
     MISSING  = 1<<1    # missing data
     INVALID  = 1<<2    # invalid data or model (inf, nan)
+    ILLCOND  = 1<<3    # Ill conditioned - bad inverse
     NOCONV   = 1<<4    # no convergence
     CHISQ    = 1<<5    # excessive chisq
     GOOB     = 1<<6    # gain solution out of bounds

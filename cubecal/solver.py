@@ -227,11 +227,6 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
 
         gm.compute_update(model_arr, obser_arr, iters)
 
-        # if iters % 2 == 0:
-        #     gm.gains = 0.5*(gm.gains + gm.compute_update(model_arr, obser_arr))
-        # else:
-        #     gm.gains = gm.compute_update(model_arr, obser_arr)
-
         have_residuals = False
 
         # TODO: various infs and NaNs here indicate something wrong with a solution. These should

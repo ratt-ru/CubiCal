@@ -54,7 +54,9 @@ def cycompute_jhj(np.ndarray[complex3264, ndim=8] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj):
+def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
+                     np.ndarray[np.uint8_t, ndim=3, cast=True] flags,
+                     float eps):
 
     cdef int d, t, f, aa, ab = 0
     cdef int n_dir, n_tim, n_fre, n_ant
@@ -69,8 +71,17 @@ def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj):
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
 
-                    jhj[d,t,f,aa,0,0] = 1/jhj[d,t,f,aa,0,0]
-                    jhj[d,t,f,aa,1,1] = 1/jhj[d,t,f,aa,1,1]
+                    if (jhj[d,t,f,aa,0,0].real<eps) or (jhj[d,t,f,aa,1,1].real<eps):
+                        
+                        jhj[d,t,f,aa,0,0] = 0
+                        jhj[d,t,f,aa,1,1] = 0
+                        
+                        flags[t,f,aa] = 1
+                    
+                    else:
+                    
+                        jhj[d,t,f,aa,0,0] = 1/jhj[d,t,f,aa,0,0]
+                        jhj[d,t,f,aa,1,1] = 1/jhj[d,t,f,aa,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
