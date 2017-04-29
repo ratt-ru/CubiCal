@@ -224,6 +224,8 @@ def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
     cdef complex3264 denom = 0
     cdef int flag_count = 0
 
+    eps = eps**2
+
     n_dir = jhj.shape[0]
     n_tim = jhj.shape[1]
     n_fre = jhj.shape[2]
@@ -233,7 +235,14 @@ def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
         for t in xrange(n_tim):
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
-                    if not flags[d,t,f,aa]:
+                    if flags[d,t,f,aa]:
+
+                            jhjinv[d,t,f,aa,0,0] = 0
+                            jhjinv[d,t,f,aa,1,1] = 0
+                            jhjinv[d,t,f,aa,0,1] = 0
+                            jhjinv[d,t,f,aa,1,0] = 0
+
+                    else:
                         denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
                                 jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
 
@@ -253,6 +262,7 @@ def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
                             jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
                             jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
                             jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
+
     return flag_count
 
 @cython.cdivision(True)

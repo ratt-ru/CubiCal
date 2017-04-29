@@ -140,9 +140,10 @@ class Tile(object):
         # create shared dict for data arrays
         data = shared_dict.create(self._data_dict_name)
 
-        # this flags indicates if the (corrected) data has been updated
-        # Gotcha for shared_dict users! The only truly shared objects are arrays. So we create a single-element bool array
-        data['updated'] = np.array([False])
+        # these flags indicate if the (corrected) data or flags have been updated
+        # Gotcha for shared_dict users! The only truly shared objects are arrays.
+        # So we create an array for the flags
+        data['updated'] = np.array([False, False])
 
         print>>log,"reading tile for MS rows {}~{}".format(self.first_row, self.last_row)
         nrows = self.last_row - self.first_row + 1
@@ -182,33 +183,36 @@ class Tile(object):
             flag_arr[flagcol] = FL.PRIOR
             flag_arr[flagrow, :, :] = FL.PRIOR
 
-        # apply BITFLAG, if present
-        if self.handler._apply_bitflags:
-            bflagrow = self.handler.fetch("BITFLAG_ROW", self.first_row, nrows)
-
-            # if there's an error reading BITFLAG, it must be unfilled. This is a common occurrence so may
-            # as well deal with it. In this case, if auto-fill is set, fill BITFLAG from FLAG/FLAG_ROW
-
-            try:
-                bflagcol = self.handler.fetch("BITFLAG", self.first_row, nrows)
-                print>> log(2), "  read BITFLAG/BITFLAG_ROW"
-            except Exception:
-                print>>log,traceback.format_exc()
-                if not self.handler._auto_fill_bitflag:
-                    print>> log, ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set.")
-                    raise
-                print>>log,"  error reading BITFLAG column: this should be ok though, since we can auto-fill it from FLAG"
-                bflagcol = np.zeros(flagcol.shape, np.int32)
-                bflagrow = np.zeros(flagrow.shape, np.int32)
-                bflagcol[flagcol] = self.handler._auto_fill_bitflag
-                bflagrow[flagrow] = self.handler._auto_fill_bitflag
-                self.handler.data.putcol("BITFLAG", bflagcol, self.first_row, nrows)
-                self.handler.data.putcol("BITFLAG_ROW", bflagrow, self.first_row, nrows)
-                print>> log, "  filled BITFLAG/BITFLAG_ROW of shape %s"%str(bflagcol.shape)
-
-            flag_arr[(bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
-            flag_arr[(bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
-
+        # read BITFLAG, if needed
+        if self.handler._apply_bitflags or self.handler._save_bitflag:
+            read_bitflags = False
+            if not self.handler._reinit_bitflags:
+                self.bflagrow = self.handler.fetch("BITFLAG_ROW", self.first_row, nrows)
+                # if there's an error reading BITFLAG, it must be unfilled. This is a common occurrence so may
+                # as well deal with it. In this case, if auto-fill is set, fill BITFLAG from FLAG/FLAG_ROW
+                try:
+                    self.bflagcol = self.handler.fetch("BITFLAG", self.first_row, nrows)
+                    print>> log(2), "  read BITFLAG/BITFLAG_ROW"
+                    read_bitflags = True
+                except Exception:
+                    if not self.handler._auto_fill_bitflag:
+                        print>> log, ModColor.Str(traceback.format_exc().strip())
+                        print>> log, ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set.")
+                        raise
+                    print>>log,"  error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
+                    for line in traceback.format_exc().strip().split("\n"):
+                        print>> log, "    "+line
+            if not read_bitflags:
+                self.bflagcol = np.zeros(flagcol.shape, np.int32)
+                self.bflagrow = np.zeros(flagrow.shape, np.int32)
+                self.bflagcol[flagcol] = self.handler._auto_fill_bitflag
+                self.bflagrow[flagrow] = self.handler._auto_fill_bitflag
+                # mark flags as updated: they will be saved below
+                data['updated'][1] = True
+                print>> log, "  auto-filled BITFLAG/BITFLAG_ROW of shape %s"%str(self.bflagcol.shape)
+            if self.handler._apply_bitflags:
+                flag_arr[(self.bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
+                flag_arr[(self.bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
 
         # placeholder for gains
         data.addSubdict("gains")
@@ -263,14 +267,18 @@ class Tile(object):
 
         return obs_arr, mod_arr, flags, wgt_arr
 
-    def set_chunk_cube(self, cube, key, column='covis'):
-        """Copies a visibility cube back to tile column"""
+    def set_chunk_cubes(self, cube, flag_cube, key, column='covis'):
+        """Copies a visibility cube, and an optional flag cube, back to tile column"""
         data = shared_dict.attach(self._data_dict_name)
-        data['updated'][0] = True
         label, rowchunk, freq0, freq1 = self._chunk_dict[key]
         rows = rowchunk.rows
         freq_slice = slice(freq0, freq1)
-        self._cube_to_column(data[column], cube, rows, freq_slice)
+        if cube is not None:
+            data['updated'][0] = True
+            self._cube_to_column(data[column], cube, rows, freq_slice)
+        if flag_cube is not None:
+            data['updated'][1] = True
+            self._cube_to_column(data['flags'], flag_cube, rows, freq_slice, flags=True)
 
     def set_chunk_gains(self, gains, key):
         """Copies chunk gains to tile"""
@@ -282,16 +290,33 @@ class Tile(object):
 
     def save(self, unlock=False):
         """
-        Saves 'corrected'  column back to MS.
+        Saves 'corrected' column, and any updated flags, back to MS.
         """
-        if self.handler.output_column:
-            data = shared_dict.attach(self._data_dict_name)
-            if data['updated'][0]:
-                print>> log, "saving tile for MS rows {}~{}".format(self.first_row, self.last_row)
-                if self.handler._add_column(self.handler.output_column):
-                    self.handler._reopen()
-                self.handler.data.putcol(self.handler.output_column, data['covis'],
-                                         self.first_row, self.last_row-self.first_row+1)
+        nrows = self.last_row - self.first_row + 1
+        data = shared_dict.attach(self._data_dict_name)
+        if self.handler.output_column and data['updated'][0]:
+            print>> log, "saving {} for MS rows {}~{}".format(self.handler.output_column, self.first_row, self.last_row)
+            if self.handler._add_column(self.handler.output_column):
+                self.handler._reopen()
+            self.handler.data.putcol(self.handler.output_column, data['covis'], self.first_row, nrows)
+
+        if self.handler._save_bitflag and data['updated'][1]:
+            print>> log, "saving flags for MS rows {}~{}".format(self.first_row, self.last_row)
+            # add bitflag to points where data wasn't flagged for prior reasons
+            self.bflagcol[(data['flags']&~FL.PRIOR) != 0] |= self.handler._save_bitflag
+            self.handler.data.putcol("BITFLAG", self.bflagcol, self.first_row, nrows)
+            print>> log, "  updated BITFLAG column"
+            self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
+            self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
+            flag_col = self.bflagcol != 0
+            self.handler.data.putcol("FLAG", flag_col, self.first_row, nrows)
+            print>> log, "  updated FLAG column ({:.2%} visibilities flagged)".format(
+                flag_col.sum() / float(flag_col.size))
+            flag_row = flag_col.all(axis=(-1, -2))
+            self.handler.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)
+            print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(
+                flag_row.sum() / float(flag_row.size))
+
         if unlock:
             self.handler.unlock()
 
@@ -365,7 +390,7 @@ class Tile(object):
         return out_arr
 
 
-    def _cube_to_column(self, column, in_arr, rows, freqs):
+    def _cube_to_column(self, column, in_arr, rows, freqs, flags=False):
         """
         Converts the calibrated measurement matrix back into the MS style.
 
@@ -373,6 +398,7 @@ class Tile(object):
             in_arr (np.array): Input array which is to be made MS friendly.
             rows: row indices or slice
             freqs: freq indices or slice
+            flags: if True, input array is a flag cube (i.e. no correlation axes)
         """
         colsel = column[rows, freqs, :]
         new_shape = colsel.shape
@@ -382,7 +408,9 @@ class Tile(object):
         achunk = self.antea[rows]
         bchunk = self.anteb[rows]
 
-        if self.ncorr == 4:
+        if flags:
+            colsel[:] = in_arr[tchunk, :, achunk, bchunk, np.newaxis]
+        elif self.ncorr == 4:
             colsel[:] = in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)
         elif self.ncorr == 2:
             colsel[:] = in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)[:, :, ::3]
@@ -484,6 +512,7 @@ class ReadModelHandler:
         save_bitflag = flagopts.get("save")
         auto_init    = flagopts.get("auto-init")
 
+        self._reinit_bitflags = flagopts["reinit-bitflags"]
         self._apply_flags = self._apply_bitflags = self._save_bitflag = self._auto_fill_bitflag = None
 
         # no BITFLAG. Should we auto-init it?
@@ -499,7 +528,7 @@ class ReadModelHandler:
                 print>> log, ModColor.Str("Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
             else:
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
-                print>> log, "BITFLAG column found. Will auto-fill with '{}' ({}) from FLAG/FLAG_ROW on any error".format(auto_init, self._auto_fill_bitflag)
+                print>> log, "BITFLAG column found. Will auto-fill with '{}' ({}) from FLAG/FLAG_ROW if not filled".format(auto_init, self._auto_fill_bitflag)
 
         # OK, we have BITFLAG somehow -- use these
 
