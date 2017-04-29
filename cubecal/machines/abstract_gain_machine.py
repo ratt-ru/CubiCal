@@ -1,5 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import math
+import numpy as np
+from cubecal.flagging import FL
 
 class PerIntervalGains(object):
     """
@@ -34,7 +36,12 @@ class PerIntervalGains(object):
         # Construct the appropriate shape for the gains.
 
         self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
-        self.flag_shape = [self.n_timint, self.n_freint, self.n_ant]
+
+        # Construct flag array
+
+        self.flag_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant]
+        self.gflags = np.zeros(self.flag_shape, FL.dtype)
+        self.flagbit = FL.ILLCOND
 
     @abstractmethod
     def compute_js(self):

@@ -133,7 +133,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         cyphase.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 
-        return corr_vis
+        return corr_vis, 0   # no flags raised here, since phase-only always invertible
 
     def precompute_attributes(self, model_arr):
 

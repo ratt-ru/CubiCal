@@ -167,7 +167,7 @@ class Tile(object):
             print>> log(2), "  read weights from column {}".format(self.handler.weight_column)
 
         # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
-        flag_arr = data.addSharedArray("flags", data['obvis'].shape, dtype=self.handler.flagtype)
+        flag_arr = data.addSharedArray("flags", data['obvis'].shape, dtype=FL.dtype)
 
         # apply FLAG/FLAG_ROW if explicitly asked to, or if apply_flag_auto is set and we don't have bitflags
         # (this is a useful default)
@@ -237,7 +237,7 @@ class Tile(object):
         rows = rowchunk.rows
         nants = self.handler.nants
 
-        flags = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice, self.handler.flagtype, FL.MISSING)
+        flags = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice, FL.dtype, FL.MISSING)
         flags = np.bitwise_or.reduce(flags, axis=-1)
         obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype)
         obs_arr = obs_arr.reshape([1, t_dim, f_dim, nants, nants, 2, 2])
@@ -413,7 +413,6 @@ class ReadModelHandler:
 
         self.ctype = np.complex128 if precision=="64" else np.complex64
         self.ftype = np.float64 if precision=="64" else np.float32
-        self.flagtype = np.int32
         self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
         self.ncorr = self._poltab.getcol("NUM_CORR")[0]
         self.nants = self._anttab.nrows()
