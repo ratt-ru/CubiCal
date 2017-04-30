@@ -752,7 +752,8 @@ class ReadModelHandler:
             for ts in xrange(ntime):
                 # find all rows associated with this DDID and timeslot
                 rows = ddid_rows & (self.times == ts)
-                flagout[rows, :, :] = flag3[ts, ddid, :, np.newaxis]
+                if rows.any():
+                    flagout[rows, :, :] = flag3[ts, ddid, :, np.newaxis]
 
         return flagout
 
