@@ -2,6 +2,7 @@ from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
 import cython
+from cpython cimport bool
 
 ctypedef fused complex3264:
     np.complex64_t
@@ -207,15 +208,23 @@ def cycompute_jhj(np.ndarray[complex3264, ndim=8] jh,
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
-                     np.ndarray[complex3264, ndim=6] jhjinv):
+                     np.ndarray[complex3264, ndim=6] jhjinv,
+                     np.ndarray[np.uint16_t, ndim=4, cast=True] flags,
+                     float eps,
+                     int flagbit):
     """
     This inverts the approximation to the Hessian, jhj. Note that asa as useful side effect, it is 
     also suitable for inverting the gains.
+
+    Returns number of points flagged
     """
 
     cdef int d, t, f, aa, ab = 0
     cdef int n_dir, n_tim, n_fre, n_ant
     cdef complex3264 denom = 0
+    cdef int flag_count = 0
+
+    eps = eps**2
 
     n_dir = jhj.shape[0]
     n_tim = jhj.shape[1]
@@ -226,18 +235,35 @@ def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
         for t in xrange(n_tim):
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
+                    if flags[d,t,f,aa]:
 
-                    denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
-                            jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
+                            jhjinv[d,t,f,aa,0,0] = 0
+                            jhjinv[d,t,f,aa,1,1] = 0
+                            jhjinv[d,t,f,aa,0,1] = 0
+                            jhjinv[d,t,f,aa,1,0] = 0
 
-                    if denom==0:
-                        denom = 1
+                    else:
+                        denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
+                                jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
 
-                    jhjinv[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
-                    jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
-                    jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
-                    jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
+                        if (denom*denom.conjugate()).real<=eps:
 
+                            jhjinv[d,t,f,aa,0,0] = 0
+                            jhjinv[d,t,f,aa,1,1] = 0
+                            jhjinv[d,t,f,aa,0,1] = 0
+                            jhjinv[d,t,f,aa,1,0] = 0
+
+                            flags[d,t,f,aa] = flagbit
+                            flag_count += 1
+
+                        else:
+
+                            jhjinv[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
+                            jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
+                            jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
+                            jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
+
+    return flag_count
 
 @cython.cdivision(True)
 @cython.wraparound(False)

@@ -265,20 +265,21 @@ def main(debugging=False):
         print>> log, "saved summary statistics to %s" % filename
 
         # flag based on summary stats
-        # TODO: write these flags out
         flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid)
 
-        if GD["flags"]["save"] and flag3.any() and not GD["data"]["single-chunk"]:
-            print>>log,"converting output flags"
-            flagcol = ms.flag3_to_col(flag3)
-            ms.save_flags(flagcol)
+        if flag3 is not None:
+            st.apply_flagcube(flag3)
+            if GD["flags"]["save"] and flag3.any() and not GD["data"]["single-chunk"]:
+                print>>log,"regenerating output flags based on post-solution flagging"
+                flagcol = ms.flag3_to_col(flag3)
+                ms.save_flags(flagcol)
 
         # make plots
         if GD["out"]["plots"]:
-            st.apply_flagcube(flag3)
             plots.make_summary_plots(st, GD, basename)
 
         ms.write_gain_dict()
+        ms.close()
 
         print>>log, ModColor.Str("completed successfully", col="green")
 
