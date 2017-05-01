@@ -396,7 +396,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
 
     # else, everything got flagged, so no valid solutions generated
     else:
-        print>>log, ModColor.Str("{} compltely flagged after {} iters: g/fl {:.2%}, d/fl {:.2%}").format(label,
+        print>>log, ModColor.Str("{} completely flagged after {} iters: g/fl {:.2%}, d/fl {:.2%}").format(label,
                                                     iters,
                                                     num_gain_flags / float(gm.gflags.size),
                                                     missing_gain_fraction)

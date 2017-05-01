@@ -7,6 +7,7 @@ import traceback
 from cubecal.tools import shared_dict
 import flagging
 from flagging import FL
+from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 #import better_exceptions
 
 from cubecal.tools import logger, ModColor
@@ -401,22 +402,24 @@ class Tile(object):
             freqs: freq indices or slice
             flags: if True, input array is a flag cube (i.e. no correlation axes)
         """
-        colsel = column[rows, freqs, :]
-        new_shape = colsel.shape
-
         tchunk = self.times[rows]
         tchunk -= tchunk[0]  # is this correct -- does in_array start from beginning of chunk?
         achunk = self.antea[rows]
         bchunk = self.anteb[rows]
-
+        # flag cube has no correlation axis, so copy it into coutput column
         if flags:
-            colsel[:] = in_arr[tchunk, :, achunk, bchunk, np.newaxis]
-        elif self.ncorr == 4:
-            colsel[:] = in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)
-        elif self.ncorr == 2:
-            colsel[:] = in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)[:, :, ::3]
-        elif self.ncorr == 1:
-            colsel[:] = in_arr[tchunk, :, achunk, bchunk, :].reshape(new_shape)[:, :, ::4]
+            column[rows, freqs, :] = in_arr[tchunk, :, achunk, bchunk, np.newaxis]
+        # for other cubes, reform the 2,2 axes at end into 4
+        else:
+            chunk = in_arr[tchunk, :, achunk, bchunk, :]
+            newshape = list(chunk.shape[:-2]) + [chunk.shape[-2]*chunk.shape[-1]]
+            chunk = chunk.reshape(newshape)
+            if self.ncorr == 4:
+                column[rows, freqs, :] = chunk
+            elif self.ncorr == 2:
+                column[rows, freqs, :] = chunk[..., ::3]  # 2 corrs -- take elements 0,3
+            elif self.ncorr == 1:                         # 1 corr -- take element 0
+                column[rows, freqs, :] = chunk[..., :1]
 
 
 class ReadModelHandler:
