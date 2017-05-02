@@ -22,8 +22,11 @@ import os
 from setuptools import setup
 from setuptools.extension import Extension
 from Cython.Build import cythonize
+import Cython.Compiler.Options as CCO
 from setuptools.command.install import install
 import numpy as np			
+
+CCO.buffer_max_dims = 9
 
 class custom_install(install):
 	def run(self):
