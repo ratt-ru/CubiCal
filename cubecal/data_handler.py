@@ -5,8 +5,8 @@ import cPickle
 import re
 import traceback
 from cubecal.tools import shared_dict
-import flagging
-from flagging import FL
+import cubecal.flagging as flagging
+from cubecal.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 #import better_exceptions
 

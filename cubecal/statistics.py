@@ -4,7 +4,6 @@ import cPickle
 
 from cubecal.tools import logger
 
-
 log = logger.getLogger("stats")
 
 class SolverStats (object):

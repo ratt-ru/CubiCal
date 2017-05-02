@@ -1,4 +1,4 @@
-from abstract_gain_machine import PerIntervalGains
+from cubecal.machines.abstract_gain_machine import PerIntervalGains
 import numpy as np
 import cubecal.kernels.cyphase_only as cyphase
 
