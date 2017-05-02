@@ -4,13 +4,13 @@ import pyrap.tables as pt
 import cPickle
 import re
 import traceback
-from cubecal.tools import shared_dict
-import cubecal.flagging as flagging
-from cubecal.flagging import FL
+from cubical.tools import shared_dict
+import cubical.flagging as flagging
+from cubical.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 #import better_exceptions
 
-from cubecal.tools import logger, ModColor
+from cubical.tools import logger, ModColor
 log = logger.getLogger("data_handler")
 
 def _parse_range(arg, nmax):

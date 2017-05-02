@@ -278,7 +278,7 @@ class SharedDict (dict):
         dict.__setitem__(self, item, array)
         return array
 
-SharedDict.setBaseName("cubecal."+str(os.getpid()))
+SharedDict.setBaseName("cubical."+str(os.getpid()))
 
 def testSharedDict ():
     dic = SharedDict("foo")

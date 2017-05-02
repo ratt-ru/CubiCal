@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import math
 import numpy as np
-from cubecal.flagging import FL
+from cubical.flagging import FL
 
 class PerIntervalGains(object):
     """
