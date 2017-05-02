@@ -1,4 +1,4 @@
-# CubeCal
+# CubiCal
 
 ## Requirements
 
@@ -14,22 +14,22 @@
 * To install all requirements EXCLUDING montblanc:
 
 ```
-   $ pip install -r CubeCal/requirements.txt
+   $ pip install -r CubiCal/requirements.txt
 ```
 
 * Install with:
 
 ```
-   $ pip install CubeCal
+   $ pip install CubiCal
 ```
 
-* CubeCal can be run from command line using: 
+* CubiCal can be run from command line using:
 
 ```
-   $ gocubecal
+   $ gocubical
 ```	 
 
-If this doesn't work, add path/to/your/virtual/env/bin/gocubecal to your path.
+If this doesn't work, add path/to/your/virtual/env/bin/gocubical to your path.
 
 * -h or --help will display the currently available options.
 
@@ -44,8 +44,8 @@ $ pip install virtualenv
 * To create and activate a virtual environment:
 
 ```
-$ virtualenv cubeenv
-$ source cubeenv/bin/activate
+$ virtualenv cubienv   # or pick any other name
+$ source cubienv/bin/activate
 ```
 
 

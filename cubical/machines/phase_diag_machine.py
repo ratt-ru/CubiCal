@@ -1,6 +1,6 @@
-from cubecal.machines.abstract_gain_machine import PerIntervalGains
+from cubical.machines.abstract_gain_machine import PerIntervalGains
 import numpy as np
-import cubecal.kernels.cyphase_only as cyphase
+import cubical.kernels.cyphase_only as cyphase
 
 class PhaseDiagGains(PerIntervalGains):
     """

@@ -1,19 +1,23 @@
-from cubecal.machines.abstract_gain_machine import PerIntervalGains
+from cubical.machines.abstract_gain_machine import PerIntervalGains
 import numpy as np
-import cubecal.kernels.cyfull_complex as cyfull
+import cubical.kernels.cyfull_W_complex as cyfull
 
-class Complex2x2Gains(PerIntervalGains):
+class ComplexW2x2Gains(PerIntervalGains):
     """
     This class implements the full complex 2x2 gain machine
     """
     def __init__(self, model_arr, options):
         PerIntervalGains.__init__(self, model_arr, options)
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
-        self.gains[:]  = np.eye(self.n_cor)
+        self.gains[:]  = np.eye(self.n_cor) #np.ones(self.ncor)
+        self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant]
+        self.weights = np.ones(self.weights_shape, dtype=np.float64)
+        self.v_shape = [self.n_mod, self.n_timint, self.n_freint]
+        self.v = 2*np.ones(self.v_shape, dtype=np.float64)
 
     def compute_js(self, obser_arr, model_arr):
         """
-        This function computes the (J^H)R term of the GN/LM method for the
+        This function computes the (J^H)WR term of the GN/LM method for the
         full-polarisation, phase-only case.
 
         Args:
@@ -22,20 +26,18 @@ class Complex2x2Gains(PerIntervalGains):
             gains (np.array): Array containing the current gain estimates.
 
         Returns:
-            jhr (np.array): Array containing the result of computing (J^H)R.
-            jhjinv (np.array): Array containing the result of computing (J^H.J)^-1
-            flag_count:     Number of flagged (ill-conditioned) elements
+            jhwr (np.array): Array containing the result of computing (J^H)R.
         """
-
+        w = self.weights
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
 
         jh = np.zeros_like(model_arr)
 
         cyfull.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
-        jhr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
+        jhwr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
 
-        jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+        jhwr = np.zeros(jhwr_shape, dtype=obser_arr.dtype)
 
         # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
         if n_dir > 1:
@@ -43,17 +45,17 @@ class Complex2x2Gains(PerIntervalGains):
         else:
             r = obser_arr
 
-        cyfull.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
+        cyfull.cycompute_jhwr(jh, r, w, jhwr, self.t_int, self.f_int)
 
-        jhj = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+        jhwj = np.zeros(jhwr_shape, dtype=obser_arr.dtype)
 
-        cyfull.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
+        cyfull.cycompute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
 
-        jhjinv = np.empty(jhr_shape, dtype=obser_arr.dtype)
+        jhwjinv = np.empty(jhwr_shape, dtype=obser_arr.dtype)
 
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, self.flagbit)
+        cyfull.cycompute_jhwjinv(jhwj, jhwjinv)
 
-        return jhr, jhjinv, flag_count
+        return jhwr, jhwjinv
 
     def compute_update(self, model_arr, obser_arr, iters):
         """
@@ -68,22 +70,34 @@ class Complex2x2Gains(PerIntervalGains):
 
         Returns:
             update (np.array): Array containing the result of computing
-                (((J^H)J)^-1)(J^H)R
+                (((J^H)WJ)^-1)(J^H)WR
         """
 
 
-        jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
+        jhwr, jhwjinv = self.compute_js(obser_arr, model_arr)
 
-        update = np.empty_like(jhr)
+        update = np.empty_like(jhwr)
 
-        cyfull.cycompute_update(jhr, jhjinv, update)
+        cyfull.cycompute_update(jhwr, jhwjinv, update)
 
         if iters % 2 == 0:
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
 
-        return flag_count
+        #Computing the weights
+        res_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor]
+        
+        residuals = np.zeros(res_shape, dtype=self.dtype) #We need to always compute the residuals
+        
+        residuals = self.compute_residual(obser_arr, model_arr, residuals)
+        
+        weights, v = cyfull.cycompute_weights(residuals, self.weights, self.v, self.t_int, self.f_int)
+
+        self.weights = weights
+
+        self.v = v
+
 
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
@@ -127,7 +141,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         g_inv = np.empty_like(self.gains)
 
-        flag_count = cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps, self.flagbit) # Function can invert G.
+        cyfull.cycompute_jhwjinv(self.gains, g_inv) # Function can invert G.
 
         gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
 
@@ -136,4 +150,4 @@ class Complex2x2Gains(PerIntervalGains):
 
         cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 
-        return corr_vis, flag_count
+        return corr_vis
