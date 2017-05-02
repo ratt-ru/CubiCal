@@ -9,7 +9,7 @@ import re
 
 from cubecal.tools import logger, ModColor
 log = logger.getLogger("flagging")
-import plots
+import cubecal.plots as plots
 from collections import OrderedDict
 
 class FL(object):

@@ -7,19 +7,18 @@ from time import time
 
 import concurrent.futures as cf
 
-import data_handler
-from data_handler import ReadModelHandler, Tile
+import cubecal.data_handler as data_handler
+from cubecal.data_handler import ReadModelHandler, Tile
 from cubecal.tools import logger, parsets, myoptparse, shm_utils, ModColor
 
 log = logger.getLogger("main")
 
+import cubecal.solver as solver
+import cubecal.plots as plots
+import cubecal.flagging as flagging
 
-import solver
-import plots
-import flagging
 
-
-from statistics import SolverStats
+from cubecal.statistics import SolverStats
 
 
 

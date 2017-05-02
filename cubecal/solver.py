@@ -4,11 +4,11 @@ Implements the solver loop
 import numpy as np
 import traceback
 from cubecal.tools import logger, ModColor
-from data_handler import FL, Tile
+from cubecal.data_handler import FL, Tile
 from cubecal.tools import shared_dict
 from cubecal.machines import complex_2x2_machine
 from cubecal.machines import phase_diag_machine
-from statistics import SolverStats
+from cubecal.statistics import SolverStats
 
 log = logger.getLogger("solver")
 
