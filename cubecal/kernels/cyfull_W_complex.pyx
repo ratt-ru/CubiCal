@@ -2,7 +2,8 @@ from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
 import cython
-from cpython cimport bool
+from scipy.optimize import fsolve
+from scipy import special
 
 ctypedef fused complex3264:
     np.complex64_t
@@ -22,7 +23,7 @@ def cycompute_residual(np.ndarray[complex3264, ndim=8] m,
 
     """
     This computes the residual, resulting in large matrix indexed by 
-    (direction, model, time, frequency, antenna, antenna, correclation, correlation).
+    (direction, model, time, frequency, antenna, antenna, correlation, correlation).
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -113,15 +114,16 @@ def cycompute_jh(np.ndarray[complex3264, ndim=8] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhr(np.ndarray[complex3264, ndim=8] jh,
+def cycompute_jhwr(np.ndarray[complex3264, ndim=8] jh,
                   np.ndarray[complex3264, ndim=7] r,
-                  np.ndarray[complex3264, ndim=6] jhr,
+                  np.ndarray[np.double_t, ndim=5] w,
+                  np.ndarray[complex3264, ndim=6] jhwr,
                   int t_int,
                   int f_int):
 
     """
-    This computes the jhr term on the GN/LM method. Note that while jh is indexed by model, the 
-    resulting jhr has no model index. 
+    This computes the jhwr term on the GN/LM method. Note that while jh is indexed by model, the 
+    resulting jhwr has no model index. 
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -141,28 +143,29 @@ def cycompute_jhr(np.ndarray[complex3264, ndim=8] jh,
                     rc = f/f_int
                     for aa in xrange(n_ant):
                         for ab in xrange(n_ant):
-                            jhr[d,rr,rc,aa,0,0] = jhr[d,rr,rc,aa,0,0] + \
-                                                    r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,0] + \
-                                                    r[i,t,f,aa,ab,0,1]*jh[d,i,t,f,ab,aa,1,0]
+                            jhwr[d,rr,rc,aa,0,0] = jhwr[d,rr,rc,aa,0,0] + \
+                                                    w[i,t,f,aa,ab]*r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,0] + \
+                                                    w[i,t,f,aa,ab]*r[i,t,f,aa,ab,0,1]*jh[d,i,t,f,ab,aa,1,0]
 
-                            jhr[d,rr,rc,aa,0,1] = jhr[d,rr,rc,aa,0,1] + \
-                                                    r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,1] + \
-                                                    r[i,t,f,aa,ab,0,1]*jh[d,i,t,f,ab,aa,1,1]
+                            jhwr[d,rr,rc,aa,0,1] = jhwr[d,rr,rc,aa,0,1] + \
+                                                    w[i,t,f,aa,ab]*r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,1] + \
+                                                    w[i,t,aa,ab]*r[i,t,f,aa,ab,0,1]*jh[d,i,t,f,ab,aa,1,1]
 
-                            jhr[d,rr,rc,aa,1,0] = jhr[d,rr,rc,aa,1,0] + \
-                                                    r[i,t,f,aa,ab,1,0]*jh[d,i,t,f,ab,aa,0,0] + \
-                                                    r[i,t,f,aa,ab,1,1]*jh[d,i,t,f,ab,aa,1,0]
+                            jhwr[d,rr,rc,aa,1,0] = jhwr[d,rr,rc,aa,1,0] + \
+                                                    w[i,t,f,aa,ab]*r[i,t,f,aa,ab,1,0]*jh[d,i,t,f,ab,aa,0,0] + \
+                                                    w[i,t,f,aa,ab]*r[i,t,f,aa,ab,1,1]*jh[d,i,t,f,ab,aa,1,0]
 
-                            jhr[d,rr,rc,aa,1,1] = jhr[d,rr,rc,aa,1,1] + \
-                                                    r[i,t,f,aa,ab,1,0]*jh[d,i,t,f,ab,aa,0,1] + \
-                                                    r[i,t,f,aa,ab,1,1]*jh[d,i,t,f,ab,aa,1,1]
+                            jhwr[d,rr,rc,aa,1,1] = jhwr[d,rr,rc,aa,1,1] + \
+                                                    w[i,t,f,aa,ab]*r[i,t,f,aa,ab,1,0]*jh[d,i,t,f,ab,aa,0,1] + \
+                                                    w[i,t,f,aa,ab]*r[i,t,f,aa,ab,1,1]*jh[d,i,t,f,ab,aa,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhj(np.ndarray[complex3264, ndim=8] jh,
-                  np.ndarray[complex3264, ndim=6] jhj,
+def cycompute_jhwj(np.ndarray[complex3264, ndim=8] jh,
+                  np.ndarray[np.double_t, ndim=5] w,  
+                  np.ndarray[complex3264, ndim=6] jhwj,
                   int t_int,
                   int f_int):
 
@@ -187,120 +190,96 @@ def cycompute_jhj(np.ndarray[complex3264, ndim=8] jh,
                     rc = f/f_int
                     for aa in xrange(n_ant):
                         for ab in xrange(n_ant):
-                            jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
-                            jh[d,i,t,f,ab,aa,0,0].conjugate()*jh[d,i,t,f,ab,aa,0,0] + \
-                            jh[d,i,t,f,ab,aa,1,0].conjugate()*jh[d,i,t,f,ab,aa,1,0]
+                            jhwj[d,rr,rc,aa,0,0] = jhwj[d,rr,rc,aa,0,0] + \
+                            jh[d,i,t,f,ab,aa,0,0].conjugate()*w[i,t,f,aa,ab]*jh[d,i,t,f,ab,aa,0,0] + \
+                            jh[d,i,t,f,ab,aa,1,0].conjugate()*w[i,t,f,aa,ab]*jh[d,i,t,f,ab,aa,1,0]
 
-                            jhj[d,rr,rc,aa,0,1] = jhj[d,rr,rc,aa,0,1] + \
-                            jh[d,i,t,f,ab,aa,0,0].conjugate()*jh[d,i,t,f,ab,aa,0,1] + \
-                            jh[d,i,t,f,ab,aa,1,0].conjugate()*jh[d,i,t,f,ab,aa,1,1]
+                            jhwj[d,rr,rc,aa,0,1] = jhwj[d,rr,rc,aa,0,1] + \
+                            jh[d,i,t,f,ab,aa,0,0].conjugate()*w[i,t,f,aa,ab]*jh[d,i,t,f,ab,aa,0,1] + \
+                            jh[d,i,t,f,ab,aa,1,0].conjugate()*w[i,t,f,aa,ab]*jh[d,i,t,f,ab,aa,1,1]
 
-                            jhj[d,rr,rc,aa,1,0] = jhj[d,rr,rc,aa,1,0] + \
-                            jh[d,i,t,f,ab,aa,0,1].conjugate()*jh[d,i,t,f,ab,aa,0,0] + \
-                            jh[d,i,t,f,ab,aa,1,1].conjugate()*jh[d,i,t,f,ab,aa,1,0]
+                            jhwj[d,rr,rc,aa,1,0] = jhwj[d,rr,rc,aa,1,0] + \
+                            jh[d,i,t,f,ab,aa,0,1].conjugate()*w[i,t,f,aa,ab]*jh[d,i,t,f,ab,aa,0,0] + \
+                            jh[d,i,t,f,ab,aa,1,1].conjugate()*w[i,t,f,aa,ab]*jh[d,i,t,f,ab,aa,1,0]
 
-                            jhj[d,rr,rc,aa,1,1] = jhj[d,rr,rc,aa,1,1] + \
-                            jh[d,i,t,f,ab,aa,0,1].conjugate()*jh[d,i,t,f,ab,aa,0,1] + \
-                            jh[d,i,t,f,ab,aa,1,1].conjugate()*jh[d,i,t,f,ab,aa,1,1]
+                            jhwj[d,rr,rc,aa,1,1] = jhwj[d,rr,rc,aa,1,1] + \
+                            jh[d,i,t,f,ab,aa,0,1].conjugate()*w[i,t,f,aa,ab]*jh[d,i,t,f,ab,aa,0,1] + \
+                            jh[d,i,t,f,ab,aa,1,1].conjugate()*w[i,t,f,aa,ab]*jh[d,i,t,f,ab,aa,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
-                     np.ndarray[complex3264, ndim=6] jhjinv,
-                     np.ndarray[np.uint16_t, ndim=4, cast=True] flags,
-                     float eps,
-                     int flagbit):
+def cycompute_jhwjinv(np.ndarray[complex3264, ndim=6] jhwj,
+                     np.ndarray[complex3264, ndim=6] jhwjinv):
     """
-    This inverts the approximation to the Hessian, jhj. Note that asa as useful side effect, it is 
+    This inverts the approximation to the Hessian, jhwj. Note that as a useful side effect, it is 
     also suitable for inverting the gains.
-
-    Returns number of points flagged
     """
+
 
     cdef int d, t, f, aa, ab = 0
     cdef int n_dir, n_tim, n_fre, n_ant
     cdef complex3264 denom = 0
-    cdef int flag_count = 0
 
-    eps = eps**2
-
-    n_dir = jhj.shape[0]
-    n_tim = jhj.shape[1]
-    n_fre = jhj.shape[2]
-    n_ant = jhj.shape[3]
+    n_dir = jhwj.shape[0]
+    n_tim = jhwj.shape[1]
+    n_fre = jhwj.shape[2]
+    n_ant = jhwj.shape[3]
 
     for d in xrange(n_dir):
         for t in xrange(n_tim):
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
-                    if flags[d,t,f,aa]:
 
-                            jhjinv[d,t,f,aa,0,0] = 0
-                            jhjinv[d,t,f,aa,1,1] = 0
-                            jhjinv[d,t,f,aa,0,1] = 0
-                            jhjinv[d,t,f,aa,1,0] = 0
+                    denom = jhwj[d,t,f,aa,0,0] * jhwj[d,t,f,aa,1,1] - \
+                            jhwj[d,t,f,aa,0,1] * jhwj[d,t,f,aa,1,0]
 
-                    else:
-                        denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
-                                jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
+                    if denom==0:
+                        denom = 1
 
-                        if (denom*denom.conjugate()).real<=eps:
+                    jhwjinv[d,t,f,aa,0,0] = jhwj[d,t,f,aa,1,1]/denom
+                    jhwjinv[d,t,f,aa,1,1] = jhwj[d,t,f,aa,0,0]/denom
+                    jhwjinv[d,t,f,aa,0,1] = -1 * jhwj[d,t,f,aa,0,1]/denom
+                    jhwjinv[d,t,f,aa,1,0] = -1 * jhwj[d,t,f,aa,1,0]/denom
 
-                            jhjinv[d,t,f,aa,0,0] = 0
-                            jhjinv[d,t,f,aa,1,1] = 0
-                            jhjinv[d,t,f,aa,0,1] = 0
-                            jhjinv[d,t,f,aa,1,0] = 0
-
-                            flags[d,t,f,aa] = flagbit
-                            flag_count += 1
-
-                        else:
-
-                            jhjinv[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
-                            jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
-                            jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
-                            jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
-
-    return flag_count
 
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_update(np.ndarray[complex3264, ndim=6] jhr,
-                     np.ndarray[complex3264, ndim=6] jhj,
+def cycompute_update(np.ndarray[complex3264, ndim=6] jhwr,
+                     np.ndarray[complex3264, ndim=6] jhwj,
                      np.ndarray[complex3264, ndim=6] upd):
     """
-    This computes the update by computing the product of jhj and jhr. These should already have been
+    This computes the update by computing the product of jhwj and jhwr. These should already have been
     reduced to the correct dimension so that this operation is very simple. 
     """
 
     cdef int d, t, f, aa = 0
     cdef int n_dir, n_tim, n_fre, n_ant
 
-    n_dir = jhr.shape[0]
-    n_tim = jhr.shape[1]
-    n_fre = jhr.shape[2]
-    n_ant = jhr.shape[3]
+    n_dir = jhwr.shape[0]
+    n_tim = jhwr.shape[1]
+    n_fre = jhwr.shape[2]
+    n_ant = jhwr.shape[3]
 
     for d in xrange(n_dir):
         for t in xrange(n_tim):
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
 
-                    upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,0] + \
-                                        jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,0]
+                    upd[d,t,f,aa,0,0] = jhwr[d,t,f,aa,0,0]*jhwj[d,t,f,aa,0,0] + \
+                                        jhwr[d,t,f,aa,0,1]*jhwj[d,t,f,aa,1,0]
 
-                    upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,1] + \
-                                        jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,1]
+                    upd[d,t,f,aa,0,1] = jhwr[d,t,f,aa,0,0]*jhwj[d,t,f,aa,0,1] + \
+                                        jhwr[d,t,f,aa,0,1]*jhwj[d,t,f,aa,1,1]
 
-                    upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,0] + \
-                                        jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,0]
+                    upd[d,t,f,aa,1,0] = jhwr[d,t,f,aa,1,0]*jhwj[d,t,f,aa,0,0] + \
+                                        jhwr[d,t,f,aa,1,1]*jhwj[d,t,f,aa,1,0]
 
-                    upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,1] + \
-                                        jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,1]
+                    upd[d,t,f,aa,1,1] = jhwr[d,t,f,aa,1,0]*jhwj[d,t,f,aa,0,1] + \
+                                        jhwr[d,t,f,aa,1,1]*jhwj[d,t,f,aa,1,1]
                     
 
 @cython.cdivision(True)
@@ -359,3 +338,61 @@ def cycompute_corrected(np.ndarray[complex3264, ndim=6] o,
                         g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
                         g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]
+
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_weights(np.ndarray[complex3264, ndim=7] r,
+                        np.ndarray[np.double_t, ndim=5] w,
+                        np.ndarray[np.double_t, ndim=3] v,
+                        int t_int,
+                        int f_int):
+    """
+    This computes the weights, given the latest residual visibilities and the v parameter.
+    w[i] = (v+2)/(v + 2*residual[i]^2). Next v is update using the newly compute weights.
+    """
+
+    cdef i, t, f, aa, ab, rr, rc = 0
+    cdef int n_mod, n_tim, n_fre, n_ant, m
+    cdef double d
+    cdef np.ndarray[np.double_t, ndim=1] winit
+    cdef np.double_t[:] wn
+
+    n_mod = r.shape[0]
+    n_tim = r.shape[1]
+    n_fre = r.shape[2]
+    n_ant = r.shape[3]
+
+    for i in xrange(n_mod):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        w[i,t,f,aa,ab] = (v[i,rr,rc]+2)/(v[i,rr,rc] + \
+                                2*(r[i,t,f,aa,ab,0,0].conjugate()*r[i,t,f,aa,ab,0,0] + \
+                                r[i,t,f,aa,ab,0,1].conjugate()*r[i,t,f,aa,ab,0,1] + \
+                                r[i,t,f,aa,ab,1,0].conjugate()*r[i,t,f,aa,ab,1,0] + \
+                                r[i,t,f,aa,ab,1,1].conjugate()*r[i,t,f,aa,ab,1,1]))
+
+    rr = n_tim/t_int
+    rc = n_fre/f_int
+
+    for i in xrange(n_mod):
+        for t in xrange(0, n_tim, t_int):
+            for f in xrange(0, n_fre, f_int):
+                winit = np.reshape(w[t:t+t_int,f+f_int,:,:],(t_int*f_int*n_ant*n_ant))
+                wn = winit[np.where(winit!=0)]
+                m = len(wn)
+
+                vfunc = lambda a: special.digamma(0.5*(a+2)) - np.log(0.5*(a+2)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
+
+
+                d = fsolve(vfunc,v[i,t,f])
+                if d > 30 or d<2:
+                    v[i,t,f] = v[i,t,f]
+                else:
+                    v[i,t,f] = d

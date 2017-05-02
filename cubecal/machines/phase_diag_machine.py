@@ -16,6 +16,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         self.gains = np.empty_like(self.phases, dtype=model_arr.dtype)
         self.gains[:] = np.eye(self.n_cor) 
+        self.gflags    = np.zeros(self.flag_shape, dtype=np.uint8)
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -111,7 +112,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         return resid_arr
 
-    def apply_inv_gains(self, obser_arr):
+    def apply_inv_gains(self, obser_arr, corr_vis=None):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -127,11 +128,12 @@ class PhaseDiagGains(PerIntervalGains):
 
         gh_inv = g_inv.conj()
 
-        corr_vis = np.empty_like(obser_arr)
+        if corr_vis is None:                
+            corr_vis = np.empty_like(obser_arr)
 
         cyphase.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 
-        return corr_vis
+        return corr_vis, 0   # no flags raised here, since phase-only always invertible
 
     def precompute_attributes(self, model_arr):
 
@@ -139,6 +141,6 @@ class PhaseDiagGains(PerIntervalGains):
 
         cyphase.cycompute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)
 
-        cyphase.cycompute_jhjinv(self.jhjinv)
+        cyphase.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps)
 
         self.jhjinv = self.jhjinv.real
