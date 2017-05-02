@@ -39,12 +39,18 @@ extensions = [Extension(
         				'-ffast-math', '-O2', '-march=native',	'-mtune=native', '-ftree-vectorize'],
 						extra_link_args=['-lgomp']
 					   ),
-			  Extension(
+			        Extension(
 						"cubecal.kernels.cyphase_only", ["cubecal/kernels/cyphase_only.pyx"],
         				include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
         				'-ffast-math', '-O2', '-march=native',	'-mtune=native', '-ftree-vectorize'],
 						extra_link_args=['-lgomp']
-					   )]
+					   ),
+              Extension(
+            "cubecal.kernels.cyfull_W_complex", ["cubecal/kernels/cyfull_W_complex.pyx"],
+                include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+                '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
+            extra_link_args=['-lgomp']
+             )]
 
 setup(name='cubecal',
       version='0.2.1',
@@ -78,7 +84,7 @@ setup(name='cubecal',
           		      							'plots.py',
           		      							'flagging.py',
           		      							'MBTiggerSim.py', 
-          		      							'ReadModelHandler.py',
+          		      							'data_handler.py',
           		      							'TiggerSourceProvider.py', 
           		      							'bin/gocubecal'], 
                     'tools'		:	[	'cubecal/tools/logger.py', 
@@ -87,10 +93,12 @@ setup(name='cubecal',
 		                    		 	    'cubecal/tools/myoptparse.py',
 		                    		 	    'cubecal/tools/parsets.py'],
                     'kernels'	:	[	'cubecal/kernels/cyfull_complex.pyx', 
-                       					  'cubecal/kernels/cyphase_only.pyx'],
+                       					  'cubecal/kernels/cyphase_only.pyx',
+                                  'cubecal/kernels/cyfull_W_complex.pyx'],
                     'machines'	:	[	'cubecal/machines/abstract_gain_machine.py', 
                        					    'cubecal/machines/complex_2x2_machine.py',
-                       					    'cubecal/machines/phase_diag_machine.py'] },
+                       					    'cubecal/machines/phase_diag_machine.py',
+                                    'cubecal/machines/complex_W_2x2_machine.py'] },
       zip_safe=False,
       ext_modules = cythonize(extensions),
       scripts=['cubecal/bin/gocubecal'],

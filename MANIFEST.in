@@ -1,2 +1,3 @@
 include cubecal/kernels/cyfull_complex.so
 include cubecal/kernels/cyphase_only.so
+include cubecal/kernels/cyfull_W_complex.so

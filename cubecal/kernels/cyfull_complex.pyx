@@ -2,7 +2,6 @@ from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
 import cython
-from cpython cimport bool
 
 ctypedef fused complex3264:
     np.complex64_t
