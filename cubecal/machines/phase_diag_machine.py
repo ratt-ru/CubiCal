@@ -16,7 +16,6 @@ class PhaseDiagGains(PerIntervalGains):
 
         self.gains = np.empty_like(self.phases, dtype=model_arr.dtype)
         self.gains[:] = np.eye(self.n_cor) 
-        self.gflags    = np.zeros(self.flag_shape, dtype=np.uint8)
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -141,6 +140,6 @@ class PhaseDiagGains(PerIntervalGains):
 
         cyphase.cycompute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)
 
-        cyphase.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps)
+        cyphase.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps, self.flagbit)
 
         self.jhjinv = self.jhjinv.real
