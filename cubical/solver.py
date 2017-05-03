@@ -79,7 +79,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
         gm = complex_2x2_machine.Complex2x2Gains(model_arr, options)
     elif options['jones-type'] == 'phase-diag':
         gm = phase_diag_machine.PhaseDiagGains(model_arr, options)
-    if options['jones-type'] == 'robust-2x2':
+    elif options['jones-type'] == 'robust-2x2':
         gm = complex_W_2x2_machine.ComplexW2x2Gains(model_arr, options)
     else:
         raise ValueError("unknown jones-type '{}'".format(options['jones-type']))
