@@ -106,8 +106,9 @@ class PhaseDiagGains(PerIntervalGains):
         
         gains_h = self.gains.transpose(0,1,2,3,5,4).conj()
 
-        cyphase.cycompute_residual(model_arr, self.gains, gains_h, obser_arr, resid_arr, \
-                                   self.t_int, self.f_int)
+        resid_arr[:] = obser_arr
+
+        cyphase.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, self.t_int, self.f_int)
 
         return resid_arr
 

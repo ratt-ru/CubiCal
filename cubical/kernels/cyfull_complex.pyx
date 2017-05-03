@@ -14,7 +14,6 @@ ctypedef fused complex3264:
 def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
                        complex3264 [:,:,:,:,:,:] g,
                        complex3264 [:,:,:,:,:,:] gh,
-                       complex3264 [:,:,:,:,:,:,:] o,
                        complex3264 [:,:,:,:,:,:,:] r,
                        int t_int,
                        int f_int):
@@ -41,25 +40,25 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
                     rc = f/f_int
                     for aa in xrange(n_ant):
                         for ab in xrange(n_ant):
-                            r[i,t,f,aa,ab,0,0] = o[i,t,f,aa,ab,0,0] - (
+                            r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
                             g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
                             g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
                             g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
                             g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-                            r[i,t,f,aa,ab,0,1] = o[i,t,f,aa,ab,0,1] - (
+                            r[i,t,f,aa,ab,0,1] = r[i,t,f,aa,ab,0,1] - (
                             g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
                             g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
                             g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
                             g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
-                            r[i,t,f,aa,ab,1,0] = o[i,t,f,aa,ab,1,0] - (
+                            r[i,t,f,aa,ab,1,0] = r[i,t,f,aa,ab,1,0] - (
                             g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
                             g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
                             g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
                             g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-                            r[i,t,f,aa,ab,1,1] = o[i,t,f,aa,ab,1,1] - (
+                            r[i,t,f,aa,ab,1,1] = r[i,t,f,aa,ab,1,1] - (
                             g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
                             g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
                             g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
