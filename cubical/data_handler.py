@@ -8,6 +8,7 @@ from cubical.tools import shared_dict
 import cubical.flagging as flagging
 from cubical.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
+from cubical.MBTiggerSim import simulate
 #import better_exceptions
 
 from cubical.tools import logger, ModColor
@@ -118,8 +119,10 @@ class Tile(object):
                 chan0, chan1 = self.handler.chunk_find[ifreq:ifreq + 2]
                 self._chunk_dict[key] = label, rowchunk, chan0, chan1
 
-        # copy various useful info from handler
+        # copy various useful info from handler and make a simple list of unique ddids.
 
+        self.ddids = np.unique([i[1].ddid for i in self._chunk_dict.values()])
+        self.time_col = self.handler.time_col[self.first_row:self.last_row+1]
         self.antea = self.handler.antea[self.first_row:self.last_row+1]
         self.anteb = self.handler.anteb[self.first_row:self.last_row+1]
         self.times = self.handler.times[self.first_row:self.last_row+1]
@@ -138,37 +141,58 @@ class Tile(object):
         Fetches data from MS into tile data shared dict. Returns dict.
         This is meant to be called in the main or I/O process.
         """
-        # create shared dict for data arrays
+        
+        # Create a shared dict for the data arrays.
+        
         data = shared_dict.create(self._data_dict_name)
 
-        # these flags indicate if the (corrected) data or flags have been updated
+        # These flags indicate if the (corrected) data or flags have been updated
         # Gotcha for shared_dict users! The only truly shared objects are arrays.
-        # So we create an array for the flags
+        # Thus, we create an array for the flags.
+        
         data['updated'] = np.array([False, False])
 
         print>>log,"reading tile for MS rows {}~{}".format(self.first_row, self.last_row)
+        
         nrows = self.last_row - self.first_row + 1
+        
         data['obvis'] = self.handler.fetch(self.handler.data_column, self.first_row, nrows).astype(self.handler.ctype)
         print>> log(2), "  read " + self.handler.data_column
+
+        data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
+        print>> log(2), "  read UVW coordinates"
+
         if self.handler.model_column:
             data['movis'] = self.handler.fetch(self.handler.model_column, self.first_row, nrows).astype(self.handler.ctype)
             print>> log(2), "  read " + self.handler.model_column
         else:
             data.addSharedArray('movis', data['obvis'].shape, self.handler.ctype)
+
+        # tmp = data['movis'].copy()
+
+        if self.handler.sm_name!="":
+            print>>log, "simulating model visibilities"
+            simulate(self, data)
+        else:
+            print>>log, "sky model path unspecified or incorrect - no simulation."
+
+        # print np.allclose(tmp, data['movis']-tmp)
+
         data.addSharedArray('covis', data['obvis'].shape, self.handler.ctype)
-        data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
-        print>> log(2), "  read UVW"
 
         if self.handler.weight_column:
             weight = self.handler.fetch(self.handler.weight_column, self.first_row, nrows)
-            # if column is WEIGHT, expand freq axis
+            # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
             if self.handler.weight_column == "WEIGHT":
                 data['weigh'] = weight[:, np.newaxis, :].repeat(self.handler.nfreq, 1)
             else:
                 data['weigh'] = weight
             print>> log(2), "  read weights from column {}".format(self.handler.weight_column)
 
-        # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
+        # The following block of code deals with the various flagging operations and columns. The
+        # aim is to correctly populate flag_arr from the various flag sources.
+
+        # Make a flag array. This will contain FL.PRIOR for any points flagged in the MS.
         flag_arr = data.addSharedArray("flags", data['obvis'].shape, dtype=FL.dtype)
 
         # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them
@@ -182,14 +206,15 @@ class Tile(object):
             flag_arr[flagcol] = FL.PRIOR
             flag_arr[flagrow, :, :] = FL.PRIOR
 
-        # form up bitflag array, if needed
+        # Form up bitflag array, if needed.
         if self.handler._apply_bitflags or self.handler._save_bitflag or self.handler._auto_fill_bitflag:
             read_bitflags = False
-            # if not explicitly re-initializing, try to read column
+            # If not explicitly re-initializing, try to read column.
             if not self.handler._reinit_bitflags:
                 self.bflagrow = self.handler.fetch("BITFLAG_ROW", self.first_row, nrows)
-                # if there's an error reading BITFLAG, it must be unfilled. This is a common occurrence so may
-                # as well deal with it. In this case, if auto-fill is set, fill BITFLAG from FLAG/FLAG_ROW
+                # If there's an error reading BITFLAG, it must be unfilled. This is a common 
+                # occurrence so we may as well deal with it. In this case, if auto-fill is set, 
+                # fill BITFLAG from FLAG/FLAG_ROW.
                 try:
                     self.bflagcol = self.handler.fetch("BITFLAG", self.first_row, nrows)
                     print>> log(2), "  read BITFLAG/BITFLAG_ROW"
@@ -202,7 +227,7 @@ class Tile(object):
                     print>>log,"  error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
                     for line in traceback.format_exc().strip().split("\n"):
                         print>> log, "    "+line
-            # if column wasn't read, create arrays
+            # If column wasn't read, create arrays.
             if not read_bitflags:
                 self.bflagcol = np.zeros(flagcol.shape, np.int32)
                 self.bflagrow = np.zeros(flagrow.shape, np.int32)
@@ -216,8 +241,9 @@ class Tile(object):
                 flag_arr[(self.bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
                 flag_arr[(self.bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
 
-        # placeholder for gains
+        # Create a placeholder for the gains.
         data.addSubdict("gains")
+
         return data
 
     def get_chunk_cubes(self, key):
