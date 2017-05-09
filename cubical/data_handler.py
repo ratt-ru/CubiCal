@@ -188,7 +188,7 @@ class Tile(object):
         if self.handler.sm_name!="":
 
             print>>log, "simulating model visibilities"
-            
+
             measet_src = MSSourceProvider(self, data)
             tigger_src = TiggerSourceProvider(self)
 
@@ -199,7 +199,10 @@ class Tile(object):
 
             column_snk = ColumnSinkProvider(self, data)
 
-            simulate([measet_src, tigger_src], [column_snk])
+            for direction in xrange(ndirs):
+                simulate([measet_src, tigger_src], [column_snk])
+                tigger_src.update_target()
+                column_snk._dir += 1
         
         else:
 
@@ -214,10 +217,6 @@ class Tile(object):
                                                             nrows).astype(self.handler.ctype)
             
             print>> log(2), "  read " + self.handler.model_column
-        
-        # tmp = data['movis'].copy()
-
-        # print np.allclose(tmp, data['movis']-tmp)
 
         data.addSharedArray('covis', data['obvis'].shape, self.handler.ctype)
 
@@ -425,8 +424,8 @@ class Tile(object):
 
         dims = {possible_dims[-i] : column.shape[-i] for i in xrange(1, col_ndim + 1)}
 
-        dims["mods"] = dims["mods"] if "mods" in dims else 1
-        dims["dirs"] = dims["dirs"] if "dirs" in dims else 1
+        dims.setdefault("mods", 1)
+        dims.setdefault("dirs", 1)
 
         out_shape = [dims["dirs"], dims["mods"], chunk_tdim, chunk_fdim, self.nants, self.nants, 4]
         out_shape = out_shape[-reqdims:]
@@ -456,11 +455,8 @@ class Tile(object):
         # The following takes the arbitrarily ordered data from the MS and places it into a N-D 
         # data structure (correlation matrix).
 
-        for sel_ind in xrange(n_sel):
+        for col_selection, cub_selection in zip(col_selections, cub_selections):
 
-            col_selection = col_selections[sel_ind]
-            cub_selection = cub_selections[sel_ind]
-            
             if self.ncorr == 4:
                 out_arr[cub_selection] = colsel = column[col_selection]
                 cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]

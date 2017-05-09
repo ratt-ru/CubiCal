@@ -44,7 +44,8 @@ class PhaseDiagGains(PerIntervalGains):
 
         # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
         if n_dir > 1:
-            r = self.compute_residual(obser_arr, model_arr, gains, t_int, f_int)
+            resid_arr = np.empty_like(obser_arr)
+            r = self.compute_residual(obser_arr, model_arr, resid_arr)
         else:
             r = obser_arr
 
