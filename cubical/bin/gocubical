@@ -1,5 +1,5 @@
 #!/usr/bin/env python
 
-from cubecal.main import main
+from cubical.main import main
 
 main()

@@ -1,6 +1,6 @@
-from abstract_gain_machine import PerIntervalGains
+from cubical.machines.abstract_gain_machine import PerIntervalGains
 import numpy as np
-import cubecal.kernels.cyfull_complex as cyfull
+import cubical.kernels.cyfull_complex as cyfull
 
 class Complex2x2Gains(PerIntervalGains):
     """
@@ -108,7 +108,9 @@ class Complex2x2Gains(PerIntervalGains):
 
         gains_h = self.gains.transpose(0,1,2,3,5,4).conj()
 
-        cyfull.cycompute_residual(model_arr, self.gains, gains_h, obser_arr, resid_arr, self.t_int, self.f_int)
+        resid_arr[:] = obser_arr
+
+        cyfull.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, self.t_int, self.f_int)
 
         return resid_arr
 

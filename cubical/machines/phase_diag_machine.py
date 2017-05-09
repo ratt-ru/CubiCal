@@ -1,6 +1,6 @@
-from abstract_gain_machine import PerIntervalGains
+from cubical.machines.abstract_gain_machine import PerIntervalGains
 import numpy as np
-import cubecal.kernels.cyphase_only as cyphase
+import cubical.kernels.cyphase_only as cyphase
 
 class PhaseDiagGains(PerIntervalGains):
     """
@@ -16,7 +16,6 @@ class PhaseDiagGains(PerIntervalGains):
 
         self.gains = np.empty_like(self.phases, dtype=model_arr.dtype)
         self.gains[:] = np.eye(self.n_cor) 
-        self.gflags    = np.zeros(self.flag_shape, dtype=np.uint8)
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -107,8 +106,9 @@ class PhaseDiagGains(PerIntervalGains):
         
         gains_h = self.gains.transpose(0,1,2,3,5,4).conj()
 
-        cyphase.cycompute_residual(model_arr, self.gains, gains_h, obser_arr, resid_arr, \
-                                   self.t_int, self.f_int)
+        resid_arr[:] = obser_arr
+
+        cyphase.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, self.t_int, self.f_int)
 
         return resid_arr
 
@@ -141,6 +141,6 @@ class PhaseDiagGains(PerIntervalGains):
 
         cyphase.cycompute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)
 
-        cyphase.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps)
+        cyphase.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps, self.flagbit)
 
         self.jhjinv = self.jhjinv.real

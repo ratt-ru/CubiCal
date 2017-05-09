@@ -15,8 +15,8 @@ ctypedef fused float3264:
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhj(np.ndarray[complex3264, ndim=8] m,
-                  np.ndarray[complex3264, ndim=6] jhj,
+def cycompute_jhj(complex3264 [:,:,:,:,:,:,:,:] m,
+                  complex3264 [:,:,:,:,:,:] jhj,
                   int t_int,
                   int f_int):
 
@@ -54,9 +54,10 @@ def cycompute_jhj(np.ndarray[complex3264, ndim=8] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
-                     np.ndarray[np.uint16_t, ndim=4, cast=True] flags,
-                     float eps, int flagbit):
+def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
+                     np.uint16_t [:,:,:,:] flags,
+                     float eps, 
+                     int flagbit):
 
     cdef int d, t, f, aa, ab = 0
     cdef int n_dir, n_tim, n_fre, n_ant
@@ -84,15 +85,16 @@ def cycompute_jhjinv(np.ndarray[complex3264, ndim=6] jhj,
 
                             jhj[d,t,f,aa,0,0] = 1/jhj[d,t,f,aa,0,0]
                             jhj[d,t,f,aa,1,1] = 1/jhj[d,t,f,aa,1,1]
+    
     return flag_count
 
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jh(np.ndarray[complex3264, ndim=8] m,
-                 np.ndarray[complex3264, ndim=6] g,
-                 np.ndarray[complex3264, ndim=8] jh,
+def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
+                 complex3264 [:,:,:,:,:,:] g,
+                 complex3264 [:,:,:,:,:,:,:,:] jh,
                  int t_int,
                  int f_int):
 
@@ -130,10 +132,10 @@ def cycompute_jh(np.ndarray[complex3264, ndim=8] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhr(np.ndarray[complex3264, ndim=6] gh,
-                  np.ndarray[complex3264, ndim=8] jh,
-                  np.ndarray[complex3264, ndim=7] r,
-                  np.ndarray[complex3264, ndim=6] jhr,
+def cycompute_jhr(complex3264 [:,:,:,:,:,:] gh,
+                  complex3264 [:,:,:,:,:,:,:,:] jh,
+                  complex3264 [:,:,:,:,:,:,:] r,
+                  complex3264 [:,:,:,:,:,:] jhr,
                   int t_int,
                   int f_int):
 
@@ -171,9 +173,9 @@ def cycompute_jhr(np.ndarray[complex3264, ndim=6] gh,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_update(np.ndarray[float3264, ndim=6] jhr,
-                     np.ndarray[float3264, ndim=6] jhj,
-                     np.ndarray[float3264, ndim=6] upd):
+def cycompute_update(float3264 [:,:,:,:,:,:] jhr,
+                     float3264 [:,:,:,:,:,:] jhj,
+                     float3264 [:,:,:,:,:,:] upd):
     """
     NOTE: THIS RIGHT-MULTIPLIES THE ENTRIES OF IN1 BY THE ENTRIES OF IN2.
     """
@@ -199,11 +201,10 @@ def cycompute_update(np.ndarray[float3264, ndim=6] jhr,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_residual(np.ndarray[complex3264, ndim=8] m,
-                       np.ndarray[complex3264, ndim=6] g,
-                       np.ndarray[complex3264, ndim=6] gh,
-                       np.ndarray[complex3264, ndim=7] o,
-                       np.ndarray[complex3264, ndim=7] r,
+def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
+                       complex3264 [:,:,:,:,:,:] g,
+                       complex3264 [:,:,:,:,:,:] gh,
+                       complex3264 [:,:,:,:,:,:,:] r,
                        int t_int,
                        int f_int):
 
@@ -229,26 +230,26 @@ def cycompute_residual(np.ndarray[complex3264, ndim=8] m,
                     rc = f/f_int
                     for aa in xrange(n_ant):
                         for ab in xrange(n_ant):
-                            r[i,t,f,aa,ab,0,0] = o[i,t,f,aa,ab,0,0] - \
+                            r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - \
                                             (g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0])
 
-                            r[i,t,f,aa,ab,0,1] = o[i,t,f,aa,ab,0,1] - \
+                            r[i,t,f,aa,ab,0,1] = r[i,t,f,aa,ab,0,1] - \
                                             (g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1])
 
-                            r[i,t,f,aa,ab,1,0] = o[i,t,f,aa,ab,1,0] - \
+                            r[i,t,f,aa,ab,1,0] = r[i,t,f,aa,ab,1,0] - \
                                             (g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0])
 
-                            r[i,t,f,aa,ab,1,1] = o[i,t,f,aa,ab,1,1] - \
+                            r[i,t,f,aa,ab,1,1] = r[i,t,f,aa,ab,1,1] - \
                                             (g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_corrected(np.ndarray[complex3264, ndim=6] o,
-                        np.ndarray[complex3264, ndim=6] g,
-                        np.ndarray[complex3264, ndim=6] gh,
-                        np.ndarray[complex3264, ndim=6] corr,
+def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
+                        complex3264 [:,:,:,:,:,:] g,
+                        complex3264 [:,:,:,:,:,:] gh,
+                        complex3264 [:,:,:,:,:,:] corr,
                         int t_int,
                         int f_int):
 

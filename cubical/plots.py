@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import numpy as np
-from cubecal.tools import logger
+from cubical.tools import logger
 log = logger.getLogger("plots")
 
 # these control the layout of saved plots

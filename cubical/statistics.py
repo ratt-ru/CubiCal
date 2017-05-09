@@ -2,8 +2,7 @@ import math
 import numpy as np
 import cPickle
 
-from cubecal.tools import logger
-
+from cubical.tools import logger
 
 log = logger.getLogger("stats")
 
@@ -39,7 +38,7 @@ class SolverStats (object):
 
     def save(self, filename):
         """Pickles contents to file. Better than pickling whole object, as the pickle then only contains
-        standard classes (i.e. don't need cubecal to read it)"""
+        standard classes (i.e. don't need cubical to read it)"""
         cPickle.dump((self.chanant, self.timeant, self.timechan, self.chunk), open(filename, 'w'), 2)
 
     def estimate_noise (self, data, flags, residuals=False):

@@ -7,19 +7,18 @@ from time import time
 
 import concurrent.futures as cf
 
-import data_handler
-from data_handler import ReadModelHandler, Tile
-from cubecal.tools import logger, parsets, myoptparse, shm_utils, ModColor
+import cubical.data_handler as data_handler
+from cubical.data_handler import ReadModelHandler, Tile
+from cubical.tools import logger, parsets, myoptparse, shm_utils, ModColor
 
 log = logger.getLogger("main")
 
+import cubical.solver as solver
+import cubical.plots as plots
+import cubical.flagging as flagging
 
-import solver
-import plots
-import flagging
 
-
-from statistics import SolverStats
+from cubical.statistics import SolverStats
 
 
 
@@ -72,7 +71,7 @@ def debug():
 
 def main(debugging=False):
     """
-    Main cubecal driver function.
+    Main cubical driver function.
 
     Reads options, sets up MS and solvers, calls the solver, etc.
     """
@@ -89,13 +88,13 @@ def main(debugging=False):
 
     try:
         if debugging:
-            print>> log, "initializing from cubecal.last"
-            optparser = cPickle.load(open("cubecal.last"))
+            print>> log, "initializing from cubical.last"
+            optparser = cPickle.load(open("cubical.last"))
             # "GD" is a global defaults dict, containing options set up from parset + command line
             GD = optparser.DicoConfig
         else:
             default_parset = parsets.Parset("%s/DefaultParset.cfg" % os.path.dirname(__file__))
-            optparser = init_options(default_parset, "cubecal.last")
+            optparser = init_options(default_parset, "cubical.last")
 
             positional_args = optparser.GiveArguments()
             # if a single argument is given, treat it as a parset and see if we can read it
@@ -108,7 +107,7 @@ def main(debugging=False):
                 # update default parameters with values from parset
                 default_parset.update_values(parset, newval=False)
                 # re-read command-line options, since defaults will have been updated by the parset
-                optparser = init_options(default_parset, "cubecal.last")
+                optparser = init_options(default_parset, "cubical.last")
             elif len(positional_args):
                 optparser.ExitWithError("Incorrect number of arguments. Use -h for help.")
                 sys.exit(1)
@@ -127,7 +126,7 @@ def main(debugging=False):
                 os.mkdir(dirname)
 
             # save parset with all settings. We refuse to clobber a parset with itself
-            # (so e.g. "gocubecal test.parset --Section-Option foo" does not overwrite test.parset)
+            # (so e.g. "gocubical test.parset --Section-Option foo" does not overwrite test.parset)
             save_parset = basename + ".parset"
             if parset_file and os.path.exists(parset_file) and os.path.samefile(save_parset, parset_file):
                 basename = "~" + basename

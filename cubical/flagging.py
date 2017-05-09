@@ -7,9 +7,9 @@ import numpy as np
 import pyrap.tables as pt
 import re
 
-from cubecal.tools import logger, ModColor
+from cubical.tools import logger, ModColor
 log = logger.getLogger("flagging")
-import plots
+import cubical.plots as plots
 from collections import OrderedDict
 
 class FL(object):

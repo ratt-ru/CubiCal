@@ -28,7 +28,7 @@ log = logger.getLogger("shm_utils")
 # store PID here, so that it corresponds to the PID of the parent thread (when we fork off child processes)
 _pid = os.getpid()
 
-program_name = "cubecal"
+program_name = "cubical"
 
 def getShmPrefix():
     """Returns prefix used for shared memory arrays. ddf.PID is the convention"""
@@ -79,7 +79,7 @@ def cleanupStaleShm ():
     # ok, make list of candidates for deletion
     victims = [ filename for filename,pid in shmlist if pid in dead_pids ]
     if victims:
-        print>>log, "reaping %d shared memory objects associated with %d dead cubecal processes"%(len(victims), len(dead_pids))
+        print>>log, "reaping %d shared memory objects associated with %d dead cubical processes"%(len(victims), len(dead_pids))
         dirs = [ v for v in victims if os.path.isdir(v) ]
         files = [ v for v in victims if not os.path.isdir(v) ]
         # rm -fr only works for a limited number of arguments (which the semaphore list can easily exceed)

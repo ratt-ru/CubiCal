@@ -22,8 +22,11 @@ import os
 from setuptools import setup
 from setuptools.extension import Extension
 from Cython.Build import cythonize
+import Cython.Compiler.Options as CCO
 from setuptools.command.install import install
 import numpy as np			
+
+CCO.buffer_max_dims = 9
 
 class custom_install(install):
 	def run(self):
@@ -31,19 +34,25 @@ class custom_install(install):
 		install.run(self)
 
 extensions = [Extension(
-						"cubecal.kernels.cyfull_complex", ["cubecal/kernels/cyfull_complex.pyx"],
+						"cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.pyx"],
         				include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
         				'-ffast-math', '-O2', '-march=native',	'-mtune=native', '-ftree-vectorize'],
 						extra_link_args=['-lgomp']
 					   ),
-			  Extension(
-						"cubecal.kernels.cyphase_only", ["cubecal/kernels/cyphase_only.pyx"],
+			        Extension(
+						"cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
         				include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
         				'-ffast-math', '-O2', '-march=native',	'-mtune=native', '-ftree-vectorize'],
 						extra_link_args=['-lgomp']
-					   )]
+					   ),
+              Extension(
+            "cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.pyx"],
+                include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+                '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
+            extra_link_args=['-lgomp']
+             )]
 
-setup(name='cubecal',
+setup(name='cubical',
       version='0.2.1',
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/JSKenyon/phd-code',
@@ -60,36 +69,39 @@ setup(name='cubecal',
       author_email='jonosken@gmail.com',
       license='GNU GPL v3',
       cmdclass={'install': custom_install},	 
-      packages=['cubecal', 'cubecal/tools', 'cubecal/kernels', 'cubecal/machines'],
+      packages=['cubical', 'cubical/tools', 'cubical/kernels', 'cubical/machines'],
       setup_requires=['numpy', 'cython'],
       install_requires=[  'numpy', 
                           'cython', 
                           'futures', 
                           'python-casacore', 
                           'sharedarray', 
-                          'matplotlib'  ],
+                          'matplotlib',
+                          'scipy'  ],
       include_package_data=True,
-      package_data={'cubecal'	:	[	'main.py',
+      package_data={'cubical'	:	[	'main.py',
                 									'solver.py', 
           		      							'statistics.py',
           		      							'plots.py',
           		      							'flagging.py',
           		      							'MBTiggerSim.py', 
-          		      							'ReadModelHandler.py',
+          		      							'data_handler.py',
           		      							'TiggerSourceProvider.py', 
-          		      							'bin/gocubecal'], 
-                    'tools'		:	[	'cubecal/tools/logger.py', 
-		                       			  'cubecal/tools/ModColor.py',
-		                    		 	    'cubecal/tools/ClassPrint.py',
-		                    		 	    'cubecal/tools/myoptparse.py',
-		                    		 	    'cubecal/tools/parsets.py'],
-                    'kernels'	:	[	'cubecal/kernels/cyfull_complex.pyx', 
-                       					  'cubecal/kernels/cyphase_only.pyx'],
-                    'machines'	:	[	'cubecal/machines/abstract_gain_machine.py', 
-                       					    'cubecal/machines/complex_2x2_machine.py',
-                       					    'cubecal/machines/phase_diag_machine.py'] },
+          		      							'bin/gocubical'],
+                    'tools'		:	[	'cubical/tools/logger.py',
+		                       			  'cubical/tools/ModColor.py',
+		                    		 	    'cubical/tools/ClassPrint.py',
+		                    		 	    'cubical/tools/myoptparse.py',
+		                    		 	    'cubical/tools/parsets.py'],
+                    'kernels'	:	[	'cubical/kernels/cyfull_complex.pyx',
+                       					  'cubical/kernels/cyphase_only.pyx',
+                                  'cubical/kernels/cyfull_W_complex.pyx'],
+                    'machines'	:	[	'cubical/machines/abstract_gain_machine.py',
+                       					    'cubical/machines/complex_2x2_machine.py',
+                       					    'cubical/machines/phase_diag_machine.py',
+                                    'cubical/machines/complex_W_2x2_machine.py'] },
       zip_safe=False,
       ext_modules = cythonize(extensions),
-      scripts=['cubecal/bin/gocubecal'],
+      scripts=['cubical/bin/gocubical'],
 )
 
