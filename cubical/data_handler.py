@@ -8,7 +8,8 @@ from cubical.tools import shared_dict
 import cubical.flagging as flagging
 from cubical.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
-from cubical.MBTiggerSim import simulate
+from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
+from cubical.TiggerSourceProvider import TiggerSourceProvider
 #import better_exceptions
 
 from cubical.tools import logger, ModColor
@@ -162,19 +163,59 @@ class Tile(object):
         data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
         print>> log(2), "  read UVW coordinates"
 
-        if self.handler.model_column:
-            data['movis'] = self.handler.fetch(self.handler.model_column, self.first_row, nrows).astype(self.handler.ctype)
-            print>> log(2), "  read " + self.handler.model_column
-        else:
-            data.addSharedArray('movis', data['obvis'].shape, self.handler.ctype)
+                # obs_arr = self.col_to_arr("obser", t_dim, f_dim)
+                # mod_arr = self.col_to_arr("model", t_dim, f_dim)
 
-        # tmp = data['movis'].copy()
+                # if self.apply_weights:
+                #     wgt_arr = self.col_to_arr("weigh", t_dim, f_dim)
+
+                # if self.simulate:
+                #     mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
+                #     tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
+                #                                          use_ddes=self.use_ddes)
+                #     arsnk = mbt.ArraySinkProvider(self, t_dim, f_dim, tgsrc._nclus)
+
+                #     srcprov = [mssrc, tgsrc]
+                #     snkprov = [arsnk]
+
+                #     for clus in xrange(tgsrc._nclus):
+                #         mbt.simulate(srcprov, snkprov)
+                #         tgsrc.update_target()
+                #         arsnk._dir += 1
+
+
 
         if self.handler.sm_name!="":
+
             print>>log, "simulating model visibilities"
-            simulate(self, data)
+            
+            measet_src = MSSourceProvider(self, data)
+            tigger_src = TiggerSourceProvider(self)
+
+            ndirs = tigger_src._nclus
+            model_shape = [ndirs] + [1] + list(data['obvis'].shape)
+
+            data.addSharedArray('movis', model_shape, self.handler.ctype)
+
+            column_snk = ColumnSinkProvider(self, data)
+
+            simulate([measet_src, tigger_src], [column_snk])
+        
         else:
+
             print>>log, "sky model path unspecified or incorrect - no simulation."
+
+            model_shape = [1,1] + list(data['obvis'].shape)
+            data.addSharedArray('movis', model_shape, self.handler.ctype)
+            
+        if self.handler.model_column:
+            
+            data['movis'][0,0,...] += self.handler.fetch(self.handler.model_column, self.first_row, 
+                                                            nrows).astype(self.handler.ctype)
+            
+            print>> log(2), "  read " + self.handler.model_column
+        
+        # tmp = data['movis'].copy()
 
         # print np.allclose(tmp, data['movis']-tmp)
 
@@ -271,10 +312,11 @@ class Tile(object):
 
         flags = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice, FL.dtype, FL.MISSING)
         flags = np.bitwise_or.reduce(flags, axis=-1)
-        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype)
-        obs_arr = obs_arr.reshape([1, t_dim, f_dim, nants, nants, 2, 2])
-        mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype)
-        mod_arr = mod_arr.reshape([1, 1, t_dim, f_dim, nants, nants, 2, 2])
+        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=6)
+        obs_arr = obs_arr.reshape(list(obs_arr.shape[:-1]) + [2, 2])
+        mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=7)
+        mod_arr = mod_arr.reshape(list(mod_arr.shape[:-1]) + [2, 2])
+
         # flag invalid data or model
         flags[(~np.isfinite(obs_arr[0, ])).any(axis=(-2, -1))] |= FL.INVALID
         flags[(~np.isfinite(mod_arr[0, 0, ...])).any(axis=(-2, -1))] |= FL.INVALID
@@ -355,7 +397,7 @@ class Tile(object):
         data = shared_dict.attach(self._data_dict_name)
         data.delete()
 
-    def _column_to_cube(self, column, chunk_tdim, chunk_fdim, rows, freqs, dtype, zeroval=0):
+    def _column_to_cube(self, column, chunk_tdim, chunk_fdim, rows, freqs, dtype, zeroval=0, reqdims=5):
         """
         Converts input data into N-dimensional measurement matrices.
 
@@ -371,8 +413,26 @@ class Tile(object):
         Returns:
             Output cube of shape [chunk_tdim, chunk_fdim, self.nants, self.nants, 4]
         """
-        # Creates empty 5D array into which the column data can be packed.
-        out_arr = np.full([chunk_tdim, chunk_fdim, self.nants, self.nants, 4], zeroval, dtype)
+
+        # Start by establishing the possible dimensions and those actually present. Dimensions which
+        # are not present are set to one, for flexibility reasons. Output shape is determined by
+        # reqdims, which selects dimensions in reverse order from (ndir, nmod, nt, nf, na, na, nc). 
+        # NOTE: The final dimension will be reshaped into 2x2 blocks outside this function.
+
+        col_ndim = column.ndim
+
+        possible_dims = ["dirs", "mods", "rows", "freqs", "cors"]
+
+        dims = {possible_dims[-i] : column.shape[-i] for i in xrange(1, col_ndim + 1)}
+
+        dims["mods"] = dims["mods"] if "mods" in dims else 1
+        dims["dirs"] = dims["dirs"] if "dirs" in dims else 1
+
+        out_shape = [dims["dirs"], dims["mods"], chunk_tdim, chunk_fdim, self.nants, self.nants, 4]
+        out_shape = out_shape[-reqdims:]
+
+        # Creates empty N-D array into which the column data can be packed.
+        out_arr = np.full(out_shape, zeroval, dtype)
 
         # Grabs the relevant time and antenna info.
 
@@ -381,39 +441,54 @@ class Tile(object):
         tchunk = self.times[rows]
         tchunk -= np.min(tchunk)
 
-        # Creates a tuple of slice objects to make subsequent slicing easier.
-        selection = (rows, freqs, slice(None))
+        # Creates lists of selections to make subsequent selection from column and oout_arr easier.
 
-        # The following takes the arbitrarily ordered data from the MS and
-        # places it into tho 5D data structure (correlation matrix).
+        corr_slice = slice(None) if self.ncorr==4 else slice(None, None, 3)
 
-        if self.ncorr == 4:
-            out_arr[tchunk, :, achunk, bchunk, :] = colsel = column[selection]
-            if dtype == self.ctype:
-                out_arr[tchunk, :, bchunk, achunk, :] = colsel.conj()[..., (0, 2, 1, 3)]
-            else:
-                out_arr[tchunk, :, bchunk, achunk, :] = colsel[..., (0, 2, 1, 3)]
-        elif self.ncorr == 2:
-            out_arr[tchunk, :, achunk, bchunk, ::3] = colsel = column[selection]
-            out_arr[tchunk, :, achunk, bchunk, 1:3] = 0
-            out_arr[tchunk, :, bchunk, achunk, 1:3] = 0
-            if dtype == self.ctype:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel.conj()
-            else:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel
-        elif self.ncorr == 1:
-            out_arr[tchunk, :, achunk, bchunk, ::3] = colsel = column[selection][:, :, (0, 0)]
-            out_arr[tchunk, :, achunk, bchunk, 1:3] = 0
-            out_arr[tchunk, :, bchunk, achunk, 1:3] = 0
-            if dtype == self.ctype:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel.conj()
-            else:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel
+        col_selections = [[dirs, mods, rows, freqs, slice(None)][-col_ndim:] 
+                            for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
 
-        # This zeros the diagonal elements in the "baseline" plane. This is
-        # purely a precaution - we do not want autocorrelations on the
-        # diagonal.
-        out_arr[:, :, range(self.nants), range(self.nants), :] = zeroval
+        cub_selections = [[dirs, mods, tchunk, slice(None), achunk, bchunk, corr_slice][-reqdims:]
+                            for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
+
+        n_sel = len(col_selections)
+
+        # The following takes the arbitrarily ordered data from the MS and places it into a N-D 
+        # data structure (correlation matrix).
+
+        for sel_ind in xrange(n_sel):
+
+            col_selection = col_selections[sel_ind]
+            cub_selection = cub_selections[sel_ind]
+            
+            if self.ncorr == 4:
+                out_arr[cub_selection] = colsel = column[col_selection]
+                cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
+                if dtype == self.ctype:
+                    out_arr[cub_selection] = colsel.conj()[..., (0, 2, 1, 3)]
+                else:
+                    out_arr[cub_selection] = colsel[..., (0, 2, 1, 3)]
+            
+            elif self.ncorr == 2:
+                out_arr[cub_selection] = colsel = column[col_selection]
+                cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
+                if dtype == self.ctype:
+                    out_arr[cub_selection] = colsel.conj()
+                else:
+                    out_arr[cub_selection] = colsel
+            
+            elif self.ncorr == 1:
+                out_arr[cub_selection] = colsel = column[col_selection][..., (0,0)]
+                cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
+                if dtype == self.ctype:
+                    out_arr[cub_selection] = colsel.conj()
+                else:
+                    out_arr[cub_selection] = colsel
+
+        # This zeros the diagonal elements in the "baseline" plane. This is purely a precaution - 
+        # we do not want autocorrelations on the diagonal.
+        
+        out_arr[..., range(self.nants), range(self.nants), :] = zeroval
 
         return out_arr
 

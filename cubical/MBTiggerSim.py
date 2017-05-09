@@ -17,8 +17,6 @@ from montblanc.impl.rime.tensorflow.sources import (SourceProvider,
 from montblanc.impl.rime.tensorflow.sinks import (SinkProvider,
                                                   MSSinkProvider)
 
-from cubical.TiggerSourceProvider import TiggerSourceProvider
-
 class MSSourceProvider(SourceProvider):
     def __init__(self, tile, data):
 
@@ -132,7 +130,7 @@ class MSSourceProvider(SourceProvider):
         return self.__class__.__name__
 
 
-class ArraySinkProvider(SinkProvider):
+class ColumnSinkProvider(SinkProvider):
     def __init__(self, tile, data):
         self._tile = tile
         self._data = data
@@ -152,12 +150,12 @@ class ArraySinkProvider(SinkProvider):
         lower = lt*lbl
         upper = ut*ubl
 
-        self._data['movis'][lower:upper, lc:uc, :] += context.data.reshape(-1, uc-lc, ncorr)
+        self._data['movis'][self._dir, 0, lower:upper, lc:uc, :] = context.data.reshape(-1, uc-lc, ncorr)
 
     def __str__(self):
         return self.__class__.__name__
 
-def simulate(tile, data_dict):
+def simulate(src_provs, snk_provs):
 
     montblanc.log.setLevel(logging.INFO)
     [h.setLevel(logging.INFO) for h in montblanc.log.handlers]
@@ -169,8 +167,5 @@ def simulate(tile, data_dict):
 
     with montblanc.rime_solver(slvr_cfg) as slvr:
         # Manages measurement sets
-
-        src_provs = [MSSourceProvider(tile, data_dict), TiggerSourceProvider(tile)]
-        snk_provs = [ArraySinkProvider(tile, data_dict)]
 
         slvr.solve(source_providers=src_provs, sink_providers=snk_provs)
