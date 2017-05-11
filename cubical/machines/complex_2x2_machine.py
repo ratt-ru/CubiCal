@@ -79,6 +79,9 @@ class Complex2x2Gains(PerIntervalGains):
 
         cyfull.cycompute_update(jhr, jhjinv, update)
 
+        if model_arr.shape[0]>1:
+            update = self.gains + update
+
         if iters % 2 == 0:
             self.gains = 0.5*(self.gains + update)
         else:

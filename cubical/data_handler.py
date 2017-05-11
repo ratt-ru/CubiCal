@@ -163,31 +163,11 @@ class Tile(object):
         data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
         print>> log(2), "  read UVW coordinates"
 
-                # obs_arr = self.col_to_arr("obser", t_dim, f_dim)
-                # mod_arr = self.col_to_arr("model", t_dim, f_dim)
-
-                # if self.apply_weights:
-                #     wgt_arr = self.col_to_arr("weigh", t_dim, f_dim)
-
-                # if self.simulate:
-                #     mssrc = mbt.MSSourceProvider(self, t_dim, f_dim)
-                #     tgsrc = tsp.TiggerSourceProvider(self._phadir, self.sm_name,
-                #                                          use_ddes=self.use_ddes)
-                #     arsnk = mbt.ArraySinkProvider(self, t_dim, f_dim, tgsrc._nclus)
-
-                #     srcprov = [mssrc, tgsrc]
-                #     snkprov = [arsnk]
-
-                #     for clus in xrange(tgsrc._nclus):
-                #         mbt.simulate(srcprov, snkprov)
-                #         tgsrc.update_target()
-                #         arsnk._dir += 1
-
-
-
         if self.handler.sm_name!="":
 
             print>>log, "simulating model visibilities"
+
+            self.prep_data(data)
 
             measet_src = MSSourceProvider(self, data)
             tigger_src = TiggerSourceProvider(self)
@@ -285,6 +265,77 @@ class Tile(object):
         data.addSubdict("gains")
 
         return data
+
+    def prep_data(self, data):
+
+        # Given data, we need to make sure that it looks the way MB wants it to.
+        # First step - check the number of rows.
+
+        n_bl = (self.nants*(self.nants - 1))/2
+        ntime = len(np.unique(self.time_col))
+
+        nrows = self.last_row - self.first_row + 1
+        expected_nrows = n_bl*ntime
+
+        # self.anteb[91:182] = self.antea[91:182]
+        expected_nrows = 12000
+
+        if nrows == expected_nrows:
+            logstr = (nrows, ntime, n_bl)
+            print>> log, "  {} rows consistent with {} timeslots and {} baselines".format(*logstr)
+            
+            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col))
+
+        elif nrows < expected_nrows:
+            logstr = (nrows, ntime, n_bl)
+            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines".format(*logstr)
+            print>> log, "  {} fewer rows than expected".format(expected_nrows - nrows)
+
+            nmiss = expected_nrows - nrows
+
+            baselines = [(a,b) for a in xrange(self.nants+1) for b in xrange(self.nants+1) if b>a]
+
+            missing_bl = []
+            missing_t = []
+
+            for t in np.unique(self.time_col):
+                t_sel = np.where(self.time_col==t)
+                
+                missing_bl.extend(set(baselines) - set(zip(self.antea[t_sel], self.anteb[t_sel])))
+                missing_t.extend([t]*(n_bl - t_sel[0].size))
+
+            missing_uvw = [[0,0,0]]*nmiss 
+            missing_antea = np.array([bl[0] for bl in missing_bl])
+            missing_anteb = np.array([bl[1] for bl in missing_bl])
+            missing_t = np.array(missing_t)
+
+            data['uvwco'] = np.concatenate((data['uvwco'], missing_uvw))
+            self.antea = np.concatenate((self.antea, missing_antea))
+            self.anteb = np.concatenate((self.anteb, missing_anteb))
+            self.time_col = np.concatenate((self.time_col, missing_t))
+
+            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col))
+
+        elif nrows > expected_nrows:
+            logstr = (nrows, ntime, n_bl)
+            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines".format(*logstr)
+            print>> log, "  {} more rows than expected".format(nrows - expected_nrows)
+            print>> log, "  assuming additional rows are auto-correlations - ignoring"
+
+            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col))            
+            sorted_ind = sorted_ind[np.where(self.antea!=self.anteb)]
+
+            if np.shape(sorted_ind) != expected_nrows:
+                raise ValueError("Number of rows inconsistent after removing auto-correlations.")
+
+        return sorted_ind
+
+    def unprep_data(self, data, nrows):
+
+            data['uvwco'] = data['uvwco'][:nrows,...]
+            self.antea = self.antea[:nrows]
+            self.anteb = self.anteb[:nrows]
+            self.time_col = self.time_col[:nrows]
 
     def get_chunk_cubes(self, key):
         """

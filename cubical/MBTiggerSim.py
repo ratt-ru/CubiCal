@@ -57,7 +57,7 @@ class MSSourceProvider(SourceProvider):
         ref_freqs = self._handler._rfreqs
 
         data = np.hstack((np.repeat(rf, bs) for bs, rf in zip([self._nchan], ref_freqs)))
-        
+
         return data.reshape(context.shape).astype(context.dtype)
 
     def uvw(self, context):
@@ -166,6 +166,6 @@ def simulate(src_provs, snk_provs):
         version=Options.VERSION_TENSORFLOW)
 
     with montblanc.rime_solver(slvr_cfg) as slvr:
-        # Manages measurement sets
 
         slvr.solve(source_providers=src_provs, sink_providers=snk_provs)
+
