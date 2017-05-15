@@ -130,7 +130,7 @@ class Tile(object):
         self.ctype = self.handler.ctype
         self.nants = self.handler.nants
         self.ncorr = self.handler.ncorr
-        self.nchan = self.handler._nchans
+        self.nchan = self.handler._nchans[0]
 
     def get_chunk_keys(self):
         return self._chunk_dict.iterkeys()
@@ -168,13 +168,13 @@ class Tile(object):
 
             print>>log, "simulating model visibilities"
 
-            self.prep_data(data)
+            expected_nrows, sort_ind = self.prep_data(data)
 
             measet_src = MSSourceProvider(self, data)
             tigger_src = TiggerSourceProvider(self)
 
             ndirs = tigger_src._nclus
-            model_shape = np.array([ndirs, 1, nrows, self.nchan, self.ncorr])
+            model_shape = np.array([ndirs, 1, expected_nrows, self.nchan, self.ncorr])
 
             data.addSharedArray('movis', model_shape, self.handler.ctype)
 
@@ -326,7 +326,7 @@ class Tile(object):
             if np.shape(sorted_ind) != expected_nrows:
                 raise ValueError("Number of rows inconsistent after removing auto-correlations.")
 
-        return expected_rows, sorted_ind
+        return expected_nrows, sorted_ind
 
     def unprep_data(self, data, nrows):
 
