@@ -170,7 +170,7 @@ class Tile(object):
 
             expected_nrows, sort_ind = self.prep_data(data)
 
-            measet_src = MSSourceProvider(self, data)
+            measet_src = MSSourceProvider(self, data, sort_ind)
             tigger_src = TiggerSourceProvider(self)
 
             ndirs = tigger_src._nclus
@@ -178,7 +178,7 @@ class Tile(object):
 
             data.addSharedArray('movis', model_shape, self.handler.ctype)
 
-            column_snk = ColumnSinkProvider(self, data)
+            column_snk = ColumnSinkProvider(self, data, sort_ind)
 
             for direction in xrange(ndirs):
                 simulate([measet_src, tigger_src], [column_snk])

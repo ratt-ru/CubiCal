@@ -18,7 +18,7 @@ from montblanc.impl.rime.tensorflow.sinks import (SinkProvider,
                                                   MSSinkProvider)
 
 class MSSourceProvider(SourceProvider):
-    def __init__(self, tile, data):
+    def __init__(self, tile, data, sort_ind):
 
         self._tile = tile
         self._handler = tile.handler
@@ -31,11 +31,11 @@ class MSSourceProvider(SourceProvider):
         self._nants = self._handler.nants
         self._ncorr = self._handler.ncorr
         self._nbl   = (self._nants*(self._nants - 1))/2
-        self._times = self._tile.time_col
-        self._antea = self._tile.antea
-        self._anteb = self._tile.anteb
+        self._times = self._tile.time_col[sort_ind]
+        self._antea = self._tile.antea[sort_ind]
+        self._anteb = self._tile.anteb[sort_ind]
         self._ddids = self._tile.ddids
-        self._uvwco = data['uvwco']
+        self._uvwco = data['uvwco'][sort_ind]
 
     def name(self):
         return self._name
@@ -131,12 +131,13 @@ class MSSourceProvider(SourceProvider):
 
 
 class ColumnSinkProvider(SinkProvider):
-    def __init__(self, tile, data):
+    def __init__(self, tile, data, sort_ind):
         self._tile = tile
         self._data = data
         self._handler = tile.handler
         self._name = "Measurement Set '{ms}'".format(ms=self._handler.ms_name)
         self._dir = 0
+        self.sort_ind = sort_ind
 
     def name(self):
         return self._name
@@ -149,7 +150,7 @@ class ColumnSinkProvider(SinkProvider):
 
         lower, upper = MS.row_extents(context)
 
-        self._data['movis'][self._dir, 0, lower:upper, lc:uc, :] = context.data.reshape(-1, uc-lc, ncorr)
+        self._data['movis'][sort_ind][self._dir, 0, lower:upper, lc:uc, :] = context.data.reshape(-1, uc-lc, ncorr)
 
     def __str__(self):
         return self.__class__.__name__
