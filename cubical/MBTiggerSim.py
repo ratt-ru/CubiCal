@@ -150,7 +150,7 @@ class ColumnSinkProvider(SinkProvider):
 
         lower, upper = MS.row_extents(context)
 
-        self._data['movis'][sort_ind][self._dir, 0, lower:upper, lc:uc, :] = context.data.reshape(-1, uc-lc, ncorr)
+        self._data['movis'][self.sort_ind][self._dir, 0, lower:upper, lc:uc, :] = context.data.reshape(-1, uc-lc, ncorr)
 
     def __str__(self):
         return self.__class__.__name__
