@@ -174,7 +174,7 @@ class Tile(object):
             tigger_src = TiggerSourceProvider(self)
 
             ndirs = tigger_src._nclus
-            model_shape = [ndirs, 1, nrows, self.nchan, ncorr]
+            model_shape = np.array([ndirs, 1, nrows, self.nchan, self.ncorr])
 
             data.addSharedArray('movis', model_shape, self.handler.ctype)
 
@@ -326,7 +326,7 @@ class Tile(object):
             if np.shape(sorted_ind) != expected_nrows:
                 raise ValueError("Number of rows inconsistent after removing auto-correlations.")
 
-        return sorted_ind
+        return expected_rows, sorted_ind
 
     def unprep_data(self, data, nrows):
 
