@@ -278,7 +278,7 @@ class Tile(object):
         expected_nrows = n_bl*ntime
 
         # self.anteb[91:182] = self.antea[91:182]
-        expected_nrows = 12000
+        # expected_nrows = 12000
 
         if nrows == expected_nrows:
             logstr = (nrows, ntime, n_bl)
