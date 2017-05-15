@@ -130,6 +130,7 @@ class Tile(object):
         self.ctype = self.handler.ctype
         self.nants = self.handler.nants
         self.ncorr = self.handler.ncorr
+        self.nchan = self.handler._nchans
 
     def get_chunk_keys(self):
         return self._chunk_dict.iterkeys()
@@ -173,7 +174,7 @@ class Tile(object):
             tigger_src = TiggerSourceProvider(self)
 
             ndirs = tigger_src._nclus
-            model_shape = [ndirs] + [1] + list(data['obvis'].shape)
+            model_shape = [ndirs, 1, nrows, self.nchan, ncorr]
 
             data.addSharedArray('movis', model_shape, self.handler.ctype)
 
@@ -277,9 +278,6 @@ class Tile(object):
         nrows = self.last_row - self.first_row + 1
         expected_nrows = n_bl*ntime
 
-        # self.anteb[91:182] = self.antea[91:182]
-        # expected_nrows = 12000
-
         if nrows == expected_nrows:
             logstr = (nrows, ntime, n_bl)
             print>> log, "  {} rows consistent with {} timeslots and {} baselines".format(*logstr)
@@ -293,7 +291,7 @@ class Tile(object):
 
             nmiss = expected_nrows - nrows
 
-            baselines = [(a,b) for a in xrange(self.nants+1) for b in xrange(self.nants+1) if b>a]
+            baselines = [(a,b) for a in xrange(self.nants) for b in xrange(self.nants) if b>a]
 
             missing_bl = []
             missing_t = []

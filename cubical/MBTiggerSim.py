@@ -143,12 +143,11 @@ class ColumnSinkProvider(SinkProvider):
 
     def model_vis(self, context):
 
-        ntime, nbl, nchan, ncorr = context.data.shape
+        _, _, _, ncorr = context.data.shape
 
         (lt, ut), (lbl, ubl), (lc, uc) = context.dim_extents('ntime', 'nbl', 'nchan')
 
-        lower = lt*lbl
-        upper = ut*ubl
+        lower, upper = MS.row_extents(context)
 
         self._data['movis'][self._dir, 0, lower:upper, lc:uc, :] = context.data.reshape(-1, uc-lc, ncorr)
 
