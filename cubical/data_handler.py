@@ -168,7 +168,7 @@ class Tile(object):
 
             print>>log, "simulating model visibilities"
 
-            expected_nrows, sort_ind = self.prep_data(data)
+            expected_nrows, sort_ind, row_identifiers = self.prep_data(data)
 
             measet_src = MSSourceProvider(self, data, sort_ind)
             tigger_src = TiggerSourceProvider(self)
@@ -184,6 +184,10 @@ class Tile(object):
                 simulate([measet_src, tigger_src], [column_snk])
                 tigger_src.update_target()
                 column_snk._dir += 1
+
+            self.unprep_data(data, nrows)
+
+            data['movis'] = data['movis'][:,:,row_identifiers,:,:]
         
         else:
 
@@ -278,6 +282,13 @@ class Tile(object):
         nrows = self.last_row - self.first_row + 1
         expected_nrows = n_bl*ntime
 
+        # The row identifiers determine which rows in the SORTED/ALL ROW are required for the data
+        # that is present in the MS. Essentially, they allow for the selection of an array of a size
+        # matching that of the observed data.
+
+        row_identifiers = (self.times - np.min(self.times))*n_bl + (-0.5*self.antea**2 + 
+                            (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
+
         if nrows == expected_nrows:
             logstr = (nrows, ntime, n_bl)
             print>> log, "  {} rows consistent with {} timeslots and {} baselines".format(*logstr)
@@ -326,7 +337,7 @@ class Tile(object):
             if np.shape(sorted_ind) != expected_nrows:
                 raise ValueError("Number of rows inconsistent after removing auto-correlations.")
 
-        return expected_nrows, sorted_ind
+        return expected_nrows, sorted_ind, row_identifiers
 
     def unprep_data(self, data, nrows):
 

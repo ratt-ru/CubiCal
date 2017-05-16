@@ -31,11 +31,12 @@ class MSSourceProvider(SourceProvider):
         self._nants = self._handler.nants
         self._ncorr = self._handler.ncorr
         self._nbl   = (self._nants*(self._nants - 1))/2
-        self._times = self._tile.time_col[sort_ind]
-        self._antea = self._tile.antea[sort_ind]
-        self._anteb = self._tile.anteb[sort_ind]
+        self._times = self._tile.time_col
+        self._antea = self._tile.antea
+        self._anteb = self._tile.anteb
         self._ddids = self._tile.ddids
-        self._uvwco = data['uvwco'][sort_ind]
+        self._uvwco = data['uvwco']
+        self.sort_ind = sort_ind
 
     def name(self):
         return self._name
@@ -97,19 +98,19 @@ class MSSourceProvider(SourceProvider):
         for ti, t in enumerate(xrange(t_low, t_high)):
             # Inspection confirms that this achieves the same effect as
             # ant_uvw[ti,1:na,:] = ...getcol(UVW, ...).reshape(na-1, -1)
-            ant_uvw[ti,1:na,:] = self._uvwco[t*nbl:t*nbl+na-1, :]
+            ant_uvw[ti,1:na,:] = self._uvwco[self.sort_ind, ...][t*nbl:t*nbl+na-1, :]
 
         return ant_uvw
 
     def antenna1(self, context):
         lrow, urow = MS.uvw_row_extents(context)
-        antenna1 = self._antea[lrow:urow]
+        antenna1 = self._antea[self.sort_ind][lrow:urow]
 
         return antenna1.reshape(context.shape).astype(context.dtype)
 
     def antenna2(self, context):
         lrow, urow = MS.uvw_row_extents(context)
-        antenna2 = self._anteb[lrow:urow]
+        antenna2 = self._anteb[self.sort_ind][lrow:urow]
 
         return antenna2.reshape(context.shape).astype(context.dtype)
 
@@ -117,7 +118,7 @@ class MSSourceProvider(SourceProvider):
         # Time and antenna extents
         (lt, ut), (la, ua) = context.dim_extents('ntime', 'na')
 
-        return mbu.parallactic_angles(self._times[lt:ut], self._handler._antpos[la:ua], 
+        return mbu.parallactic_angles(self._times[self.sort_ind][lt:ut], self._handler._antpos[la:ua], 
                     self._handler._phadir).reshape(context.shape).astype(context.dtype)
 
     def __enter__(self):
@@ -150,7 +151,7 @@ class ColumnSinkProvider(SinkProvider):
 
         lower, upper = MS.row_extents(context)
 
-        self._data['movis'][self.sort_ind][self._dir, 0, lower:upper, lc:uc, :] = context.data.reshape(-1, uc-lc, ncorr)
+        self._data['movis'][self._dir, 0, lower:upper, lc:uc, :] = context.data.reshape(-1, uc-lc, ncorr)
 
     def __str__(self):
         return self.__class__.__name__
