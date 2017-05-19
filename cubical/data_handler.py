@@ -10,6 +10,7 @@ from cubical.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
 from cubical.TiggerSourceProvider import TiggerSourceProvider
+from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider
 #import better_exceptions
 
 from cubical.tools import logger, ModColor
@@ -123,6 +124,7 @@ class Tile(object):
         # copy various useful info from handler and make a simple list of unique ddids.
 
         self.ddids = np.unique([i[1].ddid for i in self._chunk_dict.values()])
+        self.ddid_col = self.handler.ddid_col[self.first_row:self.last_row+1]
         self.time_col = self.handler.time_col[self.first_row:self.last_row+1]
         self.antea = self.handler.antea[self.first_row:self.last_row+1]
         self.anteb = self.handler.anteb[self.first_row:self.last_row+1]
@@ -172,6 +174,7 @@ class Tile(object):
 
             measet_src = MSSourceProvider(self, data, sort_ind)
             tigger_src = TiggerSourceProvider(self)
+            cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
 
             ndirs = tigger_src._nclus
             model_shape = np.array([ndirs, 1, expected_nrows, self.nchan, self.ncorr])
@@ -181,7 +184,7 @@ class Tile(object):
             column_snk = ColumnSinkProvider(self, data, sort_ind)
 
             for direction in xrange(ndirs):
-                simulate([measet_src, tigger_src], [column_snk])
+                simulate([measet_src, cached_src], [column_snk])
                 tigger_src.update_target()
                 column_snk._dir += 1
 
@@ -280,24 +283,29 @@ class Tile(object):
         ntime = len(np.unique(self.time_col))
 
         nrows = self.last_row - self.first_row + 1
-        expected_nrows = n_bl*ntime
+        expected_nrows = n_bl*ntime*len(self.ddids)
 
-        # The row identifiers determine which rows in the SORTED/ALL ROW are required for the data
+        # The row identifiers determine which rows in the SORTED/ALL ROWS are required for the data
         # that is present in the MS. Essentially, they allow for the selection of an array of a size
-        # matching that of the observed data.
+        # matching that of the observed data. First term determines the offset by ddid, the second
+        # is the offset by time, and the last turns antea and anteb into a unique offset per 
+        # baseline.
 
-        row_identifiers = (self.times - np.min(self.times))*n_bl + (-0.5*self.antea**2 + 
-                            (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
+        max_ddid = np.max(self.ddids)
+
+        row_identifiers = (self.ddid_col - max_ddid)*n_bl*ntime + \
+                          (self.times - np.min(self.times))*n_bl + \
+                          (-0.5*self.antea**2 + (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
 
         if nrows == expected_nrows:
-            logstr = (nrows, ntime, n_bl)
-            print>> log, "  {} rows consistent with {} timeslots and {} baselines".format(*logstr)
+            logstr = (nrows, ntime, n_bl, len(self.ddids))
+            print>> log, "  {} rows consistent with {} timeslots and {} baselines across {} bands".format(*logstr)
             
-            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col))
+            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
 
         elif nrows < expected_nrows:
-            logstr = (nrows, ntime, n_bl)
-            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines".format(*logstr)
+            logstr = (nrows, ntime, n_bl, len(self.ddids))
+            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines across {} bands".format(*logstr)
             print>> log, "  {} fewer rows than expected".format(expected_nrows - nrows)
 
             nmiss = expected_nrows - nrows
@@ -306,32 +314,37 @@ class Tile(object):
 
             missing_bl = []
             missing_t = []
+            missing_ddids = []
 
-            for t in np.unique(self.time_col):
-                t_sel = np.where(self.time_col==t)
+            for ddid in self.ddids:
+                for t in np.unique(self.time_col):
+                    t_sel = np.where((self.time_col==t)&(self.ddid_col==ddid))
                 
-                missing_bl.extend(set(baselines) - set(zip(self.antea[t_sel], self.anteb[t_sel])))
-                missing_t.extend([t]*(n_bl - t_sel[0].size))
+                    missing_bl.extend(set(baselines) - set(zip(self.antea[t_sel], self.anteb[t_sel])))
+                    missing_t.extend([t]*(n_bl - t_sel[0].size))
+                    missing_ddids.extend([ddid]*(n_bl - t_sel[0].size))
 
             missing_uvw = [[0,0,0]]*nmiss 
             missing_antea = np.array([bl[0] for bl in missing_bl])
             missing_anteb = np.array([bl[1] for bl in missing_bl])
             missing_t = np.array(missing_t)
+            missing_ddids = np.array(missing_ddids)
 
             data['uvwco'] = np.concatenate((data['uvwco'], missing_uvw))
             self.antea = np.concatenate((self.antea, missing_antea))
             self.anteb = np.concatenate((self.anteb, missing_anteb))
             self.time_col = np.concatenate((self.time_col, missing_t))
+            self.ddid_col = np.concatenate((self.ddid_col, missing_ddids))
 
-            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col))
+            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
 
         elif nrows > expected_nrows:
-            logstr = (nrows, ntime, n_bl)
-            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines".format(*logstr)
+            logstr = (nrows, ntime, n_bl, len(self.ddids))
+            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines across {} bands".format(*logstr)
             print>> log, "  {} more rows than expected".format(nrows - expected_nrows)
             print>> log, "  assuming additional rows are auto-correlations - ignoring"
 
-            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col))            
+            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))            
             sorted_ind = sorted_ind[np.where(self.antea!=self.anteb)]
 
             if np.shape(sorted_ind) != expected_nrows:
@@ -345,6 +358,7 @@ class Tile(object):
             self.antea = self.antea[:nrows]
             self.anteb = self.anteb[:nrows]
             self.time_col = self.time_col[:nrows]
+            self.ddid_col = self.ddid_col[:nrows]
 
     def get_chunk_cubes(self, key):
         """

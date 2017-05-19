@@ -35,6 +35,7 @@ class MSSourceProvider(SourceProvider):
         self._antea = self._tile.antea
         self._anteb = self._tile.anteb
         self._ddids = self._tile.ddids
+        self._nddid = len(self._tile.ddids)
         self._uvwco = data['uvwco']
         self.sort_ind = sort_ind
 
@@ -45,19 +46,22 @@ class MSSourceProvider(SourceProvider):
         return [('ntime', self._ntime),
                 ('nbl', self._nbl),
                 ('na', self._nants),
-                ('nchan', self._nchan),
-                ('nbands', 1),
+                ('nchan', self._nchan*self._nddid),
+                ('nbands', self._nddid),
                 ('npol', self._ncorr),
                 ('npolchan', 4*self._nchan)]
 
     def frequency(self, context):
-        channels = self._handler._chanfr[0, :]
+        channels = self._handler._chanfr[self._ddids, :]
         return channels.reshape(context.shape).astype(context.dtype)
 
     def ref_frequency(self, context):
         ref_freqs = self._handler._rfreqs
 
-        data = np.hstack((np.repeat(rf, bs) for bs, rf in zip([self._nchan], ref_freqs)))
+        data = np.empty((self._nddid, self._nchan), dtype=np.float64)
+
+        for ind, ddid in enumerate(self._ddids):
+            data[ind, :] = ref_freqs[ddid]
 
         return data.reshape(context.shape).astype(context.dtype)
 
@@ -139,6 +143,8 @@ class ColumnSinkProvider(SinkProvider):
         self._name = "Measurement Set '{ms}'".format(ms=self._handler.ms_name)
         self._dir = 0
         self.sort_ind = sort_ind
+        self._ddids = self._tile.ddids
+        self._nddid = len(self._ddids)
 
     def name(self):
         return self._name
@@ -149,9 +155,19 @@ class ColumnSinkProvider(SinkProvider):
 
         (lt, ut), (lbl, ubl), (lc, uc) = context.dim_extents('ntime', 'nbl', 'nchan')
 
-        lower, upper = MS.row_extents(context)
+        lower, upper = MS.row_extents(context, ("ntime", "nbl"))
 
-        self._data['movis'][self._dir, 0, lower:upper, lc:uc, :] = context.data.reshape(-1, uc-lc, ncorr)
+        ntime, nbl, nchan = context.dim_global_size('ntime', 'nbl', 'nchan')
+        rows_per_ddid = ntime*nbl
+        chan_per_ddid = nchan/self._nddid
+
+        for ddid_ind in xrange(self._nddid):
+            offset = ddid_ind*rows_per_ddid
+            lr = lower + offset
+            ur = upper + offset
+            lc = ddid_ind*chan_per_ddid
+            uc = (ddid_ind+1)*chan_per_ddid
+            self._data['movis'][self._dir, 0, lr:ur, :, :] = context.data[:,:,lc:uc,:].reshape(-1, chan_per_ddid, ncorr)
 
     def __str__(self):
         return self.__class__.__name__
