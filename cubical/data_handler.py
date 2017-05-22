@@ -291,10 +291,12 @@ class Tile(object):
         # is the offset by time, and the last turns antea and anteb into a unique offset per 
         # baseline.
 
-        max_ddid = np.max(self.ddids)
+        ddid_ind = self.ddid_col.copy()
 
-        row_identifiers = (self.ddid_col - max_ddid)*n_bl*ntime + \
-                          (self.times - np.min(self.times))*n_bl + \
+        for ind, ddid in enumerate(self.ddids):
+            ddid_ind[ddid_ind==ddid] = ind
+
+        row_identifiers = ddid_ind*n_bl*ntime + (self.times - np.min(self.times))*n_bl + \
                           (-0.5*self.antea**2 + (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
 
         if nrows == expected_nrows:
