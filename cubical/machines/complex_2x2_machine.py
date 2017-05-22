@@ -39,7 +39,8 @@ class Complex2x2Gains(PerIntervalGains):
 
         # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
         if n_dir > 1:
-            r = self.compute_residual(obser_arr, model_arr)
+            resid_arr = np.empty_like(obser_arr)
+            r = self.compute_residual(obser_arr, model_arr, resid_arr)
         else:
             r = obser_arr
 
@@ -77,6 +78,9 @@ class Complex2x2Gains(PerIntervalGains):
         update = np.empty_like(jhr)
 
         cyfull.cycompute_update(jhr, jhjinv, update)
+
+        if model_arr.shape[0]>1:
+            update = self.gains + update
 
         if iters % 2 == 0:
             self.gains = 0.5*(self.gains + update)
