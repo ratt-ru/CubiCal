@@ -84,6 +84,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
     else:
         raise ValueError("unknown jones-type '{}'".format(options['jones-type']))
 
+    ### MOVE TO GAIN MACHINE >>> ###
+
     # Initialize some numbers used in convergence testing.
 
     n_cnvgd = 0 # Number of converged solutions
@@ -136,6 +138,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
     eqs_per_antenna, eqs_per_interval, valid_intervals, num_valid_intervals, chisq_norm = \
         compute_stats(flags_arr, statfields=('initchi2', 'chi2'))
 
+    ### <<< MOVE TO GAIN MACHINE ###
+
     # In the event that there are no solution intervals with valid data, this will log some of the
     # flag information. This also breaks out of the function.
 
@@ -152,6 +156,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
 
         return gm, (obser_arr if compute_residuals else None), stats
 
+
+    ### MOVE TO GAIN MACHINE >>> ###
 
     # Initialize a tiled residual array (tiled by whole time/freq intervals). Shapes correspond to
     # tiled array shape and the intermediate shape from which our view of the residual is selected.
@@ -222,6 +228,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
     stats.chunk.init_chi2 = mean_chi
 
     old_gains = gm.gains.copy()
+
+    ### <<< MOVE TO GAIN MACHINE ###
 
     # The following provides some debugging information when verbose is set to > 0.
 
