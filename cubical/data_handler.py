@@ -140,6 +140,12 @@ class Tile(object):
     def get_chunk_label(self, key):
         return self._chunk_dict[key][0]
 
+    def get_chunk_tfs(self, key):
+
+        _, rowchunk, chan0, chan1 = self._chunk_dict[key]
+
+        return self.time_col[rowchunk.rows], self.handler._chanfr[rowchunk.ddid, chan0:chan1]
+
     def load(self):
         """
         Fetches data from MS into tile data shared dict. Returns dict.
@@ -367,10 +373,10 @@ class Tile(object):
         Returns label, data, model, flags, weights cubes for the given chunk key.
 
         Shapes are as follows:
-            data:          [Nmod, Ntime, Nfreq, Nant, Nant, 2, 2]
-            model:   [Ndir, Nmod, Ntime, Nfreq, Nant, Nant, 2, 2]
-            flags:               [Ntime, Nfreq, Nant, Nant]
-            weights:       [Nmod, Ntime, Nfreq, Nant, Nant] or None for no weighting
+            data:       [Nmod, Ntime, Nfreq, Nant, Nant, 2, 2]
+            model:      [Ndir, Nmod, Ntime, Nfreq, Nant, Nant, 2, 2]
+            flags:      [Ntime, Nfreq, Nant, Nant]
+            weights:    [Nmod, Ntime, Nfreq, Nant, Nant] or None for no weighting
 
         Nmod refers to number of models simultaneously fitted.
 

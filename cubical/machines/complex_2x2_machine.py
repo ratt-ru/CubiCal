@@ -1,4 +1,4 @@
-from cubical.machines.abstract_gain_machine import PerIntervalGains
+from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyfull_complex as cyfull
 
@@ -6,8 +6,8 @@ class Complex2x2Gains(PerIntervalGains):
     """
     This class implements the full complex 2x2 gain machine
     """
-    def __init__(self, model_arr, options):
-        PerIntervalGains.__init__(self, model_arr, options)
+    def __init__(self, model_arr, chunk_ts, chunk_fs, options):
+        PerIntervalGains.__init__(self, model_arr, chunk_ts, chunk_fs, options)
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
 
@@ -143,3 +143,32 @@ class Complex2x2Gains(PerIntervalGains):
         cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 
         return corr_vis, flag_count
+         
+    def apply_gains(self):
+        """
+        This method should be able to apply the gains to an array at full time-frequency
+        resolution. Should return the input array at full resolution after the application of the 
+        gains.
+        """
+        return
+          
+    # def compute_stats(self):
+    #     """
+    #     This method should compute a variety of useful parameters regarding the conditioning and 
+    #     degrees of freedom of the current time-frequency chunk. Specifically, it must populate 
+    #     an attribute containing the degrees of freedom per time-frequency slot. 
+    #     """
+    #     return
+          
+    def is_converged(self):
+        """
+        This method should check the convergence of the current time-frequency chunk. Should return 
+        a Boolean.
+        """
+        return
+          
+    def compute_chi_squared(self):
+        """
+        Ignore for now - will likey form part of the Jones Chain.
+        """
+        return

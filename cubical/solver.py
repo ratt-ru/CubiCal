@@ -40,7 +40,7 @@ def retile_array(in_arr, m1, m2, n1, n2):
 
 
 
-def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_residuals=None):
+def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, label="", compute_residuals=None):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
@@ -76,7 +76,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
 
     # init gains machine
     if options['jones-type'] == 'complex-2x2':
-        gm = complex_2x2_machine.Complex2x2Gains(model_arr, options)
+        gm = complex_2x2_machine.Complex2x2Gains(model_arr, chunk_ts, chunk_fs, options)
     elif options['jones-type'] == 'phase-diag':
         gm = phase_diag_machine.PhaseDiagGains(model_arr, options)
     elif options['jones-type'] == 'robust-2x2':
@@ -84,66 +84,30 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
     else:
         raise ValueError("unknown jones-type '{}'".format(options['jones-type']))
 
-    ### MOVE TO GAIN MACHINE >>> ###
-
-    # Initialize some numbers used in convergence testing.
-
-    n_cnvgd = 0 # Number of converged solutions
-    n_stall = 0 # Number of intervals with stalled chi-sq
-    n_vis2x2 = gm.n_tf*gm.n_ant*gm.n_ant # Number of 2x2 visbilities
     iters = 0
 
     # Estimates the overall noise level and the inverse variance per channel and per antenna as
     # noise varies across the band. This is used to normalize chi^2.
 
     stats.chunk.init_noise, inv_var_antchan, inv_var_ant, inv_var_chan = stats.estimate_noise(obser_arr, flags_arr)
+    
+    # Compute initial stats.
+    
+    gm.compute_stats(flags_arr)
 
-    def compute_stats(flags, statfields):
-        """Helper function: recomputes various stats and totals based on the current state of the flags.
-        Needed because flags may change during iteration (due to solution flagging), so we may need
-        to redo it"""
-        unflagged = (flags==0)
+    # Update stats object structure accordingly.
 
-        # (n_ant) vector containing the number of valid equations per antenna.
-        # Factor of two is necessary as we have the conjugate of each equation too.
-        eqs_per_antenna = 2*np.sum(unflagged, axis=(0, 1, 2))*gm.n_mod
+    statfields = ('initchi2', 'chi2')
 
-        # (n_tim, n_fre) array containing number of valid equations per each time/freq slot.
-        eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2))*gm.n_mod*gm.n_cor*gm.n_cor*2
-
-        # (n_timint, n_freint) array containing number of valid equations per each time/freq interval.
-        eqs_per_interval = retile_array(eqs_per_tf_slot, gm.n_timint, gm.t_int, gm.n_freint, gm.f_int).sum(axis=(1,3))
-
-        # The following determines the number of valid (unflagged) time/frequency slots and the number
-        # of valid solution intervals.
-        valid_intervals = eqs_per_interval>0
-        stats.chunk.num_intervals = num_valid_intervals = valid_intervals.sum()
-
-        # Compute chi-squared normalization factor for each solution interval (used by compute_chisq() below)
-        chisq_norm = np.zeros_like(eqs_per_interval, dtype=obser_arr.real.dtype)
-        chisq_norm[valid_intervals] = (1. / eqs_per_interval[valid_intervals])
-
-        if statfields:
-            # compute number of terms in each chi-square sum, shape is n_tim, n_fre, n_ant
-            nterms  = 2*gm.n_cor*gm.n_cor*np.sum(unflagged, axis=3)
-            # update the stats structure accordingly
-            for field in statfields:
-                getattr(stats.chanant,  field+'n')[...] = np.sum(nterms, axis=0)
-                getattr(stats.timeant,  field+'n')[...] = np.sum(nterms, axis=1)
-                getattr(stats.timechan, field+'n')[...] = np.sum(nterms, axis=2)
-
-        return eqs_per_antenna, eqs_per_interval, valid_intervals, num_valid_intervals, chisq_norm
-
-    # compute initial stats
-    eqs_per_antenna, eqs_per_interval, valid_intervals, num_valid_intervals, chisq_norm = \
-        compute_stats(flags_arr, statfields=('initchi2', 'chi2'))
-
-    ### <<< MOVE TO GAIN MACHINE ###
+    for field in statfields:
+        getattr(stats.chanant,  field+'n')[...] = np.sum(gm.nterms, axis=0)
+        getattr(stats.timeant,  field+'n')[...] = np.sum(gm.nterms, axis=1)
+        getattr(stats.timechan, field+'n')[...] = np.sum(gm.nterms, axis=2)
 
     # In the event that there are no solution intervals with valid data, this will log some of the
     # flag information. This also breaks out of the function.
 
-    if num_valid_intervals == 0:  # "is 0" doesn't work because np.sum() is a 0-d array
+    if gm.num_valid_intervals == 0:  # "is 0" doesn't work because np.sum() is a 0-d array
 
         fstats = ""
 
@@ -215,8 +179,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
         # normalize this by the per-channel variance
         chi1 *= inv_var_chan[np.newaxis, :, np.newaxis]
         # now collapse into sum per solution interval, and overall sum
-        chi_int = np.sum(chi0, axis=(1,3,4)) * chisq_norm    # chisq_norm is already precomputed as 1/nterms per interval
-        chi_tot = np.sum(chi0) / np.sum(eqs_per_interval)
+        chi_int = np.sum(chi0, axis=(1,3,4)) * gm.chisq_norm    # chisq_norm is already precomputed as 1/nterms per interval
+        chi_tot = np.sum(chi0) / np.sum(gm.eqs_per_interval)
         # if stats are requested, collapse into stat arrays
         if statfield:
             getattr(stats.chanant, statfield)[...]  = np.sum(chi1, axis=0)
@@ -246,17 +210,11 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
             n_flag = np.sum((flags_arr & mask) != 0)/(gm.n_cor*gm.n_cor)
             fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./n_vis2x2)) if n_flag else ""
 
+        logstr = (label, mean_chi, num_valid_intervals, gm.n_int, mineqs, maxeqs, anteqs, gm.n_ant,
+                  float(stats.chunk.init_noise), fstats)
+
         print>> log, ("{} Initial chi2 = {:.4}, {}/{} valid intervals (min {}/max {} eqs per int),"
-                      " {}/{} valid antennas, noise {:.3}, flags: {}").format(   label,
-                                                                        mean_chi,
-                                                                        num_valid_intervals,
-                                                                        gm.n_int,
-                                                                        mineqs,
-                                                                        maxeqs,
-                                                                        anteqs,
-                                                                        gm.n_ant,
-                                                                        float(stats.chunk.init_noise),
-                                                                        fstats  )
+                      " {}/{} valid antennas, noise {:.3}, flags: {}").format(*logstr)
 
     min_quorum = 0.99
     raised_new_gain_flags = False
@@ -267,7 +225,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
 
     gm.precompute_attributes(model_arr)
 
-    while n_cnvgd/gm.n_sols < min_quorum and n_stall/gm.n_int < min_quorum and iters < maxiter:
+    while gm.n_cnvgd/gm.n_sols < min_quorum and gm.n_stall/gm.n_tf_ints < min_quorum and iters < maxiter:
 
         iters += 1
 
@@ -315,8 +273,9 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
             tiled_flags_arr |= gflags[:,np.newaxis,:,np.newaxis,:,np.newaxis]&~FL.MISSING
             tiled_flags_arr |= gflags[:,np.newaxis,:,np.newaxis,np.newaxis,:]&~FL.MISSING
             # recompute various stats
-            eqs_per_antenna, eqs_per_interval, valid_intervals, num_valid_intervals, chisq_norm = \
-                compute_stats(flags_arr, ('chi2',))
+            gm.compute_stats(flags_arr)
+            # eqs_per_antenna, eqs_per_interval, valid_intervals, num_valid_intervals, chisq_norm = \
+            #     compute_stats(flags_arr, ('chi2',))
             # re-zero model and data at newly flagged points. TODO: is this needed?
             # TODO: should we perhaps just zero the model per flagged direction, and only flag the data?
             flagged = flags_arr&~(FL.MISSING|FL.PRIOR) !=0
@@ -324,7 +283,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
             obser_arr[   :, flagged, :, :] = 0
 
             # break out if we find ourseles with no valid solution intervals
-            if num_valid_intervals == 0:
+            if gm.num_valid_intervals == 0:
                 break
 
         have_residuals = False
@@ -364,20 +323,16 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
+                logstr = (label, iters, mean_chi, delta_chi, diff_g.max(), n_cnvgd/gm.n_sols,
+                          n_stall/gm.n_tf_ints, num_gain_flags/float(gm.gflags.size),
+                          missing_gain_fraction)
+
                 print>> log, ("{} iter {} chi2 {:.4} delta {:.4}, max gain update {:.4}, "
-                              "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:2}%").format(label,
-                                iters,
-                                mean_chi,
-                                delta_chi,
-                                diff_g.max(),
-                                n_cnvgd/gm.n_sols,
-                                n_stall/gm.n_int,
-                                num_gain_flags/float(gm.gflags.size),
-                                missing_gain_fraction)
+                              "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:2}%").format(*logstr)
 
     # num_valid_intervals will go to 0 if all solution intervals got flagged
     # if not, generate residuals et al.
-    if num_valid_intervals:
+    if gm.num_valid_intervals:
         # do we need to recompute the final residuals?
         if (options['last-rites'] or compute_residuals) and not have_residuals:
             gm.compute_residual(obser_arr, model_arr, resid_arr)
@@ -392,15 +347,13 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
 
         stats.chunk.chi2 = mean_chi
 
+        logstr = (label, iters, n_cnvgd/gm.n_sols, n_stall/gm.n_tf_ints, 
+                  num_gain_flags / float(gm.gflags.size), missing_gain_fraction,
+                  float(stats.chunk.init_chi2), mean_chi)
+
         message = ("{}: {} iters, conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2%}, "
-                    "chi2 {:.4} -> {:.4}").format(label,
-                                                    iters,
-                                                    n_cnvgd/gm.n_sols,
-                                                    n_stall/gm.n_int,
-                                                    num_gain_flags / float(gm.gflags.size),
-                                                    missing_gain_fraction,
-                                                    float(stats.chunk.init_chi2),
-                                                    mean_chi)
+                    "chi2 {:.4} -> {:.4}").format(*logstr)
+
         if options['last-rites']:
             message += " ({:.4}), noise {:.3} -> {:.3}".format(float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
         print>> log, message
@@ -435,18 +388,18 @@ def _solve_gains(obser_arr, model_arr, flags_arr, options, label="", compute_res
 
 
 
-def solve_only(obser_arr, model_arr, flags_arr, weight_arr, tile, key, label, options):
+def solve_only(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chunk_fs, tile, key, label, options):
     # apply weights
     if weight_arr is not None:
         obser_arr *= weight_arr[..., np.newaxis, np.newaxis]
         model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
 
-    gm, _, stats = _solve_gains(obser_arr, model_arr, flags_arr, options, label=label)
+    gm, _, stats = _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, label=label)
 
     return gm, None, stats
 
 
-def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, tile, key, label, options):
+def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chunk_fs, tile, key, label, options):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the data, since we need to correct
     if weight_arr is not None:
@@ -455,7 +408,7 @@ def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, tile, key, la
     else:
         obser_arr1 = obser_arr
 
-    gm, _, stats = _solve_gains(obser_arr1, model_arr, flags_arr, options, label=label)
+    gm, _, stats = _solve_gains(obser_arr1, model_arr, flags_arr, chunk_ts, chunk_fs, options, label=label)
 
     # for corrected visibilities, take the first data/model pair only
     corr_vis = np.zeros_like(obser_arr[0,...])
@@ -464,7 +417,7 @@ def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, tile, key, la
     return gm, corr_vis, stats
 
 
-def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, tile, key, label, options):
+def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chunk_fs, tile, key, label, options):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the model and data, since we need to correct the residuals
 
@@ -476,7 +429,7 @@ def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, tile, key
 
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
-    gm, resid_vis, stats = _solve_gains(obser_arr1, model_arr1, flags_arr, options, label=label,
+    gm, resid_vis, stats = _solve_gains(obser_arr1, model_arr1, flags_arr, chunk_ts, chunk_fs, options, label=label,
                                         compute_residuals=(weight_arr is None))
 
     # if we reweighted things above, then recompute the residuals, else use returned residuals
@@ -511,7 +464,9 @@ def run_solver(solver_type, itile, chunk_key, options):
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
 
-        gm, corr_vis, stats = solver(obser_arr, model_arr, flags_arr, weight_arr, tile, chunk_key, label, options)
+        chunk_ts, chunk_fs = tile.get_chunk_tfs(chunk_key)
+
+        gm, corr_vis, stats = solver(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chunk_fs, tile, chunk_key, label, options)
 
         # copy results back into tile
 
