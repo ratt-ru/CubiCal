@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
+from functools import partial
 
 class PerIntervalGains(MasterMachine):
     """
@@ -91,32 +92,18 @@ class PerIntervalGains(MasterMachine):
         self.chisq_norm = np.zeros_like(self.eqs_per_interval, dtype=self.ftype)
         self.chisq_norm[self.valid_intervals] = (1. / self.eqs_per_interval[self.valid_intervals])
 
+    def interval_sum(self, arr, tdim_ind=0):
+
+        t_dim = arr.shape[tdim_ind]
+        f_dim = arr.shape[tdim_ind+1]
+
+        t_bins = range(0, t_dim, self.t_int)
+        f_bins = range(0, f_dim, self.f_int)
+   
+        return np.add.reduceat(np.add.reduceat(arr, t_bins, tdim_ind), f_bins, tdim_ind+1)
 
 
-    def interval_sum(self, inarray, tdim_ind=0):
 
-        old_shape = list(inarray.shape)
-        n_dim = len(old_shape)
 
-        n_lead = tdim_ind
-        n_trail = n_dim - (n_lead + 2)
 
-        t_dim = old_shape[tdim_ind]
-        f_dim = old_shape[tdim_ind+1]
-
-        t_bins = range(0, t_dim, self.t_int) if t_dim%self.t_int==0 else range(0, t_dim, self.t_int) + [t_dim]
-        f_bins = range(0, f_dim, self.t_int) if f_dim%self.f_int==0 else range(0, f_dim, self.f_int) + [f_dim]
-
-        t_slices = [slice(t0, t1) for (t0,t1) in zip(t_bins[:-1], t_bins[1:])]
-        f_slices = [slice(f0, f1) for (f0,f1) in zip(f_bins[:-1], f_bins[1:])]
-
-        makeslice = lambda lead, trail, t_sl, f_sl: [slice(None)]*lead + [t_sl, f_sl] + [slice(None)]*trail 
-
-        tf_slices = [makeslice(n_lead, n_trail, t, f) for t in t_slices for f in f_slices]
-
-        new_shape = old_shape[:tdim_ind] + [self.n_timint, self.n_freint] + old_shape[tdim_ind + 2:]
-
-        outarray = np.array([np.sum(inarray[s], axis=(tdim_ind, tdim_ind+1)) for s in tf_slices]).reshape(new_shape)
-
-        return outarray
 

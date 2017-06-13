@@ -14,52 +14,35 @@ from cubical.statistics import SolverStats
 log = logger.getLogger("solver")
 
 
-def retile_array(in_arr, m1, m2, n1, n2):
-    """
-    Retiles a 2D array of shape m, n, into shape m1, m2, n1, n2. If tiling is perfect,
-    i.e. m1*m2 = m, n1*n2 =n, then this returns a reshaped array. Otherwise, it creates a new
-    array and copies data.
-    """
-
-    # TODO: Investigate writing a kernel that accomplishes this and the relevant summation.
-
-    m, n = in_arr.shape
-
-    new_shape = (m1, m2, n1, n2)
-
-    if (m1*m2 == m) and (n1*n2 == n):
-
-        return in_arr.reshape(new_shape)
-
-    else:
-
-        out_arr = np.zeros(new_shape, dtype=in_arr.dtype)
-        out_arr.reshape((m1*m2, n1*n2))[:m,:n] = in_arr
-
-        return out_arr
-
-
-
 def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, label="", compute_residuals=None):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
 
     Args:
-        obser_arr (np.array: n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): Array containing the observed visibilities.
-        model_arr (np.array: n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): Array containing the model visibilities.
-        flags_arr (np.array: n_tim, n_fre, n_ant, n_ant): int array flagging invalid points
+        obser_arr (np.array: n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): 
+            Array containing the observed visibilities.
+        model_arr (np.array: n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): 
+            Array containing the model visibilities.
+        flags_arr (np.array: n_tim, n_fre, n_ant, n_ant): 
+            Integer array containing flagging data.
 
-        options: dict of various solver options (see [solution] section in DefaultParset.cfg)
+        options: 
+            Dictionary of various solver options (see [solution] section in DefaultParset.cfg)
 
-        chunk_key:         tuple of (n_time_chunk, n_freq_chunk) identifying current chunk
-        label:             string label identifying current chunk (e.d. "D0T1F2")
+        chunk_key:         
+            Tuple of (n_time_chunk, n_freq_chunk) which identifies the current chunk.
+        label:             
+            String label identifying the current chunk (e.d. "D0T1F2").
 
-        compute_residuals: if set, final residuals will be computed and returned
+        compute_residuals: 
+            If set, the final residuals will be computed and returned.
 
     Returns:
-        gains (np.array): Array containing the final gain estimates,
-        resid (np.array): array containing the final residuals (if compute_residuals is set), else None
+        gains (np.array): 
+            Array containing the final gain estimates,
+        resid (np.array): 
+            Array containing the final residuals (if compute_residuals is set), else None.
     """
 
     min_delta_g  = options["delta-g"]
@@ -70,11 +53,13 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     max_ampl     = options["clip-high"]
     clip_after_iter = options["clip-after-iter"]
 
-    # init stats
+    # Initialise stat object.
+
     stats = SolverStats(obser_arr)
     stats.chunk.label = label
 
-    # init gains machine
+    # Initialise the chosen gain machine.
+
     if options['jones-type'] == 'complex-2x2':
         gm = complex_2x2_machine.Complex2x2Gains(model_arr, chunk_ts, chunk_fs, options)
     elif options['jones-type'] == 'phase-diag':
@@ -107,7 +92,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     # In the event that there are no solution intervals with valid data, this will log some of the
     # flag information. This also breaks out of the function.
 
-    if gm.num_valid_intervals == 0:  # "is 0" doesn't work because np.sum() is a 0-d array
+    if gm.num_valid_intervals == 0: 
 
         fstats = ""
 
@@ -126,13 +111,13 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     # Initialize a tiled residual array (tiled by whole time/freq intervals). Shapes correspond to
     # tiled array shape and the intermediate shape from which our view of the residual is selected.
 
-    tiled_shape = [gm.n_mod, gm.n_timint, gm.t_int, gm.n_freint, gm.f_int, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
-    inter_shape = [gm.n_mod, gm.n_timint*gm.t_int, gm.n_freint*gm.f_int, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
-
-    tiled_resid_arr = np.zeros(tiled_shape, obser_arr.dtype)
-    resid_arr = tiled_resid_arr.reshape(inter_shape)[:, :gm.n_tim, :gm.n_fre, ...]
+    resid_shape = [gm.n_mod, gm.n_tim, gm.n_fre, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
+    
+    resid_arr = np.zeros(resid_shape, dtype=obser_arr.dtype)
     gm.compute_residual(obser_arr, model_arr, resid_arr)
-    # this flag is set to True when we have an up-to-date residual in resid_arr
+
+    # This flag is set to True when we have an up-to-date residual in resid_arr.
+    
     have_residuals = True
 
     # same thing for flags, we need to tile the flags into time/freq intervals?
