@@ -112,34 +112,28 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     # tiled array shape and the intermediate shape from which our view of the residual is selected.
 
     resid_shape = [gm.n_mod, gm.n_tim, gm.n_fre, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
-    
-    resid_arr = np.zeros(resid_shape, dtype=obser_arr.dtype)
-    gm.compute_residual(obser_arr, model_arr, resid_arr)
 
+    resid_arr = np.zeros(resid_shape, obser_arr.dtype)
+    gm.compute_residual(obser_arr, model_arr, resid_arr)
+    
     # This flag is set to True when we have an up-to-date residual in resid_arr.
     
     have_residuals = True
 
-    # same thing for flags, we need to tile the flags into time/freq intervals?
-    # If needed, make a separate retiled array and copy flags to it. Else use original array.
     # Preserve original array for later, as we need to copy any flags out to it
 
-    tiled_flag_shape = tiled_shape[1:-2]
     flags_arr_orig = flags_arr
-    if tiled_resid_arr.size == resid_arr.size:
-        tiled_flags_arr = flags_arr.reshape(tiled_flag_shape)
-    else:
-        inter_flag_shape = inter_shape[1:-2]
-        tiled_flags_arr = np.full(tiled_flag_shape, FL.MISSING, flags_arr.dtype)
-        flags_arr = tiled_flags_arr.reshape(inter_flag_shape)[:gm.n_tim, :gm.n_fre, ...]
-        flags_arr[:] = flags_arr_orig[:]
+    
+    # Pre-flag gain solution intervals that are completely flagged in the input data 
+    # (i.e. MISSING|PRIOR). This has shape (n_timint, n_freint, n_ant).
+    
+    flags_per_int = gm.interval_sum(flags_arr&(FL.MISSING|FL.PRIOR) != 0).sum(axis=-1)
+    flags_per_flagged_int = gm.interval_sum(np.ones_like(flags_arr)).sum(axis=-1)
+    missing_gains = np.where(flags_per_int==flags_per_flagged_int, True, False)
 
-    # pre-flag gain solution intervals that are completely flagged in the input data (i.e. MISSING|PRIOR)
-    # this has shape n_timint, n_freint, n_ant
-    missing_gains = (tiled_flags_arr&(FL.MISSING|FL.PRIOR) != 0).all(axis=(1,3,5))
-
-    # gain flags have shape n_dir, n_timint, n_freint, n_ant
-    # all intervals with no prior data are flagged as FL.MISSING
+    # Gain flags have shape (n_dir, n_timint, n_freint, n_ant). All intervals with no prior data
+    # are flagged as FL.MISSING.
+    
     gm.gflags[:, missing_gains] = FL.MISSING
     missing_gain_fraction = missing_gains.sum() / float(missing_gains.size)
 
