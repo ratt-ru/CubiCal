@@ -124,9 +124,11 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     # Pre-flag gain solution intervals that are completely flagged in the input data 
     # (i.e. MISSING|PRIOR). This has shape (n_timint, n_freint, n_ant).
     
-    flags_per_int = gm.interval_sum(flags_arr&(FL.MISSING|FL.PRIOR) != 0).sum(axis=-1)
-    flags_per_flagged_int = gm.interval_sum(np.ones_like(flags_arr)).sum(axis=-1)
-    missing_gains = np.where(flags_per_int==flags_per_flagged_int, True, False)
+    # flags_per_int = gm.interval_sum(flags_arr&(FL.MISSING|FL.PRIOR) != 0).sum(axis=-1)
+    # flags_per_flagged_int = gm.interval_sum(np.ones_like(flags_arr)).sum(axis=-1)
+    # missing_gains = np.where(flags_per_int==flags_per_flagged_int, True, False)
+
+    missing_gains = gm.interval_and((flags_arr&(FL.MISSING|FL.PRIOR) != 0).all(axis=-1))
 
     # Gain flags have shape (n_dir, n_timint, n_freint, n_ant). All intervals with no prior data
     # are flagged as FL.MISSING.
@@ -308,12 +310,12 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                logstr = (label, iters, mean_chi, delta_chi, diff_g.max(), gm.n_cnvgd/gm.n_sols,
+                logvars = (label, iters, mean_chi, delta_chi, diff_g.max(), gm.n_cnvgd/gm.n_sols,
                           gm.n_stall/gm.n_tf_ints, num_gain_flags/float(gm.gflags.size),
                           missing_gain_fraction)
 
                 print>> log, ("{} iter {} chi2 {:.4} delta {:.4}, max gain update {:.4}, "
-                              "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:2}%").format(*logstr)
+                              "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:2}%").format(*logvars)
 
     # num_valid_intervals will go to 0 if all solution intervals got flagged
     # if not, generate residuals et al.

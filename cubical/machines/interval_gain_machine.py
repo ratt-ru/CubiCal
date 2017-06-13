@@ -36,6 +36,11 @@ class PerIntervalGains(MasterMachine):
 
         self.n_sols = float(self.n_dir * self.n_tf_ints)
 
+        # Initialise attributes used for computing values over intervals.
+
+        self.t_bins = range(0, self.n_tim, self.t_int)
+        self.f_bins = range(0, self.n_fre, self.f_int)
+
         # Initialise attributes used in convergence testing. n_cnvgd is the number
         # of solutions which have converged, n_stall is the number of solutions 
         # that have stalled chi-squared values and n_vis2x2 is the number of 
@@ -93,14 +98,12 @@ class PerIntervalGains(MasterMachine):
         self.chisq_norm[self.valid_intervals] = (1. / self.eqs_per_interval[self.valid_intervals])
 
     def interval_sum(self, arr, tdim_ind=0):
-
-        t_dim = arr.shape[tdim_ind]
-        f_dim = arr.shape[tdim_ind+1]
-
-        t_bins = range(0, t_dim, self.t_int)
-        f_bins = range(0, f_dim, self.f_int)
    
-        return np.add.reduceat(np.add.reduceat(arr, t_bins, tdim_ind), f_bins, tdim_ind+1)
+        return np.add.reduceat(np.add.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1)
+
+    def interval_and(self, arr, tdim_ind=0):
+   
+        return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1)
 
 
 
