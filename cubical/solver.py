@@ -105,9 +105,6 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
         return gm, (obser_arr if compute_residuals else None), stats
 
-
-    ### MOVE TO GAIN MACHINE >>> ###
-
     # Initialize a tiled residual array (tiled by whole time/freq intervals). Shapes correspond to
     # tiled array shape and the intermediate shape from which our view of the residual is selected.
 
@@ -139,7 +136,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
     def compute_chisq(statfield=None):
         """
-        Computes chi-sq statistic based on current residuals.
+        Computes chi-squared statistic based on current residuals.
 
         Returns chi,mean_chi, where
             chi is normalized chi-sq per solution interval (shape (n_timint, n_freint))
@@ -147,62 +144,71 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
         If statfield is given, populates stats arrays with the appropriate sums.
         """
+
         # Chi-squared is computed by summation over antennas, correlations and intervals. Sum over
-        # time intervals, antennas and correlations first. Normalize by per-channel variance and finally
-        # sum over frequency intervals.
+        # time intervals, antennas and correlations first. Normalize by per-channel variance and 
+        # finally sum over frequency intervals.
+
         # TODO: Some residuals blow up and cause np.square() to overflow -- need to flag these.
-        # sum chi-square over correlations, models, and one antenna axis, to shape n_timint, t_int, n_freint, f_int, n_ant
-        chi0    = np.sum(np.square(np.abs(tiled_resid_arr)), axis=(0,6,7,8))
-        # take a view into this array, of shape n_tim, n_fre, n_ant
-        chi1    = chi0.reshape((gm.n_timint*gm.t_int, gm.n_freint*gm.f_int, gm.n_ant))[:gm.n_tim, :gm.n_fre, :]
-        # normalize this by the per-channel variance
-        chi1 *= inv_var_chan[np.newaxis, :, np.newaxis]
-        # now collapse into sum per solution interval, and overall sum
-        chi_int = np.sum(chi0, axis=(1,3,4)) * gm.chisq_norm    # chisq_norm is already precomputed as 1/nterms per interval
+
+        # Sum chi-square over correlations, models, and one antenna axis. Result has shape
+        # (n_tim, n_fre, n_ant).
+
+        chi0 = np.sum(np.square(np.abs(resid_arr)), axis=(0,4,5,6))
+
+        # Normalize this by the per-channel variance.
+        
+        chi1 = chi0*inv_var_chan[np.newaxis, :, np.newaxis]
+        
+        # Collapse chi0 to chi-squared per solution interval, and overall chi-squared. chisq_norm 
+        # is precomputed as 1/nterms per interval.
+
+        chi_int = np.sum(gm.interval_sum(chi0), axis=-1) * gm.chisq_norm    
         chi_tot = np.sum(chi0) / np.sum(gm.eqs_per_interval)
-        # if stats are requested, collapse into stat arrays
+
+        # If stats are requested, collapse chi1 into stat arrays.
+        
         if statfield:
             getattr(stats.chanant, statfield)[...]  = np.sum(chi1, axis=0)
             getattr(stats.timeant, statfield)[...]  = np.sum(chi1, axis=1)
             getattr(stats.timechan, statfield)[...] = np.sum(chi1, axis=2)
+        
         return chi_int, chi_tot
 
     chi, mean_chi = compute_chisq(statfield='initchi2')
     stats.chunk.init_chi2 = mean_chi
 
-    old_gains = gm.gains.copy()
-
-    ### <<< MOVE TO GAIN MACHINE ###
-
     # The following provides some debugging information when verbose is set to > 0.
 
     if log.verbosity() > 0:
 
-        mineqs = eqs_per_interval[valid_intervals].min()
-        maxeqs = eqs_per_interval.max()
-        anteqs = np.sum(eqs_per_antenna!=0)
+        mineqs = gm.eqs_per_interval[gm.valid_intervals].min()
+        maxeqs = gm.eqs_per_interval.max()
+        anteqs = np.sum(gm.eqs_per_antenna!=0)
 
         fstats = ""
 
         for flag, mask in FL.categories().iteritems():
 
             n_flag = np.sum((flags_arr & mask) != 0)/(gm.n_cor*gm.n_cor)
-            fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./n_vis2x2)) if n_flag else ""
+            fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./gm.n_2x2vis)) if n_flag else ""
 
-        logstr = (label, mean_chi, num_valid_intervals, gm.n_int, mineqs, maxeqs, anteqs, gm.n_ant,
-                  float(stats.chunk.init_noise), fstats)
+        logvars = (label, mean_chi, gm.num_valid_intervals, gm.n_tf_ints, mineqs, maxeqs, anteqs, 
+                   gm.n_ant, float(stats.chunk.init_noise), fstats)
 
         print>> log, ("{} Initial chi2 = {:.4}, {}/{} valid intervals (min {}/max {} eqs per int),"
-                      " {}/{} valid antennas, noise {:.3}, flags: {}").format(*logstr)
+                      " {}/{} valid antennas, noise {:.3}, flags: {}").format(*logvars)
 
     min_quorum = 0.99
     raised_new_gain_flags = False
     num_gain_flags = (gm.gflags&~FL.MISSING != 0).sum()
 
-    # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
-    # stalled solutions or when the maximum number of iterations is exceeded.
+    # Do any precomputation required by the current gain machine.
 
     gm.precompute_attributes(model_arr)
+
+    # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
+    # stalled solutions or when the maximum number of iterations is exceeded.
 
     while gm.n_cnvgd/gm.n_sols < min_quorum and gm.n_stall/gm.n_tf_ints < min_quorum and iters < maxiter:
 
@@ -269,7 +275,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
         # Compute values used in convergence tests.
         # Note that the check here implicitly marks flagged gains as converged.
-        diff_g = np.square(np.abs(old_gains - gm.gains))
+        diff_g = np.square(np.abs(gm.old_gains - gm.gains))
         diff_g[gflagged] = 0
         diff_g = diff_g.sum(axis=(-1,-2,-3))
         norm_g = np.square(gabs)
@@ -277,11 +283,11 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         norm_g = norm_g.sum(axis=(-1,-2,-3))
 
         norm_diff_g = diff_g/norm_g
-        n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
+        gm.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
 
         # Update old gains for subsequent convergence tests.
 
-        old_gains = gm.gains.copy()
+        gm.old_gains = gm.gains.copy()
 
         # Check residual behaviour after a number of iterations equal to chi_interval. This is
         # expensive, so we do it as infrequently as possible.
@@ -296,14 +302,14 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
             # Check for stalled solutions - solutions for which the residual is no longer improving.
 
-            n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
+            gm.n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
 
             if log.verbosity() > 1:
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                logstr = (label, iters, mean_chi, delta_chi, diff_g.max(), n_cnvgd/gm.n_sols,
-                          n_stall/gm.n_tf_ints, num_gain_flags/float(gm.gflags.size),
+                logstr = (label, iters, mean_chi, delta_chi, diff_g.max(), gm.n_cnvgd/gm.n_sols,
+                          gm.n_stall/gm.n_tf_ints, num_gain_flags/float(gm.gflags.size),
                           missing_gain_fraction)
 
                 print>> log, ("{} iter {} chi2 {:.4} delta {:.4}, max gain update {:.4}, "
@@ -326,7 +332,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
         stats.chunk.chi2 = mean_chi
 
-        logstr = (label, iters, n_cnvgd/gm.n_sols, n_stall/gm.n_tf_ints, 
+        logstr = (label, iters, gm.n_cnvgd/gm.n_sols, gm.n_stall/gm.n_tf_ints, 
                   num_gain_flags / float(gm.gflags.size), missing_gain_fraction,
                   float(stats.chunk.init_chi2), mean_chi)
 
@@ -347,8 +353,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         resid_arr = obser_arr
 
     stats.chunk.iters = iters
-    stats.chunk.num_converged = n_cnvgd
-    stats.chunk.num_stalled = n_stall
+    stats.chunk.num_converged = gm.n_cnvgd
+    stats.chunk.num_stalled = gm.n_stall
 
     # copy out flags, if we raised any
     stats.chunk.num_sol_flagged = num_gain_flags

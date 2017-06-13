@@ -10,6 +10,7 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, model_arr, chunk_ts, chunk_fs, options)
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
+        self.old_gains = self.gains.copy()
 
     def compute_js(self, obser_arr, model_arr):
         """
