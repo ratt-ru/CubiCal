@@ -8,6 +8,9 @@ from cubical.tools import shared_dict
 import cubical.flagging as flagging
 from cubical.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
+from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
+from cubical.TiggerSourceProvider import TiggerSourceProvider
+from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
 #import better_exceptions
 
 from cubical.tools import logger, ModColor
@@ -118,14 +121,18 @@ class Tile(object):
                 chan0, chan1 = self.handler.chunk_find[ifreq:ifreq + 2]
                 self._chunk_dict[key] = label, rowchunk, chan0, chan1
 
-        # copy various useful info from handler
+        # copy various useful info from handler and make a simple list of unique ddids.
 
+        self.ddids = np.unique([i[1].ddid for i in self._chunk_dict.values()])
+        self.ddid_col = self.handler.ddid_col[self.first_row:self.last_row+1]
+        self.time_col = self.handler.time_col[self.first_row:self.last_row+1]
         self.antea = self.handler.antea[self.first_row:self.last_row+1]
         self.anteb = self.handler.anteb[self.first_row:self.last_row+1]
         self.times = self.handler.times[self.first_row:self.last_row+1]
         self.ctype = self.handler.ctype
         self.nants = self.handler.nants
         self.ncorr = self.handler.ncorr
+        self.nchan = self.handler._nchans[0]
 
     def get_chunk_keys(self):
         return self._chunk_dict.iterkeys()
@@ -138,37 +145,95 @@ class Tile(object):
         Fetches data from MS into tile data shared dict. Returns dict.
         This is meant to be called in the main or I/O process.
         """
-        # create shared dict for data arrays
+        
+        # Create a shared dict for the data arrays.
+        
         data = shared_dict.create(self._data_dict_name)
 
-        # these flags indicate if the (corrected) data or flags have been updated
+        # These flags indicate if the (corrected) data or flags have been updated
         # Gotcha for shared_dict users! The only truly shared objects are arrays.
-        # So we create an array for the flags
+        # Thus, we create an array for the flags.
+        
         data['updated'] = np.array([False, False])
 
         print>>log,"reading tile for MS rows {}~{}".format(self.first_row, self.last_row)
+        
         nrows = self.last_row - self.first_row + 1
+        
         data['obvis'] = self.handler.fetch(self.handler.data_column, self.first_row, nrows).astype(self.handler.ctype)
         print>> log(2), "  read " + self.handler.data_column
-        if self.handler.model_column:
-            data['movis'] = self.handler.fetch(self.handler.model_column, self.first_row, nrows).astype(self.handler.ctype)
-            print>> log(2), "  read " + self.handler.model_column
-        else:
-            data.addSharedArray('movis', data['obvis'].shape, self.handler.ctype)
-        data.addSharedArray('covis', data['obvis'].shape, self.handler.ctype)
+
         data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
-        print>> log(2), "  read UVW"
+        print>> log(2), "  read UVW coordinates"
+
+        if self.handler.sm_name!="":
+
+            print>>log, "simulating model visibilities"
+
+            expected_nrows, sort_ind, row_identifiers = self.prep_data(data)
+
+            srcs, snks = [], []
+
+            measet_src = MSSourceProvider(self, data, sort_ind)
+            tigger_src = TiggerSourceProvider(self)
+            cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
+
+            srcs.append(measet_src)
+            srcs.append(cached_src)
+
+            if self.handler.beam_pattern:
+                arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
+                                                    self.handler.beam_l_axis,       
+                                                    self.handler.beam_m_axis)
+                srcs.append(arbeam_src)
+
+            ndirs = tigger_src._nclus
+            model_shape = np.array([ndirs, 1, expected_nrows, self.nchan, self.ncorr])
+
+            data.addSharedArray('movis', model_shape, self.handler.ctype)
+
+            column_snk = ColumnSinkProvider(self, data, sort_ind)
+
+            snks.append(column_snk)
+
+            for direction in xrange(ndirs):
+                simulate(srcs, snks)
+                tigger_src.update_target()
+                column_snk._dir += 1
+
+            self.unprep_data(data, nrows)
+
+            data['movis'] = data['movis'][:,:,row_identifiers,:,:]
+        
+        else:
+
+            print>>log, "sky model path unspecified or incorrect - no simulation."
+
+            model_shape = [1,1] + list(data['obvis'].shape)
+            data.addSharedArray('movis', model_shape, self.handler.ctype)
+            
+        if self.handler.model_column:
+            
+            data['movis'][0,0,...] += self.handler.fetch(self.handler.model_column, self.first_row, 
+                                                            nrows).astype(self.handler.ctype)
+            
+            print>> log(2), "  read " + self.handler.model_column
+
+        data.addSharedArray('covis', data['obvis'].shape, self.handler.ctype)
 
         if self.handler.weight_column:
             weight = self.handler.fetch(self.handler.weight_column, self.first_row, nrows)
-            # if column is WEIGHT, expand freq axis
+            # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
             if self.handler.weight_column == "WEIGHT":
                 data['weigh'] = weight[:, np.newaxis, :].repeat(self.handler.nfreq, 1)
             else:
                 data['weigh'] = weight
             print>> log(2), "  read weights from column {}".format(self.handler.weight_column)
 
-        # make a flag array. This will contain FL.PRIOR for any points flagged in the MS
+        # The following block of code deals with the various flagging operations and columns. The
+        # aim is to correctly populate flag_arr from the various flag sources.
+
+        # Make a flag array. This will contain FL.PRIOR for any points flagged in the MS.
         flag_arr = data.addSharedArray("flags", data['obvis'].shape, dtype=FL.dtype)
 
         # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them
@@ -182,14 +247,15 @@ class Tile(object):
             flag_arr[flagcol] = FL.PRIOR
             flag_arr[flagrow, :, :] = FL.PRIOR
 
-        # form up bitflag array, if needed
+        # Form up bitflag array, if needed.
         if self.handler._apply_bitflags or self.handler._save_bitflag or self.handler._auto_fill_bitflag:
             read_bitflags = False
-            # if not explicitly re-initializing, try to read column
+            # If not explicitly re-initializing, try to read column.
             if not self.handler._reinit_bitflags:
                 self.bflagrow = self.handler.fetch("BITFLAG_ROW", self.first_row, nrows)
-                # if there's an error reading BITFLAG, it must be unfilled. This is a common occurrence so may
-                # as well deal with it. In this case, if auto-fill is set, fill BITFLAG from FLAG/FLAG_ROW
+                # If there's an error reading BITFLAG, it must be unfilled. This is a common 
+                # occurrence so we may as well deal with it. In this case, if auto-fill is set, 
+                # fill BITFLAG from FLAG/FLAG_ROW.
                 try:
                     self.bflagcol = self.handler.fetch("BITFLAG", self.first_row, nrows)
                     print>> log(2), "  read BITFLAG/BITFLAG_ROW"
@@ -202,7 +268,7 @@ class Tile(object):
                     print>>log,"  error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
                     for line in traceback.format_exc().strip().split("\n"):
                         print>> log, "    "+line
-            # if column wasn't read, create arrays
+            # If column wasn't read, create arrays.
             if not read_bitflags:
                 self.bflagcol = np.zeros(flagcol.shape, np.int32)
                 self.bflagrow = np.zeros(flagrow.shape, np.int32)
@@ -216,9 +282,98 @@ class Tile(object):
                 flag_arr[(self.bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
                 flag_arr[(self.bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
 
-        # placeholder for gains
+        # Create a placeholder for the gains.
         data.addSubdict("gains")
+
         return data
+
+    def prep_data(self, data):
+
+        # Given data, we need to make sure that it looks the way MB wants it to.
+        # First step - check the number of rows.
+
+        n_bl = (self.nants*(self.nants - 1))/2
+        ntime = len(np.unique(self.time_col))
+
+        nrows = self.last_row - self.first_row + 1
+        expected_nrows = n_bl*ntime*len(self.ddids)
+
+        # The row identifiers determine which rows in the SORTED/ALL ROWS are required for the data
+        # that is present in the MS. Essentially, they allow for the selection of an array of a size
+        # matching that of the observed data. First term determines the offset by ddid, the second
+        # is the offset by time, and the last turns antea and anteb into a unique offset per 
+        # baseline.
+
+        ddid_ind = self.ddid_col.copy()
+
+        for ind, ddid in enumerate(self.ddids):
+            ddid_ind[ddid_ind==ddid] = ind
+
+        row_identifiers = ddid_ind*n_bl*ntime + (self.times - np.min(self.times))*n_bl + \
+                          (-0.5*self.antea**2 + (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
+
+        if nrows == expected_nrows:
+            logstr = (nrows, ntime, n_bl, len(self.ddids))
+            print>> log, "  {} rows consistent with {} timeslots and {} baselines across {} bands".format(*logstr)
+            
+            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
+
+        elif nrows < expected_nrows:
+            logstr = (nrows, ntime, n_bl, len(self.ddids))
+            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines across {} bands".format(*logstr)
+            print>> log, "  {} fewer rows than expected".format(expected_nrows - nrows)
+
+            nmiss = expected_nrows - nrows
+
+            baselines = [(a,b) for a in xrange(self.nants) for b in xrange(self.nants) if b>a]
+
+            missing_bl = []
+            missing_t = []
+            missing_ddids = []
+
+            for ddid in self.ddids:
+                for t in np.unique(self.time_col):
+                    t_sel = np.where((self.time_col==t)&(self.ddid_col==ddid))
+                
+                    missing_bl.extend(set(baselines) - set(zip(self.antea[t_sel], self.anteb[t_sel])))
+                    missing_t.extend([t]*(n_bl - t_sel[0].size))
+                    missing_ddids.extend([ddid]*(n_bl - t_sel[0].size))
+
+            missing_uvw = [[0,0,0]]*nmiss 
+            missing_antea = np.array([bl[0] for bl in missing_bl])
+            missing_anteb = np.array([bl[1] for bl in missing_bl])
+            missing_t = np.array(missing_t)
+            missing_ddids = np.array(missing_ddids)
+
+            data['uvwco'] = np.concatenate((data['uvwco'], missing_uvw))
+            self.antea = np.concatenate((self.antea, missing_antea))
+            self.anteb = np.concatenate((self.anteb, missing_anteb))
+            self.time_col = np.concatenate((self.time_col, missing_t))
+            self.ddid_col = np.concatenate((self.ddid_col, missing_ddids))
+
+            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
+
+        elif nrows > expected_nrows:
+            logstr = (nrows, ntime, n_bl, len(self.ddids))
+            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines across {} bands".format(*logstr)
+            print>> log, "  {} more rows than expected".format(nrows - expected_nrows)
+            print>> log, "  assuming additional rows are auto-correlations - ignoring"
+
+            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))            
+            sorted_ind = sorted_ind[np.where(self.antea!=self.anteb)]
+
+            if np.shape(sorted_ind) != expected_nrows:
+                raise ValueError("Number of rows inconsistent after removing auto-correlations.")
+
+        return expected_nrows, sorted_ind, row_identifiers
+
+    def unprep_data(self, data, nrows):
+
+            data['uvwco'] = data['uvwco'][:nrows,...]
+            self.antea = self.antea[:nrows]
+            self.anteb = self.anteb[:nrows]
+            self.time_col = self.time_col[:nrows]
+            self.ddid_col = self.ddid_col[:nrows]
 
     def get_chunk_cubes(self, key):
         """
@@ -245,10 +400,11 @@ class Tile(object):
 
         flags = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice, FL.dtype, FL.MISSING)
         flags = np.bitwise_or.reduce(flags, axis=-1)
-        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype)
-        obs_arr = obs_arr.reshape([1, t_dim, f_dim, nants, nants, 2, 2])
-        mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype)
-        mod_arr = mod_arr.reshape([1, 1, t_dim, f_dim, nants, nants, 2, 2])
+        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=6)
+        obs_arr = obs_arr.reshape(list(obs_arr.shape[:-1]) + [2, 2])
+        mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=7)
+        mod_arr = mod_arr.reshape(list(mod_arr.shape[:-1]) + [2, 2])
+
         # flag invalid data or model
         flags[(~np.isfinite(obs_arr[0, ])).any(axis=(-2, -1))] |= FL.INVALID
         flags[(~np.isfinite(mod_arr[0, 0, ...])).any(axis=(-2, -1))] |= FL.INVALID
@@ -329,7 +485,7 @@ class Tile(object):
         data = shared_dict.attach(self._data_dict_name)
         data.delete()
 
-    def _column_to_cube(self, column, chunk_tdim, chunk_fdim, rows, freqs, dtype, zeroval=0):
+    def _column_to_cube(self, column, chunk_tdim, chunk_fdim, rows, freqs, dtype, zeroval=0, reqdims=5):
         """
         Converts input data into N-dimensional measurement matrices.
 
@@ -345,8 +501,26 @@ class Tile(object):
         Returns:
             Output cube of shape [chunk_tdim, chunk_fdim, self.nants, self.nants, 4]
         """
-        # Creates empty 5D array into which the column data can be packed.
-        out_arr = np.full([chunk_tdim, chunk_fdim, self.nants, self.nants, 4], zeroval, dtype)
+
+        # Start by establishing the possible dimensions and those actually present. Dimensions which
+        # are not present are set to one, for flexibility reasons. Output shape is determined by
+        # reqdims, which selects dimensions in reverse order from (ndir, nmod, nt, nf, na, na, nc). 
+        # NOTE: The final dimension will be reshaped into 2x2 blocks outside this function.
+
+        col_ndim = column.ndim
+
+        possible_dims = ["dirs", "mods", "rows", "freqs", "cors"]
+
+        dims = {possible_dims[-i] : column.shape[-i] for i in xrange(1, col_ndim + 1)}
+
+        dims.setdefault("mods", 1)
+        dims.setdefault("dirs", 1)
+
+        out_shape = [dims["dirs"], dims["mods"], chunk_tdim, chunk_fdim, self.nants, self.nants, 4]
+        out_shape = out_shape[-reqdims:]
+
+        # Creates empty N-D array into which the column data can be packed.
+        out_arr = np.full(out_shape, zeroval, dtype)
 
         # Grabs the relevant time and antenna info.
 
@@ -355,39 +529,51 @@ class Tile(object):
         tchunk = self.times[rows]
         tchunk -= np.min(tchunk)
 
-        # Creates a tuple of slice objects to make subsequent slicing easier.
-        selection = (rows, freqs, slice(None))
+        # Creates lists of selections to make subsequent selection from column and oout_arr easier.
 
-        # The following takes the arbitrarily ordered data from the MS and
-        # places it into tho 5D data structure (correlation matrix).
+        corr_slice = slice(None) if self.ncorr==4 else slice(None, None, 3)
 
-        if self.ncorr == 4:
-            out_arr[tchunk, :, achunk, bchunk, :] = colsel = column[selection]
-            if dtype == self.ctype:
-                out_arr[tchunk, :, bchunk, achunk, :] = colsel.conj()[..., (0, 2, 1, 3)]
-            else:
-                out_arr[tchunk, :, bchunk, achunk, :] = colsel[..., (0, 2, 1, 3)]
-        elif self.ncorr == 2:
-            out_arr[tchunk, :, achunk, bchunk, ::3] = colsel = column[selection]
-            out_arr[tchunk, :, achunk, bchunk, 1:3] = 0
-            out_arr[tchunk, :, bchunk, achunk, 1:3] = 0
-            if dtype == self.ctype:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel.conj()
-            else:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel
-        elif self.ncorr == 1:
-            out_arr[tchunk, :, achunk, bchunk, ::3] = colsel = column[selection][:, :, (0, 0)]
-            out_arr[tchunk, :, achunk, bchunk, 1:3] = 0
-            out_arr[tchunk, :, bchunk, achunk, 1:3] = 0
-            if dtype == self.ctype:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel.conj()
-            else:
-                out_arr[tchunk, :, bchunk, achunk, ::3] = colsel
+        col_selections = [[dirs, mods, rows, freqs, slice(None)][-col_ndim:] 
+                            for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
 
-        # This zeros the diagonal elements in the "baseline" plane. This is
-        # purely a precaution - we do not want autocorrelations on the
-        # diagonal.
-        out_arr[:, :, range(self.nants), range(self.nants), :] = zeroval
+        cub_selections = [[dirs, mods, tchunk, slice(None), achunk, bchunk, corr_slice][-reqdims:]
+                            for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
+
+        n_sel = len(col_selections)
+
+        # The following takes the arbitrarily ordered data from the MS and places it into a N-D 
+        # data structure (correlation matrix).
+
+        for col_selection, cub_selection in zip(col_selections, cub_selections):
+
+            if self.ncorr == 4:
+                out_arr[cub_selection] = colsel = column[col_selection]
+                cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
+                if dtype == self.ctype:
+                    out_arr[cub_selection] = colsel.conj()[..., (0, 2, 1, 3)]
+                else:
+                    out_arr[cub_selection] = colsel[..., (0, 2, 1, 3)]
+            
+            elif self.ncorr == 2:
+                out_arr[cub_selection] = colsel = column[col_selection]
+                cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
+                if dtype == self.ctype:
+                    out_arr[cub_selection] = colsel.conj()
+                else:
+                    out_arr[cub_selection] = colsel
+            
+            elif self.ncorr == 1:
+                out_arr[cub_selection] = colsel = column[col_selection][..., (0,0)]
+                cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
+                if dtype == self.ctype:
+                    out_arr[cub_selection] = colsel.conj()
+                else:
+                    out_arr[cub_selection] = colsel
+
+        # This zeros the diagonal elements in the "baseline" plane. This is purely a precaution - 
+        # we do not want autocorrelations on the diagonal.
+        
+        out_arr[..., range(self.nants), range(self.nants), :] = zeroval
 
         return out_arr
 
@@ -425,12 +611,15 @@ class Tile(object):
 class ReadModelHandler:
 
     def __init__(self, ms_name, data_column, sm_name, model_column, output_column=None,
-                 taql=None, fid=None, ddid=None,
-                 flagopts={},
-                 precision="32", ddes=False, weight_column=None):
+                 taql=None, fid=None, ddid=None, flagopts={}, precision="32", ddes=False, 
+                 weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None):
 
         self.ms_name = ms_name
         self.sm_name = sm_name
+        self.beam_pattern = beam_pattern
+        self.beam_l_axis = beam_l_axis
+        self.beam_m_axis = beam_m_axis
+
         self.fid = fid if fid is not None else 0
 
         self.ms = pt.table(self.ms_name, readonly=False, ack=False)
