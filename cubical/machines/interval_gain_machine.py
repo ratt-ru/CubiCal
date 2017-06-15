@@ -27,7 +27,6 @@ class PerIntervalGains(MasterMachine):
         # n_tim and n_fre are the time and frequency dimensions of the data arrays.
         # n_timint and n_freint are the time and frequnecy dimensions of the gains.
 
-        self.n_tf_slots = self.n_fre * self.n_tim
         self.n_timint = int(np.ceil(float(self.n_tim) / self.t_int))
         self.n_freint = int(np.ceil(float(self.n_fre) / self.f_int))
         self.n_tf_ints = self.n_timint * self.n_freint
@@ -42,13 +41,9 @@ class PerIntervalGains(MasterMachine):
         self.f_bins = range(0, self.n_fre, self.f_int)
 
         # Initialise attributes used in convergence testing. n_cnvgd is the number
-        # of solutions which have converged, n_stall is the number of solutions 
-        # that have stalled chi-squared values and n_vis2x2 is the number of 
-        # two-by-two visibility blocks. 
+        # of solutions which have converged.
 
         self.n_cnvgd = 0 
-        self.n_stall = 0
-        self.n_2x2vis = self.n_tf_slots * self.n_ant * self.n_ant
 
         # Construct the appropriate shape for the gains.
 
@@ -60,27 +55,12 @@ class PerIntervalGains(MasterMachine):
         self.gflags = np.zeros(self.flag_shape, FL.dtype)
         self.flagbit = FL.ILLCOND
 
-    def compute_stats(self, flags):
+    def compute_stats(self, flags, eqs_per_tf_slot):
         """
         This method computes various stats and totals based on the current state of the flags.
         These values are used for weighting the chi-squared and doing intelligent convergence
         testing.
         """
-
-        unflagged = (flags==0)
-
-        # Compute number of terms in each chi-square sum. Shape is (n_tim, n_fre, n_ant).
-
-        self.nterms = 2 * self.n_cor * self.n_cor * np.sum(unflagged, axis=3)
-
-        # (n_ant) vector containing the number of valid equations per antenna.
-        # Factor of two is necessary as we have the conjugate of each equation too.
-
-        self.eqs_per_antenna = 2*np.sum(unflagged, axis=(0, 1, 2)) * self.n_mod
-
-        # (n_tim, n_fre) array containing number of valid equations for each time/freq slot.
-        
-        eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2)) * self.n_mod * self.n_cor * self.n_cor * 2
 
         # (n_timint, n_freint) array containing number of valid equations per each time/freq interval.
 
@@ -92,10 +72,16 @@ class PerIntervalGains(MasterMachine):
         self.valid_intervals = self.eqs_per_interval>0
         self.num_valid_intervals = self.valid_intervals.sum()
 
-        # Compute chi-squared normalization factor for each solution interval (used by compute_chisq() below)
+        # Pre-flag gain solution intervals that are completely flagged in the input data 
+        # (i.e. MISSING|PRIOR). This has shape (n_timint, n_freint, n_ant).
 
-        self.chisq_norm = np.zeros_like(self.eqs_per_interval, dtype=self.ftype)
-        self.chisq_norm[self.valid_intervals] = (1. / self.eqs_per_interval[self.valid_intervals])
+        missing_gains = self.interval_and((flags&(FL.MISSING|FL.PRIOR) != 0).all(axis=-1))
+
+        # Gain flags have shape (n_dir, n_timint, n_freint, n_ant). All intervals with no prior data
+        # are flagged as FL.MISSING.
+        
+        self.gflags[:, missing_gains] = FL.MISSING
+        self.missing_gain_fraction = missing_gains.sum() / float(missing_gains.size)
 
     def interval_sum(self, arr, tdim_ind=0):
    
