@@ -10,7 +10,7 @@ from cubical.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
 from cubical.TiggerSourceProvider import TiggerSourceProvider
-from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider
+from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
 #import better_exceptions
 
 from cubical.tools import logger, ModColor
@@ -178,9 +178,20 @@ class Tile(object):
 
             expected_nrows, sort_ind, row_identifiers = self.prep_data(data)
 
+            srcs, snks = [], []
+
             measet_src = MSSourceProvider(self, data, sort_ind)
             tigger_src = TiggerSourceProvider(self)
             cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
+
+            srcs.append(measet_src)
+            srcs.append(cached_src)
+
+            if self.handler.beam_pattern:
+                arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
+                                                    self.handler.beam_l_axis,       
+                                                    self.handler.beam_m_axis)
+                srcs.append(arbeam_src)
 
             ndirs = tigger_src._nclus
             model_shape = np.array([ndirs, 1, expected_nrows, self.nchan, self.ncorr])
@@ -189,8 +200,10 @@ class Tile(object):
 
             column_snk = ColumnSinkProvider(self, data, sort_ind)
 
+            snks.append(column_snk)
+
             for direction in xrange(ndirs):
-                simulate([measet_src, cached_src], [column_snk])
+                simulate(srcs, snks)
                 tigger_src.update_target()
                 column_snk._dir += 1
 
@@ -604,12 +617,15 @@ class Tile(object):
 class ReadModelHandler:
 
     def __init__(self, ms_name, data_column, sm_name, model_column, output_column=None,
-                 taql=None, fid=None, ddid=None,
-                 flagopts={},
-                 precision="32", ddes=False, weight_column=None):
+                 taql=None, fid=None, ddid=None, flagopts={}, precision="32", ddes=False, 
+                 weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None):
 
         self.ms_name = ms_name
         self.sm_name = sm_name
+        self.beam_pattern = beam_pattern
+        self.beam_l_axis = beam_l_axis
+        self.beam_m_axis = beam_m_axis
+
         self.fid = fid if fid is not None else 0
 
         self.ms = pt.table(self.ms_name, readonly=False, ack=False)
