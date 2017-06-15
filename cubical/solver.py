@@ -150,9 +150,9 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         """
         Computes chi-squared statistic based on current residuals.
 
-        Returns chi,mean_chi, where
-            chi is normalized chi-sq per solution interval (shape (n_timint, n_freint))
-            mean_chi is single chi-sq value for the entire chunk
+        Returns chisq_per_tf_slot, chisq_tot, where
+            chisq_per_tf_slot is normalized chi-suaredq per time-frequency slot, (n_tim, n_fre).
+            chisq_tot is a single chi-squared value for the entire chunk
 
         If statfield is given, populates stats arrays with the appropriate sums.
         """
@@ -172,7 +172,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
         chisq *= inv_var_chan[np.newaxis, :, np.newaxis]
         
-        # Collapse chi0 to chi-squared per solution interval, and overall chi-squared. norm_factor 
+        # Collapse chisq to chi-squared per time-frequency slot and overall chi-squared. norm_factor 
         # is computed as 1/eqs_per_tf_slot.
 
         norm_factor = np.where(eqs_per_tf_slot>0, 1./eqs_per_tf_slot, 0)
