@@ -1,4 +1,4 @@
-from cubical.machines.abstract_gain_machine import PerIntervalGains
+from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyphase_only as cyphase
 
@@ -6,9 +6,9 @@ class PhaseDiagGains(PerIntervalGains):
     """
     This class implements the diagonal phase-only gain machine.
     """
-    def __init__(self, model_arr, options):
+    def __init__(self, model_arr, chunk_ts, chunk_fs, options):
         
-        PerIntervalGains.__init__(self, model_arr, options)
+        PerIntervalGains.__init__(self, model_arr, chunk_ts, chunk_fs, options)
 
         self.float_type = np.float64 if model_arr.dtype is np.complex128 else np.float32
 
@@ -16,6 +16,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         self.gains = np.empty_like(self.phases, dtype=model_arr.dtype)
         self.gains[:] = np.eye(self.n_cor) 
+        self.old_gains = self.gains.copy()
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -136,6 +137,14 @@ class PhaseDiagGains(PerIntervalGains):
 
         return corr_vis, 0   # no flags raised here, since phase-only always invertible
 
+    def apply_gains(self):
+        """
+        This method should be able to apply the gains to an array at full time-frequency
+        resolution. Should return the input array at full resolution after the application of the 
+        gains.
+        """
+        return
+
     def precompute_attributes(self, model_arr):
 
         self.jhjinv = np.zeros_like(self.gains)
@@ -145,3 +154,4 @@ class PhaseDiagGains(PerIntervalGains):
         cyphase.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps, self.flagbit)
 
         self.jhjinv = self.jhjinv.real
+

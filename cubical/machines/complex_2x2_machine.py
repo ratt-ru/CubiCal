@@ -152,10 +152,3 @@ class Complex2x2Gains(PerIntervalGains):
         gains.
         """
         return
-          
-    def is_converged(self):
-        """
-        This method should check the convergence of the current time-frequency chunk. Should return 
-        a Boolean.
-        """
-        return
