@@ -153,23 +153,9 @@ class Complex2x2Gains(PerIntervalGains):
         """
         return
           
-    # def compute_stats(self):
-    #     """
-    #     This method should compute a variety of useful parameters regarding the conditioning and 
-    #     degrees of freedom of the current time-frequency chunk. Specifically, it must populate 
-    #     an attribute containing the degrees of freedom per time-frequency slot. 
-    #     """
-    #     return
-          
     def is_converged(self):
         """
         This method should check the convergence of the current time-frequency chunk. Should return 
         a Boolean.
-        """
-        return
-          
-    def compute_chi_squared(self):
-        """
-        Ignore for now - will likey form part of the Jones Chain.
         """
         return

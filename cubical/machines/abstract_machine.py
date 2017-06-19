@@ -61,7 +61,7 @@ class MasterMachine(object):
         return NotImplementedError
 
     @abstractmethod				
-    def compute_stats(self):
+    def update_stats(self):
     	"""
     	This method should compute a variety of useful parameters regarding the conditioning and 
     	degrees of freedom of the current time-frequency chunk. Specifically, it must populate 
@@ -70,17 +70,10 @@ class MasterMachine(object):
         return NotImplementedError
 
     @abstractmethod				
-    def is_converged(self):
+    def update_conv_params(self):
     	"""
     	This method should check the convergence of the current time-frequency chunk. Should return 
     	a Boolean.
-    	"""
-        return NotImplementedError
-
-    @abstractmethod				
-    def compute_chi_squared(self):
-    	"""
-    	Ignore for now - will likey form part of the Jones Chain.
     	"""
         return NotImplementedError
 

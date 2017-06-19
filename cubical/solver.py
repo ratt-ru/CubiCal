@@ -49,8 +49,6 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     maxiter      = options["max-iter"]
     chi_tol      = options["delta-chi"]
     chi_interval = options["chi-int"]
-    min_ampl     = options["clip-low"]
-    max_ampl     = options["clip-high"]
     clip_after_iter = options["clip-after-iter"]
 
     # Initialise stat object.
@@ -116,7 +114,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
     eqs_per_antenna, eqs_per_tf_slot = compute_num_eqs(flags_arr, ('initchi2', 'chi2'))
 
-    gm.compute_stats(flags_arr, eqs_per_tf_slot)
+    gm.update_stats(flags_arr, eqs_per_tf_slot)
 
     # In the event that there are no solution intervals with valid data, this will log some of the
     # flag information. This also breaks out of the function.
@@ -218,7 +216,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
     min_quorum = 0.99
     raised_new_gain_flags = False
-    num_gain_flags = (gm.gflags&~FL.MISSING != 0).sum()
+    n_gflags = (gm.gflags&~FL.MISSING != 0).sum()
 
     # Do any precomputation required by the current gain machine.
 
@@ -232,77 +230,47 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         iters += 1
 
         gm.compute_update(model_arr, obser_arr, iters)
-        gabs = abs(gm.gains)
-        # flag solution on various pathologies
+        
+        gm.flag_solutions(iters>clip_after_iter)
 
-        # anything previously flagged for another reason will not be flagged again
-        gflagged = gm.gflags != 0
+        # If the number of flags had increased, these need to be propagated out to the data. Note
+        # that gain flags are per-direction whereas data flags are per visibility. Currently, just
+        # everything is flagged if any direction is flagged.
 
-        # a gain solution has gone to inf/nan
-        boom = (~np.isfinite(gm.gains)).any(axis=(-1,-2))  # collapse correlation axes
-        gm.gflags[boom&~gflagged] |= FL.BOOM
-        gflagged |= boom
+        # We remove the FL.MISSING bit when propagating as this bit is pre-set for data was flagged 
+        # as PRIOR|MISSING. This prevents every PRIOR but not MISSING flag from becoming MISSING.
 
-        # a diagonal gain solution has gone to 0
-        gnull = (gm.gains[..., 0, 0] == 0) | (gm.gains[..., 1, 1] == 0)
-        # excepting those which was at zero for other reasons
-        gm.gflags[gnull&~gflagged] |= FL.GNULL
-        gflagged |= gnull
+        if gm.n_flagged > n_gflags:
+            
+            n_gflags = gm.n_flagged
+            
+            gm.propagate_gflags(flags_arr)
 
-        # a gain solution is out of bounds
-        if iters >= clip_after_iter and max_ampl or min_ampl:
-            goob = np.zeros(gabs.shape, bool)
-            if max_ampl:
-                goob = gabs.max(axis=(-1, -2)) > max_ampl
-            if min_ampl:
-                goob |= (gabs[...,0,0]<min_ampl) | (gabs[...,1,1,]<min_ampl)
-            gm.gflags[goob&~gflagged] |= FL.GOOB
-            gflagged |= goob
-
-        # count the gain flags (excepting those set a priori due to missing data)
-        nfl = (gm.gflags&~FL.MISSING != 0).sum()
-
-        if nfl > num_gain_flags:
-            num_gain_flags = nfl
-            # Propagate gain flags out to data
-            # Gain flags are per-direction -- data flags are per visibility.
-            # For now, just flag everything if _any_ direction is flagged.
-            # Note that we take the FL.MISSING bit off when propagating. This is because this bit in the
-            # gainflags is pre-set, if data was flagged with PRIOR|MISSING, so we don't want to push that
-            # bit back into the data (otherwise every PRIOR but not MISSING flag will become MISSING).
-            # if *all* directions are flagged? This would effectively exclude "bad" models from the soluton
-            gflags = np.bitwise_or.reduce(gm.gflags, axis=0)  # gflags shape: n_timint, n_freqint, n_ant
-            tiled_flags_arr |= gflags[:,np.newaxis,:,np.newaxis,:,np.newaxis]&~FL.MISSING
-            tiled_flags_arr |= gflags[:,np.newaxis,:,np.newaxis,np.newaxis,:]&~FL.MISSING
-            # recompute various stats
+            # Recompute various stats now that the flags raised by the gain machine have been 
+            # propagated into the flags_arr.
+            
             eqs_per_antenna, eqs_per_tf_slot = compute_num_eqs(flags_arr, ('chi2',))
 
-            gm.compute_stats(flags_arr, eqs_per_tf_slot)
-            # eqs_per_antenna, eqs_per_interval, valid_intervals, num_valid_intervals, chisq_norm = \
-            #     compute_stats(flags_arr, ('chi2',))
-            # re-zero model and data at newly flagged points. TODO: is this needed?
-            # TODO: should we perhaps just zero the model per flagged direction, and only flag the data?
-            flagged = flags_arr&~(FL.MISSING|FL.PRIOR) !=0
-            model_arr[:, :, flagged, :, :] = 0
-            obser_arr[   :, flagged, :, :] = 0
+            gm.update_stats(flags_arr, eqs_per_tf_slot)
 
-            # break out if we find ourseles with no valid solution intervals
+            # Re-zero the model and data at newly flagged points. TODO: is this needed?
+            # TODO: should we perhaps just zero the model per flagged direction, and only flag the data?
+            
+            new_flags = flags_arr&~(FL.MISSING|FL.PRIOR) !=0
+            model_arr[:, :, new_flags, :, :] = 0
+            obser_arr[   :, new_flags, :, :] = 0
+
+            # Break out of the solver loop if we find ourselves with no valid solution intervals.
+            
             if gm.num_valid_intervals == 0:
                 break
 
         have_residuals = False
 
-        # Compute values used in convergence tests.
-        # Note that the check here implicitly marks flagged gains as converged.
-        diff_g = np.square(np.abs(gm.old_gains - gm.gains))
-        diff_g[gflagged] = 0
-        diff_g = diff_g.sum(axis=(-1,-2,-3))
-        norm_g = np.square(gabs)
-        norm_g[gflagged] = 1
-        norm_g = norm_g.sum(axis=(-1,-2,-3))
-
-        norm_diff_g = diff_g/norm_g
-        gm.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
+        # Compute values used in convergence tests. This check implicitly marks flagged gains as 
+        # converged.
+        
+        gm.update_conv_params(min_delta_g)
 
         # Update old gains for subsequent convergence tests.
 
@@ -328,46 +296,57 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
                 logvars = (label, iters, mean_chi, delta_chi, diff_g.max(), gm.n_cnvgd/gm.n_sols,
-                          n_stall/n_tf_slots, num_gain_flags/float(gm.gflags.size),
-                          gm.missing_gain_fraction)
+                           n_stall/n_tf_slots, n_gflags/float(gm.gflags.size),
+                           gm.missing_gain_fraction)
 
                 print>> log, ("{} iter {} chi2 {:.4} delta {:.4}, max gain update {:.4}, "
                               "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:2}%").format(*logvars)
 
-    # num_valid_intervals will go to 0 if all solution intervals got flagged
-    # if not, generate residuals et al.
+    # num_valid_intervals will go to 0 if all solution intervals were flagged. If this is not the 
+    # case, generate residuals etc.
+    
     if gm.num_valid_intervals:
-        # do we need to recompute the final residuals?
+
+        # Do we need to recompute the final residuals?
         if (options['last-rites'] or compute_residuals) and not have_residuals:
             gm.compute_residual(obser_arr, model_arr, resid_arr)
             if options['last-rites']:
-                # recompute chi^2 based on original noise statistics
+                # Recompute chi-squared based on original noise statistics.
                 chi, mean_chi = compute_chisq(statfield='chi2')
 
-        # re-estimate the noise using the final residuals, if last rites are needed
+        # Re-estimate the noise using the final residuals, if last rites are needed.
+
         if options['last-rites']:
-            stats.chunk.noise, inv_var_antchan, inv_var_ant, inv_var_chan = stats.estimate_noise(resid_arr, flags_arr, residuals=True)
+            stats.chunk.noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
+                                        stats.estimate_noise(resid_arr, flags_arr, residuals=True)
             chi1, mean_chi1 = compute_chisq(statfield='chi2')
 
         stats.chunk.chi2 = mean_chi
 
         logvars = (label, iters, gm.n_cnvgd/gm.n_sols, n_stall/n_tf_slots, 
-                  num_gain_flags / float(gm.gflags.size), gm.missing_gain_fraction,
-                  float(stats.chunk.init_chi2), mean_chi)
+                   n_gflags / float(gm.gflags.size), gm.missing_gain_fraction,
+                   float(stats.chunk.init_chi2), mean_chi)
 
         message = ("{}: {} iters, conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2%}, "
                     "chi2 {:.4} -> {:.4}").format(*logvars)
 
         if options['last-rites']:
-            message += " ({:.4}), noise {:.3} -> {:.3}".format(float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
+
+            logvars = (float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
+
+            message += " ({:.4}), noise {:.3} -> {:.3}".format(*logvars)
+        
         print>> log, message
 
-    # else, everything got flagged, so no valid solutions generated
+    # If everything has been flagged, no valid solutions are generated. 
+
     else:
-        print>>log, ModColor.Str("{} completely flagged after {} iters: g/fl {:.2%}, d/fl {:.2%}").format(label,
-                                                    iters,
-                                                    num_gain_flags / float(gm.gflags.size),
-                                                    gm.missing_gain_fraction)
+        
+        logvars = (label, iters, n_gflags / float(gm.gflags.size), gm.missing_gain_fraction)
+
+        print>>log, ModColor.Str("{} completely flagged after {} iters:"
+                                 " g/fl {:.2%}, d/fl {:.2%}").format(*logvars)
+        
         stats.chunk.chi2 = 0
         resid_arr = obser_arr
 
@@ -376,8 +355,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     stats.chunk.num_stalled = n_stall
 
     # copy out flags, if we raised any
-    stats.chunk.num_sol_flagged = num_gain_flags
-    if num_gain_flags:
+    stats.chunk.num_sol_flagged = n_gflags
+    if n_gflags:
         # also for up message with flagging stats
         fstats = ""
         for flagname, mask in FL.categories().iteritems():

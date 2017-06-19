@@ -40,6 +40,11 @@ class PerIntervalGains(MasterMachine):
         self.t_bins = range(0, self.n_tim, self.t_int)
         self.f_bins = range(0, self.n_fre, self.f_int)
 
+        t_ind = np.arange(self.n_tim)//self.t_int
+        f_ind = np.arange(self.n_fre)//self.f_int
+
+        self.t_mapping, self.f_mapping = np.meshgrid(t_ind, f_ind, indexing="ij")
+
         # Initialise attributes used in convergence testing. n_cnvgd is the number
         # of solutions which have converged.
 
@@ -49,13 +54,16 @@ class PerIntervalGains(MasterMachine):
 
         self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
 
-        # Construct flag array
+        # Construct flag array and populate flagging attributes.
 
+        self.n_flagged = 0
+        self.clip_lower = options["clip-low"]
+        self.clip_upper = options["clip-high"]
         self.flag_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant]
         self.gflags = np.zeros(self.flag_shape, FL.dtype)
         self.flagbit = FL.ILLCOND
 
-    def compute_stats(self, flags, eqs_per_tf_slot):
+    def update_stats(self, flags, eqs_per_tf_slot):
         """
         This method computes various stats and totals based on the current state of the flags.
         These values are used for weighting the chi-squared and doing intelligent convergence
@@ -82,6 +90,71 @@ class PerIntervalGains(MasterMachine):
         
         self.gflags[:, missing_gains] = FL.MISSING
         self.missing_gain_fraction = missing_gains.sum() / float(missing_gains.size)
+
+    def flag_solutions(self, clip_gains=False):
+        """
+        This method will do basic flagging of the gain solutions.
+        """
+
+        gain_mags = np.abs(self.gains)
+
+        # Anything previously flagged for another reason will not be reflagged.
+        
+        flagged = self.gflags != 0
+
+        # Check for inf/nan solutions. One bad correlation will trigger flagging for all corrlations.
+
+        boom = (~np.isfinite(self.gains)).any(axis=(-1,-2))
+        self.gflags[boom&~flagged] |= FL.BOOM
+        flagged |= boom
+
+        # Check for gain solutions for which diagonal terms have gone to 0.
+
+        gnull = (self.gains[..., 0, 0] == 0) | (self.gains[..., 1, 1] == 0)
+        self.gflags[gnull&~flagged] |= FL.GNULL
+        flagged |= gnull
+
+        # Check for gain solutions which are out of bounds (based on clip thresholds).
+
+        if clip_gains and self.clip_upper or self.clip_lower:
+            goob = np.zeros(gain_mags.shape, bool)
+            if self.clip_upper:
+                goob = gain_mags.max(axis=(-1, -2)) > self.clip_upper
+            if self.clip_lower:
+                goob |= (gain_mags[...,0,0]<self.clip_lower) | (gain_mags[...,1,1,]<self.clip_lower)
+            self.gflags[goob&~flagged] |= FL.GOOB
+            flagged |= goob
+
+        # Count the gain flags, excluding those set a priori due to missing data.
+
+        self.flagged = flagged
+        self.n_flagged = (self.gflags&~FL.MISSING != 0).sum()
+
+    def propagate_gflags(self, flags):
+
+        nodir_flags = self.unpack_intervals(np.bitwise_or.reduce(self.gflags, axis=0))
+
+        flags |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING 
+        flags |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
+
+    def update_conv_params(self, min_delta_g):
+        
+        diff_g = np.square(np.abs(self.old_gains - self.gains))
+        diff_g[self.flagged] = 0
+        diff_g = diff_g.sum(axis=(-1,-2,-3))
+        
+        norm_g = np.square(np.abs(self.gains))
+        norm_g[self.flagged] = 1
+        norm_g = norm_g.sum(axis=(-1,-2,-3))
+
+        norm_diff_g = diff_g/norm_g
+
+        self.max_update = np.max(diff_g)
+        self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
+
+    def unpack_intervals(self, arr, tdim_ind=0):
+
+        return arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
 
     def interval_sum(self, arr, tdim_ind=0):
    
