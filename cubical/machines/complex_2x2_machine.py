@@ -1,4 +1,4 @@
-from cubical.machines.abstract_gain_machine import PerIntervalGains
+from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyfull_complex as cyfull
 
@@ -6,10 +6,11 @@ class Complex2x2Gains(PerIntervalGains):
     """
     This class implements the full complex 2x2 gain machine
     """
-    def __init__(self, model_arr, options):
-        PerIntervalGains.__init__(self, model_arr, options)
+    def __init__(self, model_arr, chunk_ts, chunk_fs, options):
+        PerIntervalGains.__init__(self, model_arr, chunk_ts, chunk_fs, options)
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
+        self.old_gains = self.gains.copy()
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -39,7 +40,8 @@ class Complex2x2Gains(PerIntervalGains):
 
         # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
         if n_dir > 1:
-            r = self.compute_residual(obser_arr, model_arr)
+            resid_arr = np.empty_like(obser_arr)
+            r = self.compute_residual(obser_arr, model_arr, resid_arr)
         else:
             r = obser_arr
 
@@ -77,6 +79,9 @@ class Complex2x2Gains(PerIntervalGains):
         update = np.empty_like(jhr)
 
         cyfull.cycompute_update(jhr, jhjinv, update)
+
+        if model_arr.shape[0]>1:
+            update = self.gains + update
 
         if iters % 2 == 0:
             self.gains = 0.5*(self.gains + update)
@@ -139,3 +144,11 @@ class Complex2x2Gains(PerIntervalGains):
         cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 
         return corr_vis, flag_count
+         
+    def apply_gains(self):
+        """
+        This method should be able to apply the gains to an array at full time-frequency
+        resolution. Should return the input array at full resolution after the application of the 
+        gains.
+        """
+        return

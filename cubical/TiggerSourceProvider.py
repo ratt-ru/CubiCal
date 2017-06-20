@@ -19,12 +19,14 @@ import pyrap.tables as pt
 class TiggerSourceProvider(SourceProvider):
     """ Simulates sources provided by a Tigger sky model. """
 
-    def __init__(self, phase_center, tigger_filename, use_ddes=False):
+    def __init__(self, tile):
         """ Simulate sources in different directions """
 
-        self._sm = Tigger.load(tigger_filename)
-        self._phase_center = phase_center
-        self._use_ddes = use_ddes
+        self._tile = tile
+        self._handler = tile.handler
+        self._sm = Tigger.load(self._handler.sm_name)
+        self._phase_center = self._handler._phadir
+        self._use_ddes = self._handler.use_ddes
 
         self._clusters = cluster_sources(self._sm, self._use_ddes)
         self._cluster_keys = self._clusters.keys()
