@@ -117,7 +117,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     gm.update_stats(flags_arr, eqs_per_tf_slot)
 
     # In the event that there are no solution intervals with valid data, this will log some of the
-    # flag information. This also breaks out of the function.
+    # flag information and break out of the function.
 
     if gm.num_valid_intervals == 0: 
 
@@ -132,8 +132,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
         return gm, (obser_arr if compute_residuals else None), stats
 
-    # Initialize a tiled residual array (tiled by whole time/freq intervals). Shapes correspond to
-    # tiled array shape and the intermediate shape from which our view of the residual is selected.
+    # Initialize a residual array.
 
     resid_shape = [gm.n_mod, gm.n_tim, gm.n_fre, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
 
@@ -162,9 +161,10 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         # TODO: Some residuals blow up and cause np.square() to overflow -- need to flag these.
 
         # Sum chi-square over correlations, models, and one antenna axis. Result has shape
-        # (n_tim, n_fre, n_ant).
+        # (n_tim, n_fre, n_ant). We avoid using np.abs by taking a view of the underlying memory.
+        # This is substantially faster.
 
-        chisq = np.sum(np.square(np.abs(resid_arr)), axis=(0,4,5,6))
+        chisq = np.sum(np.square(resid_arr.view(dtype=resid_arr.real.dtype)), axis=(0,4,5,6))
 
         # Normalize this by the per-channel variance.
 
@@ -215,7 +215,6 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
                       " {}/{} valid antennas, noise {:.3}, flags: {}").format(*logvars)
 
     min_quorum = 0.99
-    raised_new_gain_flags = False
     n_gflags = (gm.gflags&~FL.MISSING != 0).sum()
 
     # Do any precomputation required by the current gain machine.
@@ -295,7 +294,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                logvars = (label, iters, mean_chi, delta_chi, diff_g.max(), gm.n_cnvgd/gm.n_sols,
+                logvars = (label, iters, mean_chi, delta_chi, gm.max_update, gm.n_cnvgd/gm.n_sols,
                            n_stall/n_tf_slots, n_gflags/float(gm.gflags.size),
                            gm.missing_gain_fraction)
 
