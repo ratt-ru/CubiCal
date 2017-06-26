@@ -105,6 +105,22 @@ class TiggerSourceProvider(SourceProvider):
 
         return alpha
 
+    def point_ref_freq(self, context):
+        """ Return a reference frequency per source array to montblanc """
+        
+        pt_ref_freq = np.empty(context.shape, context.dtype)
+
+        (lp, up) = context.dim_extents('npsrc')
+        
+        for ind, source in enumerate(self._pnt_sources[lp:up]):
+            try:
+                pt_ref_freq[ind] = source.spectrum.freq0
+            except:
+                pt_ref_freq[ind] = 0
+
+        return pt_ref_freq[lp:up]
+
+
     def gaussian_lm(self, context):
         """ Return a lm coordinate array to montblanc """
         lm = np.empty(context.shape, context.dtype)
@@ -166,6 +182,20 @@ class TiggerSourceProvider(SourceProvider):
 
         return shapes
 
+    def gaussian_ref_freq(self, context):
+        """ Return a reference frequency per source array to montblanc """
+
+        gau_ref_freq = np.empty(context.shape, context.dtype)
+
+        (lg, ug) = context.dim_extents('ngsrc')
+        
+        for ind, source in enumerate(self._gau_sources[lg:ug]):
+            try:
+                gau_ref_freq[ind] = source.spectrum.freq0
+            except:
+                gau_ref_freq[ind] = 0
+
+        return gau_ref_freq[lg:ug]
 
     def updated_dimensions(self):
         """ Tell montblanc about dimension sizes (point sources only) """

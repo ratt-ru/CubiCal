@@ -55,16 +55,6 @@ class MSSourceProvider(SourceProvider):
         channels = self._handler._chanfr[self._ddids, :]
         return channels.reshape(context.shape).astype(context.dtype)
 
-    def ref_frequency(self, context):
-        ref_freqs = self._handler._rfreqs
-
-        data = np.empty((self._nddid, self._nchan), dtype=np.float64)
-
-        for ind, ddid in enumerate(self._ddids):
-            data[ind, :] = ref_freqs[ddid]
-
-        return data.reshape(context.shape).astype(context.dtype)
-
     def uvw(self, context):
         """ Special case for handling antenna uvw code """
 
