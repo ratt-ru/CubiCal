@@ -116,7 +116,7 @@ class TiggerSourceProvider(SourceProvider):
             try:
                 pt_ref_freq[ind] = source.spectrum.freq0
             except:
-                pt_ref_freq[ind] = 0
+                pt_ref_freq[ind] = self._sm.freq0 or 0
 
         return pt_ref_freq[lp:up]
 
@@ -193,7 +193,7 @@ class TiggerSourceProvider(SourceProvider):
             try:
                 gau_ref_freq[ind] = source.spectrum.freq0
             except:
-                gau_ref_freq[ind] = 0
+                gau_ref_freq[ind] = self._sm.freq0 or 0
 
         return gau_ref_freq[lg:ug]
 
