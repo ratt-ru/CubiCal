@@ -164,11 +164,11 @@ class ColumnSinkProvider(SinkProvider):
 
 def simulate(src_provs, snk_provs):
 
-    montblanc.log.setLevel(logging.INFO)
-    [h.setLevel(logging.INFO) for h in montblanc.log.handlers]
+    mblogger = logging.Logger.manager.loggerDict["montblanc"]
+    mblogger.propagate = False
 
     slvr_cfg = montblanc.rime_solver_cfg(
-        mem_budget=1024*1024*1024,
+        mem_budget=2*1024*1024*1024,
         dtype='double',
         version=Options.VERSION_TENSORFLOW)
 

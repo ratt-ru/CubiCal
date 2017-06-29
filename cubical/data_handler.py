@@ -4,6 +4,7 @@ import pyrap.tables as pt
 import cPickle
 import re
 import traceback
+import sys
 from cubical.tools import shared_dict
 import cubical.flagging as flagging
 from cubical.flagging import FL
@@ -637,6 +638,7 @@ class ReadModelHandler:
         self._spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW", ack=False)
         self._poltab = pt.table(self.ms_name + "::POLARIZATION", ack=False)
         self._ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
+        self._feedtab = pt.table(self.ms_name + "::FEED", ack=False)
 
         self.ctype = np.complex128 if precision=="64" else np.complex64
         self.ftype = np.float64 if precision=="64" else np.float32
@@ -648,10 +650,19 @@ class ReadModelHandler:
         self._rfreqs = self._spwtab.getcol("REF_FREQUENCY")
         self._chanfr = self._spwtab.getcol("CHAN_FREQ")
         self._antpos = self._anttab.getcol("POSITION")
-        self._phadir = self._fldtab.getcol("PHASE_DIR", startrow=self.fid,
-                                           nrow=1)[0][0]
+        self._phadir = self._fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
+        self._poltype = np.unique(self._feedtab.getcol('POLARIZATION_TYPE')['array'])
+        
+        if np.any([pol in self._poltype for pol in ['L','l','R','r']]):
+            self._poltype = "circular"
+        elif np.any([pol in self._poltype for pol in ['X','x','Y','y']]):
+            self._poltype = "linear"
+        else:
+            print>>log,"  unsupported feed type. Terminating."
+            sys.exit()
 
         # print some info on MS layout
+        print>>log,"  detected {} feeds".format(self._poltype)
         print>>log,"  fields are "+", ".join(["{}{}: {}".format('*' if i==fid else "",i,name) for i, name in enumerate(self._fldtab.getcol("NAME"))])
         self._spw_chanfreqs = self._spwtab.getcol("CHAN_FREQ")  # nspw x nfreq array of frequencies
         print>>log,"  {} spectral windows of {} channels each ".format(*self._spw_chanfreqs.shape)

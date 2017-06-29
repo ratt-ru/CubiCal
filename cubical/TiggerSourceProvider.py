@@ -82,13 +82,20 @@ class TiggerSourceProvider(SourceProvider):
         stokes = np.empty(context.shape, context.dtype)
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
-			stokes[ind,:,0] = source.flux.I
-			stokes[ind,:,1] = source.flux.Q
-			stokes[ind,:,2] = source.flux.U
-			stokes[ind,:,3] = source.flux.V
+			if self._handler._poltype == 'linear'
+                stokes[ind,:,0] = source.flux.I
+                stokes[ind,:,1] = source.flux.Q
+                stokes[ind,:,2] = source.flux.U
+                stokes[ind,:,3] = source.flux.V
+            elif self._handler._poltype == 'circular':
+                stokes[ind,:,0] = source.flux.I
+                stokes[ind,:,2] = source.flux.Q
+                stokes[ind,:,3] = source.flux.U
+                stokes[ind,:,1] = source.flux.V
+            else:
+                print "Log an issue - this message should never be printed."
 
         return stokes
-
 
     def point_alpha(self, context):
         """ Return a spectral index (alpha) array to montblanc """
@@ -144,10 +151,18 @@ class TiggerSourceProvider(SourceProvider):
         stokes = np.empty(context.shape, context.dtype)
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
-            stokes[ind,:,0] = source.flux.I
-            stokes[ind,:,1] = source.flux.Q
-            stokes[ind,:,2] = source.flux.U
-            stokes[ind,:,3] = source.flux.V
+            if self._handler._poltype == 'linear'
+                stokes[ind,:,0] = source.flux.I
+                stokes[ind,:,1] = source.flux.Q
+                stokes[ind,:,2] = source.flux.U
+                stokes[ind,:,3] = source.flux.V
+            elif self._handler._poltype == 'circular':
+                stokes[ind,:,0] = source.flux.I
+                stokes[ind,:,2] = source.flux.Q
+                stokes[ind,:,3] = source.flux.U
+                stokes[ind,:,1] = source.flux.V
+            else:
+                print "Log an issue - this message should never be printed."
 
         return stokes
 
