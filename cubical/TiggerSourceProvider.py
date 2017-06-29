@@ -82,7 +82,7 @@ class TiggerSourceProvider(SourceProvider):
         stokes = np.empty(context.shape, context.dtype)
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
-			if self._handler._poltype == 'linear'
+			if self._handler._poltype == 'linear':
                 stokes[ind,:,0] = source.flux.I
                 stokes[ind,:,1] = source.flux.Q
                 stokes[ind,:,2] = source.flux.U
@@ -151,7 +151,7 @@ class TiggerSourceProvider(SourceProvider):
         stokes = np.empty(context.shape, context.dtype)
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
-            if self._handler._poltype == 'linear'
+            if self._handler._poltype == 'linear':
                 stokes[ind,:,0] = source.flux.I
                 stokes[ind,:,1] = source.flux.Q
                 stokes[ind,:,2] = source.flux.U
