@@ -1,4 +1,1 @@
-include cubical/kernels/cyfull_complex.so
-include cubical/kernels/cyphase_only.so
-include cubical/kernels/cyfull_W_complex.so
 include cubical/DefaultParset.cfg

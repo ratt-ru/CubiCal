@@ -1,4 +1,4 @@
-from cubical.machines.abstract_gain_machine import PerIntervalGains
+from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyfull_W_complex as cyfull
 

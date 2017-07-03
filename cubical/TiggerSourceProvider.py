@@ -19,12 +19,14 @@ import pyrap.tables as pt
 class TiggerSourceProvider(SourceProvider):
     """ Simulates sources provided by a Tigger sky model. """
 
-    def __init__(self, phase_center, tigger_filename, use_ddes=False):
+    def __init__(self, tile):
         """ Simulate sources in different directions """
 
-        self._sm = Tigger.load(tigger_filename)
-        self._phase_center = phase_center
-        self._use_ddes = use_ddes
+        self._tile = tile
+        self._handler = tile.handler
+        self._sm = Tigger.load(self._handler.sm_name)
+        self._phase_center = self._handler._phadir
+        self._use_ddes = self._handler.use_ddes
 
         self._clusters = cluster_sources(self._sm, self._use_ddes)
         self._cluster_keys = self._clusters.keys()
@@ -80,13 +82,20 @@ class TiggerSourceProvider(SourceProvider):
         stokes = np.empty(context.shape, context.dtype)
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
-			stokes[ind,:,0] = source.flux.I
-			stokes[ind,:,1] = source.flux.Q
-			stokes[ind,:,2] = source.flux.U
-			stokes[ind,:,3] = source.flux.V
+            if self._handler._poltype == 'linear':
+                stokes[ind,:,0] = source.flux.I
+                stokes[ind,:,1] = source.flux.Q
+                stokes[ind,:,2] = source.flux.U
+                stokes[ind,:,3] = source.flux.V
+            elif self._handler._poltype == 'circular':
+                stokes[ind,:,0] = source.flux.I
+                stokes[ind,:,2] = source.flux.Q
+                stokes[ind,:,3] = source.flux.U
+                stokes[ind,:,1] = source.flux.V
+            else:
+                print "Log an issue - this message should never be printed."
 
         return stokes
-
 
     def point_alpha(self, context):
         """ Return a spectral index (alpha) array to montblanc """
@@ -102,6 +111,22 @@ class TiggerSourceProvider(SourceProvider):
                 alpha[ind] = 0
 
         return alpha
+
+    def point_ref_freq(self, context):
+        """ Return a reference frequency per source array to montblanc """
+        
+        pt_ref_freq = np.empty(context.shape, context.dtype)
+
+        (lp, up) = context.dim_extents('npsrc')
+        
+        for ind, source in enumerate(self._pnt_sources[lp:up]):
+            try:
+                pt_ref_freq[ind] = source.spectrum.freq0
+            except:
+                pt_ref_freq[ind] = self._sm.freq0 or 0
+
+        return pt_ref_freq[lp:up]
+
 
     def gaussian_lm(self, context):
         """ Return a lm coordinate array to montblanc """
@@ -126,10 +151,18 @@ class TiggerSourceProvider(SourceProvider):
         stokes = np.empty(context.shape, context.dtype)
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
-            stokes[ind,:,0] = source.flux.I
-            stokes[ind,:,1] = source.flux.Q
-            stokes[ind,:,2] = source.flux.U
-            stokes[ind,:,3] = source.flux.V
+            if self._handler._poltype == 'linear':
+                stokes[ind,:,0] = source.flux.I
+                stokes[ind,:,1] = source.flux.Q
+                stokes[ind,:,2] = source.flux.U
+                stokes[ind,:,3] = source.flux.V
+            elif self._handler._poltype == 'circular':
+                stokes[ind,:,0] = source.flux.I
+                stokes[ind,:,2] = source.flux.Q
+                stokes[ind,:,3] = source.flux.U
+                stokes[ind,:,1] = source.flux.V
+            else:
+                print "Log an issue - this message should never be printed."
 
         return stokes
 
@@ -164,6 +197,20 @@ class TiggerSourceProvider(SourceProvider):
 
         return shapes
 
+    def gaussian_ref_freq(self, context):
+        """ Return a reference frequency per source array to montblanc """
+
+        gau_ref_freq = np.empty(context.shape, context.dtype)
+
+        (lg, ug) = context.dim_extents('ngsrc')
+        
+        for ind, source in enumerate(self._gau_sources[lg:ug]):
+            try:
+                gau_ref_freq[ind] = source.spectrum.freq0
+            except:
+                gau_ref_freq[ind] = self._sm.freq0 or 0
+
+        return gau_ref_freq[lg:ug]
 
     def updated_dimensions(self):
         """ Tell montblanc about dimension sizes (point sources only) """
