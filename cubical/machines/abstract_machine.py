@@ -77,5 +77,20 @@ class MasterMachine(object):
     	"""
         return NotImplementedError
 
+    @abstractmethod
+    def flag_solutions(self):
+        """
+        This method should do solution flagging based on the gains.
+        """
+        return NotImplementedError
+
+    @abstractmethod
+    def propagate_gflags(self):
+        """
+        This method should propagate the flags raised by the gain machine back into the data.
+        This is necessary as the gain flags may not have the same shape as the data.
+        """
+        return NotImplementedError
+
     def precompute_attributes(self, *args, **kwargs):
         return

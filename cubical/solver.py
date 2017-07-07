@@ -9,6 +9,7 @@ from cubical.tools import shared_dict
 from cubical.machines import complex_2x2_machine
 from cubical.machines import complex_W_2x2_machine
 from cubical.machines import phase_diag_machine
+from cubical.machines import jones_chain_machine
 from cubical.statistics import SolverStats
 
 log = logger.getLogger("solver")
@@ -64,6 +65,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         gm = phase_diag_machine.PhaseDiagGains(model_arr, chunk_ts, chunk_fs, options)
     elif options['jones-type'] == 'robust-2x2':
         gm = complex_W_2x2_machine.ComplexW2x2Gains(model_arr, options)
+    elif options['jones-type'] == 'jones-chain':
+        gm = jones_chain_machine.JonesChain(model_arr, chunk_ts, chunk_fs, options)
     else:
         raise ValueError("unknown jones-type '{}'".format(options['jones-type']))
 
@@ -233,10 +236,10 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         gm.flag_solutions(iters>clip_after_iter)
 
         # If the number of flags had increased, these need to be propagated out to the data. Note
-        # that gain flags are per-direction whereas data flags are per visibility. Currently, just
+        # that gain flags are per-direction whereas data flags are per visibility. Currently,
         # everything is flagged if any direction is flagged.
 
-        # We remove the FL.MISSING bit when propagating as this bit is pre-set for data was flagged 
+        # We remove the FL.MISSING bit when propagating as this bit is pre-set for data flagged 
         # as PRIOR|MISSING. This prevents every PRIOR but not MISSING flag from becoming MISSING.
 
         if gm.n_flagged > n_gflags:
@@ -283,7 +286,9 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
             old_chi, old_mean_chi = chi, mean_chi
 
             gm.compute_residual(obser_arr, model_arr, resid_arr)
+
             chi, mean_chi = compute_chisq()
+
             have_residuals = True
 
             # Check for stalled solutions - solutions for which the residual is no longer improving.

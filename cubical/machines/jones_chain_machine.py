@@ -2,7 +2,7 @@ from cubical.machines.abstract_machine import MasterMachine
 from cubical.machines.complex_2x2_machine import Complex2x2Gains
 import numpy as np
 import cubical.kernels.cyfull_complex as cyfull
-import sys
+import cubical.kernels.cychain as cychain
 
 class JonesChain(MasterMachine):
     """
@@ -13,9 +13,6 @@ class JonesChain(MasterMachine):
         MasterMachine.__init__(self, times, frequencies)
 
         self.n_dir, self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = model_arr.shape
-        
-        self.dtype = model_arr.dtype
-        self.ftype = model_arr.real.dtype
 
         # This instantiates the number of complex 2x2 elements in our chain. Each element is a 
         # gain machine in its own right - the purpose of this machine is to manage these machines
@@ -23,16 +20,73 @@ class JonesChain(MasterMachine):
         # TODO: Figure out parameter specification for this.
 
         self.jones_terms = [Complex2x2Gains(model_arr, times, frequencies, options) for i in xrange(3)]
-        self.active_term = self.jones_terms[0]
+        self.n_terms = len(self.jones_terms)
+        self.active_index = 1
+        self.active_term = self.jones_terms[self.active_index]
+        
 
     def compute_js(self, obser_arr, model_arr):
         """
         This method is expected to compute (J^HJ)^-1 and J^HR. In practice, this method can be 
         very flexible, as it is only used in the compute_update method and need only be consistent
         with that usage. Should support the use of both the true residual and the observed data. 
-        """
+        """     
+
+        # NB: This may be misleading - we are technically getting the n_tint and n_fint sizes here.
+
+        n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.gains.shape
+
+        current_model_arr = model_arr.copy()
+
+        for ind in xrange(self.n_terms - 1, self.active_index, -1):
+            term = self.jones_terms[ind]
+            term.apply_gains(current_model_arr)
+
+        jh = np.zeros_like(current_model_arr)
+
+        for ind in xrange(self.active_index, -1, -1):
+            term = self.jones_terms[ind]
+            cyfull.cycompute_jh(current_model_arr, term.gains, jh, term.t_int, term.f_int)
+            current_model_arr[:] = jh 
         
-        self.active_term.compute_js(obser_arr, model_arr)
+        jhr_shape = [n_dir, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
+
+        jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+
+        # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
+        if n_dir > 1:
+            resid_arr = np.empty_like(obser_arr)
+            r = self.compute_residual(obser_arr, current_model_arr, resid_arr)
+        else:
+            r = obser_arr
+
+        # NEED TO STOP AND THINK HERE. IS IT WORTH WRITING A FULL SET OF CHAIN KERNELS? THE CURRENT
+        # APPROACH IS GETTING HACKY. IN PRINCIPLE, I NEED TO DEFER SUMMATION OVER SOLUTION INTERVALS
+        # TILL AFTER I HAVE APPLIED THE LEFT HAND GAINS.
+
+        cyfull.cycompute_jhr(jh, r, jhr, 1, 1)
+
+        for ind in xrange(0, self.active_index, 1):
+            term = self.jones_terms[ind]
+            g_inv = np.empty_like(term.gains)
+            cyfull.cycompute_jhjinv(term.gains, g_inv, term.gflags, term.eps, term.flagbit)
+            cychain.cyapply_left_inv_jones(jhr, g_inv, term.t_int, term.f_int)
+
+        jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
+        
+        jhrint = np.zeros(jhrint_shape, dtype=jhr.dtype)
+
+        cychain.cysum_jhr_intervals(jhr, jhrint, self.t_int, self.f_int)
+
+        jhj = np.zeros(jhrint_shape, dtype=obser_arr.dtype)
+
+        cyfull.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
+
+        jhjinv = np.empty(jhrint_shape, dtype=obser_arr.dtype)
+
+        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, self.flagbit)
+
+        return jhrint, jhjinv, flag_count
 
     def compute_update(self, model_arr, obser_arr, iters):
         """
@@ -40,16 +94,58 @@ class JonesChain(MasterMachine):
         the terms of the update in order to update the gains. Should call the compute_js but is 
         very flexible, provided it ultimately updates the gains. 
         """
-        
-        self.active_term.compute_update(model_arr, obser_arr, iters)
+
+        # This function shouldn't mimic the underlying machine - the update step is fundamentally 
+        # different for the chain case. We need to take into account both a pre-compute and 
+        # post-compute step BEFORE updating the gains.
+
+        jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
+
+        update = np.empty_like(jhr)
+
+        cyfull.cycompute_update(jhr, jhjinv, update)
+
+        if model_arr.shape[0]>1:
+            update = self.gains + update
+
+        if iters % 2 == 0:
+            self.gains = 0.5*(self.gains + update)
+        else:
+            self.gains = update
+
+        return flag_count
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
-        This method should compute the residual at the the full time-frequency resolution of the
-        data. Should return the residual.
+        This function computes the residual. This is the difference between the
+        observed data, and the model data with the gains applied to it.
+
+        Args:
+            resid_arr (np.array): Array which will receive residuals.
+                              Shape is n_dir, n_tim, n_fre, n_ant, a_ant, n_cor, n_cor
+            obser_arr (np.array): Array containing the observed visibilities.
+                              Same shape
+            model_arr (np.array): Array containing the model visibilities.
+                              Same shape
+            gains (np.array): Array containing the current gain estimates.
+                              Shape of n_dir, n_timint, n_freint, n_ant, n_cor, n_cor
+                              Where n_timint = ceil(n_tim/t_int), n_fre = ceil(n_fre/t_int)
+
+        Returns:
+            residual (np.array): Array containing the result of computing D-GMG^H.
         """
-        
-        self.active_term.compute_residual(obser_arr, model_arr, resid_arr)
+
+        current_model_arr = model_arr.copy()
+
+        for ind in xrange(self.n_terms-1, -1, -1): 
+            term = self.jones_terms[ind]
+            term.apply_gains(current_model_arr)
+
+        resid_arr[:] = obser_arr
+
+        cychain.cycompute_residual(current_model_arr, resid_arr)
+
+        return resid_arr
 
     def apply_inv_gains(self, obser_arr, corr_vis=None):
         """
@@ -76,7 +172,7 @@ class JonesChain(MasterMachine):
         """
 
         if hasattr(self.active_term, 'num_valid_intervals'):
-            self.active_term.update_stats()
+            self.active_term.update_stats(flags, eqs_per_tf_slot)
         else:
             [term.update_stats(flags, eqs_per_tf_slot) for term in self.jones_terms]
    
@@ -114,6 +210,10 @@ class JonesChain(MasterMachine):
     @property
     def gains(self):
         return self.active_term.gains
+
+    @gains.setter
+    def gains(self, value):
+        self.active_term.gains = value
 
     @property
     def gflags(self):
@@ -161,4 +261,32 @@ class JonesChain(MasterMachine):
 
     @old_gains.setter
     def old_gains(self, value):
-        self.active_term.old_gains = self.active_term.gains
+        self.active_term.old_gains = value
+
+    @property
+    def dtype(self):
+        return self.active_term.dtype
+
+    @property
+    def ftype(self):
+        return self.active_term.ftype
+
+    # @property
+    # def active_term(self):
+    #     return self.jones_terms[self.active_index]
+
+    @property
+    def t_int(self):
+        return self.active_term.t_int
+
+    @property
+    def f_int(self):
+        return self.active_term.f_int
+
+    @property
+    def eps(self):
+        return self.active_term.eps
+
+    @property
+    def flagbit(self):
+        return self.active_term.flagbit

@@ -357,3 +357,70 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
                         g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
                         g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
                         g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]
+
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
+                  complex3264 [:,:,:,:,:,:] g,
+                  complex3264 [:,:,:,:,:,:] gh,
+                  int t_int,
+                  int f_int):
+
+    """
+    Apply the gains to the model array - this is useful in general, but is required for using an 
+    arbitrary chain of Jones matrices. NOTE: This will perform the computation in place - be wary of 
+    overwriting the original model data.  
+
+    THIS IS CURRENTLY WRONG - IN PLACE OPERATION IS NOT CORRECT - REQUIRES TESTING!!!
+    """
+
+    cdef int d, i, t, f, aa, ab, rr, rc = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
+    cdef complex3264 m00, m01, m10, m11
+
+    n_dir = m.shape[0]
+    n_mod = m.shape[1]
+    n_tim = m.shape[2]
+    n_fre = m.shape[3]
+    n_ant = m.shape[4]
+
+    for d in xrange(n_dir):
+        for i in xrange(n_mod):
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for aa in xrange(n_ant):
+                        for ab in xrange(n_ant):
+
+                            m00 = m[d,i,t,f,aa,ab,0,0]
+                            m10 = m[d,i,t,f,aa,ab,1,0]
+                            m01 = m[d,i,t,f,aa,ab,0,1]
+                            m11 = m[d,i,t,f,aa,ab,1,1]
+
+                            m[d,i,t,f,aa,ab,0,0] = \
+                                g[d,rr,rc,aa,0,0]*m00*gh[d,rr,rc,ab,0,0] + \
+                                g[d,rr,rc,aa,0,1]*m10*gh[d,rr,rc,ab,0,0] + \
+                                g[d,rr,rc,aa,0,0]*m01*gh[d,rr,rc,ab,1,0] + \
+                                g[d,rr,rc,aa,0,1]*m11*gh[d,rr,rc,ab,1,0]
+
+                            m[d,i,t,f,aa,ab,0,1] = \
+                                g[d,rr,rc,aa,0,0]*m00*gh[d,rr,rc,ab,0,1] + \
+                                g[d,rr,rc,aa,0,1]*m10*gh[d,rr,rc,ab,0,1] + \
+                                g[d,rr,rc,aa,0,0]*m01*gh[d,rr,rc,ab,1,1] + \
+                                g[d,rr,rc,aa,0,1]*m11*gh[d,rr,rc,ab,1,1]
+
+                            m[d,i,t,f,aa,ab,1,0] = \
+                                g[d,rr,rc,aa,1,0]*m00*gh[d,rr,rc,ab,0,0] + \
+                                g[d,rr,rc,aa,1,1]*m10*gh[d,rr,rc,ab,0,0] + \
+                                g[d,rr,rc,aa,1,0]*m01*gh[d,rr,rc,ab,1,0] + \
+                                g[d,rr,rc,aa,1,1]*m11*gh[d,rr,rc,ab,1,0]
+
+                            m[d,i,t,f,aa,ab,1,1] = \
+                                g[d,rr,rc,aa,1,0]*m00*gh[d,rr,rc,ab,0,1] + \
+                                g[d,rr,rc,aa,1,1]*m10*gh[d,rr,rc,ab,0,1] + \
+                                g[d,rr,rc,aa,1,0]*m01*gh[d,rr,rc,ab,1,1] + \
+                                g[d,rr,rc,aa,1,1]*m11*gh[d,rr,rc,ab,1,1]

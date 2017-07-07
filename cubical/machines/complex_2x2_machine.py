@@ -145,10 +145,15 @@ class Complex2x2Gains(PerIntervalGains):
 
         return corr_vis, flag_count
          
-    def apply_gains(self):
+    def apply_gains(self, model_arr):
         """
         This method should be able to apply the gains to an array at full time-frequency
         resolution. Should return the input array at full resolution after the application of the 
         gains.
         """
-        return
+
+        gh = self.gains.transpose(0,1,2,3,5,4).conj()
+
+        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+
+        return model_arr
