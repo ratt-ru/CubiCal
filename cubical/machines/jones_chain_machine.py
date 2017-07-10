@@ -19,11 +19,12 @@ class JonesChain(MasterMachine):
         # and do the relevant fiddling between parameter updates. 
         # TODO: Figure out parameter specification for this.
 
-        self.jones_terms = [Complex2x2Gains(model_arr, times, frequencies, options) for i in xrange(3)]
-        self.n_terms = len(self.jones_terms)
-        self.active_index = 1
-        self.active_term = self.jones_terms[self.active_index]
+        self.n_terms = options["sol"]["n-terms"]
+
+        self.jones_terms = [Complex2x2Gains(model_arr, times, frequencies, options["j{}".format(n)]) 
+                                                                 for n in xrange(1, self.n_terms+1)]
         
+        self.active_index = 0       
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -98,6 +99,9 @@ class JonesChain(MasterMachine):
         # This function shouldn't mimic the underlying machine - the update step is fundamentally 
         # different for the chain case. We need to take into account both a pre-compute and 
         # post-compute step BEFORE updating the gains.
+
+        if iters!=1 and iters%2==0:
+            self.active_index = (self.active_index + 1)%self.n_terms
 
         jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
@@ -271,9 +275,9 @@ class JonesChain(MasterMachine):
     def ftype(self):
         return self.active_term.ftype
 
-    # @property
-    # def active_term(self):
-    #     return self.jones_terms[self.active_index]
+    @property
+    def active_term(self):
+        return self.jones_terms[self.active_index]
 
     @property
     def t_int(self):

@@ -178,7 +178,10 @@ def main(debugging=False):
         else:
             solver_type = 'solve'
 
-        solver_opts = GD["sol"]
+        solver_opts = {"sol" : GD["sol"]}
+        
+        for term in xrange(1, GD["sol"]["n-terms"] + 1):
+            solver_opts["j{}".format(term)] = GD["j{}".format(term)]
 
         t0 = time()
 

@@ -46,11 +46,13 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
             Array containing the final residuals (if compute_residuals is set), else None.
     """
 
-    min_delta_g  = options["delta-g"]
-    maxiter      = options["max-iter"]
-    chi_tol      = options["delta-chi"]
-    chi_interval = options["chi-int"]
-    clip_after_iter = options["clip-after-iter"]
+    sol_opts = options["sol"]
+
+    min_delta_g  = sol_opts["delta-g"]
+    maxiter      = sol_opts["max-iter"]
+    chi_tol      = sol_opts["delta-chi"]
+    chi_interval = sol_opts["chi-int"]
+    clip_after_iter = sol_opts["clip-after-iter"]
 
     # Initialise stat object.
 
@@ -59,16 +61,16 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
     # Initialise the chosen gain machine.
 
-    if options['jones-type'] == 'complex-2x2':
-        gm = complex_2x2_machine.Complex2x2Gains(model_arr, chunk_ts, chunk_fs, options)
-    elif options['jones-type'] == 'phase-diag':
-        gm = phase_diag_machine.PhaseDiagGains(model_arr, chunk_ts, chunk_fs, options)
-    elif options['jones-type'] == 'robust-2x2':
-        gm = complex_W_2x2_machine.ComplexW2x2Gains(model_arr, options)
-    elif options['jones-type'] == 'jones-chain':
+    if sol_opts['jones-type'] == 'complex-2x2':
+        gm = complex_2x2_machine.Complex2x2Gains(model_arr, chunk_ts, chunk_fs, options["j1"])
+    elif sol_opts['jones-type'] == 'phase-diag':
+        gm = phase_diag_machine.PhaseDiagGains(model_arr, chunk_ts, chunk_fs, options["j1"])
+    elif sol_opts['jones-type'] == 'robust-2x2':
+        gm = complex_W_2x2_machine.ComplexW2x2Gains(model_arr, options["j1"])
+    elif sol_opts['jones-type'] == 'jones-chain':
         gm = jones_chain_machine.JonesChain(model_arr, chunk_ts, chunk_fs, options)
     else:
-        raise ValueError("unknown jones-type '{}'".format(options['jones-type']))
+        raise ValueError("unknown jones-type '{}'".format(sol_opts['jones-type']))
 
     iters = 0
     n_stall = 0
@@ -312,15 +314,15 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     if gm.num_valid_intervals:
 
         # Do we need to recompute the final residuals?
-        if (options['last-rites'] or compute_residuals) and not have_residuals:
+        if (sol_opts['last-rites'] or compute_residuals) and not have_residuals:
             gm.compute_residual(obser_arr, model_arr, resid_arr)
-            if options['last-rites']:
+            if sol_opts['last-rites']:
                 # Recompute chi-squared based on original noise statistics.
                 chi, mean_chi = compute_chisq(statfield='chi2')
 
         # Re-estimate the noise using the final residuals, if last rites are needed.
 
-        if options['last-rites']:
+        if sol_opts['last-rites']:
             stats.chunk.noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
                                         stats.estimate_noise(resid_arr, flags_arr, residuals=True)
             chi1, mean_chi1 = compute_chisq(statfield='chi2')
@@ -334,7 +336,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         message = ("{}: {} iters, conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2%}, "
                     "chi2 {:.4} -> {:.4}").format(*logvars)
 
-        if options['last-rites']:
+        if sol_opts['last-rites']:
 
             logvars = (float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
 

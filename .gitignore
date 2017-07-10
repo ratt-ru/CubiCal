@@ -50,3 +50,7 @@ cubical.egg-info/
 # Backup files #
 ################
 README.md~
+
+# Images #
+################
+*.png
