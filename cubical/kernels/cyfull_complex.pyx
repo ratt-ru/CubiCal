@@ -373,8 +373,6 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
     Apply the gains to the model array - this is useful in general, but is required for using an 
     arbitrary chain of Jones matrices. NOTE: This will perform the computation in place - be wary of 
     overwriting the original model data.  
-
-    THIS IS CURRENTLY WRONG - IN PLACE OPERATION IS NOT CORRECT - REQUIRES TESTING!!!
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0

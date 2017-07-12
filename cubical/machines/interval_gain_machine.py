@@ -49,6 +49,9 @@ class PerIntervalGains(MasterMachine):
         # of solutions which have converged.
 
         self.n_cnvgd = 0 
+        self.iters = 0
+        self.maxiter = options["max-iter"]
+        self.min_quorum = options["conv-quorum"]
 
         # Construct the appropriate shape for the gains.
 
@@ -59,6 +62,7 @@ class PerIntervalGains(MasterMachine):
         self.n_flagged = 0
         self.clip_lower = options["clip-low"]
         self.clip_upper = options["clip-high"]
+        self.clip_after = options["clip-after"]
         self.flag_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant]
         self.gflags = np.zeros(self.flag_shape, FL.dtype)
         self.flagbit = FL.ILLCOND
@@ -91,7 +95,7 @@ class PerIntervalGains(MasterMachine):
         self.gflags[:, missing_gains] = FL.MISSING
         self.missing_gain_fraction = missing_gains.sum() / float(missing_gains.size)
 
-    def flag_solutions(self, clip_gains=False):
+    def flag_solutions(self):
         """
         This method will do basic flagging of the gain solutions.
         """
@@ -116,7 +120,7 @@ class PerIntervalGains(MasterMachine):
 
         # Check for gain solutions which are out of bounds (based on clip thresholds).
 
-        if clip_gains and self.clip_upper or self.clip_lower:
+        if self.clip_after<self.iters and self.clip_upper or self.clip_lower:
             goob = np.zeros(gain_mags.shape, bool)
             if self.clip_upper:
                 goob = gain_mags.max(axis=(-1, -2)) > self.clip_upper
@@ -163,6 +167,10 @@ class PerIntervalGains(MasterMachine):
     def interval_and(self, arr, tdim_ind=0):
    
         return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1)
+
+    @property
+    def has_converged(self):
+        return self.n_cnvgd/self.n_sols > self.min_quorum or self.iters >= self.maxiter
 
 
 

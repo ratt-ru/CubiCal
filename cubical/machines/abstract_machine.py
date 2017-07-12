@@ -1,4 +1,4 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod, abstractproperty
 
 class MasterMachine(object):
     """
@@ -94,3 +94,10 @@ class MasterMachine(object):
 
     def precompute_attributes(self, *args, **kwargs):
         return
+
+    @abstractproperty
+    def has_converged(self):
+        """
+        This property must return the convergence status of the gain machine. 
+        """
+        return NotImplementedError

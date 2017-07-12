@@ -57,7 +57,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         return jhr, jhjinv, flag_count
 
-    def compute_update(self, model_arr, obser_arr, iters):
+    def compute_update(self, model_arr, obser_arr):
         """
         This function computes the update step of the GN/LM method. This is
         equivalent to the complete (((J^H)J)^-1)(J^H)R.
@@ -73,6 +73,7 @@ class Complex2x2Gains(PerIntervalGains):
                 (((J^H)J)^-1)(J^H)R
         """
 
+        self.iters = self.iters + 1
 
         jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
@@ -83,7 +84,7 @@ class Complex2x2Gains(PerIntervalGains):
         if model_arr.shape[0]>1:
             update = self.gains + update
 
-        if iters % 2 == 0:
+        if self.iters % 2 == 0:
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update

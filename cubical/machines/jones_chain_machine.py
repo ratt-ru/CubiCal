@@ -89,7 +89,7 @@ class JonesChain(MasterMachine):
 
         return jhrint, jhjinv, flag_count
 
-    def compute_update(self, model_arr, obser_arr, iters):
+    def compute_update(self, model_arr, obser_arr):
         """
         This method is expected to compute the parameter update. As such, it must fetch or compute 
         the terms of the update in order to update the gains. Should call the compute_js but is 
@@ -100,7 +100,18 @@ class JonesChain(MasterMachine):
         # different for the chain case. We need to take into account both a pre-compute and 
         # post-compute step BEFORE updating the gains.
 
-        if iters!=1 and iters%2==0:
+        # This is currently a bit dodgy - convergence is checked for the previous active term. Might
+        # be necessary to let the solver know about this bit of the chain. Alternatively, the solver
+        # level while loop should become an infinite loop which instead queries the active term to 
+        # determine whehther it has converged. I also need to deal with having one Jones term con-
+        # verge before the others. This does make querying convergence on the underlying machines 
+        # seem like a good choice. In this way, if a machine claims it is done, we can skip to the
+        # next element in the chain. This will also give us the flexibility to ask for a single term
+        # to be solved to completion before moving on to the next term in the chain. 
+
+        self.iters = self.iters + 1
+
+        if self.iters!=1 and self.iters%2==0:
             self.active_index = (self.active_index + 1)%self.n_terms
 
         jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
@@ -112,7 +123,7 @@ class JonesChain(MasterMachine):
         if model_arr.shape[0]>1:
             update = self.gains + update
 
-        if iters % 2 == 0:
+        if self.iters % 2 == 0:
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
@@ -188,12 +199,12 @@ class JonesChain(MasterMachine):
 
         self.active_term.update_conv_params(min_delta_g)
 
-    def flag_solutions(self, clip_gains=False):
+    def flag_solutions(self):
         """
         This method should do solution flagging based on the gains.
         """
 
-        self.active_term.flag_solutions(clip_gains)
+        self.active_term.flag_solutions()
 
     def propagate_gflags(self, flags):
         """
@@ -294,3 +305,23 @@ class JonesChain(MasterMachine):
     @property
     def flagbit(self):
         return self.active_term.flagbit
+
+    @property
+    def iters(self):
+        return self.active_term.iters
+
+    @iters.setter
+    def iters(self, value):
+        self.active_term.iters = value
+
+    @property
+    def maxiter(self):
+        return self.active_term.maxiter
+
+    @property
+    def min_quorum(self):
+        return self.active_term.min_quorum
+
+    @property
+    def has_converged(self):
+        return self.active_term.has_converged

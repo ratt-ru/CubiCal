@@ -17,7 +17,7 @@ def cyapply_left_inv_jones(complex3264 [:,:,:,:,:,:] jhr,
                            int f_int):
 
     """
-    This will apply the jones term to the left side of jhr.
+    This will apply an inverse jones term to the left side of jhr.
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -98,7 +98,7 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
 
     """
     This computes the residual, resulting in large matrix indexed by 
-    (direction, model, time, frequency, antenna, antenna, correclation, correlation).
+    (model, time, frequency, antenna, antenna, correlation, correlation).
     """
 
     cdef int d, i, t, f, aa, ab = 0

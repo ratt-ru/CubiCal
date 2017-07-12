@@ -14,7 +14,6 @@ from cubical.statistics import SolverStats
 
 log = logger.getLogger("solver")
 
-
 def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, label="", compute_residuals=None):
     """
     This function is the main body of the GN/LM method. It handles iterations
@@ -49,10 +48,9 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     sol_opts = options["sol"]
 
     min_delta_g  = sol_opts["delta-g"]
-    maxiter      = sol_opts["max-iter"]
     chi_tol      = sol_opts["delta-chi"]
     chi_interval = sol_opts["chi-int"]
-    clip_after_iter = sol_opts["clip-after-iter"]
+    stall_quorum = sol_opts["stall-quorum"]
 
     # Initialise stat object.
 
@@ -72,7 +70,6 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     else:
         raise ValueError("unknown jones-type '{}'".format(sol_opts['jones-type']))
 
-    iters = 0
     n_stall = 0
     n_tf_slots = gm.n_tim * gm.n_fre
 
@@ -219,7 +216,6 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         print>> log, ("{} Initial chi2 = {:.4}, {}/{} valid intervals (min {}/max {} eqs per int),"
                       " {}/{} valid antennas, noise {:.3}, flags: {}").format(*logvars)
 
-    min_quorum = 0.99
     n_gflags = (gm.gflags&~FL.MISSING != 0).sum()
 
     # Do any precomputation required by the current gain machine.
@@ -229,13 +225,11 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
 
-    while gm.n_cnvgd/gm.n_sols < min_quorum and n_stall/n_tf_slots < min_quorum and iters < maxiter:
+    while not(gm.has_converged) and n_stall/n_tf_slots < stall_quorum:
 
-        iters += 1
-
-        gm.compute_update(model_arr, obser_arr, iters)
+        gm.compute_update(model_arr, obser_arr)
         
-        gm.flag_solutions(iters>clip_after_iter)
+        gm.flag_solutions()
 
         # If the number of flags had increased, these need to be propagated out to the data. Note
         # that gain flags are per-direction whereas data flags are per visibility. Currently,
@@ -283,7 +277,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         # Check residual behaviour after a number of iterations equal to chi_interval. This is
         # expensive, so we do it as infrequently as possible.
 
-        if (iters % chi_interval) == 0:
+        if (gm.iters % chi_interval) == 0:
 
             old_chi, old_mean_chi = chi, mean_chi
 
@@ -301,7 +295,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                logvars = (label, iters, mean_chi, delta_chi, gm.max_update, gm.n_cnvgd/gm.n_sols,
+                logvars = (label, gm.iters, mean_chi, delta_chi, gm.max_update, gm.n_cnvgd/gm.n_sols,
                            n_stall/n_tf_slots, n_gflags/float(gm.gflags.size),
                            gm.missing_gain_fraction)
 
@@ -329,7 +323,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
         stats.chunk.chi2 = mean_chi
 
-        logvars = (label, iters, gm.n_cnvgd/gm.n_sols, n_stall/n_tf_slots, 
+        logvars = (label, gm.iters, gm.n_cnvgd/gm.n_sols, n_stall/n_tf_slots, 
                    n_gflags / float(gm.gflags.size), gm.missing_gain_fraction,
                    float(stats.chunk.init_chi2), mean_chi)
 
@@ -348,7 +342,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
     else:
         
-        logvars = (label, iters, n_gflags / float(gm.gflags.size), gm.missing_gain_fraction)
+        logvars = (label, gm.iters, n_gflags / float(gm.gflags.size), gm.missing_gain_fraction)
 
         print>>log, ModColor.Str("{} completely flagged after {} iters:"
                                  " g/fl {:.2%}, d/fl {:.2%}").format(*logvars)
@@ -356,7 +350,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         stats.chunk.chi2 = 0
         resid_arr = obser_arr
 
-    stats.chunk.iters = iters
+    stats.chunk.iters = gm.iters
     stats.chunk.num_converged = gm.n_cnvgd
     stats.chunk.num_stalled = n_stall
 
