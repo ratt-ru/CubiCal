@@ -225,7 +225,23 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
 
-    while not(gm.has_converged) and n_stall/n_tf_slots < stall_quorum:
+    while True:
+
+        gm.iters  += 1
+
+        if sol_opts['jones-type'] == 'jones-chain':
+            gm.update_term() 
+
+        if gm.has_converged or gm.has_stalled:
+            gm.iters -= 1
+            break
+
+        # This is currently an awkward necessity - if we have a chain of jones terms, we need to 
+        # make sure that the active term is correct and need to support some sort of decision making
+        # for testing convergence. I think doing the iter increment here might be the best choice,
+        # with an additional bit of functionality for Jones chains. I suspect I will still need to 
+        # change the while loop component to be compatible with the idea of partial convergence.
+        # Perhaps this should all be done right at the top of the function? 
 
         gm.compute_update(model_arr, obser_arr)
         
@@ -290,6 +306,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
             # Check for stalled solutions - solutions for which the residual is no longer improving.
 
             n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
+
+            gm.has_stalled = (n_stall/n_tf_slots >= stall_quorum)
 
             if log.verbosity() > 1:
 

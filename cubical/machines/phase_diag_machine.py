@@ -69,8 +69,6 @@ class PhaseDiagGains(PerIntervalGains):
             update (np.array): Array containing the result of computing
                 (((J^H)J)^-1)(J^H)R
         """
-            
-        self.iters = self.iters + 1
 
         jhr = self.compute_js(obser_arr, model_arr)
 

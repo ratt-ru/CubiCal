@@ -73,8 +73,6 @@ class Complex2x2Gains(PerIntervalGains):
                 (((J^H)J)^-1)(J^H)R
         """
 
-        self.iters = self.iters + 1
-
         jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
         update = np.empty_like(jhr)

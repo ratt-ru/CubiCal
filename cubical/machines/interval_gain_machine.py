@@ -48,6 +48,7 @@ class PerIntervalGains(MasterMachine):
         # Initialise attributes used in convergence testing. n_cnvgd is the number
         # of solutions which have converged.
 
+        self.has_stalled = False
         self.n_cnvgd = 0 
         self.iters = 0
         self.maxiter = options["max-iter"]

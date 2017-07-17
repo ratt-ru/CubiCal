@@ -109,11 +109,6 @@ class JonesChain(MasterMachine):
         # next element in the chain. This will also give us the flexibility to ask for a single term
         # to be solved to completion before moving on to the next term in the chain. 
 
-        self.iters = self.iters + 1
-
-        if self.iters!=1 and self.iters%2==0:
-            self.active_index = (self.active_index + 1)%self.n_terms
-
         jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
         update = np.empty_like(jhr)
@@ -129,6 +124,15 @@ class JonesChain(MasterMachine):
             self.gains = update
 
         return flag_count
+
+    def update_term(self):
+        """
+        This function will determine which element in the Jones chain is active. This can be 
+        expanded to support complex convergence functionality.
+        """
+
+        if (self.iters)%2==0:
+            self.active_index = (self.active_index + 1)%self.n_terms
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
@@ -325,3 +329,11 @@ class JonesChain(MasterMachine):
     @property
     def has_converged(self):
         return self.active_term.has_converged
+
+    @property
+    def has_stalled(self):
+        return self.active_term.has_stalled
+
+    @has_stalled.setter   
+    def has_stalled(self, value):
+        self.active_term.has_stalled = value
