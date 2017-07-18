@@ -225,23 +225,19 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
 
-    while True:
+    while not(gm.has_converged) and not(gm.has_stalled):
 
-        gm.iters  += 1
-
-        if sol_opts['jones-type'] == 'jones-chain':
-            gm.update_term() 
-
-        if gm.has_converged or gm.has_stalled:
-            gm.iters -= 1
-            break
+        gm.update_term()
 
         # This is currently an awkward necessity - if we have a chain of jones terms, we need to 
         # make sure that the active term is correct and need to support some sort of decision making
         # for testing convergence. I think doing the iter increment here might be the best choice,
         # with an additional bit of functionality for Jones chains. I suspect I will still need to 
         # change the while loop component to be compatible with the idea of partial convergence.
-        # Perhaps this should all be done right at the top of the function? 
+        # Perhaps this should all be done right at the top of the function? A better idea is to let
+        # individual machines be aware of their own stalled/converged status, and make those
+        # properties more complicated on the chain. This should allow for fairly easy substitution 
+        # between the various machines.
 
         gm.compute_update(model_arr, obser_arr)
         
@@ -341,11 +337,18 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
         stats.chunk.chi2 = mean_chi
 
-        logvars = (label, gm.iters, gm.n_cnvgd/gm.n_sols, n_stall/n_tf_slots, 
-                   n_gflags / float(gm.gflags.size), gm.missing_gain_fraction,
-                   float(stats.chunk.init_chi2), mean_chi)
+        if sol_opts['n-terms'] > 1:
+            termstring = ""
+            for term_num, term in enumerate(gm.jones_terms):
+                termstring += "J{} : {} iters, conv {:.2%} ".format(term_num, term.iters, 
+                                                                    term.n_cnvgd/term.n_sols) 
+        else:
+            termstring = "{} iters, conv {:.2%}".format(gm.iters, gm.n_cnvgd/gm.n_sols) 
 
-        message = ("{}: {} iters, conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2%}, "
+        logvars = (label, termstring, n_stall/n_tf_slots, n_gflags/float(gm.gflags.size), 
+                   gm.missing_gain_fraction, float(stats.chunk.init_chi2), mean_chi)
+
+        message = ("{}: {}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2%}, "
                     "chi2 {:.4} -> {:.4}").format(*logvars)
 
         if sol_opts['last-rites']:

@@ -125,15 +125,6 @@ class JonesChain(MasterMachine):
 
         return flag_count
 
-    def update_term(self):
-        """
-        This function will determine which element in the Jones chain is active. This can be 
-        expanded to support complex convergence functionality.
-        """
-
-        if (self.iters)%2==0:
-            self.active_index = (self.active_index + 1)%self.n_terms
-
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
         This function computes the residual. This is the difference between the
@@ -218,13 +209,28 @@ class JonesChain(MasterMachine):
         
         self.active_term.propagate_gflags(flags)
 
-    def attr_print(self, attr_name):
+    def update_term(self):
+        """
+        This function will update the iteration count on the relevant element of the Jones chain.
+        It will also handle updating the active Jones term. Ultimately, this should handle any
+        complicated convergence/term switching functionality.
+        """
 
-        print self.attr_list(attr_name)
+        def next_term():
+            if self.active_term.has_converged:
+                self.active_index = (self.active_index + 1)%self.n_terms
+                next_term()
+                return False
+            else:
+                return True
 
-    def attr_list(self, attr_name):
+        check_iters = next_term()
 
-        return [getattr(term, attr_name, None) for term in self.jones_terms]
+        if (self.iters%2) == 0 and self.iters != 0 and check_iters:
+            self.active_index = (self.active_index + 1)%self.n_terms
+            next_term()
+
+        self.iters += 1
 
     @property
     def gains(self):
@@ -328,11 +334,11 @@ class JonesChain(MasterMachine):
 
     @property
     def has_converged(self):
-        return self.active_term.has_converged
+        return np.all([term.has_converged for term in self.jones_terms])
 
     @property
     def has_stalled(self):
-        return self.active_term.has_stalled
+        return np.all([term.has_stalled for term in self.jones_terms])
 
     @has_stalled.setter   
     def has_stalled(self, value):

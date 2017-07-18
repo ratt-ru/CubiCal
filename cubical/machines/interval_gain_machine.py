@@ -48,7 +48,7 @@ class PerIntervalGains(MasterMachine):
         # Initialise attributes used in convergence testing. n_cnvgd is the number
         # of solutions which have converged.
 
-        self.has_stalled = False
+        self._has_stalled = False
         self.n_cnvgd = 0 
         self.iters = 0
         self.maxiter = options["max-iter"]
@@ -157,6 +157,10 @@ class PerIntervalGains(MasterMachine):
         self.max_update = np.max(diff_g)
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
 
+    def update_term(self):
+
+        self.iters += 1
+
     def unpack_intervals(self, arr, tdim_ind=0):
 
         return arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
@@ -172,6 +176,14 @@ class PerIntervalGains(MasterMachine):
     @property
     def has_converged(self):
         return self.n_cnvgd/self.n_sols > self.min_quorum or self.iters >= self.maxiter
+
+    @property
+    def has_stalled(self):
+        return self._has_stalled
+
+    @has_stalled.setter
+    def has_stalled(self, value):
+        self._has_stalled = value
 
 
 

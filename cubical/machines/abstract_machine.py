@@ -92,6 +92,14 @@ class MasterMachine(object):
         """
         return NotImplementedError
 
+    @abstractmethod
+    def update_term(self):
+        """
+        This method should update the current iteration as well as handling any more complicated
+        behaviour required for multiple Jones terms.
+        """
+        return NotImplementedError
+
     def precompute_attributes(self, *args, **kwargs):
         return
 
@@ -101,3 +109,4 @@ class MasterMachine(object):
         This property must return the convergence status of the gain machine. 
         """
         return NotImplementedError
+
