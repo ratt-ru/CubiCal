@@ -53,6 +53,9 @@ class PerIntervalGains(MasterMachine):
         self.iters = 0
         self.maxiter = options["max-iter"]
         self.min_quorum = options["conv-quorum"]
+        self.update_type = options["update-type"]
+        self.dd_term = options["dd-term"]
+        self.term_iters = options["term-iters"]
 
         # Construct the appropriate shape for the gains.
 

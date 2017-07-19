@@ -96,32 +96,28 @@ class JonesChain(MasterMachine):
         very flexible, provided it ultimately updates the gains. 
         """
 
-        # This function shouldn't mimic the underlying machine - the update step is fundamentally 
-        # different for the chain case. We need to take into account both a pre-compute and 
-        # post-compute step BEFORE updating the gains.
-
-        # This is currently a bit dodgy - convergence is checked for the previous active term. Might
-        # be necessary to let the solver know about this bit of the chain. Alternatively, the solver
-        # level while loop should become an infinite loop which instead queries the active term to 
-        # determine whehther it has converged. I also need to deal with having one Jones term con-
-        # verge before the others. This does make querying convergence on the underlying machines 
-        # seem like a good choice. In this way, if a machine claims it is done, we can skip to the
-        # next element in the chain. This will also give us the flexibility to ask for a single term
-        # to be solved to completion before moving on to the next term in the chain. 
-
-        jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
+        if not(self.dd_term) and model_arr.shape[0]>1:
+            jhr, jhjinv, flag_count = self.compute_js(obser_arr, np.sum(model_arr, axis=0, keepdims=True))
+        else:
+            jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
         update = np.empty_like(jhr)
 
         cyfull.cycompute_update(jhr, jhjinv, update)
 
-        if model_arr.shape[0]>1:
+        if self.dd_term and model_arr.shape[0]>1:
             update = self.gains + update
 
         if self.iters % 2 == 0:
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
+
+        if self.update_type == "diag":
+            self.gains[...,(0,1),(1,0)] = 0
+        elif self.update_type == "phase-diag":
+            self.gains[...,(0,1),(1,0)] = 0
+            self.gains[...,(0,1),(0,1)] = self.gains[...,(0,1),(0,1)]/np.abs(self.gains[...,(0,1),(0,1)])
 
         return flag_count
 
@@ -226,7 +222,7 @@ class JonesChain(MasterMachine):
 
         check_iters = next_term()
 
-        if (self.iters%2) == 0 and self.iters != 0 and check_iters:
+        if (self.iters%self.term_iters) == 0 and self.iters != 0 and check_iters:
             self.active_index = (self.active_index + 1)%self.n_terms
             next_term()
 
@@ -343,3 +339,15 @@ class JonesChain(MasterMachine):
     @has_stalled.setter   
     def has_stalled(self, value):
         self.active_term.has_stalled = value
+
+    @property
+    def update_type(self):
+        return self.active_term.update_type
+
+    @property
+    def dd_term(self):
+        return self.active_term.dd_term
+
+    @property
+    def term_iters(self):
+        return self.active_term.term_iters

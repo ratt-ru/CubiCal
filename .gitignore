@@ -54,3 +54,9 @@ README.md~
 # Images #
 ################
 *.png
+
+# Generated files #
+################
+cubical.last
+cubical.parset
+cubical.stats.pickle
