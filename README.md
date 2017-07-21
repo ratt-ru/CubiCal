@@ -20,8 +20,16 @@
 * Install with:
 
 ```
-   $ pip install CubiCal
+   $ pip install CubiCal/
 ```
+
+* Developers should install with:
+
+```
+   $ pip install -e CubiCal/
+```
+
+This will install CubiCal in development mode.
 
 * CubiCal can be run from command line using:
 
