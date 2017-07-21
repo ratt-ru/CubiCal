@@ -1,5 +1,7 @@
 # CubiCal
 
+![](https://d8a8a12b527478184df8-1fd282026c3ff4ae711d11ecc95a1d47.ssl.cf1.rackcdn.com//us/small-business/openforum/wp-content/uploads/2014/03/open-office-backlash-how-small-businesses-can-survive-in-a-noisier-world-cubicle-farm-embed-4.jpg)
+
 ## Requirements
 
 * numpy >= 1.11.3
@@ -35,7 +37,7 @@ This will install CubiCal in development mode.
 
 ```
    $ gocubical
-```	 
+```
 
 If this doesn't work, add path/to/your/virtual/env/bin/gocubical to your path.
 
