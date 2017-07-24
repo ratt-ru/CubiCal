@@ -148,14 +148,21 @@ def main(debugging=False):
         # enable verbosity
         logger.verbosity = GD["debug"]["verbose"]
 
-        ms = ReadModelHandler(GD["data"]["ms"], GD["data"]["column"], GD["model"]["lsm"], GD["model"]["column"],
+        ms = ReadModelHandler(GD["data"]["ms"], 
+                              GD["data"]["column"], 
+                              GD["model"]["lsm"], 
+                              GD["model"]["column"],
                               output_column=GD["out"]["column"],
                               taql=GD["sel"]["taql"],
-                              fid=GD["sel"]["field"], ddid=GD["sel"]["ddid"],
+                              fid=GD["sel"]["field"], 
+                              ddid=GD["sel"]["ddid"],
                               flagopts=GD["flags"],
                               precision=GD["sol"]["precision"],
                               ddes=GD["model"]["ddes"],
-                              weight_column=GD["weight"]["column"])
+                              weight_column=GD["weight"]["column"],
+                              beam_pattern=GD["model"]["beam-pattern"], 
+                              beam_l_axis=GD["model"]["beam-l-axis"], 
+                              beam_m_axis=GD["model"]["beam-m-axis"])
 
         data_handler.global_handler = ms
 
