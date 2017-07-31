@@ -10,7 +10,6 @@ import logging
 import montblanc.util as mbu
 import montblanc.impl.rime.tensorflow.ms.ms_manager as MS
 
-from montblanc.config import RimeSolverConfig as Options
 from montblanc.impl.rime.tensorflow.sources import (SourceProvider,
                                                     FitsBeamSourceProvider,
                                                     MSSourceProvider)
@@ -169,8 +168,7 @@ def simulate(src_provs, snk_provs):
 
     slvr_cfg = montblanc.rime_solver_cfg(
         mem_budget=2*1024*1024*1024,
-        dtype='double',
-        version=Options.VERSION_TENSORFLOW)
+        dtype='double')
 
     with montblanc.rime_solver(slvr_cfg) as slvr:
 
