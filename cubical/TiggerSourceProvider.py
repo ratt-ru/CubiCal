@@ -4,8 +4,6 @@ import numpy as np
 import montblanc
 import montblanc.util as mbu
 
-from montblanc.config import RimeSolverConfig as Options
-
 from montblanc.impl.rime.tensorflow.ms import MeasurementSetManager
 from montblanc.impl.rime.tensorflow.sources import (SourceProvider,
     FitsBeamSourceProvider,
