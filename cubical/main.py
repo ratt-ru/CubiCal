@@ -11,6 +11,10 @@ import cubical.data_handler as data_handler
 from cubical.data_handler import ReadModelHandler, Tile
 from cubical.tools import logger, parsets, myoptparse, shm_utils, ModColor
 
+from cubical.machines import complex_2x2_machine
+from cubical.machines import complex_W_2x2_machine
+from cubical.machines import phase_diag_machine
+
 log = logger.getLogger("main")
 
 import cubical.solver as solver
@@ -20,7 +24,8 @@ import cubical.flagging as flagging
 
 from cubical.statistics import SolverStats
 
-
+class UserInputError(Exception):
+    pass
 
 def init_options(parset, savefile=None):
     """
@@ -148,6 +153,9 @@ def main(debugging=False):
         # enable verbosity
         logger.verbosity = GD["debug"]["verbose"]
 
+        if not (GD["model"]["lsm"] or GD["model"]["column"]):
+            raise UserInputError("Neither --model-lsm nor --model-column was specified, nothing to calibrate on.")
+
         ms = ReadModelHandler(GD["data"]["ms"], 
                               GD["data"]["column"], 
                               GD["model"]["lsm"], 
@@ -179,6 +187,21 @@ def main(debugging=False):
             solver_type = 'solve'
 
         solver_opts = GD["sol"]
+
+        # create a gain machine factory
+        JONES_TYPES = { 'complex-2x2': complex_2x2_machine.Complex2x2Gains,
+                        'phase-diag': phase_diag_machine.PhaseDiagGains,
+                        'robust-2x2': complex_W_2x2_machine.ComplexW2x2Gains }
+
+        jones_class = solver_opts.get('jones-type')
+        if jones_class is None:
+            raise ValueError("unknown jones-type '{}'".format(solver_opts['jones-type']))
+
+        # create gain machine factory
+        # TODO: pass in proper antenna and correlation names, rather than number
+        solver.gm_factory = jones_class.create_factory(ms.uniq_times, ms.all_freqs,
+                                             range(ms.nants), range(ms.ncorr),
+                                             solver_opts)
 
         t0 = time()
 
@@ -292,7 +315,7 @@ def main(debugging=False):
     except Exception, exc:
         import traceback
         print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc()))
-        if enable_pdb:
+        if enable_pdb and not isinstance(exc, UserInputError):
             import pdb
             exc, value, tb = sys.exc_info()
             pdb.post_mortem(tb)  # more "modern"

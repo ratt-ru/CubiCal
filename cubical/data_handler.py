@@ -9,10 +9,18 @@ from cubical.tools import shared_dict
 import cubical.flagging as flagging
 from cubical.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
-from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
-from cubical.TiggerSourceProvider import TiggerSourceProvider
-from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
-#import better_exceptions
+
+# try to import montblanc: if not successful, remember error for later
+try:
+    import montblanc
+except:
+    montblanc = None
+    montblanc_import_error = sys.exc_info()
+
+if montblanc is not None:
+    from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
+    from cubical.TiggerSourceProvider import TiggerSourceProvider
+    from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("data_handler")
@@ -173,9 +181,9 @@ class Tile(object):
         data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
         print>> log(2), "  read UVW coordinates"
 
-        if self.handler.sm_name!="":
+        if self.handler.sm_name:
 
-            print>>log, "simulating model visibilities"
+            print>>log, "computing model visibilities"
 
             expected_nrows, sort_ind, row_identifiers = self.prep_data(data)
 
@@ -212,13 +220,14 @@ class Tile(object):
 
             data['movis'] = data['movis'][:,:,row_identifiers,:,:]
         
-        else:
-
-            print>>log, "sky model path unspecified or incorrect - no simulation."
-
+        elif self.handler.model_column:
+            print>>log, "--model-lsm not specified or incorrect. Using {} only".format(self.handler.model_column)
             model_shape = [1,1] + list(data['obvis'].shape)
             data.addSharedArray('movis', model_shape, self.handler.ctype)
-            
+
+        else:
+            raise RuntimeError("neither --model-lsm nor --model-column set")
+
         if self.handler.model_column:
             
             data['movis'][0,0,...] += self.handler.fetch(self.handler.model_column, self.first_row, 
@@ -536,7 +545,7 @@ class Tile(object):
         tchunk = self.times[rows]
         tchunk -= np.min(tchunk)
 
-        # Creates lists of selections to make subsequent selection from column and oout_arr easier.
+        # Creates lists of selections to make subsequent selection from column and out_arr easier.
 
         corr_slice = slice(None) if self.ncorr==4 else slice(None, None, 3)
 
@@ -621,6 +630,13 @@ class ReadModelHandler:
                  taql=None, fid=None, ddid=None, flagopts={}, precision="32", ddes=False, 
                  weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None):
 
+        if montblanc is None and sm_name:
+            print>>log, ModColor.Str("Error importing Montblanc: ")
+            for line in traceback.format_exception(*montblanc_import_error):
+                print>>log, "  "+ModColor.Str(line)
+            print>>log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
+            raise RuntimeError("Error importing Montblanc")
+
         self.ms_name = ms_name
         self.sm_name = sm_name
         self.beam_pattern = beam_pattern
@@ -691,6 +707,8 @@ class ReadModelHandler:
         self._ddid_spw = self._ddesctab.getcol("SPECTRAL_WINDOW_ID")
         # select frequencies corresponding to DDID range
         self._ddid_chanfreqs = np.array([self._spw_chanfreqs[self._ddid_spw[ddid]] for ddid in self._ddids ])
+
+        self.all_freqs = self._ddid_chanfreqs.ravel()
 
         print>>log,"%d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
                     self.nrows, len(self._ddids), self._ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
@@ -815,8 +833,20 @@ class ReadModelHandler:
         Args:
             tdim (int): Timeslots per chunk.
             fdim (int): Frequencies per chunk.
-            single_chunk_id:   If set, iterator will yield only the one specified chunk. Useful for debugging.
             chunk_by_scan:  If True, chunks will have boundaries by SCAN_NUMBER
+            min_chunks_per_tile: minimum number of chunks to be placed in a tile
+            
+        Initializes:
+            self.antea: ANTENNA1 column of MS subset
+            self.anteb: ANTENNA2 column of MS subset
+            self.ddid_col: DDID column of MS subset
+            self.time_col: TIME column of MS subset
+            self.times:    timeslot index number: same size as self.time_col
+            self.uniq_times: unique timestamps in self.time_col
+            
+            Tile.tile_list: list of tiles corresponding to the chunking strategy
+            
+            
         """
         self.antea = self.fetch("ANTENNA1")
         self.anteb = self.fetch("ANTENNA2")

@@ -63,6 +63,11 @@ class PerIntervalGains(MasterMachine):
         self.gflags = np.zeros(self.flag_shape, FL.dtype)
         self.flagbit = FL.ILLCOND
 
+    @staticmethod
+    def get_parameter_axes():
+        """Returns list of axes over which a parameter is defined"""
+        return [ "dir", "time", "freq", "ant1", "ant2", "corr1", "corr2" ]
+
     def update_stats(self, flags, eqs_per_tf_slot):
         """
         This method computes various stats and totals based on the current state of the flags.

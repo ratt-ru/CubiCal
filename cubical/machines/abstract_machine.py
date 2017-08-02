@@ -16,6 +16,17 @@ class MasterMachine(object):
     	self.times = times
     	self.freqs = freqs
 
+    @staticmethod
+    def get_parameter_axes():
+        """Returns list of axes over which a parameter is defined"""
+        return []
+
+    @abstractmethod
+    def get_solution_slice():
+        """Returns list of axes over which a parameter is defined"""
+        return []
+
+
     @abstractmethod
     def compute_js(self):
     	"""
@@ -79,3 +90,51 @@ class MasterMachine(object):
 
     def precompute_attributes(self, *args, **kwargs):
         return
+
+    @classmethod
+    def create_factory(machine_cls, times, freqs, antennas, correlations, options):
+        """This method creates a Machine Factory that will initialize the correct type of gain machine.
+
+        This must be called via the subclasses, so that the factory gets the proper class information
+        """
+        return machine_cls.Factory(machine_cls, times, freqs, antennas, correlations, options)
+
+    class Factory(object):
+        """
+        A Machine Factory class is created as a singleton: and it is responsible for creating and initializing 
+        individual gain machines for chunks of the solution space. The purpose of a factory is to hold "global" 
+        information for the solution overall (e.g. the overall time/frequency range etc.)
+        
+        TODO: directions must also be passed in
+        """
+
+        def __init__(self, machine_cls, times, freqs, antennas, correlations, options):
+            """
+            Initializes a factory
+
+            Args:
+                machine_cls: the class of the gain machine that will be created
+            """
+            self.machine_class = machine_cls
+            self.times, self.freqs, self.antennas, self.correlations, self.options = \
+                times, freqs, antennas, correlations, options
+            self.n_tim, self.n_fre, self.n_ant, self.n_cor = \
+                [len(x) for x in times, freqs, antennas, correlations]
+
+        def create(self, model_arr, times, freqs):
+            """
+            Creates a gain machine, given a model, and a time and frequency subset of the global solution space.
+
+            Args:
+                model_arr: model array, of shape (ndir,nmod,ntim,nfreq,nant,nant,ncorr,ncorr)
+                times: times
+                freqs: frequencies
+
+            Returns:
+                An instance of a gain machine
+            """
+            n_dir, n_mod = model_arr.shape[:2]
+            assert (model_arr.shape == (n_dir, n_mod, len(times), len(freqs),
+                                        self.n_ant, self.n_ant, self.n_cor, self.n_cor))
+            return self.machine_class(model_arr, times, freqs, self.options)
+

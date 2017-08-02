@@ -13,6 +13,9 @@ from cubical.statistics import SolverStats
 
 log = logger.getLogger("solver")
 
+# gain machine factory to use
+gm_factory = None
+
 
 def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, label="", compute_residuals=None):
     """
@@ -58,14 +61,9 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
     # Initialise the chosen gain machine.
 
-    if options['jones-type'] == 'complex-2x2':
-        gm = complex_2x2_machine.Complex2x2Gains(model_arr, chunk_ts, chunk_fs, options)
-    elif options['jones-type'] == 'phase-diag':
-        gm = phase_diag_machine.PhaseDiagGains(model_arr, chunk_ts, chunk_fs, options)
-    elif options['jones-type'] == 'robust-2x2':
-        gm = complex_W_2x2_machine.ComplexW2x2Gains(model_arr, options)
-    else:
-        raise ValueError("unknown jones-type '{}'".format(options['jones-type']))
+    if gm_factory is None:
+        raise RuntimeError("Gain machine factory has not been initialized")
+    gm = gm_factory.create(model_arr, chunk_ts, chunk_fs)
 
     iters = 0
     n_stall = 0
@@ -446,6 +444,7 @@ def run_solver(solver_type, itile, chunk_key, options):
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
 
         chunk_ts, chunk_fs = tile.get_chunk_tfs(chunk_key)
+        print chunk_key,chunk_ts,chunk_fs
 
         gm, corr_vis, stats = solver(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chunk_fs, tile, chunk_key, label, options)
 
