@@ -6,9 +6,9 @@ class PhaseDiagGains(PerIntervalGains):
     """
     This class implements the diagonal phase-only gain machine.
     """
-    def __init__(self, model_arr, chunk_ts, chunk_fs, options):
+    def __init__(self, label, model_arr, chunk_ts, chunk_fs, options):
         
-        PerIntervalGains.__init__(self, model_arr, chunk_ts, chunk_fs, options)
+        PerIntervalGains.__init__(self, label, model_arr, chunk_ts, chunk_fs, options)
 
         self.float_type = np.float64 if model_arr.dtype is np.complex128 else np.float32
 
@@ -17,6 +17,7 @@ class PhaseDiagGains(PerIntervalGains):
         self.gains = np.empty_like(self.phases, dtype=model_arr.dtype)
         self.gains[:] = np.eye(self.n_cor) 
         self.old_gains = self.gains.copy()
+
 
     def compute_js(self, obser_arr, model_arr):
         """

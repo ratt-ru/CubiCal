@@ -1,31 +1,32 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta, abstractmethod, abstractproperty
+
+from cubical.param_db import SimpleParameterDB
+import numpy as np
+
+from cubical.tools import logger, ModColor
+log = logger.getLogger("gain_machine")
+
 
 class MasterMachine(object):
     """
-    This is a base class for all solution machines. It is comletely generic and lays out the basic
+    This is a base class for all solution machines. It is completely generic and lays out the basic
     requirements for all machines.
+    
+    It also provides a Factory class that takes care of creating machines and interfacing to solution
+    tables on disk
     """
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, times, freqs):
+    def __init__(self, label, times, freqs, options):
     	"""
     	The init method of the overall abstract machine should know about the times and frequencies 
     	associated with its gains.
     	"""
+        self.label = label
     	self.times = times
     	self.freqs = freqs
-
-    @staticmethod
-    def get_parameter_axes():
-        """Returns list of axes over which a parameter is defined"""
-        return []
-
-    @abstractmethod
-    def get_solution_slice():
-        """Returns list of axes over which a parameter is defined"""
-        return []
-
+        self.options = options
 
     @abstractmethod
     def compute_js(self):
@@ -91,37 +92,137 @@ class MasterMachine(object):
     def precompute_attributes(self, *args, **kwargs):
         return
 
+    # dict of {label: (dtype,axes)} describing the types of solutions that this machine exports.
+    # If dtype is float or complex, global precision settings will be used
+    exportable_solutions = {}
+
+    # list of labels of solutions that this machine can import. This can be a subset of, or all of,
+    # exportable_solutions.keys()
+    importable_solutions = []
+
+    @abstractmethod
+    def get_solutions_grid(self):
+        """
+        Returns grid on which solutions are defined, e.g. {'time': vector, 'freq': vector}
+        Note that axes which are fully spanned (e.g. antenna, correlation) need not be present in the grid.
+        """
+        return NotImplementedError
+
+    @abstractmethod
+    def export_solutions(self):
+        """This method returns the solutions as a dict of {label: array, grid} elements.
+        Labels must be in exportable_solutions.
+        """
+        return NotImplementedError
+
+    @abstractmethod
+    def import_solutions(self, solutions_dict):
+        """This method loads the internal solutions from a dict of {label: array} elements
+        Labels must be in importable_solutions. Arrays conform to get_solutions_grid() results
+        """
+        return NotImplementedError
+
+
     @classmethod
-    def create_factory(machine_cls, times, freqs, antennas, correlations, options):
+    def create_factory(machine_cls, *args, **kw):
         """This method creates a Machine Factory that will initialize the correct type of gain machine.
 
         This must be called via the subclasses, so that the factory gets the proper class information
         """
-        return machine_cls.Factory(machine_cls, times, freqs, antennas, correlations, options)
+        return machine_cls.Factory(machine_cls, *args, **kw)
+
+
 
     class Factory(object):
         """
-        A Machine Factory class is created as a singleton: and it is responsible for creating and initializing 
+        A Machine Factory class is created as a singleton: it is responsible for creating and initializing 
         individual gain machines for chunks of the solution space. The purpose of a factory is to hold "global" 
         information for the solution overall (e.g. the overall time/frequency range etc.)
         
         TODO: directions must also be passed in
         """
 
-        def __init__(self, machine_cls, times, freqs, antennas, correlations, options):
+        def __init__(self, machine_cls, grid, double_precision, apply_only, global_options, solution_options):
             """
             Initializes a factory
 
             Args:
                 machine_cls: the class of the gain machine that will be created
+                
+                grid: the grid on which solutions are expected. Contains dict of 
+                'time', 'freq', 'ant', 'corr' vectors.
             """
+            self.global_options = global_options
+            self.options = solution_options
+            self.label = self.options['label']
             self.machine_class = machine_cls
-            self.times, self.freqs, self.antennas, self.correlations, self.options = \
-                times, freqs, antennas, correlations, options
+            self.apply_only = apply_only
+            self.grid = grid
             self.n_tim, self.n_fre, self.n_ant, self.n_cor = \
-                [len(x) for x in times, freqs, antennas, correlations]
+                [ len(grid.get(x)) for x in "time", "freq", "ant", "corr" ]
+            self._ctype = np.complex128 if double_precision else np.complex64
+            self._ftype = np.float64    if double_precision else np.float32
+            # initialize solution databases
+            self.init_solutions()
 
-        def create(self, model_arr, times, freqs):
+        def _make_filename(self, key):
+            filename = self.options[key]
+            try:
+                return filename.format(**self.global_options)
+            except Exception, exc:
+                print>> log,"{}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc())
+                print>>log,ModColor.Str("Error parsing {} filename '{}', see above".format(key, filename))
+                raise ValueError(filename)
+
+        def init_solutions(self):
+            """Initializes solution databases"""
+            # init solutions from database
+            filename = self._make_filename("load-from")
+            if filename:
+                self._init_sols = SimpleParameterDB.load(filename)
+                print>>log(0),"{} solutions will be initialized from {}".format(self.label, filename)
+            else:
+                self._init_sols = None
+            # create database to save to
+            filename = self._make_filename("save-to")
+            if not self.apply_only and filename:
+                self._save_sols = SimpleParameterDB.create(filename, backup=True)
+                for sol_label, (dtype, axes) in self.machine_class.exportable_solutions.iteritems():
+                    if dtype is float:
+                        dtype = self._ftype
+                    elif dtype is complex:
+                        dtype = self._ctype
+                    self._save_sols.define_param("{}:{}".format(self.label, sol_label), dtype, axes)
+                print>> log(0), "{} solutions will be saved to {}".format(self.label, filename)
+            else:
+                self._save_sols = None
+
+        def export_solutions(self, gm, subdict):
+            """Exports a slice of solutions from a gain machine into a shared dictionary"""
+            # populate grids subdictionary
+            subdict["{}:_grid".format(self.label)] = gm.get_solutions_grid()
+            # populate values subdictionary
+            for sol_label, value in gm.export_solutions().iteritems():
+                subdict["{}:{}".format(self.label, sol_label)] = value
+
+        def save_solutions(self, subdict):
+            """Saves a slice of the solutions from a dictionary to the database"""
+            if self._save_sols is not None:
+                # convert shared dict to regular dict for saving
+                sd = subdict["{}:_grid".format(self.label)]
+                grids = { key: sd[key] for key in sd.iterkeys() }
+                # add slices for all parameters
+                for name in subdict.iterkeys():
+                    if not name.endswith(":_grid"):
+                        self._save_sols.add_slice(name, subdict[name], grids)
+
+        def close(self):
+            if self._init_sols is not None:
+                self._init_sols.close()
+            if self._save_sols is not None:
+                self._save_sols.close()
+
+        def create_machine(self, data_arr, n_dir, n_mod, times, freqs):
             """
             Creates a gain machine, given a model, and a time and frequency subset of the global solution space.
 
@@ -133,8 +234,17 @@ class MasterMachine(object):
             Returns:
                 An instance of a gain machine
             """
-            n_dir, n_mod = model_arr.shape[:2]
-            assert (model_arr.shape == (n_dir, n_mod, len(times), len(freqs),
-                                        self.n_ant, self.n_ant, self.n_cor, self.n_cor))
-            return self.machine_class(model_arr, times, freqs, self.options)
+            gm = self.machine_class(self.label, data_arr, n_dir, n_mod, times, freqs, self.options)
+            if self._init_sols is not None:
+                sols = {}
+                grid = gm.get_solutions_grid()
+                # collect importable solutions from DB, interpolate
+                for sol_label in gm.importable_solutions:
+                    label = "{}:{}".format(self.label, sol_label)
+                    if label in self._init_sols:
+                        sols[sol_label] = self._init_sols.reinterpolate(label, grids=grid)
+                # if anything at all was found in DB, import
+                if sols:
+                    gm.import_solutions(sols)
+            return gm
 

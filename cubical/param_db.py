@@ -1,19 +1,19 @@
-import cPickle
+import cPickle, os, os.path
 import numpy as np
 import traceback
 from cubical.tools import logger, ModColor
-log = logger.getLogger("flagging")
+log = logger.getLogger("param_db", verbose=2)
 from collections import OrderedDict
-
+import scipy.interpolate
 
 class SimpleParameterDB(object):
     """
     This class implements a simple parameter database
     """
     @staticmethod
-    def create(filename, metadata=None):
+    def create(filename, metadata=None, backup=True):
         db = SimpleParameterDB()
-        db._create(filename, metadata)
+        db._create(filename, metadata, backup)
         return db
 
     @staticmethod
@@ -22,8 +22,7 @@ class SimpleParameterDB(object):
         db._load(filename)
         return db
 
-
-    def _create(self, filename, metadata=None):
+    def _create(self, filename, metadata=None, backup=True):
         """
         Creates a parameter database given by the filename, opens it in "create" mode
         
@@ -33,7 +32,9 @@ class SimpleParameterDB(object):
         """
         self.mode = "create"
         self.filename = filename
-        self._fobj = open(filename, 'w')
+        self.do_backup = backup
+        # we'll write to a temp file, and do a backup on successful closure
+        self._fobj = open(filename+".tmp", 'w')
         self._parmdescs = {}
         self._parmdims = {}
 
@@ -58,24 +59,23 @@ class SimpleParameterDB(object):
                         shape=[0]*len(axis_labels),  # shape starts empty and gets accumulated
                         axis_index=axis_index, empty=empty, metadata=metadata)
         self._parmdescs[name] = parmdesc
-        cPickle.dump(parmdesc, self._fobj, 2)
+        # we don't write it to DB yet -- write it in add_slice() rather
+        # this makes it easier to deal with I/O workers (all IO is done by one process)
 
-    def _update_parm_shape(self, parmdesc, shape, slices, grids):
+    def _update_parm_shape(self, parmdesc, shape, grids):
         """Internal method. Updates shape of each parameter axis based on the supplied shape and slice info"""
         dims = parmdesc['shape']
         for i, axis in enumerate(parmdesc['axis_labels']):
-            if axis in slices:
-                dims[i] = max(dims[i], slices[axis].stop)
-            elif dims[i] == 0:
-                dims[i] = shape[i]
-            elif dims[i] != shape[i]:
-                raise ValueError,"axis {[i]}({}) of length {} does not match previously defined shape {}".format(
-                    i, axis, shape[i], dims[i])
-            # update grids, if supplied
             if grids and axis in grids:
-                parmdesc['grids'].setdefault(axis, grids[axis])
+                parmdesc['grids'].setdefault(axis, set()).update(grids[axis])
+            else:
+                if dims[i] == 0:
+                    dims[i] = shape[i]
+                elif dims[i] != shape[i]:
+                    raise ValueError,"axis {[i]}({}) of length {} does not match previously defined shape {}".format(
+                        i, axis, shape[i], dims[i])
 
-    def add_slice(self, name, array, slices, grids):
+    def add_slice(self, name, array, grids):
         """
         Adds a slice of values for a parameter
         
@@ -89,29 +89,53 @@ class SimpleParameterDB(object):
         assert(self.mode is "create")
         parmdesc = self._parmdescs.get(name)
         assert(parmdesc is not None)
-        assert(all([axis in parmdesc['axis_index'] for axis in slices]))
-        self._update_parm_shape(parmdesc, array.shape, slices, grids)
+        self._update_parm_shape(parmdesc, array.shape, grids)
+        # dump parmdesc to DB the first time a slice shows up
+        if not parmdesc.get('written'):
+            cPickle.dump(parmdesc, self._fobj, 2)
+            parmdesc['written'] = True
         # dump to DB
-        item = dict(entry="slice", name=name, array=array, slices=slices, grids=grids)
+        item = dict(entry="slice", name=name, array=array, grids=grids)
         cPickle.dump(item, self._fobj, 2)
 
     def close(self):
         """
         Closes the database
         """
-        self._fobj.close()
-        self._fobj = None
+        if self._fobj:
+            self._fobj.close()
+            self._fobj = None
         # in create mode, update the descriptions file
         if self.mode is "create":
             self._save_desc()
+            if os.path.exists(self.filename):
+                if self.do_backup:
+                    backup_filename = os.path.join(os.path.dirname(self.filename),
+                                                  "~" + os.path.basename(self.filename))
+                    print>>log(0),"previous DB will be backed up as "+backup_filename
+                    if os.path.exists(backup_filename):
+                        print>> log(0), "  removing old backup " + backup_filename
+                        os.unlink(backup_filename)
+                    os.rename(self.filename, backup_filename)
+                else:
+                    os.unlink(self.filename)
+            os.rename(self.filename+".tmp", self.filename)
         self.mode = "closed"
 
     def _save_desc(self):
         """Helper function. Writes accumulated parameter descriptions to filename.desc"""
         for name, desc in self._parmdescs.iteritems():
-            print>> log(0), "dimensions of {} are {}".format(name, ','.join(map(str, desc['shape'])))
+            desc['grid_index'] = {}
+            for iaxis, axis in enumerate(desc['axis_labels']):
+                if axis in desc['grids']:
+                    desc['grids'][axis] = grid = sorted(desc['grids'][axis])
+                    desc['grid_index'][axis] = { x: i for i, x in enumerate(grid)}
+                    desc['shape'][desc['axis_index'][axis]] = len(grid)
+                else:
+                    desc['grids'][axis] = np.arange(desc['shape'][iaxis])
+            print>>log(0), "dimensions of {} are {}".format(name, ','.join(map(str, desc['shape'])))
         cPickle.dump(self._parmdescs, open(self.filename+".desc", 'w'), 2)
-        print>>log,"saved updated parameter descriptions to {}".format(self.filename+".desc")
+        print>>log(0),"saved updated parameter descriptions to {}".format(self.filename+".desc")
 
     def reload(self):
         """
@@ -126,13 +150,17 @@ class SimpleParameterDB(object):
         """
         self.mode = "load"
         self.filename = filename
+        self._fobj = None
         self._arrays = {}
+        self._interpolators = {}
         # try to read the desc file
+        descfile = filename + '.desc'
         try:
-            self._parmdescs = cPickle.load(open(filename + '.desc', 'r'))
+            self._parmdescs = cPickle.load(open(descfile, 'r'))
         except:
             traceback.print_exc()
-            print>> log(0), ModColor.Str("error loading dimensions from {} (see above), will try to re-generate".format(dimsfile))
+            print>> log(0), ModColor.Str("error loading dimensions from {} (see above), will try to re-generate".format(descfile))
+            self._parmdescs = {}
             with open(filename) as fobj:
                 while True:
                     try:
@@ -144,7 +172,7 @@ class SimpleParameterDB(object):
                     if itemtype == "parmdesc":
                         self._parmdescs[name] = item
                     elif itemtype == "slice":
-                        self._update_parm_shape(self._parmdescs[name], item['array'].shape, item['slices'], item['grids'])
+                        self._update_parm_shape(self._parmdescs[name], item['array'].shape, item['grids'])
             self._save_desc()
 
         # initialize arrays
@@ -166,10 +194,14 @@ class SimpleParameterDB(object):
                     if name is None or desc is None:
                         raise IOError, "{}: no parmdesc found for {}'".format(filename, name)
                     # form up slice operator to "paste" slice into array
-                    total_slice = [slice(None)]*len(desc['shape'])
-                    for axis, axis_slice in item['slices'].iteritems():
-                        total_slice[desc['axis_index'][axis]] = axis_slice
-                    array[total_slice] = item['array']
+                    total_slice = []
+                    for iaxis, axis in enumerate(desc['axis_labels']):
+                        if axis in item['grids']:
+                            grid_index = desc['grid_index'][axis]
+                            total_slice.append(np.array([grid_index[g] for g in item['grids'][axis]]))
+                        else:
+                            total_slice.append(np.arange(desc['shape'][iaxis]))
+                    array[np.ix_(*total_slice)] = item['array']
                 elif itemtype != "parmdesc":
                     raise IOError("{}: unknown item type '{}'".format(filename, itemtype))
 
@@ -178,6 +210,9 @@ class SimpleParameterDB(object):
         Returns names of all defined parameters
         """
         return self._parmdescs.keys()
+
+    def __contains__(self, name):
+        return name in self._parmdescs
 
     def get(self, name):
         """
@@ -191,6 +226,40 @@ class SimpleParameterDB(object):
         Returns description associated with the named parameter
         """
         return self._parmdescs[name]
+
+    def reinterpolate (self, name, grids, fill_value=1):
+        """
+        Interpolates named parameter onto the specified grid
+        
+        Args:
+            name: 
+            grids: dict of axes to be interpolated 
+
+        Returns:
+            Array of interpolated values
+
+        """
+        array = self._arrays[name]
+        desc = self._parmdescs[name]
+        axes = desc['axis_labels']
+        input_grids = desc['grids']
+        interpolator = self._interpolators.get(name)
+        if interpolator is None:
+            # make list of grid coordinates per axis
+            input_coords = [ input_grids[ax] for ax in axes ]
+            interpolator = self._interpolators[name] = \
+                scipy.interpolate.RegularGridInterpolator(input_coords, array,
+                         method='linear', bounds_error=False, fill_value=fill_value)
+            print>>log(0),"preparing to interpolate {} from {} grid".format(name,
+                            "x".join([ str(len(x)) for x in input_coords]))
+        # make list of output coordinates
+        output_coords = [ grids[ax] if ax in grids else input_grids[ax] for ax in axes ]
+        # make a meshgrid, massage into correct shape for interpolator
+        coords = np.array([x.ravel() for x in np.meshgrid(*output_coords)])
+        result = interpolator(coords.T).reshape([len(x) for x in output_coords])
+        print>>log(0),"  interpolated onto {} grid".format(
+                        "x".join([ str(len(x)) for x in output_coords]))
+        return result
 
 
 if __name__ == "__main__":

@@ -122,17 +122,18 @@ class Tile(object):
         # create dict of { chunk_label: rows, chan0, chan1 } for all chunks in this tile
 
         self._chunk_dict = OrderedDict()
+        self._chunk_indices = {}
         num_freq_chunks = len(self.handler.chunk_find)-1
         for rowchunk in self.rowchunks:
             for ifreq in range(num_freq_chunks):
-                label = "D{}T{}F{}".format(rowchunk.ddid, rowchunk.tchunk, ifreq)
-                key = rowchunk.tchunk, rowchunk.ddid*num_freq_chunks + ifreq
+                key = "D{}T{}F{}".format(rowchunk.ddid, rowchunk.tchunk, ifreq)
                 chan0, chan1 = self.handler.chunk_find[ifreq:ifreq + 2]
-                self._chunk_dict[key] = label, rowchunk, chan0, chan1
+                self._chunk_dict[key] = rowchunk, chan0, chan1
+                self._chunk_indices[key] = rowchunk.tchunk, rowchunk.ddid * num_freq_chunks + ifreq
 
         # copy various useful info from handler and make a simple list of unique ddids.
 
-        self.ddids = np.unique([i[1].ddid for i in self._chunk_dict.values()])
+        self.ddids = np.unique([rowchunk.ddid for rowchunk,_,_ in self._chunk_dict.itervalues()])
         self.ddid_col = self.handler.ddid_col[self.first_row:self.last_row+1]
         self.time_col = self.handler.time_col[self.first_row:self.last_row+1]
         self.antea = self.handler.antea[self.first_row:self.last_row+1]
@@ -143,22 +144,29 @@ class Tile(object):
         self.ncorr = self.handler.ncorr
         self.nchan = self.handler._nchans[0]
 
+    def get_chunk_indices(self, key):
+        return self._chunk_indices[key]
+
     def get_chunk_keys(self):
         return self._chunk_dict.iterkeys()
 
-    def get_chunk_label(self, key):
-        return self._chunk_dict[key][0]
-
     def get_chunk_tfs(self, key):
+        """
+        Returns timestamps and freqs for the given chunk, as well as two slice objects describing its
+        position in the global time/freq space
+        """
+        rowchunk, chan0, chan1 = self._chunk_dict[key]
+        timeslice = slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1)
+        return self.handler.uniq_times[timeslice], self.handler._chanfr[rowchunk.ddid, chan0:chan1], \
+               slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1), \
+               slice(rowchunk.ddid * self.handler.nfreq + chan0, rowchunk.ddid * self.handler.nfreq + chan1)
 
-        _, rowchunk, chan0, chan1 = self._chunk_dict[key]
-
-        return self.time_col[rowchunk.rows], self.handler._chanfr[rowchunk.ddid, chan0:chan1]
-
-    def load(self):
+    def load(self, load_model=True):
         """
         Fetches data from MS into tile data shared dict. Returns dict.
         This is meant to be called in the main or I/O process.
+        
+        If load_model is False, omits weights and model visibilities
         """
         
         # Create a shared dict for the data arrays.
@@ -181,70 +189,71 @@ class Tile(object):
         data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
         print>> log(2), "  read UVW coordinates"
 
-        if self.handler.sm_name:
+        if load_model:
+            if self.handler.sm_name:
 
-            print>>log, "computing model visibilities"
+                print>>log, "computing model visibilities"
 
-            expected_nrows, sort_ind, row_identifiers = self.prep_data(data)
+                expected_nrows, sort_ind, row_identifiers = self.prep_data(data)
 
-            srcs, snks = [], []
+                srcs, snks = [], []
 
-            measet_src = MSSourceProvider(self, data, sort_ind)
-            tigger_src = TiggerSourceProvider(self)
-            cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
+                measet_src = MSSourceProvider(self, data, sort_ind)
+                tigger_src = TiggerSourceProvider(self)
+                cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
 
-            srcs.append(measet_src)
-            srcs.append(cached_src)
+                srcs.append(measet_src)
+                srcs.append(cached_src)
 
-            if self.handler.beam_pattern:
-                arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
-                                                    self.handler.beam_l_axis,       
-                                                    self.handler.beam_m_axis)
-                srcs.append(arbeam_src)
+                if self.handler.beam_pattern:
+                    arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
+                                                        self.handler.beam_l_axis,
+                                                        self.handler.beam_m_axis)
+                    srcs.append(arbeam_src)
 
-            ndirs = tigger_src._nclus
-            model_shape = np.array([ndirs, 1, expected_nrows, self.nchan, self.ncorr])
+                ndirs = tigger_src._nclus
+                model_shape = np.array([ndirs, 1, expected_nrows, self.nchan, self.ncorr])
 
-            data.addSharedArray('movis', model_shape, self.handler.ctype)
+                data.addSharedArray('movis', model_shape, self.handler.ctype)
 
-            column_snk = ColumnSinkProvider(self, data, sort_ind)
+                column_snk = ColumnSinkProvider(self, data, sort_ind)
 
-            snks.append(column_snk)
+                snks.append(column_snk)
 
-            for direction in xrange(ndirs):
-                simulate(srcs, snks)
-                tigger_src.update_target()
-                column_snk._dir += 1
+                for direction in xrange(ndirs):
+                    simulate(srcs, snks)
+                    tigger_src.update_target()
+                    column_snk._dir += 1
 
-            self.unprep_data(data, nrows)
+                self.unprep_data(data, nrows)
 
-            data['movis'] = data['movis'][:,:,row_identifiers,:,:]
-        
-        elif self.handler.model_column:
-            print>>log, "--model-lsm not specified or incorrect. Using {} only".format(self.handler.model_column)
-            model_shape = [1,1] + list(data['obvis'].shape)
-            data.addSharedArray('movis', model_shape, self.handler.ctype)
+                data['movis'] = data['movis'][:,:,row_identifiers,:,:]
 
-        else:
-            raise RuntimeError("neither --model-lsm nor --model-column set")
+            elif self.handler.model_column:
+                print>>log, "no LSM specified, reading {} only".format(self.handler.model_column)
+                model_shape = [1,1] + list(data['obvis'].shape)
+                data.addSharedArray('movis', model_shape, self.handler.ctype)
 
-        if self.handler.model_column:
-            
-            data['movis'][0,0,...] += self.handler.fetch(self.handler.model_column, self.first_row, 
-                                                            nrows).astype(self.handler.ctype)
-            
-            print>> log(2), "  read " + self.handler.model_column
+            else:
+                raise RuntimeError("neither --model-lsm nor --model-column set")
+
+            if self.handler.model_column:
+
+                data['movis'][0,0,...] += self.handler.fetch(self.handler.model_column, self.first_row,
+                                                                nrows).astype(self.handler.ctype)
+
+                print>> log(2), "  read " + self.handler.model_column
+
+            if self.handler.weight_column:
+                weight = self.handler.fetch(self.handler.weight_column, self.first_row, nrows)
+                # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
+                if self.handler.weight_column == "WEIGHT":
+                    data['weigh'] = weight[:, np.newaxis, :].repeat(self.handler.nfreq, 1)
+                else:
+                    data['weigh'] = weight
+                print>> log(2), "  read weights from column {}".format(self.handler.weight_column)
 
         data.addSharedArray('covis', data['obvis'].shape, self.handler.ctype)
-
-        if self.handler.weight_column:
-            weight = self.handler.fetch(self.handler.weight_column, self.first_row, nrows)
-            # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
-            if self.handler.weight_column == "WEIGHT":
-                data['weigh'] = weight[:, np.newaxis, :].repeat(self.handler.nfreq, 1)
-            else:
-                data['weigh'] = weight
-            print>> log(2), "  read weights from column {}".format(self.handler.weight_column)
 
         # The following block of code deals with the various flagging operations and columns. The
         # aim is to correctly populate flag_arr from the various flag sources.
@@ -298,8 +307,8 @@ class Tile(object):
                 flag_arr[(self.bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
                 flag_arr[(self.bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
 
-        # Create a placeholder for the gains.
-        data.addSubdict("gains")
+        # Create a placeholder for the gain solutions
+        data.addSubdict("solutions")
 
         return data
 
@@ -393,7 +402,7 @@ class Tile(object):
 
     def get_chunk_cubes(self, key):
         """
-        Returns label, data, model, flags, weights cubes for the given chunk key.
+        Returns data, model, flags, weights cubes for the given chunk key.
 
         Shapes are as follows:
             data:       [Nmod, Ntime, Nfreq, Nant, Nant, 2, 2]
@@ -406,7 +415,7 @@ class Tile(object):
         """
         data = shared_dict.attach(self._data_dict_name)
 
-        label, rowchunk, freq0, freq1 = self._chunk_dict[key]
+        rowchunk, freq0, freq1 = self._chunk_dict[key]
 
         t_dim = self.handler.chunk_ntimes[rowchunk.tchunk]
         f_dim = freq1 - freq0
@@ -418,13 +427,16 @@ class Tile(object):
         flags = np.bitwise_or.reduce(flags, axis=-1)
         obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=6)
         obs_arr = obs_arr.reshape(list(obs_arr.shape[:-1]) + [2, 2])
-        mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=7)
-        mod_arr = mod_arr.reshape(list(mod_arr.shape[:-1]) + [2, 2])
+        if 'movis' in data:
+            mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=7)
+            mod_arr = mod_arr.reshape(list(mod_arr.shape[:-1]) + [2, 2])
+            # flag invalid model visibilities
+            flags[(~np.isfinite(mod_arr[0, 0, ...])).any(axis=(-2, -1))] |= FL.INVALID
+        else:
+            mod_arr = None
 
-        # flag invalid data or model
+        # flag invalid data
         flags[(~np.isfinite(obs_arr[0, ])).any(axis=(-2, -1))] |= FL.INVALID
-        flags[(~np.isfinite(mod_arr[0, 0, ...])).any(axis=(-2, -1))] |= FL.INVALID
-
         flagged = flags != 0
 
         if 'weigh' in data:
@@ -437,14 +449,15 @@ class Tile(object):
 
         # zero flagged entries in data and model
         obs_arr[0, flagged, :, :] = 0
-        mod_arr[0, 0, flagged, :, :] = 0
+        if mod_arr is not None:
+            mod_arr[0, 0, flagged, :, :] = 0
 
         return obs_arr, mod_arr, flags, wgt_arr
 
     def set_chunk_cubes(self, cube, flag_cube, key, column='covis'):
         """Copies a visibility cube, and an optional flag cube, back to tile column"""
         data = shared_dict.attach(self._data_dict_name)
-        label, rowchunk, freq0, freq1 = self._chunk_dict[key]
+        rowchunk, freq0, freq1 = self._chunk_dict[key]
         rows = rowchunk.rows
         freq_slice = slice(freq0, freq1)
         if cube is not None:
@@ -454,13 +467,20 @@ class Tile(object):
             data['updated'][1] = True
             self._cube_to_column(data['flags'], flag_cube, rows, freq_slice, flags=True)
 
-    def set_chunk_gains(self, gains, key):
-        """Copies chunk gains to tile"""
+    def create_solutions_chunk_dict(self, key):
+        """Creates a shared dict for the given chunk, to store gain solutions in.
+        Returns SharedDict object. This will contain a chunk_key field."""
         data = shared_dict.attach(self._data_dict_name)
-        label = self.get_chunk_label(key)
-        sd = data['gains'].addSubdict(label)
-        sd['gains'] = gains
-        sd['key'] = key
+        sd = data['solutions'].addSubdict(key)
+        return sd
+
+    def iterate_solution_chunks(self):
+        """Iterates over per-chunk solution dictionaries. Yields tuple of
+        subdict, timeslice, freqslice"""
+        data = shared_dict.attach(self._data_dict_name)
+        soldict = data['solutions']
+        for key in soldict.iterkeys():
+            yield soldict[key]
 
     def save(self, unlock=False):
         """
@@ -627,7 +647,7 @@ class Tile(object):
 class ReadModelHandler:
 
     def __init__(self, ms_name, data_column, sm_name, model_column, output_column=None,
-                 taql=None, fid=None, ddid=None, flagopts={}, precision="32", ddes=False, 
+                 taql=None, fid=None, ddid=None, flagopts={}, double_precision=False, ddes=False,
                  weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None):
 
         if montblanc is None and sm_name:
@@ -656,8 +676,8 @@ class ReadModelHandler:
         self._ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
         self._feedtab = pt.table(self.ms_name + "::FEED", ack=False)
 
-        self.ctype = np.complex128 if precision=="64" else np.complex64
-        self.ftype = np.float64 if precision=="64" else np.float32
+        self.ctype = np.complex128 if double_precision else np.complex64
+        self.ftype = np.float64 if double_precision else np.float32
         self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
         self.ncorr = self._poltab.getcol("NUM_CORR")[0]
         self.nants = self._anttab.nrows()
@@ -671,14 +691,16 @@ class ReadModelHandler:
         
         if np.any([pol in self._poltype for pol in ['L','l','R','r']]):
             self._poltype = "circular"
+            self.feeds = "rl"
         elif np.any([pol in self._poltype for pol in ['X','x','Y','y']]):
             self._poltype = "linear"
+            self.feeds = "xy"
         else:
             print>>log,"  unsupported feed type. Terminating."
             sys.exit()
 
         # print some info on MS layout
-        print>>log,"  detected {} feeds".format(self._poltype)
+        print>>log,"  detected {} ({}) feeds".format(self._poltype, self.feeds)
         print>>log,"  fields are "+", ".join(["{}{}: {}".format('*' if i==fid else "",i,name) for i, name in enumerate(self._fldtab.getcol("NAME"))])
         self._spw_chanfreqs = self._spwtab.getcol("CHAN_FREQ")  # nspw x nfreq array of frequencies
         print>>log,"  {} spectral windows of {} channels each ".format(*self._spw_chanfreqs.shape)
@@ -690,7 +712,7 @@ class ReadModelHandler:
         self.taql = self.build_taql(taql, fid, self._ddids)
 
         if self.taql:
-            print>> log, "Applying TAQL query: %s" % self.taql
+            print>> log, "  applying TAQL query: %s" % self.taql
             self.data = self.ms.query(self.taql)
         else:
             self.data = self.ms
@@ -702,7 +724,9 @@ class ReadModelHandler:
         if not self.nrows:
             raise ValueError("MS selection returns no rows")
 
-        self.ntime = len(np.unique(self.fetch("TIME")))
+        self.time_col = self.fetch("TIME")
+        self.uniq_times = np.unique(self.time_col)
+        self.ntime = len(self.uniq_times)
 
         self._ddid_spw = self._ddesctab.getcol("SPECTRAL_WINDOW_ID")
         # select frequencies corresponding to DDID range
@@ -710,9 +734,9 @@ class ReadModelHandler:
 
         self.all_freqs = self._ddid_chanfreqs.ravel()
 
-        print>>log,"%d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
+        print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
                     self.nrows, len(self._ddids), self._ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
-        print>>log,"DDID central frequencies are at {} GHz".format(
+        print>>log,"  DDID central frequencies are at {} GHz".format(
                     " ".join(["%.2f"%(self._ddid_chanfreqs[i][self.nfreq/2]*1e-9) for i in range(len(self._ddids))]))
         self.nddid = len(self._ddids)
 
@@ -860,7 +884,7 @@ class ReadModelHandler:
         self.times = np.empty_like(self.time_col, dtype=np.int32)
         for i, t in enumerate(self.uniq_times):
             self.times[self.time_col == t] = i
-        print>> log, "  built timeslot index"
+        print>> log, "  built timeslot index ({} unique timestamps)".format(len(self.uniq_times))
 
         self.chunk_tdim = tdim
         self.chunk_fdim = fdim
