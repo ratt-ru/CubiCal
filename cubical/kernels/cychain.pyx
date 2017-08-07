@@ -20,8 +20,8 @@ def cyapply_left_inv_jones(complex3264 [:,:,:,:,:,:] jhr,
     This will apply an inverse jones term to the left side of jhr.
     """
 
-    cdef int d, i, t, f, aa, ab, rr, rc = 0
-    cdef int n_dir, n_tim, n_fre, n_ant
+    cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
+    cdef int n_dir, n_tim, n_fre, n_ant, g_dir
     cdef complex3264 jhr00, jhr01, jhr10, jhr11
 
     n_dir = jhr.shape[0]
@@ -29,7 +29,10 @@ def cyapply_left_inv_jones(complex3264 [:,:,:,:,:,:] jhr,
     n_fre = jhr.shape[2]
     n_ant = jhr.shape[3]
 
+    g_dir = ginv.shape[0]
+
     for d in xrange(n_dir):
+        gd = d%g_dir
         for t in xrange(n_tim):
             rr = t/t_int
             for f in xrange(n_fre):
@@ -41,17 +44,17 @@ def cyapply_left_inv_jones(complex3264 [:,:,:,:,:,:] jhr,
                     jhr10 = jhr[d,t,f,aa,1,0]
                     jhr11 = jhr[d,t,f,aa,1,1]
 
-                    jhr[d,t,f,aa,0,0] = ginv[d,rr,rc,aa,0,0]*jhr00 + \
-                                        ginv[d,rr,rc,aa,0,1]*jhr10
+                    jhr[d,t,f,aa,0,0] = ginv[gd,rr,rc,aa,0,0]*jhr00 + \
+                                        ginv[gd,rr,rc,aa,0,1]*jhr10
 
-                    jhr[d,t,f,aa,0,1] = ginv[d,rr,rc,aa,0,0]*jhr01 + \
-                                        ginv[d,rr,rc,aa,0,1]*jhr11
+                    jhr[d,t,f,aa,0,1] = ginv[gd,rr,rc,aa,0,0]*jhr01 + \
+                                        ginv[gd,rr,rc,aa,0,1]*jhr11
 
-                    jhr[d,t,f,aa,1,0] = ginv[d,rr,rc,aa,1,0]*jhr00 + \
-                                        ginv[d,rr,rc,aa,1,1]*jhr10
+                    jhr[d,t,f,aa,1,0] = ginv[gd,rr,rc,aa,1,0]*jhr00 + \
+                                        ginv[gd,rr,rc,aa,1,1]*jhr10
 
-                    jhr[d,t,f,aa,1,1] = ginv[d,rr,rc,aa,1,0]*jhr01 + \
-                                        ginv[d,rr,rc,aa,1,1]*jhr11
+                    jhr[d,t,f,aa,1,1] = ginv[gd,rr,rc,aa,1,0]*jhr01 + \
+                                        ginv[gd,rr,rc,aa,1,1]*jhr11
 
 @cython.cdivision(True)
 @cython.wraparound(False)
