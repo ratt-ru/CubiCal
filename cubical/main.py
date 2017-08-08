@@ -173,7 +173,7 @@ def main(debugging=False):
         saving_data = True
         if GD["out"]["vis"] == "corrected":
             solver_type = 'solve-correct'
-        elif GD["out"]["vis"] == "residuals":
+        elif GD["out"]["vis"] == "residual":
             solver_type = 'solve-residual'
         else:
             solver_type = 'solve'

@@ -16,13 +16,19 @@ class JonesChain(MasterMachine):
 
         # This instantiates the number of complex 2x2 elements in our chain. Each element is a 
         # gain machine in its own right - the purpose of this machine is to manage these machines
-        # and do the relevant fiddling between parameter updates. 
-        # TODO: Figure out parameter specification for this.
+        # and do the relevant fiddling between parameter updates. When combining DD terms with
+        # DI terms, we need to be initialise the DI terms using only one direction - we do this with 
+        # slicing rather than summation as it is slightly faster. 
 
         self.n_terms = options["sol"]["n-terms"]
 
-        self.jones_terms = [Complex2x2Gains(model_arr, times, frequencies, options["j{}".format(n)]) 
-                                                                 for n in xrange(1, self.n_terms+1)]
+        self.jones_terms = []
+        for n in xrange(1, self.n_terms+1):
+            term_opts = options["j{}".format(n)]
+            if term_opts["dd-term"]:
+                self.jones_terms.append(Complex2x2Gains(model_arr, times, frequencies, term_opts))
+            else:
+                self.jones_terms.append(Complex2x2Gains(model_arr[0:1, ...], times, frequencies, term_opts))
         
         self.active_index = 0       
 
@@ -33,8 +39,6 @@ class JonesChain(MasterMachine):
         with that usage. Should support the use of both the true residual and the observed data. 
         """     
 
-        # NB: This may be misleading - we are technically getting the n_tint and n_fint sizes here.
-
         n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.gains.shape
 
         current_model_arr = model_arr.copy()
@@ -43,27 +47,26 @@ class JonesChain(MasterMachine):
             term = self.jones_terms[ind]
             term.apply_gains(current_model_arr)
 
+        if not self.dd_term and self.n_dir>1:
+            current_model_arr = np.sum(current_model_arr, axis=0, keepdims=True)
+
         jh = np.zeros_like(current_model_arr)
 
         for ind in xrange(self.active_index, -1, -1):
             term = self.jones_terms[ind]
             cyfull.cycompute_jh(current_model_arr, term.gains, jh, term.t_int, term.f_int)
+            # print np.allclose(self.alternate_jh(current_model_arr, term.gains, jh, term.t_int, term.f_int),jh)
             current_model_arr[:] = jh 
-        
-        jhr_shape = [n_dir, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
+
+        jhr_shape = [n_dir if self.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
 
         jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
 
-        # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
         if n_dir > 1:
             resid_arr = np.empty_like(obser_arr)
-            r = self.compute_residual(obser_arr, current_model_arr, resid_arr)
+            r = self.compute_residual(obser_arr, model_arr, resid_arr)
         else:
             r = obser_arr
-
-        # NEED TO STOP AND THINK HERE. IS IT WORTH WRITING A FULL SET OF CHAIN KERNELS? THE CURRENT
-        # APPROACH IS GETTING HACKY. IN PRINCIPLE, I NEED TO DEFER SUMMATION OVER SOLUTION INTERVALS
-        # TILL AFTER I HAVE APPLIED THE LEFT HAND GAINS.
 
         cyfull.cycompute_jhr(jh, r, jhr, 1, 1)
 
@@ -96,10 +99,12 @@ class JonesChain(MasterMachine):
         very flexible, provided it ultimately updates the gains. 
         """
 
-        if not(self.dd_term) and model_arr.shape[0]>1:
-            jhr, jhjinv, flag_count = self.compute_js(obser_arr, np.sum(model_arr, axis=0, keepdims=True))
-        else:
-            jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
+        # if not(self.dd_term) and model_arr.shape[0]>1:
+        #     jhr, jhjinv, flag_count = self.compute_js(obser_arr, np.sum(model_arr, axis=0, keepdims=True))
+        # else:
+        #     jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
+
+        jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
         update = np.empty_like(jhr)
 
@@ -108,7 +113,7 @@ class JonesChain(MasterMachine):
         if self.dd_term and model_arr.shape[0]>1:
             update = self.gains + update
 
-        if self.iters % 2 == 0:
+        if self.iters % 2 == 0 or self.dd_term:
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
@@ -118,6 +123,8 @@ class JonesChain(MasterMachine):
         elif self.update_type == "phase-diag":
             self.gains[...,(0,1),(1,0)] = 0
             self.gains[...,(0,1),(0,1)] = self.gains[...,(0,1),(0,1)]/np.abs(self.gains[...,(0,1),(0,1)])
+
+        # print self.gains[:,0,0,8,:]
 
         return flag_count
 
@@ -153,14 +160,27 @@ class JonesChain(MasterMachine):
 
         return resid_arr
 
-    def apply_inv_gains(self, obser_arr, corr_vis=None):
+    def apply_inv_gains(self, resid_vis, corr_vis=None):
         """
         This method should be able to apply the inverse of the gains to an array at full time-
         frequency resolution. Should return the input array at full resolution after the application
         of the inverse gains.
         """
 
-        self.active_term.apply_inv_gains(obser_arr, corr_vis)
+        if corr_vis is None:
+            corr_vis = np.empty_like(resid_vis)
+
+        for ind in xrange(self.n_terms):  
+            term = self.jones_terms[ind]
+
+            if term.dd_term:
+                break
+
+            term.apply_inv_gains(resid_vis, corr_vis)
+
+            resid_vis[:] = corr_vis[:]
+
+        return corr_vis
 
     def apply_gains(self):
         """
@@ -351,3 +371,45 @@ class JonesChain(MasterMachine):
     @property
     def term_iters(self):
         return self.active_term.term_iters
+
+
+    # def alternate_jh(self, model_arr, gains, blah, t_int, f_int):
+
+    #     n_dir, n_mod, n_t, n_f, n_ant, n_ant, n_cor, n_cor = model_arr.shape
+
+    #     jh = np.zeros_like(model_arr)
+
+    #     for d in xrange(n_dir):
+    #         rd = d%gains.shape[0]
+    #         print rd
+    #         for i in xrange(n_mod):
+    #             for t in xrange(n_t):
+    #                 rt = t//t_int
+    #                 for f in xrange(n_f):
+    #                     rf = f//f_int
+    #                     for aa in xrange(n_ant):
+    #                         for ab in xrange(n_ant):
+    #                             jh[d,i,t,f,aa,ab,:] = gains[rd,rt,rf,aa,:].dot(model_arr[d,i,t,f,aa,ab,:])
+
+    #     return jh
+
+    # def alternate_residual(self, obser_arr, model_arr, resid_arr):
+
+    #     n_dir, n_mod, n_t, n_f, n_ant, n_ant, n_cor, n_cor = model_arr.shape
+
+    #     m = model_arr.copy()
+
+    #     for ind in xrange(self.n_terms-1, -1, -1):
+    #         term = self.jones_terms[ind]
+    #         for d in xrange(n_dir):
+    #             rd = d%term.shape[0]
+    #             for i in xrange(n_mod):
+    #                 for t in xrange(n_t):
+    #                     rt = t//t_int
+    #                     for f in xrange(n_f):
+    #                         rf = f//f_int
+    #                         for aa in xrange(n_ant):
+    #                             for ab in xrange(n_ant):
+    #                                 m[d,i,t,f,aa,ab,:] = term.gains[rd,rt,rf,aa,:].dot(m[d,i,t,f,aa,ab,:]).dot(term.gains[rd,rt,rf,ab,:].T.conj())
+
+    #     return resid_arr - np.sum(m, axis=0, keepdims=True)

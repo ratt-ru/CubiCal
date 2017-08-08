@@ -175,7 +175,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         # Collapse chisq to chi-squared per time-frequency slot and overall chi-squared. norm_factor 
         # is computed as 1/eqs_per_tf_slot.
 
-        norm_factor = np.where(eqs_per_tf_slot>0, 1./eqs_per_tf_slot, 0)
+        norm_factor = np.zeros_like(eqs_per_tf_slot, dtype=resid_arr.real.dtype)
+        norm_factor[eqs_per_tf_slot>0] = 1./eqs_per_tf_slot[eqs_per_tf_slot>0]
 
         chisq_per_tf_slot = np.sum(chisq, axis=-1) * norm_factor 
 
@@ -243,6 +244,12 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         
         gm.flag_solutions()
 
+        if gm.dd_term:
+            gm.gains[np.where(gm.gflags==1)] = np.eye(2)
+
+        # In the DD case, it may be necessary to set flagged gains to zero during the loop, but
+        # set all flagged terms to identity before applying them.
+
         # If the number of flags had increased, these need to be propagated out to the data. Note
         # that gain flags are per-direction whereas data flags are per visibility. Currently,
         # everything is flagged if any direction is flagged.
@@ -250,10 +257,10 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         # We remove the FL.MISSING bit when propagating as this bit is pre-set for data flagged 
         # as PRIOR|MISSING. This prevents every PRIOR but not MISSING flag from becoming MISSING.
 
-        if gm.n_flagged > n_gflags:
+        if gm.n_flagged > n_gflags and not(gm.dd_term):
             
             n_gflags = gm.n_flagged
-            
+
             gm.propagate_gflags(flags_arr)
 
             # Recompute various stats now that the flags raised by the gain machine have been 
@@ -362,12 +369,19 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     # If everything has been flagged, no valid solutions are generated. 
 
     else:
+
+        if sol_opts['n-terms'] > 1:
+            termstring = ""
+            for term_num, term in enumerate(gm.jones_terms):
+                termstring += "J{} : {} iters, ".format(term_num, term.iters) 
+        else:
+            termstring = "{} iters, ".format(gm.iters) 
         
-        logvars = (label, gm.iters, n_gflags / float(gm.gflags.size), gm.missing_gain_fraction)
+        logvars = (label, termstring, n_gflags / float(gm.gflags.size), gm.missing_gain_fraction)
 
         print>>log, ModColor.Str("{} completely flagged after {} iters:"
                                  " g/fl {:.2%}, d/fl {:.2%}").format(*logvars)
-        
+
         stats.chunk.chi2 = 0
         resid_arr = obser_arr
 
@@ -458,6 +472,7 @@ SOLVERS = { 'solve':          solve_only,
 
 def run_solver(solver_type, itile, chunk_key, options):
     label = None
+    
     try:
         tile = Tile.tile_list[itile]
         label = tile.get_chunk_label(chunk_key)

@@ -78,8 +78,8 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
     This computes the the non-zero elements of jh. The result does have a model index.  
     """
 
-    cdef int d, i, t, f, aa, ab, rr, rc = 0
-    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
+    cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant, g_dir
 
     n_dir = m.shape[0]
     n_mod = m.shape[1]
@@ -87,7 +87,10 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
     n_fre = m.shape[3]
     n_ant = m.shape[4]
 
+    g_dir = g.shape[0]
+
     for d in xrange(n_dir):
+        gd = d%g_dir
         for i in xrange(n_mod):
             for t in xrange(n_tim):
                 rr = t/t_int
@@ -95,17 +98,17 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
                     rc = f/f_int
                     for aa in xrange(n_ant):
                         for ab in xrange(n_ant):
-                            jh[d,i,t,f,aa,ab,0,0] = g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
-                                                    g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]
+                            jh[d,i,t,f,aa,ab,0,0] = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
+                                                    g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]
 
-                            jh[d,i,t,f,aa,ab,0,1] = g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1] + \
-                                                    g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]
+                            jh[d,i,t,f,aa,ab,0,1] = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1] + \
+                                                    g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]
 
-                            jh[d,i,t,f,aa,ab,1,0] = g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0] + \
-                                                    g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]
+                            jh[d,i,t,f,aa,ab,1,0] = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0] + \
+                                                    g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]
 
-                            jh[d,i,t,f,aa,ab,1,1] = g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1] + \
-                                                    g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]
+                            jh[d,i,t,f,aa,ab,1,1] = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1] + \
+                                                    g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -375,8 +378,8 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
     overwriting the original model data.  
     """
 
-    cdef int d, i, t, f, aa, ab, rr, rc = 0
-    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
+    cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant, g_dir
     cdef complex3264 m00, m01, m10, m11
 
     n_dir = m.shape[0]
@@ -385,7 +388,10 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
     n_fre = m.shape[3]
     n_ant = m.shape[4]
 
+    g_dir = g.shape[0]
+
     for d in xrange(n_dir):
+        gd = d%g_dir
         for i in xrange(n_mod):
             for t in xrange(n_tim):
                 rr = t/t_int
@@ -400,25 +406,25 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
                             m11 = m[d,i,t,f,aa,ab,1,1]
 
                             m[d,i,t,f,aa,ab,0,0] = \
-                                g[d,rr,rc,aa,0,0]*m00*gh[d,rr,rc,ab,0,0] + \
-                                g[d,rr,rc,aa,0,1]*m10*gh[d,rr,rc,ab,0,0] + \
-                                g[d,rr,rc,aa,0,0]*m01*gh[d,rr,rc,ab,1,0] + \
-                                g[d,rr,rc,aa,0,1]*m11*gh[d,rr,rc,ab,1,0]
+                                g[gd,rr,rc,aa,0,0]*m00*gh[gd,rr,rc,ab,0,0] + \
+                                g[gd,rr,rc,aa,0,1]*m10*gh[gd,rr,rc,ab,0,0] + \
+                                g[gd,rr,rc,aa,0,0]*m01*gh[gd,rr,rc,ab,1,0] + \
+                                g[gd,rr,rc,aa,0,1]*m11*gh[gd,rr,rc,ab,1,0]
 
                             m[d,i,t,f,aa,ab,0,1] = \
-                                g[d,rr,rc,aa,0,0]*m00*gh[d,rr,rc,ab,0,1] + \
-                                g[d,rr,rc,aa,0,1]*m10*gh[d,rr,rc,ab,0,1] + \
-                                g[d,rr,rc,aa,0,0]*m01*gh[d,rr,rc,ab,1,1] + \
-                                g[d,rr,rc,aa,0,1]*m11*gh[d,rr,rc,ab,1,1]
+                                g[gd,rr,rc,aa,0,0]*m00*gh[gd,rr,rc,ab,0,1] + \
+                                g[gd,rr,rc,aa,0,1]*m10*gh[gd,rr,rc,ab,0,1] + \
+                                g[gd,rr,rc,aa,0,0]*m01*gh[gd,rr,rc,ab,1,1] + \
+                                g[gd,rr,rc,aa,0,1]*m11*gh[gd,rr,rc,ab,1,1]
 
                             m[d,i,t,f,aa,ab,1,0] = \
-                                g[d,rr,rc,aa,1,0]*m00*gh[d,rr,rc,ab,0,0] + \
-                                g[d,rr,rc,aa,1,1]*m10*gh[d,rr,rc,ab,0,0] + \
-                                g[d,rr,rc,aa,1,0]*m01*gh[d,rr,rc,ab,1,0] + \
-                                g[d,rr,rc,aa,1,1]*m11*gh[d,rr,rc,ab,1,0]
+                                g[gd,rr,rc,aa,1,0]*m00*gh[gd,rr,rc,ab,0,0] + \
+                                g[gd,rr,rc,aa,1,1]*m10*gh[gd,rr,rc,ab,0,0] + \
+                                g[gd,rr,rc,aa,1,0]*m01*gh[gd,rr,rc,ab,1,0] + \
+                                g[gd,rr,rc,aa,1,1]*m11*gh[gd,rr,rc,ab,1,0]
 
                             m[d,i,t,f,aa,ab,1,1] = \
-                                g[d,rr,rc,aa,1,0]*m00*gh[d,rr,rc,ab,0,1] + \
-                                g[d,rr,rc,aa,1,1]*m10*gh[d,rr,rc,ab,0,1] + \
-                                g[d,rr,rc,aa,1,0]*m01*gh[d,rr,rc,ab,1,1] + \
-                                g[d,rr,rc,aa,1,1]*m11*gh[d,rr,rc,ab,1,1]
+                                g[gd,rr,rc,aa,1,0]*m00*gh[gd,rr,rc,ab,0,1] + \
+                                g[gd,rr,rc,aa,1,1]*m10*gh[gd,rr,rc,ab,0,1] + \
+                                g[gd,rr,rc,aa,1,0]*m01*gh[gd,rr,rc,ab,1,1] + \
+                                g[gd,rr,rc,aa,1,1]*m11*gh[gd,rr,rc,ab,1,1]
