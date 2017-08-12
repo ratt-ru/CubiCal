@@ -133,7 +133,8 @@ def main(debugging=False):
             # save parset with all settings. We refuse to clobber a parset with itself
             # (so e.g. "gocubical test.parset --Section-Option foo" does not overwrite test.parset)
             save_parset = basename + ".parset"
-            if parset_file and os.path.exists(parset_file) and os.path.samefile(save_parset, parset_file):
+            if parset_file and os.path.exists(parset_file) and os.path.exists(save_parset) and \
+                    os.path.samefile(save_parset, parset_file):
                 basename = "~" + basename
                 save_parset = basename + ".parset"
                 print>> log, ModColor.Str(
@@ -293,7 +294,7 @@ def main(debugging=False):
                 io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, finalize=True)
                 cf.wait(io_futures.values())
 
-        print>>log, ModColor.Str("Time taken for solve: {} seconds".format(time() - t0), col="green")
+        print>>log, ModColor.Str("Time taken for {}: {} seconds".format(GD["out"]["mode"], time() - t0), col="green")
         ms.lock()
 
         if GD["out"]["mode"] == "solve":

@@ -17,7 +17,7 @@ class FL(object):
     dtype = np.uint16   # dtype used for flag arrays
 
     PRIOR    = dtype(1<<0)    # prior flags (i.e. from MS)
-    MISSING  = dtype(1<<1)    # missing data
+    MISSING  = dtype(1<<1)    # missing data or solution
     INVALID  = dtype(1<<2)    # invalid data or model (inf, nan)
     ILLCOND  = dtype(1<<3)    # solution ill conditioned - bad inverse
     NOCONV   = dtype(1<<4)    # no convergence

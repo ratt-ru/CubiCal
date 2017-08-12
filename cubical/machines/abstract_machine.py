@@ -1,7 +1,8 @@
 from abc import ABCMeta, abstractmethod, abstractproperty
 
-from cubical.param_db import SimpleParameterDB
+from cubical import param_db
 import numpy as np
+from numpy.ma import masked_array
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("gain_machine")
@@ -92,8 +93,9 @@ class MasterMachine(object):
     def precompute_attributes(self, *args, **kwargs):
         return
 
-    # dict of {label: (dtype,axes)} describing the types of solutions that this machine exports.
-    # If dtype is float or complex, global precision settings will be used
+    # dict of {label: (empty_value, axes)} describing the types of solutions that this machine exports.
+    # Axes is a list of axis labels.
+    # If empty_value is float or complex, global precision settings will be used
     exportable_solutions = {}
 
     # list of labels of solutions that this machine can import. This can be a subset of, or all of,
@@ -110,7 +112,8 @@ class MasterMachine(object):
 
     @abstractmethod
     def export_solutions(self):
-        """This method returns the solutions as a dict of {label: array, grid} elements.
+        """This method returns the solutions as a dict of {label: masked_array} elements.
+        Array are masked since solutions have flags on them.
         Labels must be in exportable_solutions.
         """
         return NotImplementedError
@@ -118,7 +121,9 @@ class MasterMachine(object):
     @abstractmethod
     def import_solutions(self, solutions_dict):
         """This method loads the internal solutions from a dict of {label: array} elements
-        Labels must be in importable_solutions. Arrays conform to get_solutions_grid() results
+        Labels must be in importable_solutions. 
+        Array are masked since solutions have flags on them.
+        Arrays shapes will conform to get_solutions_grid() results.
         """
         return NotImplementedError
 
@@ -179,42 +184,51 @@ class MasterMachine(object):
             # init solutions from database
             filename = self._make_filename("load-from")
             if filename:
-                self._init_sols = SimpleParameterDB.load(filename)
-                print>>log(0),"{} solutions will be initialized from {}".format(self.label, filename)
+                print>>log(0),ModColor.Str("{} solutions will be initialized from {}".format(self.label, filename), col="green")
+                self._init_sols = param_db.load(filename)
             else:
                 self._init_sols = None
             # create database to save to
             filename = self._make_filename("save-to")
             if not self.apply_only and filename:
-                self._save_sols = SimpleParameterDB.create(filename, backup=True)
-                for sol_label, (dtype, axes) in self.machine_class.exportable_solutions.iteritems():
-                    if dtype is float:
+                self._save_sols = param_db.create(filename, backup=True)
+                for sol_label, (empty_value, axes) in self.machine_class.exportable_solutions.iteritems():
+                    if type(empty_value) is float:
                         dtype = self._ftype
-                    elif dtype is complex:
+                    elif type(empty_value) is complex:
                         dtype = self._ctype
-                    self._save_sols.define_param("{}:{}".format(self.label, sol_label), dtype, axes)
+                    else:
+                        dtype = type(empty_value)
+                    self._save_sols.define_param("{}:{}".format(self.label, sol_label), dtype, axes,
+                                                 empty=empty_value,
+                                                 interpolation_axes=["time", "freq"])
                 print>> log(0), "{} solutions will be saved to {}".format(self.label, filename)
             else:
                 self._save_sols = None
 
         def export_solutions(self, gm, subdict):
             """Exports a slice of solutions from a gain machine into a shared dictionary"""
+            if self.apply_only:
+                return
             # populate grids subdictionary
-            subdict["{}:_grid".format(self.label)] = gm.get_solutions_grid()
+            subdict["{}:grid__".format(self.label)] = gm.get_solutions_grid()
             # populate values subdictionary
             for sol_label, value in gm.export_solutions().iteritems():
-                subdict["{}:{}".format(self.label, sol_label)] = value
+                subdict["{}:{}".format(self.label, sol_label)] = value.data
+                subdict["{}:{}:flags__".format(self.label, sol_label)] = value.mask
 
         def save_solutions(self, subdict):
             """Saves a slice of the solutions from a dictionary to the database"""
+            if self.apply_only:
+                return
             if self._save_sols is not None:
                 # convert shared dict to regular dict for saving
-                sd = subdict["{}:_grid".format(self.label)]
+                sd = subdict["{}:grid__".format(self.label)]
                 grids = { key: sd[key] for key in sd.iterkeys() }
                 # add slices for all parameters
                 for name in subdict.iterkeys():
-                    if not name.endswith(":_grid"):
-                        self._save_sols.add_slice(name, subdict[name], grids)
+                    if not name.endswith("__"):
+                        self._save_sols.add_chunk(name, masked_array(subdict[name], subdict[name+":flags__"]), grids)
 
         def close(self):
             if self._init_sols is not None:
@@ -242,7 +256,7 @@ class MasterMachine(object):
                 for sol_label in gm.importable_solutions:
                     label = "{}:{}".format(self.label, sol_label)
                     if label in self._init_sols:
-                        sols[sol_label] = self._init_sols.reinterpolate(label, grids=grid)
+                        sols[sol_label] = self._init_sols[label].reinterpolate(**grid)
                 # if anything at all was found in DB, import
                 if sols:
                     gm.import_solutions(sols)

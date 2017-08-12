@@ -3,6 +3,7 @@ import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
 from functools import partial
+from numpy.ma import masked_array
 
 class PerIntervalGains(MasterMachine):
     """
@@ -75,7 +76,7 @@ class PerIntervalGains(MasterMachine):
         self.flagbit = FL.ILLCOND
 
     # describe our solutions
-    exportable_solutions = { "gain": (complex, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
+    exportable_solutions = { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
     importable_solutions = [ "gain" ]
 
     def get_solutions_grid(self):
@@ -83,11 +84,16 @@ class PerIntervalGains(MasterMachine):
 
     def export_solutions(self):
         """This method saves the solutions to a dict"""
-        return dict(gain=self.gains)
+        # make a mask from gain flags by broadcasting the corr1/2 axes
+        mask = np.zeros_like(self.gains, bool)
+        mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
+        return dict(gain=masked_array(self.gains, mask))
 
     def import_solutions(self, soldict):
-        """This method loads solutions from an array"""
-        self.gains[:] = soldict["gain"]
+        """This method loads solutions from a dict"""
+        self.gains[:] = soldict["gain"].data
+        # collapse the corr1/2 axes
+        self.gflags[soldict["gain"].mask.any(axis=(-1,-2))] |= FL.MISSING
 
     def update_stats(self, flags, eqs_per_tf_slot):
         """
