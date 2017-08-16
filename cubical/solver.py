@@ -13,8 +13,11 @@ from cubical.statistics import SolverStats
 
 log = logger.getLogger("solver")
 
+# gain machine factory to use
+gm_factory = None
 
-def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, label="", compute_residuals=None):
+
+def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute_residuals=None):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
@@ -28,7 +31,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
             Integer array containing flagging data.
 
         options: 
-            Dictionary of various solver options (see [solution] section in DefaultParset.cfg)
+            Dictionary of various solver options (see o[solution] section in DefaultParset.cfg)
 
         chunk_key:         
             Tuple of (n_time_chunk, n_freq_chunk) which identifies the current chunk.
@@ -55,17 +58,6 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
 
     stats = SolverStats(obser_arr)
     stats.chunk.label = label
-
-    # Initialise the chosen gain machine.
-
-    if options['jones-type'] == 'complex-2x2':
-        gm = complex_2x2_machine.Complex2x2Gains(model_arr, chunk_ts, chunk_fs, options)
-    elif options['jones-type'] == 'phase-diag':
-        gm = phase_diag_machine.PhaseDiagGains(model_arr, chunk_ts, chunk_fs, options)
-    elif options['jones-type'] == 'robust-2x2':
-        gm = complex_W_2x2_machine.ComplexW2x2Gains(model_arr, options)
-    else:
-        raise ValueError("unknown jones-type '{}'".format(options['jones-type']))
 
     iters = 0
     n_stall = 0
@@ -173,7 +165,8 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         # Collapse chisq to chi-squared per time-frequency slot and overall chi-squared. norm_factor 
         # is computed as 1/eqs_per_tf_slot.
 
-        norm_factor = np.where(eqs_per_tf_slot>0, 1./eqs_per_tf_slot, 0)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            norm_factor = np.where(eqs_per_tf_slot>0, 1./eqs_per_tf_slot, 0)
 
         chisq_per_tf_slot = np.sum(chisq, axis=-1) * norm_factor 
 
@@ -365,22 +358,22 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
                     fstats += "{}:{}({:.2%}) ".format(flagname, n_flag, n_flag/float(gm.gflags.size))
         print>> log, ModColor.Str("{} solver flags raised: {}".format(label, fstats))
 
-    return gm, (resid_arr if compute_residuals else None), stats
+    return (resid_arr if compute_residuals else None), stats
 
 
 
-def solve_only(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chunk_fs, tile, key, label, options):
+def solve_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
     # apply weights
     if weight_arr is not None:
         obser_arr *= weight_arr[..., np.newaxis, np.newaxis]
         model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
 
-    gm, _, stats = _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, label=label)
+    _, stats = _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label=label)
 
-    return gm, None, stats
+    return None, stats
 
 
-def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chunk_fs, tile, key, label, options):
+def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the data, since we need to correct
     if weight_arr is not None:
@@ -389,16 +382,16 @@ def solve_and_correct(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chu
     else:
         obser_arr1 = obser_arr
 
-    gm, _, stats = _solve_gains(obser_arr1, model_arr, flags_arr, chunk_ts, chunk_fs, options, label=label)
+    _, stats = _solve_gains(gm, obser_arr1, model_arr, flags_arr, options, label=label)
 
     # for corrected visibilities, take the first data/model pair only
     corr_vis = np.zeros_like(obser_arr[0,...])
     gm.apply_inv_gains(obser_arr[0,...], corr_vis)
 
-    return gm, corr_vis, stats
+    return corr_vis, stats
 
 
-def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chunk_fs, tile, key, label, options):
+def solve_and_correct_res(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the model and data, since we need to correct the residuals
 
@@ -410,7 +403,7 @@ def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts,
 
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
-    gm, resid_vis, stats = _solve_gains(obser_arr1, model_arr1, flags_arr, chunk_ts, chunk_fs, options, label=label,
+    resid_vis, stats = _solve_gains(obser_arr1, model_arr1, flags_arr, options, label=label,
                                         compute_residuals=(weight_arr is None))
 
     # if we reweighted things above, then recompute the residuals, else use returned residuals
@@ -425,12 +418,23 @@ def solve_and_correct_res(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts,
     corr_vis = np.zeros_like(resid_vis)
     gm.apply_inv_gains(resid_vis, corr_vis)
 
-    return gm, corr_vis, stats
+    return corr_vis, stats
+
+
+def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
+    # for corrected visibilities, take the first data/model pair only
+    corr_vis = np.zeros_like(obser_arr[0,...])
+    gm.apply_inv_gains(obser_arr[0,...], corr_vis)
+
+    return corr_vis, None
+
+
 
 
 SOLVERS = { 'solve':          solve_only,
             'solve-correct':  solve_and_correct,
-            'solve-residual': solve_and_correct_res
+            'solve-residual': solve_and_correct_res,
+            'correct-only':   correct_only
         }
 
 
@@ -438,22 +442,38 @@ def run_solver(solver_type, itile, chunk_key, options):
     label = None
     try:
         tile = Tile.tile_list[itile]
-        label = tile.get_chunk_label(chunk_key)
+        label = chunk_key
         solver = SOLVERS[solver_type]
 
-        # invoke solver with cubes from tile
+        # get cunk data from tile
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
 
-        chunk_ts, chunk_fs = tile.get_chunk_tfs(chunk_key)
+        chunk_ts, chunk_fs, _, _ = tile.get_chunk_tfs(chunk_key)
 
-        gm, corr_vis, stats = solver(obser_arr, model_arr, flags_arr, weight_arr, chunk_ts, chunk_fs, tile, chunk_key, label, options)
+        if model_arr is not None:
+            n_dir, n_mod = model_arr.shape[:2]
+        else:
+            n_dir = n_mod = 1
+
+        # initialize the gain machine for this chunk
+
+        if gm_factory is None:
+            raise RuntimeError("Gain machine factory has not been initialized")
+
+        gm = gm_factory.create_machine(obser_arr, n_dir, n_mod, chunk_ts, chunk_fs)
+
+        # invoke solver with cubes from tile
+
+        corr_vis, stats = solver(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options)
 
         # copy results back into tile
 
-        tile.set_chunk_cubes(corr_vis, flags_arr if stats.chunk.num_sol_flagged else None, chunk_key)
+        tile.set_chunk_cubes(corr_vis, flags_arr if (stats and stats.chunk.num_sol_flagged) else None, chunk_key)
 
-        tile.set_chunk_gains(gm.gains, chunk_key)
+        # ask the gain machine to store its solutions in the shared dict
+
+        gm_factory.export_solutions(gm, tile.create_solutions_chunk_dict(chunk_key))
 
         return stats
     except Exception, exc:

@@ -39,8 +39,10 @@ class LoggerWriter:
         self.level = level
         self.verbose = verbose
 
-    def verbosity(self):
+    def verbosity(self, set_verb=None):
         global verbosity
+        if set_verb is not None:
+            self.verbose = set_verb
         return self.verbose if self.verbose is not None else verbosity
 
     def __call__(self, level):

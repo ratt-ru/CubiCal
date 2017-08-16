@@ -3,26 +3,37 @@ import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
 from functools import partial
+from numpy.ma import masked_array
 
 class PerIntervalGains(MasterMachine):
     """
     This is a base class for all gain solution machines that use solutions intervals.
     """
 
-    def __init__(self, model_arr, times, frequencies, options):
+    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, options):
         """
         Given a model array, initializes various sizes relevant to the gain solutions.
         """
 
-        MasterMachine.__init__(self, times, frequencies)
+        MasterMachine.__init__(self, label, times, frequencies, options)
 
-        self.n_dir, self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = model_arr.shape
+        self.n_dir, self.n_mod = ndir, nmod
+        _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
     
-        self.dtype = model_arr.dtype
-        self.ftype = model_arr.real.dtype
+        self.dtype = data_arr.dtype
+        self.ftype = data_arr.real.dtype
         self.t_int = options["time-int"]
         self.f_int = options["freq-int"]
         self.eps = 1e-6
+
+        # timestamp of start of each interval
+        t0, f0 = times[0::self.t_int], frequencies[0::self.f_int]
+        t1, f1 = t0.copy(), f0.copy()
+        # timestamp of end of each interval -- need to take care if not evenly divisible
+        t1[:-1] = times[self.t_int-1:-1:self.t_int]
+        f1[:-1] = frequencies[self.f_int-1:-1:self.f_int]
+        t1[-1], f1[-1] = times[-1], frequencies[-1]
+        self._grid = dict(time=(t0+t1)/2, freq=(f0+f1)/2)
 
         # n_tim and n_fre are the time and frequency dimensions of the data arrays.
         # n_timint and n_freint are the time and frequnecy dimensions of the gains.
@@ -53,6 +64,7 @@ class PerIntervalGains(MasterMachine):
         # Construct the appropriate shape for the gains.
 
         self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
+        self.gains = None
 
         # Construct flag array and populate flagging attributes.
 
@@ -62,6 +74,26 @@ class PerIntervalGains(MasterMachine):
         self.flag_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant]
         self.gflags = np.zeros(self.flag_shape, FL.dtype)
         self.flagbit = FL.ILLCOND
+
+    # describe our solutions
+    exportable_solutions = { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
+    importable_solutions = [ "gain" ]
+
+    def get_solutions_grid(self):
+        return self._grid
+
+    def export_solutions(self):
+        """This method saves the solutions to a dict"""
+        # make a mask from gain flags by broadcasting the corr1/2 axes
+        mask = np.zeros_like(self.gains, bool)
+        mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
+        return dict(gain=masked_array(self.gains, mask))
+
+    def import_solutions(self, soldict):
+        """This method loads solutions from a dict"""
+        self.gains[:] = soldict["gain"].data
+        # collapse the corr1/2 axes
+        self.gflags[soldict["gain"].mask.any(axis=(-1,-2))] |= FL.MISSING
 
     def update_stats(self, flags, eqs_per_tf_slot):
         """
