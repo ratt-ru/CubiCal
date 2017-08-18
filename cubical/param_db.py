@@ -487,6 +487,7 @@ class PickledDatabase(object):
         # we'll write to a temp file, and do a backup on successful closure
         self._fobj = open(filename+".tmp", 'w')
         cPickle.dump(self.metadata, self._fobj)
+        self._fobj.flush()
         self._parameters = {}
         self._parm_written = set()
         print>>log(0),"creating {} in {} mode".format(self.filename, self.metadata['mode'])
