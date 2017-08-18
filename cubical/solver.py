@@ -391,7 +391,7 @@ def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, op
     return corr_vis, stats
 
 
-def solve_and_correct_res(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
+def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the model and data, since we need to correct the residuals
 
@@ -403,7 +403,7 @@ def solve_and_correct_res(gm, obser_arr, model_arr, flags_arr, weight_arr, label
 
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
-    resid_vis, stats = _solve_gains(obser_arr1, model_arr1, flags_arr, options, label=label,
+    resid_vis, stats = _solve_gains(gm, obser_arr1, model_arr1, flags_arr, options, label=label,
                                         compute_residuals=(weight_arr is None))
 
     # if we reweighted things above, then recompute the residuals, else use returned residuals
@@ -428,14 +428,19 @@ def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options
 
     return corr_vis, None
 
+def correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
+    # for corrected visibilities, take the first data/model pair only
+    resid_vis = np.zeros_like(obser_arr[0:1,...])
+    gm.compute_residual(obser_arr[0:1, ...], model_arr[:, 0:1, ...], resid_vis)
+    corr_vis, _ = gm.apply_inv_gains(resid_vis[0,...])
+    return corr_vis, None
 
-
-
-SOLVERS = { 'solve':          solve_only,
-            'solve-correct':  solve_and_correct,
-            'solve-residual': solve_and_correct_res,
-            'correct-only':   correct_only
-        }
+SOLVERS = { 'so': solve_only,
+            'sc': solve_and_correct,
+            'sr': solve_and_correct_residuals,
+            'ac': correct_only,
+            'ar': correct_residuals
+            }
 
 
 def run_solver(solver_type, itile, chunk_key, options):
@@ -445,7 +450,7 @@ def run_solver(solver_type, itile, chunk_key, options):
         label = chunk_key
         solver = SOLVERS[solver_type]
 
-        # get cunk data from tile
+        # get chunk data from tile
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
 

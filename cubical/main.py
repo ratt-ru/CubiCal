@@ -158,6 +158,15 @@ def main(debugging=False):
             raise UserInputError("Neither --model-lsm nor --model-column was specified, nothing to calibrate on.")
         double_precision = GD["sol"]["precision"] == 64
 
+        solver_type = GD['out']['mode']
+        if solver_type not in solver.SOLVERS:
+            raise UserInputError("invalid setting --out-mode {}".format(solver_type))
+        print>>log,ModColor.Str("mode: {}".format(solver.SOLVERS[solver_type].__name__.replace("_", " ")), col='green')
+        # these flags are used below to tweak the behaviour of gain machines and model loaders
+        apply_only = solver.SOLVERS[solver_type] in (solver.correct_only, solver.correct_residuals)
+        load_model = solver.SOLVERS[solver_type] is not solver.correct_only   # no model needed in "correct only" mode
+
+
         ms = ReadModelHandler(GD["data"]["ms"], 
                               GD["data"]["column"], 
                               GD["model"]["lsm"], 
@@ -179,18 +188,6 @@ def main(debugging=False):
         print>>log, "defining chunks"
         ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
                         min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
-
-        if GD["out"]["mode"] == "solve":
-            if GD["out"]["vis"] == "corrected":
-                solver_type = 'solve-correct'
-            elif GD["out"]["vis"] == "residuals":
-                solver_type = 'solve-residual'
-            else:
-                solver_type = 'solve'
-            apply_only = False
-        else:
-            solver_type = 'correct-only'
-            apply_only = True
 
         solver_opts = GD["sol"]
 
@@ -231,7 +228,7 @@ def main(debugging=False):
 
         if debugging or ncpu <= 1 or single_chunk:
             for itile, tile in enumerate(Tile.tile_list):
-                tile.load(load_model=not apply_only)
+                tile.load(load_model=load_model)
                 for key in tile.get_chunk_keys():
                     if not single_chunk or key == single_chunk:
                         stats_dict[tile.get_chunk_indices(key)] = \
@@ -267,7 +264,7 @@ def main(debugging=False):
                     load_next = itile+1 if itile < len(Tile.tile_list)-1 else None
                     save_prev = itile-1 if itile else None
                     io_futures[itile+1] = io_executor.submit(_io_handler, load=load_next,
-                                                             save=save_prev, load_model=not apply_only)
+                                                             save=save_prev, load_model=load_model)
 
                     # submit solver jobs
                     solver_futures = {}
