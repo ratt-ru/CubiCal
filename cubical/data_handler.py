@@ -184,7 +184,10 @@ class Tile(object):
             measet_src = MSSourceProvider(self, data, sort_ind)
             tigger_src = TiggerSourceProvider(self)
             cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
+            # cached_ms_src = CachedSourceProvider(measet_src, cache_data_sources=["parallactic_angles"],
+            #                                      clear_start=False, clear_stop=False)
 
+            # srcs.append(cached_ms_src)
             srcs.append(measet_src)
             srcs.append(cached_src)
 
@@ -205,7 +208,7 @@ class Tile(object):
 
             for direction in xrange(ndirs):
                 print>>log, "simulating visbilities in direction {}.".format(direction)
-                simulate(srcs, snks)
+                simulate(srcs, snks, self.handler.mb_opts)
                 tigger_src.update_target()
                 column_snk._dir += 1
 
@@ -620,10 +623,12 @@ class ReadModelHandler:
 
     def __init__(self, ms_name, data_column, sm_name, model_column, output_column=None,
                  taql=None, fid=None, ddid=None, flagopts={}, precision="32", ddes=False, 
-                 weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None):
+                 weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
+                 mb_opts=None):
 
         self.ms_name = ms_name
         self.sm_name = sm_name
+        self.mb_opts = mb_opts
         self.beam_pattern = beam_pattern
         self.beam_l_axis = beam_l_axis
         self.beam_m_axis = beam_m_axis

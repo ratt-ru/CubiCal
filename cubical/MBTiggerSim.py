@@ -163,7 +163,7 @@ class ColumnSinkProvider(SinkProvider):
 
 _mb_slvr = None
 
-def simulate(src_provs, snk_provs):
+def simulate(src_provs, snk_provs, opts):
 
     global _mb_slvr
 
@@ -172,9 +172,10 @@ def simulate(src_provs, snk_provs):
 
     if _mb_slvr is None:
         slvr_cfg = montblanc.rime_solver_cfg(
-            mem_budget=4*1024*1024*1024,
-            dtype='double',
-            polarisation_type='circular')
+            mem_budget=opts["mem-budget"]*1024*1024,
+            dtype=opts["dtype"],
+            polarisation_type=opts["feed-type"],
+            device_type=opts["device-type"])
 
         _mb_slvr = montblanc.rime_solver(slvr_cfg)
         
