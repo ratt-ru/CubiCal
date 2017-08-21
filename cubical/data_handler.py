@@ -204,6 +204,7 @@ class Tile(object):
             snks.append(column_snk)
 
             for direction in xrange(ndirs):
+                print>>log, "simulating visbilities in direction {}.".format(direction)
                 simulate(srcs, snks)
                 tigger_src.update_target()
                 column_snk._dir += 1
@@ -640,8 +641,8 @@ class ReadModelHandler:
         self._ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
         self._feedtab = pt.table(self.ms_name + "::FEED", ack=False)
 
-        self.ctype = np.complex128 if precision=="64" else np.complex64
-        self.ftype = np.float64 if precision=="64" else np.float32
+        self.ctype = np.complex128 if precision==64 else np.complex64
+        self.ftype = np.float64 if precision==64 else np.float32
         self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
         self.ncorr = self._poltab.getcol("NUM_CORR")[0]
         self.nants = self._anttab.nrows()
