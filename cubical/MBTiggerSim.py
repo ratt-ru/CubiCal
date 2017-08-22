@@ -10,7 +10,6 @@ import logging
 import montblanc.util as mbu
 import montblanc.impl.rime.tensorflow.ms.ms_manager as MS
 
-from montblanc.config import RimeSolverConfig as Options
 from montblanc.impl.rime.tensorflow.sources import (SourceProvider,
                                                     FitsBeamSourceProvider,
                                                     MSSourceProvider)
@@ -112,7 +111,7 @@ class MSSourceProvider(SourceProvider):
         # Time and antenna extents
         (lt, ut), (la, ua) = context.dim_extents('ntime', 'na')
 
-        return mbu.parallactic_angles(self._times[self.sort_ind][lt:ut], self._handler._antpos[la:ua], 
+        return mbu.parallactic_angles(np.unique(self._times[self.sort_ind])[lt:ut], self._handler._antpos[la:ua], 
                     self._handler._phadir).reshape(context.shape).astype(context.dtype)
 
     def __enter__(self):
@@ -162,17 +161,33 @@ class ColumnSinkProvider(SinkProvider):
     def __str__(self):
         return self.__class__.__name__
 
+_mb_slvr = None
+
 def simulate(src_provs, snk_provs):
+
+    global _mb_slvr
 
     mblogger = logging.Logger.manager.loggerDict["montblanc"]
     mblogger.propagate = False
 
-    slvr_cfg = montblanc.rime_solver_cfg(
-        mem_budget=2*1024*1024*1024,
-        dtype='double',
-        version=Options.VERSION_TENSORFLOW)
+    if _mb_slvr is None:
+        slvr_cfg = montblanc.rime_solver_cfg(
+            mem_budget=4*1024*1024*1024,
+            dtype='double',
+            polarisation_type='circular')
 
-    with montblanc.rime_solver(slvr_cfg) as slvr:
+        _mb_slvr = montblanc.rime_solver(slvr_cfg)
+        
+    _mb_slvr.solve(source_providers=src_provs, sink_providers=snk_provs)
 
-        slvr.solve(source_providers=src_provs, sink_providers=snk_provs)
+import atexit
+
+def _shutdown_mb_slvr():
+    
+    global _mb_slvr
+    
+    if _mb_slvr is not None:
+        _mb_slvr.close()
+
+atexit.register(_shutdown_mb_slvr)
 

@@ -14,6 +14,7 @@ from cubical.tools import logger, parsets, myoptparse, shm_utils, ModColor
 from cubical.machines import complex_2x2_machine
 from cubical.machines import complex_W_2x2_machine
 from cubical.machines import phase_diag_machine
+from cubical.machines import jones_chain_machine
 
 log = logger.getLogger("main")
 
@@ -161,7 +162,8 @@ def main(debugging=False):
         solver_type = GD['out']['mode']
         if solver_type not in solver.SOLVERS:
             raise UserInputError("invalid setting --out-mode {}".format(solver_type))
-        print>>log,ModColor.Str("mode: {}".format(solver.SOLVERS[solver_type].__name__.replace("_", " ")), col='green')
+        solver_mode_name = solver.SOLVERS[solver_type].__name__.replace("_", " ")
+        print>>log,ModColor.Str("mode: {}".format(solver_mode_name), col='green')
         # these flags are used below to tweak the behaviour of gain machines and model loaders
         apply_only = solver.SOLVERS[solver_type] in (solver.correct_only, solver.correct_residuals)
         load_model = solver.SOLVERS[solver_type] is not solver.correct_only   # no model needed in "correct only" mode
@@ -185,28 +187,50 @@ def main(debugging=False):
 
         data_handler.global_handler = ms
 
+        # set up RIME
+
+        solver_opts = GD["sol"]
+        sol_jones = solver_opts["jones"]
+        if type(sol_jones) is str:
+            sol_jones = set(sol_jones.split(','))
+        jones_opts = []
+        # collect list of options from enabled Jones matrices
+        for i in xrange(1, 11):
+            section = "j{}".format(i)
+            if section in GD and GD[section]["label"] in sol_jones:
+                jones_opts.append(GD[section])
+                print>> log, ModColor.Str("Enabling {}-Jones".format(GD[section]["label"]), col="green")
+        if not len(jones_opts):
+            raise UserInputError("No Jones terms are enabled")
+
+        # With a single Jones term, create a gain machine factory based on its type.
+        # With multiple Jones, create a ChainMachine factory
+
+        if len(jones_opts) == 1:
+            jones_opts = jones_opts[0]
+            # create a gain machine factory
+            JONES_TYPES = {'complex-2x2': complex_2x2_machine.Complex2x2Gains,
+                           'phase-diag': phase_diag_machine.PhaseDiagGains,
+                           'robust-2x2': complex_W_2x2_machine.ComplexW2x2Gains}
+            jones_class = JONES_TYPES.get(jones_opts['type'])
+            if jones_class is None:
+                raise ValueError("unknown Jones type '{}'".format(jones_opts['type']))
+        else:
+            jones_class = jones_chain_machine.JonesChain
+
+        # create gain machine factory
+        # TODO: pass in proper antenna and correlation names, rather than number
+        solver.gm_factory = jones_class.create_factory(grid=dict(ant=range(ms.nants), corr=ms.feeds),
+                                                       apply_only=apply_only,
+                                                       double_precision=double_precision,
+                                                       global_options=GD, jones_options=jones_opts)
+
+        # set up chunking
+
         print>>log, "defining chunks"
         ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
                         min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
 
-        solver_opts = GD["sol"]
-
-        # create a gain machine factory
-        JONES_TYPES = { 'complex-2x2': complex_2x2_machine.Complex2x2Gains,
-                        'phase-diag': phase_diag_machine.PhaseDiagGains,
-                        'robust-2x2': complex_W_2x2_machine.ComplexW2x2Gains }
-
-        jones_class = JONES_TYPES.get(solver_opts['jones-type'])
-        if jones_class is None:
-            raise ValueError("unknown jones-type '{}'".format(solver_opts['jones-type']))
-
-        # create gain machine factory
-        # TODO: pass in proper antenna and correlation names, rather than number
-        solver.gm_factory = jones_class.create_factory(grid=dict(time=ms.uniq_times, freq=ms.all_freqs,
-                                                                 ant=range(ms.nants), corr=ms.feeds),
-                                                       apply_only=apply_only,
-                                                       double_precision=double_precision,
-                                                       global_options=GD, solution_options=solver_opts)
 
         t0 = time()
 
@@ -291,10 +315,10 @@ def main(debugging=False):
                 io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, finalize=True)
                 cf.wait(io_futures.values())
 
-        print>>log, ModColor.Str("Time taken for {}: {} seconds".format(GD["out"]["mode"], time() - t0), col="green")
+        print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
         ms.lock()
 
-        if GD["out"]["mode"] == "solve":
+        if not apply_only:
             # now summarize the stats
             print>> log, "computing summary statistics"
             st = SolverStats(stats_dict)

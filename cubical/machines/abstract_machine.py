@@ -1,12 +1,12 @@
 from abc import ABCMeta, abstractmethod, abstractproperty
-
-from cubical import param_db
 import numpy as np
 from numpy.ma import masked_array
+import traceback
+
+from cubical import param_db
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("gain_machine")
-
 
 class MasterMachine(object):
     """
@@ -19,12 +19,12 @@ class MasterMachine(object):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, label, times, freqs, options):
+    def __init__(self, label, data_arr, ndir, nmod, times, freqs, options):
     	"""
     	The init method of the overall abstract machine should know about the times and frequencies 
     	associated with its gains.
     	"""
-        self.label = label
+        self.jones_label = label
     	self.times = times
     	self.freqs = freqs
         self.options = options
@@ -90,31 +90,60 @@ class MasterMachine(object):
     	"""
         return NotImplementedError
 
-    def precompute_attributes(self, *args, **kwargs):
-        return
-
-    # dict of {label: (empty_value, axes)} describing the types of solutions that this machine exports.
-    # Axes is a list of axis labels.
-    # If empty_value is float or complex, global precision settings will be used
-    exportable_solutions = {}
-
-    # list of labels of solutions that this machine can import. This can be a subset of, or all of,
-    # exportable_solutions.keys()
-    importable_solutions = []
-
     @abstractmethod
-    def get_solutions_grid(self):
+    def flag_solutions(self):
         """
-        Returns grid on which solutions are defined, e.g. {'time': vector, 'freq': vector}
-        Note that axes which are fully spanned (e.g. antenna, correlation) need not be present in the grid.
+        This method should do solution flagging based on the gains.
         """
         return NotImplementedError
 
     @abstractmethod
+    def propagate_gflags(self):
+        """
+        This method should propagate the flags raised by the gain machine back into the data.
+        This is necessary as the gain flags may not have the same shape as the data.
+        """
+        return NotImplementedError
+
+    @abstractmethod
+    def update_term(self):
+        """
+        This method should update the current iteration as well as handling any more complicated
+        behaviour required for multiple Jones terms.
+        """
+        return NotImplementedError
+
+    def precompute_attributes(self, *args, **kwargs):
+        return
+
+    @abstractproperty
+    def has_converged(self):
+        """
+        This property must return the convergence status of the gain machine. 
+        """
+        return NotImplementedError
+
+
+    # Returns dict of {label: (empty_value, axes_list)} describing the types of solutions that
+    # this machine exports. Axes is a list of axis labels.
+    # Static method, as it is called before any GM is created. Hence jones_label is passed in explicitly
+    # If empty_value is float or complex, global precision settings will be used.
+    @staticmethod
+    def exportable_solutions(jones_label):
+        return {}
+
+    # Returns dict of solutions that this machine can import, as {label: grid_dict}
+    # Called when a machine has been created (so grids are available)
+    def importable_solutions(self):
+        return {}
+
+    @abstractmethod
     def export_solutions(self):
-        """This method returns the solutions as a dict of {label: masked_array} elements.
+        """This method returns the solutions as a dict of {label: masked_array, grid} elements.
         Array are masked since solutions have flags on them.
         Labels must be in exportable_solutions.
+        Grid is a dict, defining axes on which solutions are given, e.g. {'time': vector, 'freq': vector}
+        Note that axes which are fully spanned (e.g. antenna, correlation) need not be present in the grid.
         """
         return NotImplementedError
 
@@ -147,31 +176,50 @@ class MasterMachine(object):
         TODO: directions must also be passed in
         """
 
-        def __init__(self, machine_cls, grid, double_precision, apply_only, global_options, solution_options):
+        def __init__(self, machine_cls, grid, double_precision, apply_only, global_options, jones_options, jones_label=None):
             """
             Initializes a factory
 
             Args:
                 machine_cls: the class of the gain machine that will be created
                 
-                grid: the grid on which solutions are expected. Contains dict of 
-                'time', 'freq', 'ant', 'corr' vectors.
+                grid: the grid on which solutions are expected, for axes that are already known (antennas, correlations)
+                  A dictianary of {axis_name:values_vector}. time/freq need not be supplied, as it is filled in chunk by chunk.
+                  
+                double_precision: if True, gain machines will use 64-bit float arithmetic
+                
+                apply_only: if True, solutions are only applied, not solved for
+                
+                global_options: dict of global options for CubiCal (GD)
+                
+                jones_options: dict of Jones term options for the specific Jones term
             """
             self.global_options = global_options
-            self.options = solution_options
-            self.label = self.options['label']
+            self.jones_options = jones_options
+            self.jones_label = jones_label or self.jones_options['label']
             self.machine_class = machine_cls
             self.apply_only = apply_only
             self.grid = grid
-            self.n_tim, self.n_fre, self.n_ant, self.n_cor = \
-                [ len(grid.get(x)) for x in "time", "freq", "ant", "corr" ]
             self._ctype = np.complex128 if double_precision else np.complex64
             self._ftype = np.float64    if double_precision else np.float32
+            # dict of jones label -> param database object to init from
+            self._init_sols = {}
+            # dict of jones label -> param database object to save to. Multiple jones labels
+            # may share the same DB (_save_sols_byname holds a unique dict)
+            self._save_sols = {}
+            # dict of filename -> unique param database object.
+            self._save_sols_byname = {}
             # initialize solution databases
             self.init_solutions()
 
-        def _make_filename(self, key):
-            filename = self.options[key]
+        def init_solutions(self):
+            """Internal method. Initializes solution databases. Note that this is reimplemented in JonesChain."""
+            self._init_solutions(self.jones_label, self._make_filename(self.jones_options["load-from"]),
+                                 not self.apply_only and self.jones_options["solvable"] and self._make_filename(self.jones_options["save-to"]),
+                                 self.machine_class.exportable_solutions(self.jones_label))
+
+        def _make_filename(self, filename):
+            """Helper method: expands full filename from templated interpolation string"""
             try:
                 return filename.format(**self.global_options)
             except Exception, exc:
@@ -179,62 +227,59 @@ class MasterMachine(object):
                 print>>log,ModColor.Str("Error parsing {} filename '{}', see above".format(key, filename))
                 raise ValueError(filename)
 
-        def init_solutions(self):
-            """Initializes solution databases"""
+        def _init_solutions(self, label, load_from, save_to, exportables):
+            """Internal helper method for init_solutions(): initializes a pair of solution database"""
             # init solutions from database
-            filename = self._make_filename("load-from")
-            if filename:
-                print>>log(0),ModColor.Str("{} solutions will be initialized from {}".format(self.label, filename), col="green")
-                self._init_sols = param_db.load(filename)
-            else:
-                self._init_sols = None
+            if load_from:
+                print>>log(0),ModColor.Str("{} solutions will be initialized from {}".format(label, load_from), col="green")
+                self._init_sols[label] = param_db.load(load_from)
             # create database to save to
-            filename = self._make_filename("save-to")
-            if not self.apply_only and filename:
-                self._save_sols = param_db.create(filename, backup=True)
-                for sol_label, (empty_value, axes) in self.machine_class.exportable_solutions.iteritems():
+            if save_to:
+                db = self._save_sols_byname.get(save_to)
+                if db is None:
+                    self._save_sols_byname[save_to] = db = param_db.create(save_to, backup=True)
+                self._save_sols[label] = db
+                for sol_label, (empty_value, axes) in exportables.iteritems():
                     if type(empty_value) is float:
                         dtype = self._ftype
                     elif type(empty_value) is complex:
                         dtype = self._ctype
                     else:
                         dtype = type(empty_value)
-                    self._save_sols.define_param("{}:{}".format(self.label, sol_label), dtype, axes,
-                                                 empty=empty_value,
-                                                 interpolation_axes=["time", "freq"])
-                print>> log(0), "{} solutions will be saved to {}".format(self.label, filename)
-            else:
-                self._save_sols = None
+                    db.define_param(sol_label, dtype, axes, empty=empty_value,
+                                    interpolation_axes=["time", "freq"], grid=self.grid)
+                print>> log(0), "{} solutions will be saved to {}".format(label, save_to)
 
         def export_solutions(self, gm, subdict):
             """Exports a slice of solutions from a gain machine into a shared dictionary"""
             if self.apply_only:
                 return
-            # populate grids subdictionary
-            subdict["{}:grid__".format(self.label)] = gm.get_solutions_grid()
             # populate values subdictionary
-            for sol_label, value in gm.export_solutions().iteritems():
-                subdict["{}:{}".format(self.label, sol_label)] = value.data
-                subdict["{}:{}:flags__".format(self.label, sol_label)] = value.mask
+            for label, (value, grid) in gm.export_solutions().iteritems():
+                subdict[label] = value.data
+                subdict["{}:grid__".format(label)]  = grid
+                subdict["{}:flags__".format(label)] = value.mask
 
         def save_solutions(self, subdict):
             """Saves a slice of the solutions from a dictionary to the database"""
-            if self.apply_only:
-                return
-            if self._save_sols is not None:
-                # convert shared dict to regular dict for saving
-                sd = subdict["{}:grid__".format(self.label)]
-                grids = { key: sd[key] for key in sd.iterkeys() }
-                # add slices for all parameters
-                for name in subdict.iterkeys():
-                    if not name.endswith("__"):
-                        self._save_sols.add_chunk(name, masked_array(subdict[name], subdict[name+":flags__"]), grids)
+            # add slices for all parameters
+            for name in subdict.iterkeys():
+                if not name.endswith("__"):
+                    jones_label = name.split(':')[0]
+                    if jones_label in self._save_sols:
+                        sd = subdict["{}:grid__".format(name)]
+                        grids = {key: sd[key] for key in sd.iterkeys()}
+                        self._save_sols[jones_label].add_chunk(name, masked_array(subdict[name],
+                                                                                  subdict[name+":flags__"]), grids)
 
         def close(self):
-            if self._init_sols is not None:
-                self._init_sols.close()
-            if self._save_sols is not None:
-                self._save_sols.close()
+            for db in self._init_sols.values():
+                db.close()
+            for db in self._save_sols_byname.values():
+                db.close()
+            self._init_sols = {}
+            self._save_sols = {}
+            self._save_sols_byname = {}
 
         def create_machine(self, data_arr, n_dir, n_mod, times, freqs):
             """
@@ -248,17 +293,16 @@ class MasterMachine(object):
             Returns:
                 An instance of a gain machine
             """
-            gm = self.machine_class(self.label, data_arr, n_dir, n_mod, times, freqs, self.options)
-            if self._init_sols is not None:
-                sols = {}
-                grid = gm.get_solutions_grid()
-                # collect importable solutions from DB, interpolate
-                for sol_label in gm.importable_solutions:
-                    label = "{}:{}".format(self.label, sol_label)
-                    if label in self._init_sols:
-                        sols[sol_label] = self._init_sols[label].reinterpolate(**grid)
-                # if anything at all was found in DB, import
-                if sols:
-                    gm.import_solutions(sols)
+            gm = self.machine_class(self.jones_label, data_arr, n_dir, n_mod, times, freqs, self.jones_options)
+            sols = {}
+            # collect importable solutions from DB, interpolate
+            for key, grids in gm.importable_solutions().iteritems():
+                jones_label = key.split(':')[0]
+                db = self._init_sols.get(jones_label)
+                if db is not None and key in db:
+                    sols[key] = db[key].reinterpolate(**grids)
+            # if anything at all was loaded from DB, import
+            if sols:
+                gm.import_solutions(sols)
             return gm
 

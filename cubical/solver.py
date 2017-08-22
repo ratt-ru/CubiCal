@@ -5,10 +5,7 @@ import numpy as np
 import traceback
 from cubical.tools import logger, ModColor
 from cubical.data_handler import FL, Tile
-from cubical.tools import shared_dict
-from cubical.machines import complex_2x2_machine
-from cubical.machines import complex_W_2x2_machine
-from cubical.machines import phase_diag_machine
+from cubical.machines import jones_chain_machine
 from cubical.statistics import SolverStats
 
 log = logger.getLogger("solver")
@@ -17,7 +14,7 @@ log = logger.getLogger("solver")
 gm_factory = None
 
 
-def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute_residuals=None):
+def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     This function is the main body of the GN/LM method. It handles iterations
     and convergence tests.
@@ -30,8 +27,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute
         flags_arr (np.array: n_tim, n_fre, n_ant, n_ant): 
             Integer array containing flagging data.
 
-        options: 
-            Dictionary of various solver options (see o[solution] section in DefaultParset.cfg)
+        sol_opts: 
+            Dictionary of various solver options (see [sol] section in DefaultParset.cfg)
 
         chunk_key:         
             Tuple of (n_time_chunk, n_freq_chunk) which identifies the current chunk.
@@ -48,18 +45,16 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute
             Array containing the final residuals (if compute_residuals is set), else None.
     """
 
-    min_delta_g  = options["delta-g"]
-    maxiter      = options["max-iter"]
-    chi_tol      = options["delta-chi"]
-    chi_interval = options["chi-int"]
-    clip_after_iter = options["clip-after-iter"]
+    min_delta_g  = sol_opts["delta-g"]
+    chi_tol      = sol_opts["delta-chi"]
+    chi_interval = sol_opts["chi-int"]
+    stall_quorum = sol_opts["stall-quorum"]
 
     # Initialise stat object.
 
     stats = SolverStats(obser_arr)
     stats.chunk.label = label
 
-    iters = 0
     n_stall = 0
     n_tf_slots = gm.n_tim * gm.n_fre
 
@@ -165,8 +160,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute
         # Collapse chisq to chi-squared per time-frequency slot and overall chi-squared. norm_factor 
         # is computed as 1/eqs_per_tf_slot.
 
-        with np.errstate(divide='ignore', invalid='ignore'):
-            norm_factor = np.where(eqs_per_tf_slot>0, 1./eqs_per_tf_slot, 0)
+        norm_factor = np.zeros_like(eqs_per_tf_slot, dtype=resid_arr.real.dtype)
+        norm_factor[eqs_per_tf_slot>0] = 1./eqs_per_tf_slot[eqs_per_tf_slot>0]
 
         chisq_per_tf_slot = np.sum(chisq, axis=-1) * norm_factor 
 
@@ -207,7 +202,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute
         print>> log, ("{} Initial chi2 = {:.4}, {}/{} valid intervals (min {}/max {} eqs per int),"
                       " {}/{} valid antennas, noise {:.3}, flags: {}").format(*logvars)
 
-    min_quorum = 0.99
     n_gflags = (gm.gflags&~FL.MISSING != 0).sum()
 
     # Do any precomputation required by the current gain machine.
@@ -217,25 +211,41 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
 
-    while gm.n_cnvgd/gm.n_sols < min_quorum and n_stall/n_tf_slots < min_quorum and iters < maxiter:
+    while not(gm.has_converged) and not(gm.has_stalled):
 
-        iters += 1
+        gm.update_term()
 
-        gm.compute_update(model_arr, obser_arr, iters)
+        # This is currently an awkward necessity - if we have a chain of jones terms, we need to 
+        # make sure that the active term is correct and need to support some sort of decision making
+        # for testing convergence. I think doing the iter increment here might be the best choice,
+        # with an additional bit of functionality for Jones chains. I suspect I will still need to 
+        # change the while loop component to be compatible with the idea of partial convergence.
+        # Perhaps this should all be done right at the top of the function? A better idea is to let
+        # individual machines be aware of their own stalled/converged status, and make those
+        # properties more complicated on the chain. This should allow for fairly easy substitution 
+        # between the various machines.
+
+        gm.compute_update(model_arr, obser_arr)
         
-        gm.flag_solutions(iters>clip_after_iter)
+        gm.flag_solutions()
+
+        if gm.dd_term:
+            gm.gains[np.where(gm.gflags==1)] = np.eye(2)
+
+        # In the DD case, it may be necessary to set flagged gains to zero during the loop, but
+        # set all flagged terms to identity before applying them.
 
         # If the number of flags had increased, these need to be propagated out to the data. Note
-        # that gain flags are per-direction whereas data flags are per visibility. Currently, just
+        # that gain flags are per-direction whereas data flags are per visibility. Currently,
         # everything is flagged if any direction is flagged.
 
-        # We remove the FL.MISSING bit when propagating as this bit is pre-set for data was flagged 
+        # We remove the FL.MISSING bit when propagating as this bit is pre-set for data flagged 
         # as PRIOR|MISSING. This prevents every PRIOR but not MISSING flag from becoming MISSING.
 
-        if gm.n_flagged > n_gflags:
+        if gm.n_flagged > n_gflags and not(gm.dd_term):
             
             n_gflags = gm.n_flagged
-            
+
             gm.propagate_gflags(flags_arr)
 
             # Recompute various stats now that the flags raised by the gain machine have been 
@@ -271,23 +281,27 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute
         # Check residual behaviour after a number of iterations equal to chi_interval. This is
         # expensive, so we do it as infrequently as possible.
 
-        if (iters % chi_interval) == 0:
+        if (gm.iters % chi_interval) == 0:
 
             old_chi, old_mean_chi = chi, mean_chi
 
             gm.compute_residual(obser_arr, model_arr, resid_arr)
+
             chi, mean_chi = compute_chisq()
+
             have_residuals = True
 
             # Check for stalled solutions - solutions for which the residual is no longer improving.
 
             n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
 
+            gm.has_stalled = (n_stall/n_tf_slots >= stall_quorum)
+
             if log.verbosity() > 1:
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                logvars = (label, iters, mean_chi, delta_chi, gm.max_update, gm.n_cnvgd/gm.n_sols,
+                logvars = (label, gm.iters, mean_chi, delta_chi, gm.max_update, gm.n_cnvgd/gm.n_sols,
                            n_stall/n_tf_slots, n_gflags/float(gm.gflags.size),
                            gm.missing_gain_fraction)
 
@@ -300,29 +314,36 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute
     if gm.num_valid_intervals:
 
         # Do we need to recompute the final residuals?
-        if (options['last-rites'] or compute_residuals) and not have_residuals:
+        if (sol_opts['last-rites'] or compute_residuals) and not have_residuals:
             gm.compute_residual(obser_arr, model_arr, resid_arr)
-            if options['last-rites']:
+            if sol_opts['last-rites']:
                 # Recompute chi-squared based on original noise statistics.
                 chi, mean_chi = compute_chisq(statfield='chi2')
 
         # Re-estimate the noise using the final residuals, if last rites are needed.
 
-        if options['last-rites']:
+        if sol_opts['last-rites']:
             stats.chunk.noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
                                         stats.estimate_noise(resid_arr, flags_arr, residuals=True)
             chi1, mean_chi1 = compute_chisq(statfield='chi2')
 
         stats.chunk.chi2 = mean_chi
 
-        logvars = (label, iters, gm.n_cnvgd/gm.n_sols, n_stall/n_tf_slots, 
-                   n_gflags / float(gm.gflags.size), gm.missing_gain_fraction,
-                   float(stats.chunk.init_chi2), mean_chi)
+        if isinstance(gm, jones_chain_machine.JonesChain):
+            termstring = ""
+            for term in gm.jones_terms:
+                termstring += "{}: {} iters, conv {:.2%} ".format(term.jones_label, term.iters,
+                                                                  term.n_cnvgd/term.n_sols)
+        else:
+            termstring = "{} iters, conv {:.2%}".format(gm.iters, gm.n_cnvgd/gm.n_sols) 
 
-        message = ("{}: {} iters, conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2%}, "
+        logvars = (label, termstring, n_stall/n_tf_slots, n_gflags/float(gm.gflags.size), 
+                   gm.missing_gain_fraction, float(stats.chunk.init_chi2), mean_chi)
+
+        message = ("{}: {}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2%}, "
                     "chi2 {:.4} -> {:.4}").format(*logvars)
 
-        if options['last-rites']:
+        if sol_opts['last-rites']:
 
             logvars = (float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
 
@@ -333,16 +354,23 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute
     # If everything has been flagged, no valid solutions are generated. 
 
     else:
+
+        if isinstance(gm, jones_chain_machine.JonesChain):
+            termstring = ""
+            for term in gm.jones_terms:
+                termstring += "{}: {} iters, ".format(term.jones_label, term.iters)
+        else:
+            termstring = "{} iters, ".format(gm.iters) 
         
-        logvars = (label, iters, n_gflags / float(gm.gflags.size), gm.missing_gain_fraction)
+        logvars = (label, termstring, n_gflags / float(gm.gflags.size), gm.missing_gain_fraction)
 
         print>>log, ModColor.Str("{} completely flagged after {} iters:"
                                  " g/fl {:.2%}, d/fl {:.2%}").format(*logvars)
-        
+
         stats.chunk.chi2 = 0
         resid_arr = obser_arr
 
-    stats.chunk.iters = iters
+    stats.chunk.iters = gm.iters
     stats.chunk.num_converged = gm.n_cnvgd
     stats.chunk.num_stalled = n_stall
 
@@ -362,18 +390,18 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label="", compute
 
 
 
-def solve_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
+def solve_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
     # apply weights
     if weight_arr is not None:
         obser_arr *= weight_arr[..., np.newaxis, np.newaxis]
         model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
 
-    _, stats = _solve_gains(gm, obser_arr, model_arr, flags_arr, options, label=label)
+    _, stats = _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label=label)
 
     return None, stats
 
 
-def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
+def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the data, since we need to correct
     if weight_arr is not None:
@@ -382,7 +410,7 @@ def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, op
     else:
         obser_arr1 = obser_arr
 
-    _, stats = _solve_gains(gm, obser_arr1, model_arr, flags_arr, options, label=label)
+    _, stats = _solve_gains(gm, obser_arr1, model_arr, flags_arr, sol_opts, label=label)
 
     # for corrected visibilities, take the first data/model pair only
     corr_vis = np.zeros_like(obser_arr[0,...])
@@ -391,7 +419,7 @@ def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, op
     return corr_vis, stats
 
 
-def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
+def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the model and data, since we need to correct the residuals
 
@@ -403,7 +431,7 @@ def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr,
 
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
-    resid_vis, stats = _solve_gains(gm, obser_arr1, model_arr1, flags_arr, options, label=label,
+    resid_vis, stats = _solve_gains(gm, obser_arr1, model_arr1, flags_arr, sol_opts, label=label,
                                         compute_residuals=(weight_arr is None))
 
     # if we reweighted things above, then recompute the residuals, else use returned residuals
@@ -421,14 +449,14 @@ def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr,
     return corr_vis, stats
 
 
-def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
+def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
     # for corrected visibilities, take the first data/model pair only
     corr_vis = np.zeros_like(obser_arr[0,...])
     gm.apply_inv_gains(obser_arr[0,...], corr_vis)
 
     return corr_vis, None
 
-def correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options):
+def correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
     # for corrected visibilities, take the first data/model pair only
     resid_vis = np.zeros_like(obser_arr[0:1,...])
     gm.compute_residual(obser_arr[0:1, ...], model_arr[:, 0:1, ...], resid_vis)
@@ -443,8 +471,9 @@ SOLVERS = { 'so': solve_only,
             }
 
 
-def run_solver(solver_type, itile, chunk_key, options):
+def run_solver(solver_type, itile, chunk_key, sol_opts):
     label = None
+    
     try:
         tile = Tile.tile_list[itile]
         label = chunk_key
@@ -470,7 +499,7 @@ def run_solver(solver_type, itile, chunk_key, options):
 
         # invoke solver with cubes from tile
 
-        corr_vis, stats = solver(gm, obser_arr, model_arr, flags_arr, weight_arr, label, options)
+        corr_vis, stats = solver(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts)
 
         # copy results back into tile
 
