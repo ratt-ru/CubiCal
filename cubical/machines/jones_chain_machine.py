@@ -31,8 +31,11 @@ class JonesChain(MasterMachine):
 
         self.active_index = 0
         self.last_active_index = 100 
-        self.cached_model_arr = np.empty_like(model_arr)
-        self.cached_resid_arr = np.empty_like(model_arr)
+
+        cached_array_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, 
+                              self.n_ant, self.n_ant, self.n_cor, self.n_cor]
+        self.cached_model_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
+        self.cached_resid_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
 
     def export_solutions(self):
         """This method saves the solutions to a dict of {label: solutions,grids} items"""
@@ -146,8 +149,6 @@ class JonesChain(MasterMachine):
         elif self.update_type == "phase-diag":
             self.gains[...,(0,1),(1,0)] = 0
             self.gains[...,(0,1),(0,1)] = self.gains[...,(0,1),(0,1)]/np.abs(self.gains[...,(0,1),(0,1)])
-
-        # print self.gains[:,0,0,8,:]
 
         return flag_count
 
