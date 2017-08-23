@@ -184,11 +184,10 @@ class Tile(object):
             measet_src = MSSourceProvider(self, data, sort_ind)
             tigger_src = TiggerSourceProvider(self)
             cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
-            # cached_ms_src = CachedSourceProvider(measet_src, cache_data_sources=["parallactic_angles"],
-            #                                      clear_start=False, clear_stop=False)
+            cached_ms_src = CachedSourceProvider(measet_src, cache_data_sources=["parallactic_angles"],
+                                                 clear_start=False, clear_stop=False)
 
-            # srcs.append(cached_ms_src)
-            srcs.append(measet_src)
+            srcs.append(cached_ms_src)
             srcs.append(cached_src)
 
             if self.handler.beam_pattern:

@@ -380,7 +380,7 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
 
     cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
     cdef int n_dir, n_mod, n_tim, n_fre, n_ant, g_dir
-    cdef complex3264 m00, m01, m10, m11
+    cdef complex3264 gmtmp1, gmtmp2, gmtmp3, gmtmp4
 
     n_dir = m.shape[0]
     n_mod = m.shape[1]
@@ -400,31 +400,30 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
                     for aa in xrange(n_ant):
                         for ab in xrange(n_ant):
 
-                            m00 = m[d,i,t,f,aa,ab,0,0]
-                            m10 = m[d,i,t,f,aa,ab,1,0]
-                            m01 = m[d,i,t,f,aa,ab,0,1]
-                            m11 = m[d,i,t,f,aa,ab,1,1]
+                            gmtmp1 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
+                                     g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]
+
+                            gmtmp2 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1] + \
+                                     g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]
+
+                            gmtmp3 = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0] + \
+                                     g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]
+
+                            gmtmp4 = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1] + \
+                                     g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]
 
                             m[d,i,t,f,aa,ab,0,0] = \
-                                g[gd,rr,rc,aa,0,0]*m00*gh[gd,rr,rc,ab,0,0] + \
-                                g[gd,rr,rc,aa,0,1]*m10*gh[gd,rr,rc,ab,0,0] + \
-                                g[gd,rr,rc,aa,0,0]*m01*gh[gd,rr,rc,ab,1,0] + \
-                                g[gd,rr,rc,aa,0,1]*m11*gh[gd,rr,rc,ab,1,0]
+                                gmtmp1*gh[gd,rr,rc,ab,0,0] + \
+                                gmtmp2*gh[gd,rr,rc,ab,1,0]
 
                             m[d,i,t,f,aa,ab,0,1] = \
-                                g[gd,rr,rc,aa,0,0]*m00*gh[gd,rr,rc,ab,0,1] + \
-                                g[gd,rr,rc,aa,0,1]*m10*gh[gd,rr,rc,ab,0,1] + \
-                                g[gd,rr,rc,aa,0,0]*m01*gh[gd,rr,rc,ab,1,1] + \
-                                g[gd,rr,rc,aa,0,1]*m11*gh[gd,rr,rc,ab,1,1]
+                                gmtmp1*gh[gd,rr,rc,ab,0,1] + \
+                                gmtmp2*gh[gd,rr,rc,ab,1,1]
 
                             m[d,i,t,f,aa,ab,1,0] = \
-                                g[gd,rr,rc,aa,1,0]*m00*gh[gd,rr,rc,ab,0,0] + \
-                                g[gd,rr,rc,aa,1,1]*m10*gh[gd,rr,rc,ab,0,0] + \
-                                g[gd,rr,rc,aa,1,0]*m01*gh[gd,rr,rc,ab,1,0] + \
-                                g[gd,rr,rc,aa,1,1]*m11*gh[gd,rr,rc,ab,1,0]
+                                gmtmp3*gh[gd,rr,rc,ab,0,0] + \
+                                gmtmp4*gh[gd,rr,rc,ab,1,0]
 
                             m[d,i,t,f,aa,ab,1,1] = \
-                                g[gd,rr,rc,aa,1,0]*m00*gh[gd,rr,rc,ab,0,1] + \
-                                g[gd,rr,rc,aa,1,1]*m10*gh[gd,rr,rc,ab,0,1] + \
-                                g[gd,rr,rc,aa,1,0]*m01*gh[gd,rr,rc,ab,1,1] + \
-                                g[gd,rr,rc,aa,1,1]*m11*gh[gd,rr,rc,ab,1,1]
+                                gmtmp3*gh[gd,rr,rc,ab,0,1] + \
+                                gmtmp4*gh[gd,rr,rc,ab,1,1]
