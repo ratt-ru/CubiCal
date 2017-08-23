@@ -13,7 +13,6 @@ log = logger.getLogger("solver")
 # gain machine factory to use
 gm_factory = None
 
-
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     This function is the main body of the GN/LM method. It handles iterations
@@ -354,7 +353,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # If everything has been flagged, no valid solutions are generated. 
 
     else:
-
+        
         if isinstance(gm, jones_chain_machine.JonesChain):
             termstring = ""
             for term in gm.jones_terms:

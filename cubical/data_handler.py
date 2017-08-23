@@ -201,8 +201,10 @@ class Tile(object):
                 measet_src = MSSourceProvider(self, data, sort_ind)
                 tigger_src = TiggerSourceProvider(self)
                 cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
+                cached_ms_src = CachedSourceProvider(measet_src, cache_data_sources=["parallactic_angles"],
+                                                        clear_start=False, clear_stop=False)
 
-                srcs.append(measet_src)
+                srcs.append(cached_ms_src)
                 srcs.append(cached_src)
 
                 if self.handler.beam_pattern:
@@ -222,7 +224,7 @@ class Tile(object):
 
                 for direction in xrange(ndirs):
                     print>>log(2), "simulating visbilities in direction {}.".format(direction)
-                    simulate(srcs, snks)
+                    simulate(srcs, snks, self.handler.mb_opts)
                     tigger_src.update_target()
                     column_snk._dir += 1
 
@@ -648,8 +650,9 @@ class Tile(object):
 class ReadModelHandler:
 
     def __init__(self, ms_name, data_column, sm_name, model_column, output_column=None,
-                 taql=None, fid=None, ddid=None, flagopts={}, double_precision=False, ddes=False,
-                 weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None):
+                 taql=None, fid=None, ddid=None, flagopts={}, double_precision=False, ddes=False, 
+                 weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
+                 mb_opts=None):
 
         if montblanc is None and sm_name:
             print>>log, ModColor.Str("Error importing Montblanc: ")
@@ -660,6 +663,7 @@ class ReadModelHandler:
 
         self.ms_name = ms_name
         self.sm_name = sm_name
+        self.mb_opts = mb_opts
         self.beam_pattern = beam_pattern
         self.beam_l_axis = beam_l_axis
         self.beam_m_axis = beam_m_axis
@@ -679,7 +683,6 @@ class ReadModelHandler:
 
         self.ctype = np.complex128 if double_precision else np.complex64
         self.ftype = np.float64 if double_precision else np.float32
-
         self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
         self.ncorr = self._poltab.getcol("NUM_CORR")[0]
         self.nants = self._anttab.nrows()

@@ -11,6 +11,61 @@ ctypedef fused complex3264:
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
+def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] jh,
+                 complex3264 [:,:,:,:,:,:] g,                 
+                 int t_int,
+                 int f_int):
+
+    """
+    This computes the the non-zero elements of jh. The result does have a model index.  
+    """
+
+    cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant, g_dir
+    cdef complex3264 jh00, jh01, jh10, jh11
+
+    n_dir = jh.shape[0]
+    n_mod = jh.shape[1]
+    n_tim = jh.shape[2]
+    n_fre = jh.shape[3]
+    n_ant = jh.shape[4]
+
+    g_dir = g.shape[0]
+
+    for d in xrange(n_dir):
+        gd = d%g_dir
+        for i in xrange(n_mod):
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for aa in xrange(n_ant):
+                        for ab in xrange(n_ant):
+
+                            jh00 = jh[d,i,t,f,aa,ab,0,0]
+                            jh10 = jh[d,i,t,f,aa,ab,1,0]
+                            jh01 = jh[d,i,t,f,aa,ab,0,1]
+                            jh11 = jh[d,i,t,f,aa,ab,1,1]
+
+
+                            jh[d,i,t,f,aa,ab,0,0] = g[gd,rr,rc,aa,0,0]*jh00 + \
+                                                    g[gd,rr,rc,aa,0,1]*jh10
+
+                            jh[d,i,t,f,aa,ab,0,1] = g[gd,rr,rc,aa,0,0]*jh01 + \
+                                                    g[gd,rr,rc,aa,0,1]*jh11
+
+                            jh[d,i,t,f,aa,ab,1,0] = g[gd,rr,rc,aa,1,0]*jh00 + \
+                                                    g[gd,rr,rc,aa,1,1]*jh10
+
+                            jh[d,i,t,f,aa,ab,1,1] = g[gd,rr,rc,aa,1,0]*jh01 + \
+                                                    g[gd,rr,rc,aa,1,1]*jh11
+
+
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def cyapply_left_inv_jones(complex3264 [:,:,:,:,:,:] jhr,
                            complex3264 [:,:,:,:,:,:] ginv,
                            int t_int,

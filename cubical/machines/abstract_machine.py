@@ -123,7 +123,6 @@ class MasterMachine(object):
         """
         return NotImplementedError
 
-
     # Returns dict of {label: (empty_value, axes_list)} describing the types of solutions that
     # this machine exports. Axes is a list of axis labels.
     # Static method, as it is called before any GM is created. Hence jones_label is passed in explicitly
@@ -305,4 +304,3 @@ class MasterMachine(object):
             if sols:
                 gm.import_solutions(sols)
             return gm
-

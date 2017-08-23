@@ -183,7 +183,8 @@ def main(debugging=False):
                               weight_column=GD["weight"]["column"],
                               beam_pattern=GD["model"]["beam-pattern"], 
                               beam_l_axis=GD["model"]["beam-l-axis"], 
-                              beam_m_axis=GD["model"]["beam-m-axis"])
+                              beam_m_axis=GD["model"]["beam-m-axis"],
+                              mb_opts=GD["montblanc"])
 
         data_handler.global_handler = ms
 
@@ -230,7 +231,6 @@ def main(debugging=False):
         print>>log, "defining chunks"
         ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
                         min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
-
 
         t0 = time()
 

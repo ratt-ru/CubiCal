@@ -25,10 +25,14 @@ class JonesChain(MasterMachine):
 
         self.jones_terms = []
         for term_opts in jones_options:
-            self.jones_terms.append(Complex2x2Gains(term_opts["label"], data_arr, ndir if term_opts["dd-term"] else 1,
-                                                    nmod, times, frequencies, term_opts))
+            self.jones_terms.append(Complex2x2Gains(term_opts["label"], data_arr, 
+                                    ndir if term_opts["dd-term"] else 1,
+                                    nmod, times, frequencies, term_opts))
 
         self.active_index = 0
+        self.last_active_index = 100 
+        self.cached_model_arr = np.empty_like(model_arr)
+        self.cached_resid_arr = np.empty_like(model_arr)
 
     def export_solutions(self):
         """This method saves the solutions to a dict of {label: solutions,grids} items"""
@@ -58,23 +62,25 @@ class JonesChain(MasterMachine):
 
         n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.gains.shape
 
-        current_model_arr = model_arr.copy()
+        if self.last_active_index!=self.active_index or self.iters==1:
+        
+            self.cached_model_arr = model_arr.copy()
 
-        for ind in xrange(self.n_terms - 1, self.active_index, -1):
-            term = self.jones_terms[ind]
-            term.apply_gains(current_model_arr)
+            for ind in xrange(self.n_terms - 1, self.active_index, -1):
+                term = self.jones_terms[ind]
+                term.apply_gains(self.cached_model_arr)
 
-        if not self.dd_term and self.n_dir>1:
-            current_model_arr = np.sum(current_model_arr, axis=0, keepdims=True)
+            if not self.dd_term and self.n_dir>1:
+                self.cached_model_arr = np.sum(self.cached_model_arr, axis=0, keepdims=True)
 
-        jh = np.zeros_like(current_model_arr)
+            self.jh = np.empty_like(self.cached_model_arr)
+
+        self.jh[:] = self.cached_model_arr
 
         for ind in xrange(self.active_index, -1, -1):
             term = self.jones_terms[ind]
-            cyfull.cycompute_jh(current_model_arr, term.gains, jh, term.t_int, term.f_int)
-            # print np.allclose(self.alternate_jh(current_model_arr, term.gains, jh, term.t_int, term.f_int),jh)
-            current_model_arr[:] = jh 
-
+            cychain.cycompute_jh(self.jh, term.gains, term.t_int, term.f_int)
+            
         jhr_shape = [n_dir if self.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
 
         jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
@@ -85,7 +91,7 @@ class JonesChain(MasterMachine):
         else:
             r = obser_arr
 
-        cyfull.cycompute_jhr(jh, r, jhr, 1, 1)
+        cyfull.cycompute_jhr(self.jh, r, jhr, 1, 1)
 
         for ind in xrange(0, self.active_index, 1):
             term = self.jones_terms[ind]
@@ -101,7 +107,7 @@ class JonesChain(MasterMachine):
 
         jhj = np.zeros(jhrint_shape, dtype=obser_arr.dtype)
 
-        cyfull.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
+        cyfull.cycompute_jhj(self.jh, jhj, self.t_int, self.f_int)
 
         jhjinv = np.empty(jhrint_shape, dtype=obser_arr.dtype)
 
@@ -165,15 +171,15 @@ class JonesChain(MasterMachine):
             residual (np.array): Array containing the result of computing D-GMG^H.
         """
 
-        current_model_arr = model_arr.copy()
+        self.cached_resid_arr[:] = model_arr
 
         for ind in xrange(self.n_terms-1, -1, -1): 
             term = self.jones_terms[ind]
-            term.apply_gains(current_model_arr)
+            term.apply_gains(self.cached_resid_arr)
 
         resid_arr[:] = obser_arr
 
-        cychain.cycompute_residual(current_model_arr, resid_arr)
+        cychain.cycompute_residual(self.cached_resid_arr, resid_arr)
 
         return resid_arr
 
@@ -248,6 +254,8 @@ class JonesChain(MasterMachine):
         It will also handle updating the active Jones term. Ultimately, this should handle any
         complicated convergence/term switching functionality.
         """
+
+        self.last_active_index = self.active_index
 
         def next_term():
             if self.active_term.has_converged:
@@ -404,46 +412,3 @@ class JonesChain(MasterMachine):
                 self._init_solutions(label, self._make_filename(opts["load-from"]),
                                             not self.apply_only and opts["solvable"] and self._make_filename(opts["save-to"]),
                                      Complex2x2Gains.exportable_solutions(label))
-
-
-
-                # def alternate_jh(self, model_arr, gains, blah, t_int, f_int):
-
-    #     n_dir, n_mod, n_t, n_f, n_ant, n_ant, n_cor, n_cor = model_arr.shape
-
-    #     jh = np.zeros_like(model_arr)
-
-    #     for d in xrange(n_dir):
-    #         rd = d%gains.shape[0]
-    #         print rd
-    #         for i in xrange(n_mod):
-    #             for t in xrange(n_t):
-    #                 rt = t//t_int
-    #                 for f in xrange(n_f):
-    #                     rf = f//f_int
-    #                     for aa in xrange(n_ant):
-    #                         for ab in xrange(n_ant):
-    #                             jh[d,i,t,f,aa,ab,:] = gains[rd,rt,rf,aa,:].dot(model_arr[d,i,t,f,aa,ab,:])
-
-    #     return jh
-
-    # def alternate_residual(self, obser_arr, model_arr, resid_arr):
-
-    #     n_dir, n_mod, n_t, n_f, n_ant, n_ant, n_cor, n_cor = model_arr.shape
-
-    #     m = model_arr.copy()
-
-    #     for ind in xrange(self.n_terms-1, -1, -1):
-    #         term = self.jones_terms[ind]
-    #         for d in xrange(n_dir):
-    #             rd = d%term.shape[0]
-    #             for i in xrange(n_mod):
-    #                 for t in xrange(n_t):
-    #                     rt = t//t_int
-    #                     for f in xrange(n_f):
-    #                         rf = f//f_int
-    #                         for aa in xrange(n_ant):
-    #                             for ab in xrange(n_ant):
-    #                                 m[d,i,t,f,aa,ab,:] = term.gains[rd,rt,rf,aa,:].dot(m[d,i,t,f,aa,ab,:]).dot(term.gains[rd,rt,rf,ab,:].T.conj())
-
-    #     return resid_arr - np.sum(m, axis=0, keepdims=True)
