@@ -57,7 +57,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         return jhr, jhjinv, flag_count
 
-    def compute_update(self, model_arr, obser_arr, iters):
+    def compute_update(self, model_arr, obser_arr):
         """
         This function computes the update step of the GN/LM method. This is
         equivalent to the complete (((J^H)J)^-1)(J^H)R.
@@ -73,7 +73,6 @@ class Complex2x2Gains(PerIntervalGains):
                 (((J^H)J)^-1)(J^H)R
         """
 
-
         jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
         update = np.empty_like(jhr)
@@ -83,7 +82,7 @@ class Complex2x2Gains(PerIntervalGains):
         if model_arr.shape[0]>1:
             update = self.gains + update
 
-        if iters % 2 == 0:
+        if self.iters % 2 == 0 or self.n_dir>1:
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
@@ -145,10 +144,15 @@ class Complex2x2Gains(PerIntervalGains):
 
         return corr_vis, flag_count
          
-    def apply_gains(self):
+    def apply_gains(self, model_arr):
         """
         This method should be able to apply the gains to an array at full time-frequency
         resolution. Should return the input array at full resolution after the application of the 
         gains.
         """
-        return
+
+        gh = self.gains.transpose(0,1,2,3,5,4).conj()
+
+        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+
+        return model_arr
