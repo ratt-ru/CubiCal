@@ -63,7 +63,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
     elif options['jones-type'] == 'phase-diag':
         gm = phase_diag_machine.PhaseDiagGains(model_arr, chunk_ts, chunk_fs, options)
     elif options['jones-type'] == 'robust-2x2':
-        gm = complex_W_2x2_machine.ComplexW2x2Gains(model_arr, options)
+        gm = complex_W_2x2_machine.ComplexW2x2Gains(model_arr, chunk_ts, chunk_fs, label, options)
     else:
         raise ValueError("unknown jones-type '{}'".format(options['jones-type']))
 
@@ -124,6 +124,7 @@ def _solve_gains(obser_arr, model_arr, flags_arr, chunk_ts, chunk_fs, options, l
         fstats = ""
 
         for flag, mask in FL.categories().iteritems():
+            n_vis2x2 = 100. #TODO remove this when n_vis2x2 is fixed
 
             n_flag = np.sum((flags_arr & mask) != 0)
             fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./n_vis2x2)) if n_flag else ""
