@@ -855,14 +855,15 @@ class ReadModelHandler:
 
         return self.data.getcol(*args, **kwargs)
 
-    def define_chunk(self, tdim=1, fdim=1, chunk_by=None, min_chunks_per_tile=4):
+    def define_chunk(self, tdim=1, fdim=1, chunk_by=None, chunk_by_jump=0, min_chunks_per_tile=4):
         """
         Fetches indexing columns (TIME, DDID, ANTENNA1/2) and defines the chunk dimensions for the data.
 
         Args:
             tdim (int): Timeslots per chunk.
             fdim (int): Frequencies per chunk.
-            chunk_by:   If set, chunks will have boundaries by the listed columns
+            chunk_by:   If set, chunks will have boundaries imposed by jumps in the listed columns
+            chunk_by_jump: The magnitude of a jump has to be over this value to force a chunk boundary.
             min_chunks_per_tile: minimum number of chunks to be placed in a tile
             
         Initializes:
@@ -906,7 +907,7 @@ class ReadModelHandler:
         # simply break up all timeslots
 
         if chunk_by:
-            scan_chunks = self.check_contig(chunk_by)
+            scan_chunks = self.check_contig(chunk_by, chunk_by_jump)
             timechunks = []
             for scan_num in xrange(len(scan_chunks) - 1):
                 timechunks.extend(range(scan_chunks[scan_num], scan_chunks[scan_num+1], self.chunk_tdim))
@@ -987,15 +988,15 @@ class ReadModelHandler:
 
         print>> log, "  coarsening this to {} tiles (min {} chunks per tile)".format(len(Tile.tile_list), min_chunks_per_tile)
 
-    def check_contig(self, columns):
+    def check_contig(self, columns, jump_by=0):
         """
         Helper method, finds ranges of timeslots where the named columns do not change.
         """
-        boundaries = set([0, self.ntime])
+        boundaries = {0, self.ntime}
         
         for column in columns:
             value = self.fetch(column)
-            boundary_rows = np.where(np.roll(value, 1) != value)[0]
+            boundary_rows = np.where(abs(np.roll(value, 1) - value) > jump_by)[0]
             boundaries.update([self.times[i] for i in boundary_rows])
 
         return sorted(boundaries)

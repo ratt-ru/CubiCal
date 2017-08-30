@@ -230,11 +230,12 @@ def main(debugging=False):
         chunk_by = GD["data"]["chunk-by"]
         if type(chunk_by) is str:
             chunk_by = chunk_by.split(",")
+        jump = float(GD["data"]["chunk-by-jump"])
 
         print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
-            ", also by "+ ", ".join(chunk_by) if chunk_by else "")
+            ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
         ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
-                        chunk_by=chunk_by,
+                        chunk_by=chunk_by, chunk_by_jump=jump,
                         min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
 
         t0 = time()
