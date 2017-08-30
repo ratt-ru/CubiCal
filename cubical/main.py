@@ -227,9 +227,14 @@ def main(debugging=False):
                                                        global_options=GD, jones_options=jones_opts)
 
         # set up chunking
+        chunk_by = GD["data"]["chunk-by"]
+        if type(chunk_by) is str:
+            chunk_by = chunk_by.split(",")
 
-        print>>log, "defining chunks"
+        print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+            ", also by "+ ", ".join(chunk_by) if chunk_by else "")
         ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+                        chunk_by=chunk_by,
                         min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
 
         t0 = time()

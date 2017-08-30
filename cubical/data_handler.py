@@ -855,14 +855,14 @@ class ReadModelHandler:
 
         return self.data.getcol(*args, **kwargs)
 
-    def define_chunk(self, tdim=1, fdim=1, chunk_by_scan=True, min_chunks_per_tile=4):
+    def define_chunk(self, tdim=1, fdim=1, chunk_by=None, min_chunks_per_tile=4):
         """
         Fetches indexing columns (TIME, DDID, ANTENNA1/2) and defines the chunk dimensions for the data.
 
         Args:
             tdim (int): Timeslots per chunk.
             fdim (int): Frequencies per chunk.
-            chunk_by_scan:  If True, chunks will have boundaries by SCAN_NUMBER
+            chunk_by:   If set, chunks will have boundaries by the listed columns
             min_chunks_per_tile: minimum number of chunks to be placed in a tile
             
         Initializes:
@@ -905,8 +905,8 @@ class ReadModelHandler:
         # Constructs a list of timeslots at which we cut our time chunks. Use scans if specified, else
         # simply break up all timeslots
 
-        if chunk_by_scan:
-            scan_chunks = self.check_contig()
+        if chunk_by:
+            scan_chunks = self.check_contig(chunk_by)
             timechunks = []
             for scan_num in xrange(len(scan_chunks) - 1):
                 timechunks.extend(range(scan_chunks[scan_num], scan_chunks[scan_num+1], self.chunk_tdim))
@@ -987,18 +987,18 @@ class ReadModelHandler:
 
         print>> log, "  coarsening this to {} tiles (min {} chunks per tile)".format(len(Tile.tile_list), min_chunks_per_tile)
 
-    def check_contig(self):
+    def check_contig(self, columns):
+        """
+        Helper method, finds ranges of timeslots where the named columns do not change.
+        """
+        boundaries = set([0, self.ntime])
+        
+        for column in columns:
+            value = self.fetch(column)
+            boundary_rows = np.where(np.roll(value, 1) != value)[0]
+            boundaries.update([self.times[i] for i in boundary_rows])
 
-        scan = self.fetch("SCAN_NUMBER")
-
-        if np.all(scan==scan[0]):
-            scan_t = [0, self.ntime]
-        else:
-            scan_i = np.where(np.roll(scan,1)!=scan)[0]
-            scan_t = list(self.times[scan_i])
-            scan_t.append(self.ntime)
-
-        return scan_t
+        return sorted(boundaries)
 
     def flag3_to_col(self, flag3):
         """
