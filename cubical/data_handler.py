@@ -427,7 +427,7 @@ class Tile(object):
         nants = self.handler.nants
 
         flags = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice, FL.dtype, FL.MISSING)
-        flags = np.bitwise_or.reduce(flags, axis=-1)
+        flags = np.bitwise_or.reduce(flags, axis=-1) if self.ncorr==4 else np.bitwise_or.reduce(flags[...,::3], axis=-1)
         obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=6)
         obs_arr = obs_arr.reshape(list(obs_arr.shape[:-1]) + [2, 2])
         if 'movis' in data:
