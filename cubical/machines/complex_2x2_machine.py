@@ -7,7 +7,9 @@ class Complex2x2Gains(PerIntervalGains):
     This class implements the full complex 2x2 gain machine
     """
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
+        
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
         self.old_gains = self.gains.copy()
