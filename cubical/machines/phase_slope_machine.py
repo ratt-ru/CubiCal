@@ -162,9 +162,9 @@ class PhaseSlopeGains(PerIntervalGains):
 
         cyslope.cycompute_jhj(tmp_jhj.real, jhj, self.chunk_fs, self.chunk_ts, self.t_int, self.f_int)
 
-        print jhj[0,0,0,0,:]
+        self.jhjinv = np.zeros(jhj_shape, dtype=self.ftype)
 
-        cyslope.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps, self.flagbit)
+        cyslope.cycompute_jhjinv(jhj, self.jhjinv, self.gflags, self.eps, self.flagbit)
 
-        self.jhjinv = self.jhjinv.real
+        print self.jhjinv
 
