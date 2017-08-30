@@ -112,11 +112,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         for flag, mask in FL.categories().iteritems():
 
             n_flag = np.sum((flags_arr & mask) != 0)
-            fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./n_vis2x2)) if n_flag else ""
+            fstats += ("%s:%d " % (flag, n_flag)) if n_flag else ""
 
         print>> log, "{} is completely flagged: {}".format(label, fstats)
 
-        return gm, (obser_arr if compute_residuals else None), stats
+        return (obser_arr if compute_residuals else None), stats
 
     # Initialize a residual array.
 
