@@ -322,6 +322,7 @@ def main(debugging=False):
                 cf.wait(io_futures.values())
 
         print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
+        ms.resync()
         ms.lock()
 
         if not apply_only:

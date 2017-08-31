@@ -1085,6 +1085,11 @@ class ReadModelHandler:
         if self.taql:
             self.data.lock()
 
+    def resync(self):
+        self.ms.resync()
+        if self.taql:
+            self.data.resync()
+
     def close(self):
         if self.taql:
             self.data.close()
