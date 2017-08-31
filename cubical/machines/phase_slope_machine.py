@@ -10,7 +10,8 @@ class PhaseSlopeGains(PerIntervalGains):
         
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
 
-        self.slope_params = np.zeros([3] + list(self.gain_shape), dtype=self.ftype)
+        self.param_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, 3, self.n_cor, self.n_cor]
+        self.slope_params = np.zeros(self.param_shape, dtype=self.ftype)
 
         self.gain_shape = [self.n_dir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor]
 
@@ -18,8 +19,8 @@ class PhaseSlopeGains(PerIntervalGains):
         self.gains[:] = np.eye(self.n_cor) 
         self.old_gains = self.gains.copy()
 
-        self.chunk_ts = chunk_ts/chunk_ts[0]
-        self.chunk_fs = chunk_fs/chunk_fs[0]
+        self.chunk_ts = (chunk_ts - chunk_ts[0])/(chunk_ts[-1] - chunk_ts[0])
+        self.chunk_fs = (chunk_fs - chunk_fs[0])/(chunk_fs[-1] - chunk_fs[0])
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -34,28 +35,35 @@ class PhaseSlopeGains(PerIntervalGains):
             jhr (np.array): Array containing the result of computing (J^H)R.
         """
 
-        n_dir, n_timint, n_freint, n_ant, n_cor, n_cor = self.gains.shape
+        n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
 
         gh = self.gains.transpose(0,1,2,3,5,4).conj()
 
         jh = np.zeros_like(model_arr)
 
-        cyslope.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        cyslope.cycompute_jh(model_arr, self.gains, jh, 1, 1)
 
-        jhr_shape = [n_dir, n_timint, n_freint, n_ant, n_cor, n_cor]
+        tmp_jhr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
 
-        jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+        tmp_jhr = np.zeros(tmp_jhr_shape, dtype=obser_arr.dtype)
 
-        # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
         if n_dir > 1:
             resid_arr = np.empty_like(obser_arr)
             r = self.compute_residual(obser_arr, model_arr, resid_arr)
         else:
             r = obser_arr
 
-        cyslope.cycompute_jhr(gh, jh, r, jhr, self.t_int, self.f_int)
+        cyslope.cycompute_tmp_jhr(gh, jh, r, tmp_jhr, 1, 1)
 
-        return jhr.imag
+        tmp_jhr = tmp_jhr.imag
+
+        jhr_shape = [n_dir, self.n_timint, self.n_freint, n_ant, 3, n_cor, n_cor]
+
+        jhr = np.zeros(jhr_shape, dtype=tmp_jhr.dtype)
+
+        cyslope.cycompute_jhr(tmp_jhr, jhr, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+
+        return jhr
 
     def compute_update(self, model_arr, obser_arr):
         """
@@ -86,8 +94,7 @@ class PhaseSlopeGains(PerIntervalGains):
 
         # Need to turn updated parameters into gains.
 
-        # self.gains = np.exp(1j*self.phases)
-        # self.gains[...,(0,1),(1,0)] = 0 
+        cyslope.cyconstruct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
@@ -160,11 +167,8 @@ class PhaseSlopeGains(PerIntervalGains):
 
         jhj = np.zeros(jhj_shape, dtype=self.ftype)
 
-        cyslope.cycompute_jhj(tmp_jhj.real, jhj, self.chunk_fs, self.chunk_ts, self.t_int, self.f_int)
+        cyslope.cycompute_jhj(tmp_jhj.real, jhj, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
         self.jhjinv = np.zeros(jhj_shape, dtype=self.ftype)
 
         cyslope.cycompute_jhjinv(jhj, self.jhjinv, self.gflags, self.eps, self.flagbit)
-
-        print self.jhjinv
-

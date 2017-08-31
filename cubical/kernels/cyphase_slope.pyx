@@ -50,8 +50,8 @@ def cycompute_tmp_jhj(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.nonecheck(False)
 def cycompute_jhj(float3264 [:,:,:,:,:,:,:] tmp_jhj,
                   float3264 [:,:,:,:,:,:,:] jhj,
-                  float3264 [:] fs,
                   float3264 [:] ts,
+                  float3264 [:] fs,
                   int t_int,
                   int f_int):
 
@@ -121,7 +121,7 @@ def cycompute_jhjinv(float3264 [:,:,:,:,:,:,:] jhj,
                      float eps, 
                      int flagbit):
 
-    cdef int d, t, f, aa, corr = 0
+    cdef int d, t, f, c, aa, corr = 0
     cdef int n_dir, n_tim, n_fre, n_ant
     cdef int flag_count = 0
     cdef float3264 det00, det11 = 0
@@ -137,32 +137,46 @@ def cycompute_jhjinv(float3264 [:,:,:,:,:,:,:] jhj,
                 for aa in xrange(n_ant):
                     for c in xrange(2):
                         if not flags[d,t,f,aa]:
-                        
-                            det = 1 / (
-                                    jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,3,c,c]*jhj[d,t,f,aa,5,c,c] + 
+                              
+                            det = ( jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,3,c,c]*jhj[d,t,f,aa,5,c,c] + 
                                   2*jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,4,c,c] - 
                                     jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,4,c,c]*jhj[d,t,f,aa,4,c,c] - 
                                     jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,3,c,c] - 
-                                    jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,5,c,c]
-                                       )
+                                    jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,5,c,c] )
 
-                            jhjinv[d,t,f,aa,0,c,c] = det*(jhj[d,t,f,aa,3,c,c]*jhj[d,t,f,aa,5,c,c] -
-                                                          jhj[d,t,f,aa,4,c,c]*jhj[d,t,f,aa,4,c,c])
+                            if det<eps:
 
-                            jhjinv[d,t,f,aa,1,c,c] = det*(jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,4,c,c] -
-                                                          jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,5,c,c])
+                                jhjinv[d,t,f,aa,0,c,c] = 0
+                                jhjinv[d,t,f,aa,1,c,c] = 0
+                                jhjinv[d,t,f,aa,2,c,c] = 0
+                                jhjinv[d,t,f,aa,3,c,c] = 0
+                                jhjinv[d,t,f,aa,4,c,c] = 0
+                                jhjinv[d,t,f,aa,5,c,c] = 0
 
-                            jhjinv[d,t,f,aa,2,c,c] = det*(jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,4,c,c] -
-                                                          jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,3,c,c])
+                                flags[d,t,f,aa] = flagbit
+                                flag_count += 1
 
-                            jhjinv[d,t,f,aa,3,c,c] = det*(jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,5,c,c] -
-                                                          jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,2,c,c])
+                            else:
 
-                            jhjinv[d,t,f,aa,4,c,c] = det*(jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,1,c,c] -
-                                                          jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,4,c,c])
+                                det = 1/det
 
-                            jhjinv[d,t,f,aa,5,c,c] = det*(jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,3,c,c] -
-                                                          jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]) 
+                                jhjinv[d,t,f,aa,0,c,c] = det*(jhj[d,t,f,aa,3,c,c]*jhj[d,t,f,aa,5,c,c] -
+                                                              jhj[d,t,f,aa,4,c,c]*jhj[d,t,f,aa,4,c,c])
+
+                                jhjinv[d,t,f,aa,1,c,c] = det*(jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,4,c,c] -
+                                                              jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,5,c,c])
+
+                                jhjinv[d,t,f,aa,2,c,c] = det*(jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,4,c,c] -
+                                                              jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,3,c,c])
+
+                                jhjinv[d,t,f,aa,3,c,c] = det*(jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,5,c,c] -
+                                                              jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,2,c,c])
+
+                                jhjinv[d,t,f,aa,4,c,c] = det*(jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,1,c,c] -
+                                                              jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,4,c,c])
+
+                                jhjinv[d,t,f,aa,5,c,c] = det*(jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,3,c,c] -
+                                                              jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]) 
 
     return flag_count
 
@@ -210,12 +224,12 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhr(complex3264 [:,:,:,:,:,:] gh,
-                  complex3264 [:,:,:,:,:,:,:,:] jh,
-                  complex3264 [:,:,:,:,:,:,:] r,
-                  complex3264 [:,:,:,:,:,:] jhr,
-                  int t_int,
-                  int f_int):
+def cycompute_tmp_jhr(complex3264 [:,:,:,:,:,:] gh,
+                      complex3264 [:,:,:,:,:,:,:,:] jh,
+                      complex3264 [:,:,:,:,:,:,:] r,
+                      complex3264 [:,:,:,:,:,:] jhr,
+                      int t_int,
+                      int f_int):
 
     """
     This reduces the dimension of in1 to match out1. This is achieved by a
@@ -251,14 +265,49 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:] gh,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_update(float3264 [:,:,:,:,:,:] jhr,
-                     float3264 [:,:,:,:,:,:] jhj,
-                     float3264 [:,:,:,:,:,:] upd):
+def cycompute_jhr(float3264 [:,:,:,:,:,:] tmp_jhr,
+                  float3264 [:,:,:,:,:,:,:] jhr,
+                  float3264 [:] ts,
+                  float3264 [:] fs,
+                  int t_int,
+                  int f_int):
+
+    """
+    This reduces the dimension of in1 to match out1. This is achieved by a
+    summation of blocks of dimension (t_int, f_int).
+    """
+
+    cdef int d, i, t, f, aa, ab, c, rr, rc = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
+
+    n_dir = tmp_jhr.shape[0]
+    n_tim = tmp_jhr.shape[1]
+    n_fre = tmp_jhr.shape[2]
+    n_ant = tmp_jhr.shape[3]
+
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for c in xrange(2):
+                        jhr[d,rr,rc,aa,0,c,c] = jhr[d,rr,rc,aa,0,c,c] + fs[f]*tmp_jhr[d,t,f,aa,c,c]
+                        jhr[d,rr,rc,aa,1,c,c] = jhr[d,rr,rc,aa,1,c,c] + ts[t]*tmp_jhr[d,t,f,aa,c,c]
+                        jhr[d,rr,rc,aa,1,c,c] = jhr[d,rr,rc,aa,1,c,c] +       tmp_jhr[d,t,f,aa,c,c]
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_update(float3264 [:,:,:,:,:,:,:] jhr,
+                     float3264 [:,:,:,:,:,:,:] jhj,
+                     float3264 [:,:,:,:,:,:,:] upd):
     """
     NOTE: THIS RIGHT-MULTIPLIES THE ENTRIES OF IN1 BY THE ENTRIES OF IN2.
     """
 
-    cdef int d, t, f, aa = 0
+    cdef int d, t, f, aa, c = 0
     cdef int n_dir, n_tim, n_fre, n_ant
 
     n_dir = jhr.shape[0]
@@ -270,10 +319,19 @@ def cycompute_update(float3264 [:,:,:,:,:,:] jhr,
         for t in xrange(n_tim):
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
+                    for c in xrange(2): 
 
-                    upd[d,t,f,aa,0,0] = jhj[d,t,f,aa,0,0]*jhr[d,t,f,aa,0,0]
+                        upd[d,t,f,aa,0,c,c] = jhj[d,t,f,aa,0,c,c]*jhr[d,t,f,aa,0,c,c] + \
+                                              jhj[d,t,f,aa,1,c,c]*jhr[d,t,f,aa,1,c,c] + \
+                                              jhj[d,t,f,aa,2,c,c]*jhr[d,t,f,aa,2,c,c]
 
-                    upd[d,t,f,aa,1,1] = jhj[d,t,f,aa,1,1]*jhr[d,t,f,aa,1,1]
+                        upd[d,t,f,aa,1,c,c] = jhj[d,t,f,aa,1,c,c]*jhr[d,t,f,aa,0,c,c] + \
+                                              jhj[d,t,f,aa,3,c,c]*jhr[d,t,f,aa,1,c,c] + \
+                                              jhj[d,t,f,aa,4,c,c]*jhr[d,t,f,aa,2,c,c]
+
+                        upd[d,t,f,aa,2,c,c] = jhj[d,t,f,aa,2,c,c]*jhr[d,t,f,aa,0,c,c] + \
+                                              jhj[d,t,f,aa,4,c,c]*jhr[d,t,f,aa,1,c,c] + \
+                                              jhj[d,t,f,aa,5,c,c]*jhr[d,t,f,aa,2,c,c]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -362,3 +420,39 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
 
                         corr[t,f,aa,ab,1,1] = \
                         g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]
+
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cyconstruct_gains(float3264 [:,:,:,:,:,:,:] param,
+                      complex3264 [:,:,:,:,:,:] g,
+                      float3264 [:] ts,
+                      float3264 [:] fs,
+                      int t_int,
+                      int f_int):
+
+    """
+    This reduces the dimension of in1 to match out1. This is achieved by a
+    summation of blocks of dimension (t_int, f_int).
+    """
+
+    cdef int d, t, f, aa, rr, rc, c = 0
+    cdef int n_dir, n_tim, n_fre, n_ant
+
+    n_dir = g.shape[0]
+    n_tim = g.shape[1]
+    n_fre = g.shape[2]
+    n_ant = g.shape[3]
+
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
+                    for c in xrange(2):
+                        g[d,t,f,aa,c,c] = np.exp(1j*(fs[f]*param[d,rr,rc,aa,0,c,c] + 
+                                                     ts[t]*param[d,rr,rc,aa,1,c,c] +
+                                                           param[d,rr,rc,aa,2,c,c] ))

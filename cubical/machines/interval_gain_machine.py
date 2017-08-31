@@ -133,7 +133,7 @@ class PerIntervalGains(MasterMachine):
 
         # Gain flags have shape (n_dir, n_timint, n_freint, n_ant). All intervals with no prior data
         # are flagged as FL.MISSING.
-        
+
         self.gflags[:, missing_gains] = FL.MISSING
         self.missing_gain_fraction = missing_gains.sum() / float(missing_gains.size)
 
