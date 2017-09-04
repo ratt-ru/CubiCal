@@ -10,7 +10,6 @@ import logging
 import montblanc.util as mbu
 import montblanc.impl.rime.tensorflow.ms.ms_manager as MS
 
-from montblanc.config import RimeSolverConfig as Options
 from montblanc.impl.rime.tensorflow.sources import (SourceProvider,
                                                     FitsBeamSourceProvider,
                                                     MSSourceProvider)
@@ -54,16 +53,6 @@ class MSSourceProvider(SourceProvider):
     def frequency(self, context):
         channels = self._handler._chanfr[self._ddids, :]
         return channels.reshape(context.shape).astype(context.dtype)
-
-    def ref_frequency(self, context):
-        ref_freqs = self._handler._rfreqs
-
-        data = np.empty((self._nddid, self._nchan), dtype=np.float64)
-
-        for ind, ddid in enumerate(self._ddids):
-            data[ind, :] = ref_freqs[ddid]
-
-        return data.reshape(context.shape).astype(context.dtype)
 
     def uvw(self, context):
         """ Special case for handling antenna uvw code """
@@ -122,7 +111,7 @@ class MSSourceProvider(SourceProvider):
         # Time and antenna extents
         (lt, ut), (la, ua) = context.dim_extents('ntime', 'na')
 
-        return mbu.parallactic_angles(self._times[self.sort_ind][lt:ut], self._handler._antpos[la:ua], 
+        return mbu.parallactic_angles(np.unique(self._times[self.sort_ind])[lt:ut], self._handler._antpos[la:ua], 
                     self._handler._phadir).reshape(context.shape).astype(context.dtype)
 
     def __enter__(self):
@@ -172,17 +161,34 @@ class ColumnSinkProvider(SinkProvider):
     def __str__(self):
         return self.__class__.__name__
 
-def simulate(src_provs, snk_provs):
+_mb_slvr = None
 
-    montblanc.log.setLevel(logging.INFO)
-    [h.setLevel(logging.INFO) for h in montblanc.log.handlers]
+def simulate(src_provs, snk_provs, opts):
 
-    slvr_cfg = montblanc.rime_solver_cfg(
-        mem_budget=1024*1024*1024,
-        dtype='double',
-        version=Options.VERSION_TENSORFLOW)
+    global _mb_slvr
 
-    with montblanc.rime_solver(slvr_cfg) as slvr:
+    mblogger = logging.Logger.manager.loggerDict["montblanc"]
+    mblogger.propagate = False
 
-        slvr.solve(source_providers=src_provs, sink_providers=snk_provs)
+    if _mb_slvr is None:
+        slvr_cfg = montblanc.rime_solver_cfg(
+            mem_budget=opts["mem-budget"]*1024*1024,
+            dtype=opts["dtype"],
+            polarisation_type=opts["feed-type"],
+            device_type=opts["device-type"])
+
+        _mb_slvr = montblanc.rime_solver(slvr_cfg)
+        
+    _mb_slvr.solve(source_providers=src_provs, sink_providers=snk_provs)
+
+import atexit
+
+def _shutdown_mb_slvr():
+    
+    global _mb_slvr
+    
+    if _mb_slvr is not None:
+        _mb_slvr.close()
+
+atexit.register(_shutdown_mb_slvr)
 

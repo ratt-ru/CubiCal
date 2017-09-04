@@ -4,8 +4,6 @@ import numpy as np
 import montblanc
 import montblanc.util as mbu
 
-from montblanc.config import RimeSolverConfig as Options
-
 from montblanc.impl.rime.tensorflow.ms import MeasurementSetManager
 from montblanc.impl.rime.tensorflow.sources import (SourceProvider,
     FitsBeamSourceProvider,
@@ -82,13 +80,12 @@ class TiggerSourceProvider(SourceProvider):
         stokes = np.empty(context.shape, context.dtype)
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
-			stokes[ind,:,0] = source.flux.I
-			stokes[ind,:,1] = source.flux.Q
-			stokes[ind,:,2] = source.flux.U
-			stokes[ind,:,3] = source.flux.V
+            stokes[ind,:,0] = source.flux.I
+            stokes[ind,:,1] = source.flux.Q
+            stokes[ind,:,2] = source.flux.U
+            stokes[ind,:,3] = source.flux.V
 
         return stokes
-
 
     def point_alpha(self, context):
         """ Return a spectral index (alpha) array to montblanc """
@@ -104,6 +101,22 @@ class TiggerSourceProvider(SourceProvider):
                 alpha[ind] = 0
 
         return alpha
+
+    def point_ref_freq(self, context):
+        """ Return a reference frequency per source array to montblanc """
+        
+        pt_ref_freq = np.empty(context.shape, context.dtype)
+
+        (lp, up) = context.dim_extents('npsrc')
+        
+        for ind, source in enumerate(self._pnt_sources[lp:up]):
+            try:
+                pt_ref_freq[ind] = source.spectrum.freq0
+            except:
+                pt_ref_freq[ind] = self._sm.freq0 or 0
+
+        return pt_ref_freq
+
 
     def gaussian_lm(self, context):
         """ Return a lm coordinate array to montblanc """
@@ -166,6 +179,20 @@ class TiggerSourceProvider(SourceProvider):
 
         return shapes
 
+    def gaussian_ref_freq(self, context):
+        """ Return a reference frequency per source array to montblanc """
+
+        gau_ref_freq = np.empty(context.shape, context.dtype)
+
+        (lg, ug) = context.dim_extents('ngsrc')
+        
+        for ind, source in enumerate(self._gau_sources[lg:ug]):
+            try:
+                gau_ref_freq[ind] = source.spectrum.freq0
+            except:
+                gau_ref_freq[ind] = self._sm.freq0 or 0
+
+        return gau_ref_freq
 
     def updated_dimensions(self):
         """ Tell montblanc about dimension sizes (point sources only) """

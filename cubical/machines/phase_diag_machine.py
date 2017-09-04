@@ -6,17 +6,16 @@ class PhaseDiagGains(PerIntervalGains):
     """
     This class implements the diagonal phase-only gain machine.
     """
-    def __init__(self, model_arr, chunk_ts, chunk_fs, options):
+    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
         
-        PerIntervalGains.__init__(self, model_arr, chunk_ts, chunk_fs, options)
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
 
-        self.float_type = np.float64 if model_arr.dtype is np.complex128 else np.float32
+        self.phases = np.zeros(self.gain_shape, dtype=self.ftype)
 
-        self.phases = np.zeros(self.gain_shape, dtype=self.float_type)
-
-        self.gains = np.empty_like(self.phases, dtype=model_arr.dtype)
+        self.gains = np.empty_like(self.phases, dtype=self.dtype)
         self.gains[:] = np.eye(self.n_cor) 
         self.old_gains = self.gains.copy()
+
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -54,7 +53,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         return jhr.imag
 
-    def compute_update(self, model_arr, obser_arr, iters):
+    def compute_update(self, model_arr, obser_arr):
         """
         This function computes the update step of the GN/LM method. This is
         equivalent to the complete (((J^H)J)^-1)(J^H)R.
@@ -69,14 +68,14 @@ class PhaseDiagGains(PerIntervalGains):
             update (np.array): Array containing the result of computing
                 (((J^H)J)^-1)(J^H)R
         """
-            
+
         jhr = self.compute_js(obser_arr, model_arr)
 
         update = np.zeros_like(jhr)
 
         cyphase.cycompute_update(jhr, self.jhjinv, update)
 
-        if iters%2 == 0:
+        if self.iters%2 == 0:
             self.phases += 0.5*update
         else:
             self.phases += update
