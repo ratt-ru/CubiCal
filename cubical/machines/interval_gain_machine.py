@@ -3,26 +3,37 @@ import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
 from functools import partial
+from numpy.ma import masked_array
 
 class PerIntervalGains(MasterMachine):
     """
     This is a base class for all gain solution machines that use solutions intervals.
     """
 
-    def __init__(self, model_arr, times, frequencies, options):
+    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, options):
         """
         Given a model array, initializes various sizes relevant to the gain solutions.
         """
 
-        MasterMachine.__init__(self, times, frequencies)
+        MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies, options)
 
-        self.n_dir, self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = model_arr.shape
+        self.n_dir, self.n_mod = ndir, nmod
+        _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
     
-        self.dtype = model_arr.dtype
-        self.ftype = model_arr.real.dtype
-        self.t_int = options["time-int"]
-        self.f_int = options["freq-int"]
+        self.dtype = data_arr.dtype
+        self.ftype = data_arr.real.dtype
+        self.t_int = options["time-int"] or self.n_tim
+        self.f_int = options["freq-int"] or self.n_fre
         self.eps = 1e-6
+
+        # timestamp of start of each interval
+        t0, f0 = times[0::self.t_int], frequencies[0::self.f_int]
+        t1, f1 = t0.copy(), f0.copy()
+        # timestamp of end of each interval -- need to take care if not evenly divisible
+        t1[:-1] = times[self.t_int-1:-1:self.t_int]
+        f1[:-1] = frequencies[self.f_int-1:-1:self.f_int]
+        t1[-1], f1[-1] = times[-1], frequencies[-1]
+        self._grid = dict(time=(t0+t1)/2, freq=(f0+f1)/2)
 
         # n_tim and n_fre are the time and frequency dimensions of the data arrays.
         # n_timint and n_freint are the time and frequnecy dimensions of the gains.
@@ -48,20 +59,55 @@ class PerIntervalGains(MasterMachine):
         # Initialise attributes used in convergence testing. n_cnvgd is the number
         # of solutions which have converged.
 
+        self._has_stalled = False
         self.n_cnvgd = 0 
+        self.iters = 0
+        self.maxiter = options["max-iter"]
+        self.min_quorum = options["conv-quorum"]
+        self.update_type = options["update-type"]
+        self.dd_term = options["dd-term"]
+        self.term_iters = options["term-iters"]
 
         # Construct the appropriate shape for the gains.
 
         self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
+        self.gains = None
 
         # Construct flag array and populate flagging attributes.
 
         self.n_flagged = 0
         self.clip_lower = options["clip-low"]
         self.clip_upper = options["clip-high"]
+        self.clip_after = options["clip-after"]
         self.flag_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant]
         self.gflags = np.zeros(self.flag_shape, FL.dtype)
         self.flagbit = FL.ILLCOND
+
+    # describe our solutions
+    def get_solutions_grid(self):
+        return self._grid
+
+    @staticmethod
+    def exportable_solutions(label):
+        return { "{}:gain".format(label): (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
+
+    def importable_solutions(self):
+        return { "{}:gain".format(self.jones_label): self._grid }
+
+    def export_solutions(self):
+        """This method saves the solutions to a dict of {label: solutions,grids} items"""
+        # make a mask from gain flags by broadcasting the corr1/2 axes
+        mask = np.zeros_like(self.gains, bool)
+        mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
+        return { "{}:gain".format(self.jones_label): (masked_array(self.gains, mask), self._grid) }
+
+    def import_solutions(self, soldict):
+        """This method loads solutions from a dict"""
+        sol = soldict.get("{}:gain".format(self.jones_label))
+        if sol is not None:
+            self.gains[:] = sol.data
+            # collapse the corr1/2 axes
+            self.gflags[sol.mask.any(axis=(-1,-2))] |= FL.MISSING
 
     def update_stats(self, flags, eqs_per_tf_slot):
         """
@@ -91,7 +137,7 @@ class PerIntervalGains(MasterMachine):
         self.gflags[:, missing_gains] = FL.MISSING
         self.missing_gain_fraction = missing_gains.sum() / float(missing_gains.size)
 
-    def flag_solutions(self, clip_gains=False):
+    def flag_solutions(self):
         """
         This method will do basic flagging of the gain solutions.
         """
@@ -116,7 +162,7 @@ class PerIntervalGains(MasterMachine):
 
         # Check for gain solutions which are out of bounds (based on clip thresholds).
 
-        if clip_gains and self.clip_upper or self.clip_lower:
+        if self.clip_after<self.iters and self.clip_upper or self.clip_lower:
             goob = np.zeros(gain_mags.shape, bool)
             if self.clip_upper:
                 goob = gain_mags.max(axis=(-1, -2)) > self.clip_upper
@@ -152,6 +198,10 @@ class PerIntervalGains(MasterMachine):
         self.max_update = np.max(diff_g)
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
 
+    def update_term(self):
+
+        self.iters += 1
+
     def unpack_intervals(self, arr, tdim_ind=0):
 
         return arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
@@ -163,6 +213,18 @@ class PerIntervalGains(MasterMachine):
     def interval_and(self, arr, tdim_ind=0):
    
         return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1)
+
+    @property
+    def has_converged(self):
+        return self.n_cnvgd/self.n_sols > self.min_quorum or self.iters >= self.maxiter
+
+    @property
+    def has_stalled(self):
+        return self._has_stalled
+
+    @has_stalled.setter
+    def has_stalled(self, value):
+        self._has_stalled = value
 
 
 

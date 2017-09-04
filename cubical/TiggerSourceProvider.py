@@ -80,18 +80,10 @@ class TiggerSourceProvider(SourceProvider):
         stokes = np.empty(context.shape, context.dtype)
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
-            if self._handler._poltype == 'linear':
-                stokes[ind,:,0] = source.flux.I
-                stokes[ind,:,1] = source.flux.Q
-                stokes[ind,:,2] = source.flux.U
-                stokes[ind,:,3] = source.flux.V
-            elif self._handler._poltype == 'circular':
-                stokes[ind,:,0] = source.flux.I
-                stokes[ind,:,2] = source.flux.Q
-                stokes[ind,:,3] = source.flux.U
-                stokes[ind,:,1] = source.flux.V
-            else:
-                print "Log an issue - this message should never be printed."
+            stokes[ind,:,0] = source.flux.I
+            stokes[ind,:,1] = source.flux.Q
+            stokes[ind,:,2] = source.flux.U
+            stokes[ind,:,3] = source.flux.V
 
         return stokes
 
@@ -123,7 +115,7 @@ class TiggerSourceProvider(SourceProvider):
             except:
                 pt_ref_freq[ind] = self._sm.freq0 or 0
 
-        return pt_ref_freq[lp:up]
+        return pt_ref_freq
 
 
     def gaussian_lm(self, context):
@@ -149,18 +141,10 @@ class TiggerSourceProvider(SourceProvider):
         stokes = np.empty(context.shape, context.dtype)
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
-            if self._handler._poltype == 'linear':
-                stokes[ind,:,0] = source.flux.I
-                stokes[ind,:,1] = source.flux.Q
-                stokes[ind,:,2] = source.flux.U
-                stokes[ind,:,3] = source.flux.V
-            elif self._handler._poltype == 'circular':
-                stokes[ind,:,0] = source.flux.I
-                stokes[ind,:,2] = source.flux.Q
-                stokes[ind,:,3] = source.flux.U
-                stokes[ind,:,1] = source.flux.V
-            else:
-                print "Log an issue - this message should never be printed."
+            stokes[ind,:,0] = source.flux.I
+            stokes[ind,:,1] = source.flux.Q
+            stokes[ind,:,2] = source.flux.U
+            stokes[ind,:,3] = source.flux.V
 
         return stokes
 
@@ -208,7 +192,7 @@ class TiggerSourceProvider(SourceProvider):
             except:
                 gau_ref_freq[ind] = self._sm.freq0 or 0
 
-        return gau_ref_freq[lg:ug]
+        return gau_ref_freq
 
     def updated_dimensions(self):
         """ Tell montblanc about dimension sizes (point sources only) """
