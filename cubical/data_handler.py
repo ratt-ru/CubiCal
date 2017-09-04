@@ -494,7 +494,7 @@ class Tile(object):
         if self.handler.output_column and data['updated'][0]:
             print>> log, "saving {} for MS rows {}~{}".format(self.handler.output_column, self.first_row, self.last_row)
             if self.handler._add_column(self.handler.output_column):
-                self.handler._reopen()
+                self.handler.reopen()
             self.handler.data.putcol(self.handler.output_column, data['covis'], self.first_row, nrows)
 
         if self.handler._save_bitflag and data['updated'][1]:
@@ -674,25 +674,25 @@ class ReadModelHandler:
 
         print>>log, ModColor.Str("reading MS %s"%self.ms_name, col="green")
 
-        self._anttab = pt.table(self.ms_name + "::ANTENNA", ack=False)
-        self._fldtab = pt.table(self.ms_name + "::FIELD", ack=False)
-        self._spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW", ack=False)
-        self._poltab = pt.table(self.ms_name + "::POLARIZATION", ack=False)
-        self._ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
-        self._feedtab = pt.table(self.ms_name + "::FEED", ack=False)
+        _anttab = pt.table(self.ms_name + "::ANTENNA", ack=False)
+        _fldtab = pt.table(self.ms_name + "::FIELD", ack=False)
+        _spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW", ack=False)
+        _poltab = pt.table(self.ms_name + "::POLARIZATION", ack=False)
+        _ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
+        _feedtab = pt.table(self.ms_name + "::FEED", ack=False)
 
         self.ctype = np.complex128 if double_precision else np.complex64
         self.ftype = np.float64 if double_precision else np.float32
-        self.nfreq = self._spwtab.getcol("NUM_CHAN")[0]
-        self.ncorr = self._poltab.getcol("NUM_CORR")[0]
-        self.nants = self._anttab.nrows()
+        self.nfreq = _spwtab.getcol("NUM_CHAN")[0]
+        self.ncorr = _poltab.getcol("NUM_CORR")[0]
+        self.nants = _anttab.nrows()
 
-        self._nchans = self._spwtab.getcol("NUM_CHAN")
-        self._rfreqs = self._spwtab.getcol("REF_FREQUENCY")
-        self._chanfr = self._spwtab.getcol("CHAN_FREQ")
-        self._antpos = self._anttab.getcol("POSITION")
-        self._phadir = self._fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
-        self._poltype = np.unique(self._feedtab.getcol('POLARIZATION_TYPE')['array'])
+        self._nchans = _spwtab.getcol("NUM_CHAN")
+        self._rfreqs = _spwtab.getcol("REF_FREQUENCY")
+        self._chanfr = _spwtab.getcol("CHAN_FREQ")
+        self._antpos = _anttab.getcol("POSITION")
+        self._phadir = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
+        self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
         
         if np.any([pol in self._poltype for pol in ['L','l','R','r']]):
             self._poltype = "circular"
@@ -706,12 +706,12 @@ class ReadModelHandler:
 
         # print some info on MS layout
         print>>log,"  detected {} ({}) feeds".format(self._poltype, self.feeds)
-        print>>log,"  fields are "+", ".join(["{}{}: {}".format('*' if i==fid else "",i,name) for i, name in enumerate(self._fldtab.getcol("NAME"))])
-        self._spw_chanfreqs = self._spwtab.getcol("CHAN_FREQ")  # nspw x nfreq array of frequencies
+        print>>log,"  fields are "+", ".join(["{}{}: {}".format('*' if i==fid else "",i,name) for i, name in enumerate(_fldtab.getcol("NAME"))])
+        self._spw_chanfreqs = _spwtab.getcol("CHAN_FREQ")  # nspw x nfreq array of frequencies
         print>>log,"  {} spectral windows of {} channels each ".format(*self._spw_chanfreqs.shape)
 
         # figure out DDID range
-        self._ddids = _parse_range(ddid, self._ddesctab.nrows())
+        self._ddids = _parse_range(ddid, _ddesctab.nrows())
 
         # use TaQL to select subset
         self.taql = self.build_taql(taql, fid, self._ddids)
@@ -733,14 +733,14 @@ class ReadModelHandler:
         self.uniq_times = np.unique(self.time_col)
         self.ntime = len(self.uniq_times)
 
-        self._ddid_spw = self._ddesctab.getcol("SPECTRAL_WINDOW_ID")
+        self._ddid_spw = _ddesctab.getcol("SPECTRAL_WINDOW_ID")
         # select frequencies corresponding to DDID range
         self._ddid_chanfreqs = np.array([self._spw_chanfreqs[self._ddid_spw[ddid]] for ddid in self._ddids ])
 
         self.all_freqs = self._ddid_chanfreqs.ravel()
 
         print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
-                    self.nrows, len(self._ddids), self._ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
+                    self.nrows, len(self._ddids), _ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
         print>>log,"  DDID central frequencies are at {} GHz".format(
                     " ".join(["%.2f"%(self._ddid_chanfreqs[i][self.nfreq/2]*1e-9) for i in range(len(self._ddids))]))
         self.nddid = len(self._ddids)
@@ -779,7 +779,7 @@ class ReadModelHandler:
                 self._add_column("BITFLAG", like_type='int')
                 if "BITFLAG_ROW" not in self.ms.colnames():
                     self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int')
-                self._reopen()
+                self.reopen()
                 bitflags = flagging.Flagsets(self.ms)
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
                 print>> log, ModColor.Str("Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
@@ -1085,17 +1085,17 @@ class ReadModelHandler:
         if self.taql:
             self.data.lock()
 
-    def resync(self):
-        self.ms.resync()
-        if self.taql:
-            self.data.resync()
-
     def close(self):
         if self.taql:
             self.data.close()
         self.ms.close()
 
-    def _reopen(self):
+    def flush(self):
+        if self.taql:
+            self.data.flush()
+        self.ms.flush()
+
+    def reopen(self):
         """Reopens the MS. Unfortunately, this is needed when new columns are added"""
         self.close()
         self.ms = self.data = pt.table(self.ms_name, readonly=False, ack=False)

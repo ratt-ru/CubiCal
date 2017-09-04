@@ -270,16 +270,17 @@ def main(debugging=False):
             solver.gm_factory.close()
 
         else:
-            # all I/O will be done by the io_executor, so we need to release the locks
-            ms.unlock()
-
             with cf.ProcessPoolExecutor(max_workers=ncpu-1) as executor, \
                  cf.ProcessPoolExecutor(max_workers=1) as io_executor:
 
+                ms.flush()
                 # this will be a dict of tile number: future loading that tile
                 io_futures = {}
                 # schedule I/O job to load tile 0
                 io_futures[0] = io_executor.submit(_io_handler, load=0, save=None)
+                # all I/O will be done by the io_executor, so we need to close the MS in the main process
+                # and reopen it afterwards
+                ms.close()
                 for itile, tile in enumerate(Tile.tile_list):
                     # wait for I/O job on current tile to finish
                     print>>log(0),"waiting for I/O on tile {}".format(itile)
@@ -321,9 +322,10 @@ def main(debugging=False):
                 io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, finalize=True)
                 cf.wait(io_futures.values())
 
+                # and reopen the MS again
+                ms.reopen()
+
         print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
-        ms.resync()
-        ms.lock()
 
         if not apply_only:
             # now summarize the stats
