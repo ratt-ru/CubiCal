@@ -136,47 +136,46 @@ def cycompute_jhjinv(float3264 [:,:,:,:,:,:,:] jhj,
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
                     for c in xrange(2):
-                        if not flags[d,t,f,aa]:
-                              
-                            det = ( jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,3,c,c]*jhj[d,t,f,aa,5,c,c] + 
-                                  2*jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,4,c,c] - 
-                                    jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,4,c,c]*jhj[d,t,f,aa,4,c,c] - 
-                                    jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,3,c,c] - 
-                                    jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,5,c,c] )
+                                                     
+                        det = ( jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,3,c,c]*jhj[d,t,f,aa,5,c,c] + 
+                              2*jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,4,c,c] - 
+                                jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,4,c,c]*jhj[d,t,f,aa,4,c,c] - 
+                                jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,3,c,c] - 
+                                jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,5,c,c] )
 
-                            if det<eps:
+                        if det<eps:
 
-                                jhjinv[d,t,f,aa,0,c,c] = 0
-                                jhjinv[d,t,f,aa,1,c,c] = 0
-                                jhjinv[d,t,f,aa,2,c,c] = 0
-                                jhjinv[d,t,f,aa,3,c,c] = 0
-                                jhjinv[d,t,f,aa,4,c,c] = 0
-                                jhjinv[d,t,f,aa,5,c,c] = 0
+                            jhjinv[d,t,f,aa,0,c,c] = 0
+                            jhjinv[d,t,f,aa,1,c,c] = 0
+                            jhjinv[d,t,f,aa,2,c,c] = 0
+                            jhjinv[d,t,f,aa,3,c,c] = 0
+                            jhjinv[d,t,f,aa,4,c,c] = 0
+                            jhjinv[d,t,f,aa,5,c,c] = 0
 
-                                flags[d,t,f,aa] = flagbit
-                                flag_count += 1
+                            flags[d,t,f,aa] = flagbit
+                            flag_count += 1
 
-                            else:
+                        else:
 
-                                det = 1/det
+                            det = 1/det
 
-                                jhjinv[d,t,f,aa,0,c,c] = det*(jhj[d,t,f,aa,3,c,c]*jhj[d,t,f,aa,5,c,c] -
-                                                              jhj[d,t,f,aa,4,c,c]*jhj[d,t,f,aa,4,c,c])
+                            jhjinv[d,t,f,aa,0,c,c] = det*(jhj[d,t,f,aa,3,c,c]*jhj[d,t,f,aa,5,c,c] -
+                                                          jhj[d,t,f,aa,4,c,c]*jhj[d,t,f,aa,4,c,c])
 
-                                jhjinv[d,t,f,aa,1,c,c] = det*(jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,4,c,c] -
-                                                              jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,5,c,c])
+                            jhjinv[d,t,f,aa,1,c,c] = det*(jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,4,c,c] -
+                                                          jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,5,c,c])
 
-                                jhjinv[d,t,f,aa,2,c,c] = det*(jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,4,c,c] -
-                                                              jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,3,c,c])
+                            jhjinv[d,t,f,aa,2,c,c] = det*(jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,4,c,c] -
+                                                          jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,3,c,c])
 
-                                jhjinv[d,t,f,aa,3,c,c] = det*(jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,5,c,c] -
-                                                              jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,2,c,c])
+                            jhjinv[d,t,f,aa,3,c,c] = det*(jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,5,c,c] -
+                                                          jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,2,c,c])
 
-                                jhjinv[d,t,f,aa,4,c,c] = det*(jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,1,c,c] -
-                                                              jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,4,c,c])
+                            jhjinv[d,t,f,aa,4,c,c] = det*(jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,1,c,c] -
+                                                          jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,4,c,c])
 
-                                jhjinv[d,t,f,aa,5,c,c] = det*(jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,3,c,c] -
-                                                              jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]) 
+                            jhjinv[d,t,f,aa,5,c,c] = det*(jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,3,c,c] -
+                                                          jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]) 
 
     return flag_count
 

@@ -5,7 +5,7 @@ from cubical.machines.abstract_machine import MasterMachine
 from functools import partial
 from numpy.ma import masked_array
 
-class PerIntervalGains(MasterMachine):
+class ParameterisedGains(MasterMachine):
     """
     This is a base class for all gain solution machines that use solutions intervals.
     """
@@ -27,11 +27,11 @@ class PerIntervalGains(MasterMachine):
         self.eps = 1e-6
 
         # timestamp of start of each interval
-        t0, f0 = times[0::self.t_int], frequencies[0::self.f_int]
+        t0, f0 = times[0::1], frequencies[0::1]
         t1, f1 = t0.copy(), f0.copy()
         # timestamp of end of each interval -- need to take care if not evenly divisible
-        t1[:-1] = times[self.t_int-1:-1:self.t_int]
-        f1[:-1] = frequencies[self.f_int-1:-1:self.f_int]
+        t1[:-1] = times[1-1:-1:1]
+        f1[:-1] = frequencies[1-1:-1:1]
         t1[-1], f1[-1] = times[-1], frequencies[-1]
         self._grid = dict(time=(t0+t1)/2, freq=(f0+f1)/2)
 
@@ -44,7 +44,7 @@ class PerIntervalGains(MasterMachine):
 
         # Total number of solutions.
 
-        self.n_sols = float(self.n_dir * self.n_tf_ints)
+        self.n_sols = float(self.n_dir * self.n_tim * self.n_fre)
 
         # Initialise attributes used for computing values over intervals.
 
@@ -70,7 +70,7 @@ class PerIntervalGains(MasterMachine):
 
         # Construct the appropriate shape for the gains.
 
-        self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
+        self.gain_shape = [self.n_dir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor]
         self.gains = None
 
         # Construct flag array and populate flagging attributes.
@@ -79,7 +79,7 @@ class PerIntervalGains(MasterMachine):
         self.clip_lower = options["clip-low"]
         self.clip_upper = options["clip-high"]
         self.clip_after = options["clip-after"]
-        self.flag_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant]
+        self.flag_shape = [self.n_dir, self.n_tim, self.n_fre, self.n_ant]
         self.gflags = np.zeros(self.flag_shape, FL.dtype)
         self.flagbit = FL.ILLCOND
 
@@ -129,7 +129,7 @@ class PerIntervalGains(MasterMachine):
         # Pre-flag gain solution intervals that are completely flagged in the input data 
         # (i.e. MISSING|PRIOR). This has shape (n_timint, n_freint, n_ant).
 
-        missing_gains = self.interval_and((flags&(FL.MISSING|FL.PRIOR) != 0).all(axis=-1))
+        missing_gains = (flags&(FL.MISSING|FL.PRIOR) != 0).all(axis=-1)
 
         # Gain flags have shape (n_dir, n_timint, n_freint, n_ant). All intervals with no prior data
         # are flagged as FL.MISSING.
@@ -225,9 +225,3 @@ class PerIntervalGains(MasterMachine):
     @has_stalled.setter
     def has_stalled(self, value):
         self._has_stalled = value
-
-
-
-
-
-

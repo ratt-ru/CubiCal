@@ -14,7 +14,8 @@ from cubical.tools import logger, parsets, myoptparse, shm_utils, ModColor
 from cubical.machines import complex_2x2_machine
 from cubical.machines import complex_W_2x2_machine
 from cubical.machines import phase_diag_machine
-from cubical.machines import phase_slope_machine
+from cubical.machines import f_slope_machine
+from cubical.machines import tf_plane_machine
 from cubical.machines import jones_chain_machine
 
 log = logger.getLogger("main")
@@ -214,7 +215,8 @@ def main(debugging=False):
             JONES_TYPES = {'complex-2x2': complex_2x2_machine.Complex2x2Gains,
                            'phase-diag': phase_diag_machine.PhaseDiagGains,
                            'robust-2x2': complex_W_2x2_machine.ComplexW2x2Gains,
-                           'phase-slope': phase_slope_machine.PhaseSlopeGains}
+                           'f-slope': f_slope_machine.PhaseSlopeGains,
+                           'tf-plane': tf_plane_machine.PhaseSlopeGains}
             jones_class = JONES_TYPES.get(jones_opts['type'])
             if jones_class is None:
                 raise ValueError("unknown Jones type '{}'".format(jones_opts['type']))

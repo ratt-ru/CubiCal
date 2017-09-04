@@ -1,19 +1,18 @@
-from cubical.machines.interval_gain_machine import PerIntervalGains
+from cubical.machines.parameterised_machine import ParameterisedGains
 import numpy as np
 import cubical.kernels.cyphase_slope as cyslope
+from cubical.flagging import FL
 
-class PhaseSlopeGains(PerIntervalGains):
+class PhaseSlopeGains(ParameterisedGains):
     """
     This class implements the diagonal phase-only gain machine.
     """
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
         
-        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
+        ParameterisedGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
 
         self.param_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, 3, self.n_cor, self.n_cor]
         self.slope_params = np.zeros(self.param_shape, dtype=self.ftype)
-
-        self.gain_shape = [self.n_dir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor]
 
         self.gains = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:] = np.eye(self.n_cor) 
