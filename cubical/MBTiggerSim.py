@@ -47,7 +47,7 @@ class MSSourceProvider(SourceProvider):
                 ('na', self._nants),
                 ('nchan', self._nchan*self._nddid),
                 ('nbands', self._nddid),
-                ('npol', self._ncorr),
+                ('npol', 4),
                 ('npolchan', 4*self._nchan)]
 
     def frequency(self, context):
@@ -129,6 +129,7 @@ class ColumnSinkProvider(SinkProvider):
         self._tile = tile
         self._data = data
         self._handler = tile.handler
+        self._ncorr = self._handler.ncorr
         self._name = "Measurement Set '{ms}'".format(ms=self._handler.ms_name)
         self._dir = 0
         self.sort_ind = sort_ind
@@ -140,8 +141,6 @@ class ColumnSinkProvider(SinkProvider):
 
     def model_vis(self, context):
 
-        _, _, _, ncorr = context.data.shape
-
         (lt, ut), (lbl, ubl), (lc, uc) = context.dim_extents('ntime', 'nbl', 'nchan')
 
         lower, upper = MS.row_extents(context, ("ntime", "nbl"))
@@ -150,13 +149,21 @@ class ColumnSinkProvider(SinkProvider):
         rows_per_ddid = ntime*nbl
         chan_per_ddid = nchan/self._nddid
 
+        if self._ncorr == 1:
+            sel = 0
+        elif self._ncorr == 2:
+            sel = slice(None, None, 3)
+        else:
+            sel = slice(None)
+
         for ddid_ind in xrange(self._nddid):
             offset = ddid_ind*rows_per_ddid
             lr = lower + offset
             ur = upper + offset
             lc = ddid_ind*chan_per_ddid
             uc = (ddid_ind+1)*chan_per_ddid
-            self._data['movis'][self._dir, 0, lr:ur, :, :] = context.data[:,:,lc:uc,:].reshape(-1, chan_per_ddid, ncorr)
+            self._data['movis'][self._dir, 0, lr:ur, :, :] = \
+                    context.data[:,:,lc:uc,sel].reshape(-1, chan_per_ddid, self._ncorr)
 
     def __str__(self):
         return self.__class__.__name__
