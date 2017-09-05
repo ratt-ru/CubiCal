@@ -38,10 +38,12 @@ def cycompute_tmp_jhj(complex3264 [:,:,:,:,:,:,:,:] m,
                 for f in xrange(n_fre):
                     for aa in xrange(n_ant):
                         for ab in xrange(n_ant):
-                            
-                            jhj[d,i,t,f,aa,0,0] = m[d,i,t,f,aa,ab,0,0]*m[d,i,t,f,ab,aa,0,0] + \
+
+                            jhj[d,i,t,f,aa,0,0] = jhj[d,i,t,f,aa,0,0] + \
+                                                  m[d,i,t,f,aa,ab,0,0]*m[d,i,t,f,ab,aa,0,0] + \
                                                   m[d,i,t,f,aa,ab,0,1]*m[d,i,t,f,ab,aa,1,0]
-                            jhj[d,i,t,f,aa,1,1] = m[d,i,t,f,aa,ab,1,0]*m[d,i,t,f,ab,aa,0,1] + \
+                            jhj[d,i,t,f,aa,1,1] = jhj[d,i,t,f,aa,1,1] + \
+                                                  m[d,i,t,f,aa,ab,1,0]*m[d,i,t,f,ab,aa,0,1] + \
                                                   m[d,i,t,f,aa,ab,1,1]*m[d,i,t,f,ab,aa,1,1]
 
 @cython.cdivision(True)
@@ -68,7 +70,6 @@ def cycompute_jhj(float3264 [:,:,:,:,:,:,:] tmp_jhj,
     n_tim = tmp_jhj.shape[2]
     n_fre = tmp_jhj.shape[3]
     n_ant = tmp_jhj.shape[4]
-    n_blk = jhj.shape[4]
 
     for d in xrange(n_dir):
         for i in xrange(n_mod):
@@ -117,14 +118,10 @@ def cycompute_jhj(float3264 [:,:,:,:,:,:,:] tmp_jhj,
 @cython.nonecheck(False)
 def cycompute_jhjinv(float3264 [:,:,:,:,:,:,:] jhj,
                      float3264 [:,:,:,:,:,:,:] jhjinv,
-                     np.uint16_t [:,:,:,:] flags,
-                     float eps, 
-                     int flagbit):
+                     float eps):
 
-    cdef int d, t, f, c, aa, corr = 0
+    cdef int d, t, f, c, aa = 0
     cdef int n_dir, n_tim, n_fre, n_ant
-    cdef int flag_count = 0
-    cdef float3264 det00, det11 = 0
 
     n_dir = jhj.shape[0]
     n_tim = jhj.shape[1]
@@ -152,9 +149,6 @@ def cycompute_jhjinv(float3264 [:,:,:,:,:,:,:] jhj,
                             jhjinv[d,t,f,aa,4,c,c] = 0
                             jhjinv[d,t,f,aa,5,c,c] = 0
 
-                            flags[d,t,f,aa] = flagbit
-                            flag_count += 1
-
                         else:
 
                             det = 1/det
@@ -177,7 +171,6 @@ def cycompute_jhjinv(float3264 [:,:,:,:,:,:,:] jhj,
                             jhjinv[d,t,f,aa,5,c,c] = det*(jhj[d,t,f,aa,0,c,c]*jhj[d,t,f,aa,3,c,c] -
                                                           jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]) 
 
-    return flag_count
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -293,7 +286,7 @@ def cycompute_jhr(float3264 [:,:,:,:,:,:] tmp_jhr,
                     for c in xrange(2):
                         jhr[d,rr,rc,aa,0,c,c] = jhr[d,rr,rc,aa,0,c,c] + fs[f]*tmp_jhr[d,t,f,aa,c,c]
                         jhr[d,rr,rc,aa,1,c,c] = jhr[d,rr,rc,aa,1,c,c] + ts[t]*tmp_jhr[d,t,f,aa,c,c]
-                        jhr[d,rr,rc,aa,1,c,c] = jhr[d,rr,rc,aa,1,c,c] +       tmp_jhr[d,t,f,aa,c,c]
+                        jhr[d,rr,rc,aa,2,c,c] = jhr[d,rr,rc,aa,2,c,c] +       tmp_jhr[d,t,f,aa,c,c]
 
 @cython.cdivision(True)
 @cython.wraparound(False)

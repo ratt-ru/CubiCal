@@ -1,6 +1,6 @@
 from cubical.machines.parameterised_machine import ParameterisedGains
 import numpy as np
-import cubical.kernels.cyphase_slope as cyslope
+import cubical.kernels.cytf_plane as cyplane
 from cubical.flagging import FL
 
 class PhaseSlopeGains(ParameterisedGains):
@@ -40,7 +40,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         jh = np.zeros_like(model_arr)
 
-        cyslope.cycompute_jh(model_arr, self.gains, jh, 1, 1)
+        cyplane.cycompute_jh(model_arr, self.gains, jh, 1, 1)
 
         tmp_jhr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
 
@@ -52,7 +52,7 @@ class PhaseSlopeGains(ParameterisedGains):
         else:
             r = obser_arr
 
-        cyslope.cycompute_tmp_jhr(gh, jh, r, tmp_jhr, 1, 1)
+        cyplane.cycompute_tmp_jhr(gh, jh, r, tmp_jhr, 1, 1)
 
         tmp_jhr = tmp_jhr.imag
 
@@ -60,7 +60,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         jhr = np.zeros(jhr_shape, dtype=tmp_jhr.dtype)
 
-        cyslope.cycompute_jhr(tmp_jhr, jhr, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        cyplane.cycompute_jhr(tmp_jhr, jhr, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
         return jhr
 
@@ -84,7 +84,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         update = np.zeros_like(jhr)
 
-        cyslope.cycompute_update(jhr, self.jhjinv, update)
+        cyplane.cycompute_update(jhr, self.jhjinv, update)
 
         if self.iters%2 == 0:
             self.slope_params += 0.5*update
@@ -93,7 +93,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         # Need to turn updated parameters into gains.
 
-        cyslope.cyconstruct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        cyplane.cyconstruct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
@@ -119,11 +119,11 @@ class PhaseSlopeGains(ParameterisedGains):
 
         resid_arr[:] = obser_arr
 
-        cyslope.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, self.t_int, self.f_int)
+        cyplane.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, 1, 1)
 
         return resid_arr
 
-    def apply_inv_gains(self, obser_arr, corr_vis=None):
+    def apply_inv_gains(self, resid_arr, corr_vis=None):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -140,9 +140,9 @@ class PhaseSlopeGains(ParameterisedGains):
         gh_inv = g_inv.conj()
 
         if corr_vis is None:                
-            corr_vis = np.empty_like(obser_arr)
+            corr_vis = np.empty_like(resid_arr)
 
-        cyslope.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
+        cyplane.cycompute_corrected(resid_arr, g_inv, gh_inv, corr_vis, 1, 1)
 
         return corr_vis, 0   # no flags raised here, since phase-only always invertible
 
@@ -160,14 +160,14 @@ class PhaseSlopeGains(ParameterisedGains):
 
         tmp_jhj = np.zeros(tmp_jhj_shape, dtype=self.dtype)
 
-        cyslope.cycompute_tmp_jhj(model_arr, tmp_jhj)
+        cyplane.cycompute_tmp_jhj(model_arr, tmp_jhj)
 
         jhj_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, 6, 2, 2]
 
         jhj = np.zeros(jhj_shape, dtype=self.ftype)
 
-        cyslope.cycompute_jhj(tmp_jhj.real, jhj, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        cyplane.cycompute_jhj(tmp_jhj.real, jhj, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
         self.jhjinv = np.zeros(jhj_shape, dtype=self.ftype)
 
-        cyslope.cycompute_jhjinv(jhj, self.jhjinv, self.gflags, self.eps, self.flagbit)
+        cyplane.cycompute_jhjinv(jhj, self.jhjinv, self.eps)

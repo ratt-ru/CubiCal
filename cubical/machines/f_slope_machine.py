@@ -113,16 +113,16 @@ class PhaseSlopeGains(ParameterisedGains):
         Returns:
             residual (np.array): Array containing the result of computing D-GMG^H.
         """
-        
+
         gains_h = self.gains.transpose(0,1,2,3,5,4).conj()
 
         resid_arr[:] = obser_arr
 
-        cyslope.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, self.t_int, self.f_int)
+        cyslope.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, 1, 1)
 
         return resid_arr
 
-    def apply_inv_gains(self, obser_arr, corr_vis=None):
+    def apply_inv_gains(self, resid_arr, corr_vis=None):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -139,9 +139,9 @@ class PhaseSlopeGains(ParameterisedGains):
         gh_inv = g_inv.conj()
 
         if corr_vis is None:                
-            corr_vis = np.empty_like(obser_arr)
+            corr_vis = np.empty_like(resid_arr)
 
-        cyslope.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
+        cyslope.cycompute_corrected(resid_arr, g_inv, gh_inv, corr_vis, 1, 1)
 
         return corr_vis, 0   # no flags raised here, since phase-only always invertible
 
@@ -169,4 +169,4 @@ class PhaseSlopeGains(ParameterisedGains):
 
         self.jhjinv = np.zeros(jhj_shape, dtype=self.ftype)
 
-        cyslope.cycompute_jhjinv(jhj, self.jhjinv, self.eps, self.flagbit)
+        cyslope.cycompute_jhjinv(jhj, self.jhjinv, self.eps)
