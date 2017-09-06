@@ -9,7 +9,7 @@ from cubical.machines import jones_chain_machine
 from cubical.statistics import SolverStats
 
 log = logger.getLogger("solver")
-log.verbosity(2)
+#log.verbosity(2)
 
 # gain machine factory to use
 gm_factory = None
