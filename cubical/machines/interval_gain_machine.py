@@ -211,7 +211,8 @@ class PerIntervalGains(MasterMachine):
             np.abs(self.gains, out=self.gains)
 
         if self.ref_ant is not None:
-            self.gains[...,self.ref_ant,:,:] = np.abs(self.gains[...,self.ref_ant,:,:])
+            phase0 = np.angle(self.gains[...,self.ref_ant,:,:])
+            self.gains *= np.exp(-1j*phase0)[:,:,:,np.newaxis,:,:]
 
     def update_term(self):
 
