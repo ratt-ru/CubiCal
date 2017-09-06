@@ -65,6 +65,7 @@ class ParameterisedGains(MasterMachine):
         self.maxiter = options["max-iter"]
         self.min_quorum = options["conv-quorum"]
         self.update_type = options["update-type"]
+        self.ref_ant = options["ref-ant"]
         self.dd_term = options["dd-term"]
         self.term_iters = options["term-iters"]
 
@@ -195,7 +196,7 @@ class ParameterisedGains(MasterMachine):
 
         norm_diff_g = diff_g/norm_g
 
-        self.max_update = np.max(diff_g)
+        self.max_update = np.sqrt(np.max(diff_g))
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
 
     def restrict_solution(self):

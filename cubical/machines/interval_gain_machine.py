@@ -196,7 +196,7 @@ class PerIntervalGains(MasterMachine):
 
         norm_diff_g = diff_g/norm_g
 
-        self.max_update = np.max(diff_g)
+        self.max_update = np.sqrt(np.max(diff_g))
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
 
     def restrict_solution(self):

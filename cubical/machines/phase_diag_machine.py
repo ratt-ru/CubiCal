@@ -144,6 +144,13 @@ class PhaseDiagGains(PerIntervalGains):
         """
         return
 
+    def restrict_solution(self):
+        PerIntervalGains.restrict_solution(self)
+        if self.ref_ant is not None:
+            #self.phases[:, :, :, self.ref_ant, :, :] = 0
+            self.phases -= self.phases[:,:,:,self.ref_ant,:,:][:,:,:,np.newaxis,:,:]
+
+
     def precompute_attributes(self, model_arr):
 
         self.jhjinv = np.zeros_like(self.gains)
