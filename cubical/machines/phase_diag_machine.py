@@ -80,7 +80,7 @@ class PhaseDiagGains(PerIntervalGains):
         else:
             self.phases += update
 
-        self.phases = self.phases - self.phases[:,:,:,0:1,:,:]
+        self.restrict_solution()
 
         self.gains = np.exp(1j*self.phases)
         self.gains[...,(0,1),(1,0)] = 0 

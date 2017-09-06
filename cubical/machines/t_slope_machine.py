@@ -90,6 +90,8 @@ class PhaseSlopeGains(ParameterisedGains):
         else:
             self.slope_params += update
 
+        self.restrict_solution()
+
         # Need to turn updated parameters into gains.
 
         cyslope.cyconstruct_gains(self.slope_params, self.gains, self.chunk_ts, self.t_int, self.f_int)

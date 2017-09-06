@@ -89,6 +89,8 @@ class Complex2x2Gains(PerIntervalGains):
         else:
             self.gains = update
 
+        self.restrict_solution()
+
         return flag_count
 
 

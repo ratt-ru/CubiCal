@@ -113,6 +113,14 @@ class MasterMachine(object):
         """
         return NotImplementedError
 
+    @abstractmethod
+    def restrict_solution(self):
+        """
+        This method should perform any necessary restrictions on the solution, eg. selecting a 
+        reference antenna or taking only the amplitude.
+        """
+        return NotImplementedError
+
     def precompute_attributes(self, *args, **kwargs):
         return
 

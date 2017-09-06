@@ -144,11 +144,7 @@ class JonesChain(MasterMachine):
         else:
             self.gains = update
 
-        if self.update_type == "diag":
-            self.gains[...,(0,1),(1,0)] = 0
-        elif self.update_type == "phase-diag":
-            self.gains[...,(0,1),(1,0)] = 0
-            self.gains[...,(0,1),(0,1)] = self.gains[...,(0,1),(0,1)]/np.abs(self.gains[...,(0,1),(0,1)])
+        self.restrict_solution()
 
         return flag_count
 
@@ -233,6 +229,10 @@ class JonesChain(MasterMachine):
         """
 
         self.active_term.update_conv_params(min_delta_g)
+
+    def restrict_solution(self):
+
+        self.active_term.restrict_solution()
 
     def flag_solutions(self):
         """

@@ -65,6 +65,7 @@ class PerIntervalGains(MasterMachine):
         self.maxiter = options["max-iter"]
         self.min_quorum = options["conv-quorum"]
         self.update_type = options["update-type"]
+        self.ref_ant = options["ref-ant"]
         self.dd_term = options["dd-term"]
         self.term_iters = options["term-iters"]
 
@@ -197,6 +198,20 @@ class PerIntervalGains(MasterMachine):
 
         self.max_update = np.max(diff_g)
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
+
+    def restrict_solution(self):
+
+        if self.update_type == "diag":
+            self.gains[...,(0,1),(1,0)] = 0
+        elif self.update_type == "phase-diag":
+            self.gains[...,(0,1),(1,0)] = 0
+            self.gains[...,(0,1),(0,1)] = self.gains[...,(0,1),(0,1)]/np.abs(self.gains[...,(0,1),(0,1)])
+        elif self.update_type == "amp-diag":
+            self.gains[...,(0,1),(1,0)] = 0
+            np.abs(self.gains, out=self.gains)
+
+        if self.ref_ant is not None:
+            self.gains[...,self.ref_ant,:,:] = np.abs(self.gains[...,self.ref_ant,:,:])
 
     def update_term(self):
 
