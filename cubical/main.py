@@ -15,6 +15,7 @@ from cubical.machines import complex_2x2_machine
 from cubical.machines import complex_W_2x2_machine
 from cubical.machines import phase_diag_machine
 from cubical.machines import f_slope_machine
+from cubical.machines import t_slope_machine
 from cubical.machines import tf_plane_machine
 from cubical.machines import jones_chain_machine
 
@@ -216,6 +217,7 @@ def main(debugging=False):
                            'phase-diag': phase_diag_machine.PhaseDiagGains,
                            'robust-2x2': complex_W_2x2_machine.ComplexW2x2Gains,
                            'f-slope': f_slope_machine.PhaseSlopeGains,
+                           't-slope': t_slope_machine.PhaseSlopeGains,
                            'tf-plane': tf_plane_machine.PhaseSlopeGains}
             jones_class = JONES_TYPES.get(jones_opts['type'])
             if jones_class is None:
