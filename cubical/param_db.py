@@ -343,9 +343,10 @@ class Parameter(object):
                     input_grid_segment.append((i0, i1))
                     input_slice_reduction.append(slice(None))
                     input_slice_broadcast.append(slice(None))
-                # case B: interpolatable axis with 1 point: will need to be collapsed in input to intepolator,
+                # case B: interpolatable axis with 1 point: will need to be collapsed in input to interpolator,
                 # and broadcast back out
                 else:
+                    input_grid_segment.append((0,1))
                     input_slice_reduction.append(0)
                     input_slice_broadcast.append(np.newaxis)
             # case C: discrete axis, so return shape is determined by index in **grid, else full axis returned
@@ -395,8 +396,9 @@ class Parameter(object):
                                         ",".join(["{}:{}".format(*seg) for seg in input_grid_segment]))
                     # make a meshgrid of all points
                     arav = array[array_segment_slice].ravel()
+                    # for ndim=0, just return the 0,0 element of array
                     if not len(segment_grid):
-                        raise TypeError("no interpolatable axes in this parameter")
+                        interpolator = lambda coords:array[tuple(input_slice_reduction)]
                     # for ndim=1, use interp1d...
                     elif len(segment_grid) == 1:
                         if arav.mask is np.ma.nomask:

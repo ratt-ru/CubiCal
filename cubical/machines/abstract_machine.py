@@ -98,7 +98,7 @@ class MasterMachine(object):
         return NotImplementedError
 
     @abstractmethod
-    def propagate_gflags(self):
+    def propagate_gflags(self, flags):
         """
         This method should propagate the flags raised by the gain machine back into the data.
         This is necessary as the gain flags may not have the same shape as the data.
@@ -159,7 +159,7 @@ class MasterMachine(object):
         """This method loads the internal solutions from a dict of {label: array} elements
         Labels must be in importable_solutions. 
         Array are masked since solutions have flags on them.
-        Arrays shapes will conform to get_solutions_grid() results.
+        Arrays shapes will conform to importable_solutions() results.
         """
         return NotImplementedError
 
