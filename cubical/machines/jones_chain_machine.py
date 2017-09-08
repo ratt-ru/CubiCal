@@ -412,4 +412,4 @@ class JonesChain(MasterMachine):
                 label = opts["label"]
                 self._init_solutions(label, self._make_filename(opts["load-from"]),
                                             not self.apply_only and opts["solvable"] and self._make_filename(opts["save-to"]),
-                                     Complex2x2Gains.exportable_solutions(label))
+                                     Complex2x2Gains.exportable_solutions())

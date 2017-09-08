@@ -104,22 +104,22 @@ class PerIntervalGains(MasterMachine):
 
 
     @staticmethod
-    def exportable_solutions(label):
-        return { "{}:gain".format(label): (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
+    def exportable_solutions():
+        return { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
 
     def importable_solutions(self):
-        return { "{}:gain".format(self.jones_label): self.interval_grid }
+        return { "gain": self.interval_grid }
 
     def export_solutions(self):
         """This method saves the solutions to a dict of {label: solutions,grids} items"""
         # make a mask from gain flags by broadcasting the corr1/2 axes
         mask = np.zeros_like(self.gains, bool)
         mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
-        return { "{}:gain".format(self.jones_label): (masked_array(self.gains, mask), self.gain_grid) }
+        return { "gain".format(self.jones_label): (masked_array(self.gains, mask), self.gain_grid) }
 
     def import_solutions(self, soldict):
         """This method loads solutions from a dict"""
-        sol = soldict.get("{}:gain".format(self.jones_label))
+        sol = soldict.get("gain")
         if sol is not None:
             self.gains[:] = sol.data
             # collapse the corr1/2 axes
