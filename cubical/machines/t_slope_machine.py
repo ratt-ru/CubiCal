@@ -155,6 +155,13 @@ class PhaseSlopeGains(ParameterisedGains):
         """
         return
 
+    def restrict_solution(self):
+
+        ParameterisedGains.restrict_solution(self)
+        
+        if self.ref_ant is not None:
+            self.slope_params -= self.slope_params[:,:,:,self.ref_ant,:,:,:][:,:,:,np.newaxis,:,:,:]
+
     def precompute_attributes(self, model_arr):
 
         tmp_jhj_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, self.n_ant, 2, 2] 
