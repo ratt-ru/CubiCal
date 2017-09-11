@@ -313,7 +313,7 @@ class MasterMachine(object):
             sols = {}
             # collect importable solutions from DB, interpolate
             for label, grids in gm.importable_solutions().iteritems():
-                db, prefix = self._init_sols.get(self.jones_label)
+                db, prefix = self._init_sols.get(self.jones_label, (None, None))
                 name = "{}:{}".format(prefix, label)
                 if db is not None:
                     if name in db:

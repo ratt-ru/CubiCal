@@ -178,7 +178,7 @@ class Parameter(object):
                                             np.ones(self.shape, bool),
                                             fill_value=self.empty)
         self._array_slices = {}
-        print>> log(0), "loading {} solutions, shape {}".format(self.name, 'x'.join(map(str, self.shape)))
+        print>> log(0), "  loading {}, shape {}".format(self.name, 'x'.join(map(str, self.shape)))
 
     def _paste_slice(self, item):
         """Internal method. "Pastes" a subset of values into the internal arrays. Called repeatedly
@@ -606,7 +606,7 @@ class PickledDatabase(object):
         self.metadata = db.metadata
         for key,value in self.metadata.iteritems():
             if key != "mode":
-                print>>log(1),"    {}: {}".format(key,value)
+                print>>log(1),"  metadata '{}': {}".format(key,value)
 
         # now load differently depending on mode
         # in consolidated mode, just unpickle the parameter objects

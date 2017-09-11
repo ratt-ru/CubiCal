@@ -223,12 +223,6 @@ class PerIntervalGains(MasterMachine):
             self.gains[...,(0,1),(1,0)] = 0
             np.abs(self.gains, out=self.gains)
 
-        # in the 2x2 case, if a reference antenna is specified, rotate the phases of the diagonal elements to
-        # zero.
-        if self.ref_ant is not None:
-            phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
-            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]
-
     def update_term(self):
 
         self.iters += 1
