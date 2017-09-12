@@ -168,3 +168,11 @@ class Complex2x2Gains(PerIntervalGains):
         cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
 
         return model_arr
+
+    def restrict_solution(self):
+        
+        PerIntervalGains.restrict_solution(self)
+
+        if self.ref_ant is not None:
+            phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
+            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]
