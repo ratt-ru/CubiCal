@@ -54,7 +54,7 @@ $ pip install virtualenv
 * To create and activate a virtual environment:
 
 ```
-$ virtualenv cubienv   # or pick any other name
+$ virtualenv --system-site-packages cubienv   # or pick any other name
 $ source cubienv/bin/activate
 ```
 
