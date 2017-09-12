@@ -28,6 +28,7 @@ class MasterMachine(object):
         self.times = times
         self.freqs = freqs
         self.options = options
+        self.solvable = options['solvable']
 
     @abstractmethod
     def compute_js(self):
@@ -184,7 +185,7 @@ class MasterMachine(object):
         TODO: directions must also be passed in
         """
 
-        def __init__(self, machine_cls, grid, double_precision, apply_only, global_options, jones_options, jones_label=None):
+        def __init__(self, machine_cls, grid, double_precision, apply_only, global_options, jones_options):
             """
             Initializes a factory
 
@@ -204,9 +205,11 @@ class MasterMachine(object):
             """
             self.global_options = global_options
             self.jones_options = jones_options
-            self.jones_label = jones_label or self.jones_options['label']
+            self.jones_label = self.jones_options['label']
             self.machine_class = machine_cls
-            self.apply_only = apply_only
+            if apply_only:
+                self.jones_options['solvable'] = False
+            self.solvable = self.jones_options['solvable']
             self.grid = grid
             self._ctype = np.complex128 if double_precision else np.complex64
             self._ftype = np.float64    if double_precision else np.float32
@@ -223,7 +226,7 @@ class MasterMachine(object):
         def init_solutions(self):
             """Internal method. Initializes solution databases. Note that this is reimplemented in JonesChain."""
             self._init_solutions(self.jones_label, self._make_filename(self.jones_options["load-from"]),
-                                 not self.apply_only and self.jones_options["solvable"] and self._make_filename(self.jones_options["save-to"]),
+                                 self.solvable and self._make_filename(self.jones_options["save-to"]),
                                  self.machine_class.exportable_solutions())
 
         def _make_filename(self, filename):
@@ -266,11 +269,14 @@ class MasterMachine(object):
             """Exports a slice of solutions from a gain machine into a shared dictionary.
             This is called in a solver process.
             """
-            if self.apply_only:
+            if not self.solvable:
                 return
+            sols = gm.export_solutions()
+            # has the gain machine added a prefix to the names already (as the chain machine does)
+            is_prefixed = sols.pop('prefixed', False)
             # populate values subdictionary
-            for label, (value, grid) in gm.export_solutions().iteritems():
-                name = "{}:{}".format(gm.jones_label, label)
+            for label, (value, grid) in sols.iteritems():
+                name = label if is_prefixed else "{}:{}".format(gm.jones_label, label)
                 subdict[name] = value.data
                 subdict["{}:grid__".format(name)]  = grid
                 subdict["{}:flags__".format(name)] = value.mask

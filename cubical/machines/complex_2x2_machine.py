@@ -15,7 +15,7 @@ class Complex2x2Gains(PerIntervalGains):
         self.old_gains = self.gains.copy()
 
     def restrict_solution(self):
-        ParameterisedGains.restrict_solution(self)
+        PerIntervalGains.restrict_solution(self)
         # in the 2x2 case, if a reference antenna is specified, rotate the phases of the diagonal elements to
         # zero.
         if self.ref_ant is not None:
