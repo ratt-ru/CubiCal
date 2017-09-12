@@ -14,14 +14,6 @@ class Complex2x2Gains(PerIntervalGains):
         self.gains[:]  = np.eye(self.n_cor)
         self.old_gains = self.gains.copy()
 
-    def restrict_solution(self):
-        PerIntervalGains.restrict_solution(self)
-        # in the 2x2 case, if a reference antenna is specified, rotate the phases of the diagonal elements to
-        # zero.
-        if self.ref_ant is not None:
-            phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
-            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]
-
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J^H)R term of the GN/LM method for the
