@@ -11,7 +11,8 @@ class ComplexW2x2Gains(PerIntervalGains):
     This class implements the weighted full complex 2x2 gain machine
     """
     
-    def __init__(self, model_arr, chunk_ts, chunk_fs, label, options):
+    def __init__(self, label, model_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+        
         PerIntervalGains.__init__(self, model_arr, chunk_ts, chunk_fs, options)
         
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
@@ -33,6 +34,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.weight_dict["vvals"] = {}
         
         self.label = label
+
+        print "truly here"
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -125,21 +128,21 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         v = self.v
         
-        self.weights, self.v = self.cycompute_weights(residuals, covinv, weights, v, self.t_int, self.f_int)
+        #self.weights, self.v = self.cycompute_weights(residuals, covinv, weights, v, self.t_int, self.f_int)
 
-        self.weight_dict["weights"][iters] = self.weights
+        #self.weight_dict["weights"][iters] = self.weights
         
-        self.weight_dict["vvals"][iters] = self.v
+        #self.weight_dict["vvals"][iters] = self.v
         
-        self.weight_dict["t_int"] = self.t_int
+        #self.weight_dict["t_int"] = self.t_int
         
-        self.weight_dict["f_int"] = self.f_int
+        #self.weight_dict["f_int"] = self.f_int
         
-        f = open(str(self.label) + "_weights_dict.cp", "wb")
+        #f = open(str(self.label) + "_weights_dict.cp", "wb")
         
-        cPickle.dump(self.weight_dict, f)
+        #cPickle.dump(self.weight_dict, f)
         
-        f.close()
+        #f.close()
 
         return flag_count
 
@@ -288,10 +291,15 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         return corr_vis, flag_count
 
-    def apply_gains(self):
+    def apply_gains(self, model_arr):
         """
         This method should be able to apply the gains to an array at full time-frequency
         resolution. Should return the input array at full resolution after the application of the 
         gains.
         """
-        return
+
+        gh = self.gains.transpose(0,1,2,3,5,4).conj()
+
+        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+
+        return model_arr
