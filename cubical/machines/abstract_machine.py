@@ -133,7 +133,7 @@ class MasterMachine(object):
         return NotImplementedError
 
     # Returns dict of {label: (empty_value, axes_list)} describing the types of parameters that
-    # this machine exports. Axes is a list of axis labels.
+    # this machine can export. Axes is a list of axis labels.
     # Static method, as it is called before any GM is actually created.
     # If empty_value is float or complex, global precision settings will be used.
     @staticmethod
@@ -150,7 +150,9 @@ class MasterMachine(object):
     def export_solutions(self):
         """This method returns the solutions as a dict of {label: masked_array, grid} elements.
         Array are masked since solutions have flags on them.
-        Labels must be present in whatever exportable_solutions() returns.
+        Labels must be consistent with whatever exportable_solutions() returns, but
+        not all solutions promised by exportable_solutions() will actually need 
+        to be exported.
         Grid is a dict, defining axes on which solutions are given, e.g. {'time': vector, 'freq': vector}
         Note that axes which are fully spanned (e.g. antenna, correlation) need not be present in the grid.
         """
