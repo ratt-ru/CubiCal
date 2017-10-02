@@ -62,6 +62,10 @@ class Parameter(object):
         self.shape = [0 if g is None else len(g) for g in self.grid]
         # list of sets of grid values, maintained during prorotype->skeleton state
         self._grid_set = [set(grid.get(axis, [])) for axis in axes]
+        # becomes true if parameter is populated
+        # A prototype is initially unpopulated; once _update_shape has been called
+        # at least once, it becomes populated
+        self._populated = False
 
         # A Parameter object can be in one of three states, or can be transitioning between them.
         # The first two states are internal to the database; the third state is exposed to the
@@ -112,6 +116,7 @@ class Parameter(object):
         Updates shape of each axis based on the supplied shape and grid. Grid is a dict of 
         {axis: coordinates}, and need only be supplied for shapes that are a partial 
         slice along an axis"""
+        self._populated = True
 
         for i, axis in enumerate(self.axis_labels):
             # if a grid along an axis is supplied, it is potentially a slice
@@ -134,6 +139,9 @@ class Parameter(object):
     def _finalize_shape(self):
         """Internal method. Finalizes shapes and axes based on accumulated _update_shape() calls.
         This turns the object into a fully fledged skeleton."""
+        if not self._populated:
+            return False
+
         self.grid_index = []
         for iaxis, (axis, grid) in enumerate(zip(self.axis_labels, self.grid)):
             # if grid wasn't set by define_param, go and reprocess it based on the accumulated set
@@ -159,6 +167,7 @@ class Parameter(object):
             self._gminmax[iaxis] = gmin, gmax
         self._grid_set = None
         print>>log(0), "dimensions of {} are {}".format(self.name, ','.join(map(str, self.shape)))
+        return True
 
     def _to_norm(self, iaxis, g):
         """Internal method: converts grid of given axis to normalized grid"""
@@ -545,6 +554,9 @@ class PickledDatabase(object):
         """Helper function. Writes accumulated parameter descriptions to filename.desc"""
         for desc in self._parameters.itervalues():
             desc._finalize_shape()
+        for key in self._parameters.keys():
+            if not self._parameters[key]._populated:
+                del self._parameters[key]
         cPickle.dump(self._parameters, open(self.filename+".skel", 'w'), 2)
         print>>log(0),"saved updated parameter skeletons to {}".format(self.filename+".skel")
 
