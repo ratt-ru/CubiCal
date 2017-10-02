@@ -9,6 +9,7 @@ from cubical.machines import jones_chain_machine
 from cubical.statistics import SolverStats
 
 log = logger.getLogger("solver")
+#log.verbosity(2)
 
 # gain machine factory to use
 gm_factory = None
@@ -305,7 +306,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                            gm.missing_gain_fraction)
 
                 print>> log, ("{} iter {} chi2 {:.4} delta {:.4}, max gain update {:.4}, "
-                              "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:2}%").format(*logvars)
+                              "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2}%").format(*logvars)
 
     # num_valid_intervals will go to 0 if all solution intervals were flagged. If this is not the 
     # case, generate residuals etc.

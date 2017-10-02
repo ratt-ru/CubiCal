@@ -59,19 +59,19 @@ extensions = [Extension(
              ),
               Extension(
             "cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+            include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
             '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
             extra_link_args=['-lgomp']
              ),
               Extension(
             "cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+            include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
             '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
             extra_link_args=['-lgomp']
              ),
               Extension(
             "cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+            include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
             '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
             extra_link_args=['-lgomp']
              )]
@@ -126,9 +126,7 @@ setup(name='cubical',
                                         'cubical/machines/complex_2x2_machine.py',
                                         'cubical/machines/phase_diag_machine.py',
                                         'cubical/machines/jones_chain_machine.py',
-                                        'cubical/machines/tf_plane_machine.py',
-                                        'cubical/machines/f_slope_machine.py',
-                                        'cubical/machines/t_slope_machine.py',
+                                        'cubical/machines/slope_machine.py',
                                         'cubical/machines/parameterised_machine.py' ] },
       zip_safe=False,
       ext_modules = cythonize(extensions),
