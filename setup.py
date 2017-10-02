@@ -59,19 +59,19 @@ extensions = [Extension(
              ),
               Extension(
             "cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+            include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
             '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
             extra_link_args=['-lgomp']
              ),
               Extension(
             "cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+            include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
             '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
             extra_link_args=['-lgomp']
              ),
               Extension(
             "cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+            include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
             '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
             extra_link_args=['-lgomp']
              )]

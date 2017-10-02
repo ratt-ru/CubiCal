@@ -21,8 +21,8 @@ class PhaseSlopeGains(ParameterisedGains):
         self.param_shape = [self.n_dir, self.n_timint, self.n_freint, 
                             self.n_ant, self.n_param, self.n_cor, self.n_cor]
         self.slope_params = np.zeros(self.param_shape, dtype=self.ftype)
-        self.chunk_ts = (chunk_ts - chunk_ts[0])/(chunk_ts[-1] - chunk_ts[0])
-        self.chunk_fs = (chunk_fs - chunk_fs[0])/(chunk_fs[-1] - chunk_fs[0])
+        self.chunk_ts = ((chunk_ts - chunk_ts[0])/(chunk_ts[-1] - chunk_ts[0])).astype(self.ftype)
+        self.chunk_fs = ((chunk_fs - chunk_fs[0])/(chunk_fs[-1] - chunk_fs[0])).astype(self.ftype)
 
         if self.slope_type=="tf-plane":
             self.cyslope = cubical.kernels.cytf_plane

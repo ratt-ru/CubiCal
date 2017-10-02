@@ -11,6 +11,9 @@ ctypedef fused float3264:
     np.float32_t
     np.float64_t
 
+cdef extern from "complex.h":
+    double complex exp(double complex)
+
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
@@ -402,5 +405,5 @@ def cyconstruct_gains(float3264 [:,:,:,:,:,:,:] param,
                 rc = f/f_int
                 for aa in xrange(n_ant):
                     for c in xrange(2):
-                        g[d,t,f,aa,c,c] = np.exp(1j*(fs[f]*param[d,rr,rc,aa,0,c,c] + 
-                                                           param[d,rr,rc,aa,1,c,c] ))
+                        g[d,t,f,aa,c,c] = exp(1j*(fs[f]*param[d,rr,rc,aa,0,c,c] + 
+                                                        param[d,rr,rc,aa,1,c,c] ))
