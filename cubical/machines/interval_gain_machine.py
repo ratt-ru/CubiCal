@@ -1,3 +1,7 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from abc import ABCMeta, abstractmethod
 import numpy as np
 from cubical.flagging import FL

@@ -1,3 +1,11 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+
+# This module has been adapted from the DDFacet package,
+# (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
+
 import sys, os, os.path, cPickle, re
 import NpShared
 import numpy as np
