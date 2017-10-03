@@ -72,7 +72,7 @@ class PhaseSlopeGains(ParameterisedGains):
              "offset": (masked_array(self.slope_params[...,1,(0,1),(0,1)]), self.interval_grid),
              "rate":   (masked_array(self.slope_params[...,0,(0,1),(0,1)]), self.interval_grid),
             })
-        print self.slope_type, solutions.keys()
+
         return solutions
 
     def import_solutions(self, soldict):
