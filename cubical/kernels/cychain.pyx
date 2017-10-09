@@ -1,3 +1,29 @@
+"""
+Cython kernels for the Jones chain machine. Functions require output arrays to be 
+provided. Common dimensions of arrays are:
+
++----------------+------+
+| Dimension      | Size |
++================+======+
+| Direction      |   d  |
++----------------+------+
+| Model          |   m  |
++----------------+------+
+| Time           |   t  |
++----------------+------+
+| Time Intervals |   ti |
++----------------+------+
+| Frequency      |   f  |
++----------------+------+
+| Freq Intervals |   fi |
++----------------+------+
+| Antenna        |   a  |
++----------------+------+
+| Correlation    |   c  |
++----------------+------+
+
+"""
+
 from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
@@ -17,7 +43,21 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] jh,
                  int f_int):
 
     """
-    This computes the the non-zero elements of jh. The result does have a model index.  
+    Given J\ :sup:`H` (initially populated with the model array) and gains, computes the non-zero 
+    elements of J\ :sup:`H`. J\ :sup:`H` has full time and frequency resolution - solution intervals
+    are used to correctly associate the gains with the model. The result here contains the useful 
+    elements of J\ :sup:`H` but does not look like the analytic solution. This function is called
+    multiple times during a chain computation. Each call applies a different gain term.   
+
+    Args:
+        jh (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H` array with dimensions (d, m, t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
@@ -72,7 +112,19 @@ def cyapply_left_inv_jones(complex3264 [:,:,:,:,:,:] jhr,
                            int f_int):
 
     """
-    This will apply an inverse jones term to the left side of jhr.
+    Applies the inverse of a gain array the left side of J\ :sup:`H`\R. J\ :sup:`H`\R has full time 
+    and frequency resolution - solution intervals are used to correctly associate the gains with 
+    the model. This is a special function which is unique to the Jones chain.    
+
+    Args:
+        jhr (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H`\R array with dimensions (d, t, f, a, c, c).
+        ginv (np.complex64 or np.complex128):
+            Typed memoryview of inverse gain array with dimensions (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
@@ -121,7 +173,18 @@ def cysum_jhr_intervals(complex3264 [:,:,:,:,:,:] jhr,
                         int f_int):
 
     """
-    This will sum over the solution interval of the current term.
+    Collapses J\ :sup:`H`\R to be cosistent with the solution intervals for the current gain of 
+    interest. This is necessary as each gain term in a chain may have unique solution intervals. 
+
+    Args:
+        jhr (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H`\R array with dimensions (d, t, f, a, c, c).
+        jhrint (np.complex64 or np.complex128):
+            Typed memoryview of collapsed J\ :sup:`H`\R array with dimensions (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -155,8 +218,15 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
                        complex3264 [:,:,:,:,:,:,:] r):
 
     """
-    This computes the residual, resulting in large matrix indexed by 
-    (model, time, frequency, antenna, antenna, correlation, correlation).
+    Given the model array (already multipled by the gains) and the residual array (already populated
+    with the observed data), computes the final residual. This is a special case where the gains
+    are applied to the model elsewhere.
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of the model array with dimensions (d, m, t, f, a, a, c, c).
+        r (np.complex64 or np.complex128):
+            Typed memoryview of tje residual array with dimensions (m, t, f, a, a, c, c).
     """
 
     cdef int d, i, t, f, aa, ab = 0

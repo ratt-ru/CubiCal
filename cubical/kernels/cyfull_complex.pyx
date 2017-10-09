@@ -46,7 +46,7 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
 
     """
     Given the model, gains, and their conjugates, computes the residual. Residual has full time and
-    frequency resolution - solution intervals are used to correctly assosciate the gains with the 
+    frequency resolution - solution intervals are used to correctly associate the gains with the 
     model. 
 
     Args:
@@ -117,7 +117,7 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
 
     """
     Given the model and gains, computes the non-zero elements of J\ :sup:`H`. J\ :sup:`H` has full 
-    time and frequency resolution - solution intervals are used to correctly assosciate the gains 
+    time and frequency resolution - solution intervals are used to correctly associate the gains 
     with the model. The result here contains the useful elements of J\ :sup:`H` but does not look 
     like the analytic solution.   
 
@@ -489,7 +489,7 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
     """
     Applies the gains and their cinjugates to the model array. This operation is performed in place
     - be wary of losing the original array. The result has full time and frequency resolution - 
-    solution intervals are used to correctly assosciate the gains with the model.
+    solution intervals are used to correctly associate the gains with the model.
 
     Args:
         m (np.complex64 or np.complex128):
