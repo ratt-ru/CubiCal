@@ -48,7 +48,6 @@ cdef extern from "complex.h":
 @cython.nonecheck(False)
 def cycompute_tmp_jhj(complex3264 [:,:,:,:,:,:,:,:] m,
                       complex3264 [:,:,:,:,:,:,:] tmp_jhj):
-
     """
     Given the model array, computes an intermediary result required in the computation of the 
     diagonal entries of J\ :sup:`H`\J. This is necessary as J\ :sup:`H`\J is blockwise diagonal.
@@ -92,7 +91,6 @@ def cycompute_jhj(float3264 [:,:,:,:,:,:,:] tmp_jhj,
                   float3264 [:] fs,
                   int t_int,
                   int f_int):
-
     """
     Given the intermediary J\ :sup:`H`\J and channel frequencies, computes the diagonal entries of 
     J\ :sup:`H`\J. J\ :sup:`H`\J is computed over intervals. This is an approximation of the 
@@ -211,7 +209,6 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
                  complex3264 [:,:,:,:,:,:,:,:] jh,
                  int t_int,
                  int f_int):
-
     """
     Given the model and gains, computes the non-zero elements of J\ :sup:`H`. J\ :sup:`H` has full 
     time and frequency resolution - solution intervals are used to correctly associate the gains 
@@ -266,7 +263,6 @@ def cycompute_tmp_jhr(complex3264 [:,:,:,:,:,:] gh,
                       complex3264 [:,:,:,:,:,:] jhr,
                       int t_int,
                       int f_int):
-
     """
     Given the conjugate gains, J\ :sup:`H` and the residual (or observed data, in special cases), 
     computes an intermediary result required for computing J\ :sup:`H`\R. This result is computed
@@ -321,7 +317,6 @@ def cycompute_jhr(float3264 [:,:,:,:,:,:] tmp_jhr,
                   float3264 [:] fs,
                   int t_int,
                   int f_int):
-
     """
     Given the intermediary J\ :sup:`H`\R and channel frequencies, computes J\ :sup:`H`\R. 
     J\ :sup:`H`\R is computed over intervals. The addition of the block dimension is
@@ -471,7 +466,6 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
                         complex3264 [:,:,:,:,:,:] corr,
                         int t_int,
                         int f_int):
-
     """
     Given the observed visbilities, inverse gains, and their conjugates, computes the corrected 
     visibilitites.  
@@ -528,7 +522,6 @@ def cyconstruct_gains(float3264 [:,:,:,:,:,:,:] param,
                       float3264 [:] fs,
                       int t_int,
                       int f_int):
-
     """
     Given the real-valued parameters of the gains, computes the complex gains. 
 
