@@ -57,11 +57,14 @@ class MyOptParse():
         # if default is None:
         #     default = self.DefaultDict[self.CurrentGroupKey][name]
         opttype = attrs.get('type', str)
-        metavar = attrs.get('options') or attrs.get('metavar', None)
+        choices = attrs.get('options', None)
+        metavar = attrs.get('metavar', None) or choices
         action = None
         if opttype is bool:
             opttype = str
             metavar = "0|1"
+        if choices is not None:
+            opttype = "choice"
         # handle doc string
         if 'doc' in attrs:
             help = attrs['doc']
@@ -79,7 +82,8 @@ class MyOptParse():
         #         option_names.append("--%s" % name)
 
         self.CurrentGroup.add_option(*option_names,
-            help=help, type=opttype, default=default, metavar=metavar, action=action,
+            help=help, type=opttype, default=default, metavar=metavar,
+            action=action, choices=choices,
             dest=self.GiveKeyDest(self.CurrentGroupKey,name))
 
     def GiveKeyDest(self,GroupKey,Name):

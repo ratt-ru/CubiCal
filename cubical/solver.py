@@ -423,7 +423,7 @@ def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, so
     return corr_vis, stats
 
 
-def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
+def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts, correct=True):
     # if weights are set, multiply data and model by weights, but keep an unweighted copy
     # of the model and data, since we need to correct the residuals
 
@@ -445,13 +445,16 @@ def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr,
         resid_vis = np.zeros_like(obser_arr[0:1,...])
         gm.compute_residual(obser_arr[0:1,...], model_arr[:,0:1,...], resid_vis)
 
-    resid_vis = resid_vis[0,...]
+    resid_vis = resid_vis[0, ...]
+    if correct:
+        corr_vis = np.zeros_like(resid_vis)
+        gm.apply_inv_gains(resid_vis, corr_vis)
+        return corr_vis, stats
+    else:
+        return resid_vis, stats
 
-    corr_vis = np.zeros_like(resid_vis)
-    gm.apply_inv_gains(resid_vis, corr_vis)
-
-    return corr_vis, stats
-
+def solve_and_subtract(*args, **kw):
+    return solve_and_correct_residuals(correct=False, *args, **kw)
 
 def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
     # for corrected visibilities, take the first data/model pair only
@@ -467,11 +470,19 @@ def correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, so
     corr_vis, _ = gm.apply_inv_gains(resid_vis[0,...])
     return corr_vis, None
 
+def subtract_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
+    # for corrected visibilities, take the first data/model pair only
+    resid_vis = np.zeros_like(obser_arr[0:1,...])
+    gm.compute_residual(obser_arr[0:1, ...], model_arr[:, 0:1, ...], resid_vis)
+    return resid_vis[0,...], None
+
 SOLVERS = { 'so': solve_only,
             'sc': solve_and_correct,
             'sr': solve_and_correct_residuals,
+            'ss': solve_and_subtract,
             'ac': correct_only,
-            'ar': correct_residuals
+            'ar': correct_residuals,
+            'as': subtract_only
             }
 
 
