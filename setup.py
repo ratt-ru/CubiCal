@@ -129,7 +129,7 @@ setup(name='cubical',
                                         'cubical/machines/slope_machine.py',
                                         'cubical/machines/parameterised_machine.py' ] },
       zip_safe=False,
-      ext_modules = cythonize(extensions),
+      ext_modules = cythonize(extensions, compiler_directives={'binding': True}),
       scripts=['cubical/bin/gocubical'],
 )
 

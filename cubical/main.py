@@ -1,3 +1,7 @@
+"""
+Main code body. Handles options, invokes solvers and manages multiprocessing.
+"""
+
 import cPickle
 import os
 import os.path
@@ -8,7 +12,7 @@ from time import time
 import concurrent.futures as cf
 
 import cubical.data_handler as data_handler
-from cubical.data_handler import ReadModelHandler, Tile
+from cubical.data_handler import DataHandler, Tile
 from cubical.tools import logger, parsets, myoptparse, shm_utils, ModColor
 
 from cubical.machines import complex_2x2_machine
@@ -23,7 +27,6 @@ import cubical.solver as solver
 import cubical.plots as plots
 import cubical.flagging as flagging
 
-
 from cubical.statistics import SolverStats
 
 class UserInputError(Exception):
@@ -31,12 +34,18 @@ class UserInputError(Exception):
 
 def init_options(parset, savefile=None):
     """
-    Creates an command-line option parser, populates it based on the content of the given Parset object,
-    and parses the command line.
+    Creates an command-line option parser, populates it based on the content of the given Parset
+    object, and parses the command line.
 
-    If savefile is set, dumps the option settings to savefile.
+    Args:
+        parset (:obj:`~cubical.tools.parsets.Parset`):
+            A parset object which contains options.
+        savefile (str or None, optional):
+            If savefile is set, dumps the option settings to savefile.
 
-    Returns the option parser.
+    Returns:
+        :obj:`~cubical.tools.myoptparse.MyOptParse`:
+            The resulting option parser.
     """
 
     default_values = parset.value_dict
@@ -44,7 +53,8 @@ def init_options(parset, savefile=None):
 
     desc = """Questions and suggestions: RATT"""
 
-    OP = myoptparse.MyOptParse(usage='Usage: %prog [parset file] <options>', version='%prog version 0.1',
+    OP = myoptparse.MyOptParse(usage='Usage: %prog [parset file] <options>', 
+                               version='%prog version 0.1',
                                description=desc, defaults=default_values, attributes=attrs)
 
     # create options based on contents of parset
@@ -64,25 +74,36 @@ def init_options(parset, savefile=None):
 
     return OP
 
-
-
-
 # set to true with --Debug-Pdb 1, causes pdb to be invoked on exception
 enable_pdb = False
 
 def debug():
-    """
-    This calls the main() function in debugging mode.
-    """
+    """ Calls the main() function in debugging mode. """
+
     main(debugging=True)
 
 def main(debugging=False):
     """
-    Main cubical driver function.
+    Main cubical driver function. Reads options, sets up MS and solvers, calls the solver, etc.
 
-    Reads options, sets up MS and solvers, calls the solver, etc.
+    Args:
+        debugging (bool, optional):
+            If True, run in debugging mode.
+
+    Raises:
+        UserInputError:
+            If neither --model-lsm nor --model-column were specified.
+        UserInputError:
+            If no Jones terms are enabled.
+        UserInputError:
+            If --out-mode is invalid.
+        ValueError:
+            If unknown Jones type is specified.
+        RuntimeError:
+            If I/O job on a tile failed.
     """
-    # cl;ean up shared memory from any previous runs
+
+    # clean up shared memory from any previous runs
     shm_utils.cleanupStaleShm()
 
     # init logger
@@ -157,7 +178,8 @@ def main(debugging=False):
         logger.verbosity = GD["debug"]["verbose"]
 
         if not (GD["model"]["lsm"] or GD["model"]["column"]):
-            raise UserInputError("Neither --model-lsm nor --model-column was specified, nothing to calibrate on.")
+            raise UserInputError("Neither --model-lsm nor --model-column was specified, nothing to"\
+                                                                                " calibrate on.")
         double_precision = GD["sol"]["precision"] == 64
 
         solver_type = GD['out']['mode']
@@ -169,23 +191,22 @@ def main(debugging=False):
         apply_only = solver.SOLVERS[solver_type] in (solver.correct_only, solver.correct_residuals)
         load_model = solver.SOLVERS[solver_type] is not solver.correct_only   # no model needed in "correct only" mode
 
-
-        ms = ReadModelHandler(GD["data"]["ms"], 
-                              GD["data"]["column"], 
-                              GD["model"]["lsm"], 
-                              GD["model"]["column"],
-                              output_column=GD["out"]["column"],
-                              taql=GD["sel"]["taql"],
-                              fid=GD["sel"]["field"], 
-                              ddid=GD["sel"]["ddid"],
-                              flagopts=GD["flags"],
-                              double_precision=double_precision,
-                              ddes=GD["model"]["ddes"],
-                              weight_column=GD["weight"]["column"],
-                              beam_pattern=GD["model"]["beam-pattern"], 
-                              beam_l_axis=GD["model"]["beam-l-axis"], 
-                              beam_m_axis=GD["model"]["beam-m-axis"],
-                              mb_opts=GD["montblanc"])
+        ms = DataHandler( GD["data"]["ms"], 
+                          GD["data"]["column"], 
+                          GD["model"]["lsm"], 
+                          GD["model"]["column"],
+                          output_column=GD["out"]["column"],
+                          taql=GD["sel"]["taql"],
+                          fid=GD["sel"]["field"], 
+                          ddid=GD["sel"]["ddid"],
+                          flagopts=GD["flags"],
+                          double_precision=double_precision,
+                          ddes=GD["model"]["ddes"],
+                          weight_column=GD["weight"]["column"],
+                          beam_pattern=GD["model"]["beam-pattern"], 
+                          beam_l_axis=GD["model"]["beam-l-axis"], 
+                          beam_m_axis=GD["model"]["beam-m-axis"],
+                          mb_opts=GD["montblanc"])
 
         data_handler.global_handler = ms
 
@@ -359,7 +380,8 @@ def main(debugging=False):
 
     except Exception, exc:
         import traceback
-        print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc()))
+        print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__, 
+                                                                    exc, traceback.format_exc()))
         if enable_pdb and not isinstance(exc, UserInputError):
             import pdb
             exc, value, tb = sys.exc_info()
@@ -367,6 +389,24 @@ def main(debugging=False):
         sys.exit(1)
 
 def _io_handler(save=None, load=None, load_model=True, finalize=False):
+    """
+    Handles disk reads and writes for the multiprocessing case.
+
+    Args:
+        save (None or int, optional):
+            If specified, corresponds to index of Tile to save.
+        load (None or int, optional):
+            If specified, corresponds to index of Tile to load.
+        load_model (bool, optional):
+            If specified, loads model column from measurement set.
+        finalize (bool, optional):
+            If True, save will call the unlock method on the handler.
+
+    Returns:
+        bool:
+            True if load/save was successful.
+    """
+    
     try:
         if save is not None:
             tile = Tile.tile_list[save]

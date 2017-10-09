@@ -1,3 +1,7 @@
+"""
+Source provider for reading source information from a Tigger lsm.
+"""
+
 import logging
 import numpy as np
 
@@ -15,10 +19,18 @@ import Tigger
 import pyrap.tables as pt
 
 class TiggerSourceProvider(SourceProvider):
-    """ Simulates sources provided by a Tigger sky model. """
+    """
+    Simulates sources provided by a Tigger sky model. 
+    """
 
     def __init__(self, tile):
-        """ Simulate sources in different directions """
+        """ 
+        Initialises this source provider. 
+
+        Args:
+            tile (:obj:`~cubical.data_handler.Tile`):
+                Tile object containing information about current data selection.
+        """
 
         self._tile = tile
         self._handler = tile.handler
@@ -39,6 +51,7 @@ class TiggerSourceProvider(SourceProvider):
         self._ngsrc = len(self._gau_sources)
 
     def update_target(self):
+        """ Updates current target - used for direction dependent simulation. """
 
         if (self._target_key + 1)<self._nclus:
             self._target_key += 1
@@ -49,16 +62,19 @@ class TiggerSourceProvider(SourceProvider):
             self._ngsrc = len(self._gau_sources)
 
     def name(self):
+        """ Returns name of assosciated source provider. """
+
         return "Tigger sky model source provider"
 
     def point_lm(self, context):
-        """ Return a lm coordinate array to montblanc """
+        """ Returns an lm coordinate array to Montblanc. """
+
         lm = np.empty(context.shape, context.dtype)
 
         # Print the array schema
-        #montblanc.log.info(context.array_schema.shape)
+        #Montblanc.log.info(context.array_schema.shape)
         # Print the space of iteration
-        #montblanc.log.info(context.iter_args)
+        #Montblanc.log.info(context.iter_args)
 
         # Get the extents of the time, baseline and chan dimension
         (lp, up) = context.dim_extents('npsrc')
@@ -72,7 +88,7 @@ class TiggerSourceProvider(SourceProvider):
         return lm
 
     def point_stokes(self, context):
-        """ Return a stokes parameter array to montblanc """
+        """ Returns a stokes parameter array to Montblanc. """
 
         # Get the extents of the time, baseline and chan dimension
         (lt, ut), (lp, up) = context.dim_extents('ntime', 'npsrc')
@@ -88,7 +104,7 @@ class TiggerSourceProvider(SourceProvider):
         return stokes
 
     def point_alpha(self, context):
-        """ Return a spectral index (alpha) array to montblanc """
+        """ Returns a spectral index (alpha) array to Montblanc. """
 
         alpha = np.empty(context.shape, context.dtype)
 
@@ -103,7 +119,7 @@ class TiggerSourceProvider(SourceProvider):
         return alpha
 
     def point_ref_freq(self, context):
-        """ Return a reference frequency per source array to montblanc """
+        """ Returns a reference frequency per source array to Montblanc. """
         
         pt_ref_freq = np.empty(context.shape, context.dtype)
 
@@ -119,7 +135,8 @@ class TiggerSourceProvider(SourceProvider):
 
 
     def gaussian_lm(self, context):
-        """ Return a lm coordinate array to montblanc """
+        """ Returns an lm coordinate array to Montblanc. """
+
         lm = np.empty(context.shape, context.dtype)
 
         # Get the extents of the time, baseline and chan dimension
@@ -133,7 +150,7 @@ class TiggerSourceProvider(SourceProvider):
         return lm
 
     def gaussian_stokes(self, context):
-        """ Return a stokes parameter array to montblanc """
+        """ Return a stokes parameter array to Montblanc """
 
         # Get the extents of the time, baseline and chan dimension
         (lt, ut), (lg, ug) = context.dim_extents('ntime', 'ngsrc')
@@ -150,7 +167,7 @@ class TiggerSourceProvider(SourceProvider):
 
 
     def gaussian_alpha(self, context):
-        """ Return a spectral index (alpha) array to montblanc """
+        """ Returns a spectral index (alpha) array to Montblanc """
 
         alpha = np.empty(context.shape, context.dtype)
 
@@ -166,7 +183,7 @@ class TiggerSourceProvider(SourceProvider):
 
 
     def gaussian_shape(self, context):
-        """ Return a Gaussian shape array to montblanc """
+        """ Returns a Gaussian shape array to Montblanc """
 
         shapes = np.empty(context.shape, context.dtype)
 
@@ -180,7 +197,7 @@ class TiggerSourceProvider(SourceProvider):
         return shapes
 
     def gaussian_ref_freq(self, context):
-        """ Return a reference frequency per source array to montblanc """
+        """ Returns a reference frequency per source array to Montblanc """
 
         gau_ref_freq = np.empty(context.shape, context.dtype)
 
@@ -195,11 +212,26 @@ class TiggerSourceProvider(SourceProvider):
         return gau_ref_freq
 
     def updated_dimensions(self):
-        """ Tell montblanc about dimension sizes (point sources only) """
+        """ Informs Montblanc of updated dimension sizes. """
+
         return [('npsrc', self._npsrc),
                 ('ngsrc', self._ngsrc)]
 
 def cluster_sources(sm, use_ddes):
+    """
+    Groups sources by shapes and tags specified in the sky model.
+
+    Args:
+        sm (:obj:`~Tigger.Models.SkyModel.SkyModel`):
+            SkyModel object containing source information.
+        use_ddes (bool):
+            If True, take DDE and cluster tags into account. 
+            Required for DD simulation.
+
+    Returns:
+        dict:
+            Dictionary of grouped sources.
+    """
 
     ddes = {'True': [], 'False': []}
 
@@ -230,20 +262,23 @@ def cluster_sources(sm, use_ddes):
 
     return clus
 
-
-def get_sources(sm):
-
-    sources = {'pnt' : [], 'gau' : []}
-
-    for source in sm.sources:
-        if source.typecode == 'pnt':
-            sources['pnt'].append(source)
-        elif source.typecode == 'Gau':
-            sources['gau'].append(source)
-
-    return sources
-
 def radec_to_lm(ra, dec, phase_center):
+    """
+    Convert right-ascension and declination to direction cosines.
+
+    Args:
+        ra (float):
+            Right-ascension in radians.
+        dec (float):
+            Declination in radians.
+        phase_center (np.ndarray):
+            The coordinates of the phase center.
+
+    Returns:
+        tuple: 
+            l and m coordinates.
+
+    """
 
     delta_ra = ra - phase_center[...,-2]
     dec_0 = phase_center[...,-1]

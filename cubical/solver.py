@@ -632,6 +632,28 @@ SOLVERS = { 'so': solve_only,
 
 
 def run_solver(solver_type, itile, chunk_key, sol_opts):
+    """
+    Initialises a gain machine and invokes the solver for the current chunk.
+
+    Args:
+        solver_type (str):
+            Specifies type of solver to use.
+        itile (int):
+            Index of current Tile object.
+        chunk_key (str):
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict):
+            Solver options (see [sol] section in DefaultParset.cfg).
+
+    Returns:
+        :obj:`~cubical.statistics.SolverStats`:
+            An object containing solver statistics.
+
+    Raises:
+        RuntimeError:
+            If gain factory has not been initialised.
+    """
+
     label = None
     
     try:
@@ -639,7 +661,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         label = chunk_key
         solver = SOLVERS[solver_type]
 
-        # get chunk data from tile
+        # Get chunk data from tile.
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
 
@@ -650,26 +672,27 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         else:
             n_dir = n_mod = 1
 
-        # initialize the gain machine for this chunk
+        # Initialize the gain machine for this chunk.
 
         if gm_factory is None:
             raise RuntimeError("Gain machine factory has not been initialized")
 
         gm = gm_factory.create_machine(obser_arr, n_dir, n_mod, chunk_ts, chunk_fs)
 
-        # invoke solver with cubes from tile
+        # Invoke solver with cubes from tile.
 
         corr_vis, stats = solver(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts)
 
-        # copy results back into tile
+        # Copy results back into tile.
 
         tile.set_chunk_cubes(corr_vis, flags_arr if (stats and stats.chunk.num_sol_flagged) else None, chunk_key)
 
-        # ask the gain machine to store its solutions in the shared dict
+        # Ask the gain machine to store its solutions in the shared dict.
 
         gm_factory.export_solutions(gm, tile.create_solutions_chunk_dict(chunk_key))
 
         return stats
+
     except Exception, exc:
         print>>log,ModColor.Str("Solver for tile {} chunk {} failed with exception: {}".format(itile, label, exc))
         print>>log,traceback.format_exc()
