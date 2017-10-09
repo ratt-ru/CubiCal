@@ -1,3 +1,7 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
@@ -10,6 +14,9 @@ ctypedef fused complex3264:
 ctypedef fused float3264:
     np.float32_t
     np.float64_t
+
+cdef extern from "complex.h":
+    double complex exp(double complex)
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -402,5 +409,5 @@ def cyconstruct_gains(float3264 [:,:,:,:,:,:,:] param,
                 rc = f/f_int
                 for aa in xrange(n_ant):
                     for c in xrange(2):
-                        g[d,t,f,aa,c,c] = np.exp(1j*(ts[t]*param[d,rr,rc,aa,0,c,c] + 
-                                                           param[d,rr,rc,aa,1,c,c] ))
+                        g[d,t,f,aa,c,c] = exp(1j*(ts[t]*param[d,rr,rc,aa,0,c,c] + 
+                                                        param[d,rr,rc,aa,1,c,c] ))

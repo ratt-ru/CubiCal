@@ -1,3 +1,7 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyphase_only as cyphase
@@ -80,7 +84,7 @@ class PhaseDiagGains(PerIntervalGains):
         else:
             self.phases += update
 
-        self.phases = self.phases - self.phases[:,:,:,0:1,:,:]
+        self.restrict_solution()
 
         self.gains = np.exp(1j*self.phases)
         self.gains[...,(0,1),(1,0)] = 0 
@@ -143,6 +147,14 @@ class PhaseDiagGains(PerIntervalGains):
         gains.
         """
         return
+
+    def restrict_solution(self):
+
+        PerIntervalGains.restrict_solution(self)
+
+        if self.ref_ant is not None:
+            self.phases -= self.phases[:,:,:,self.ref_ant,:,:][:,:,:,np.newaxis,:,:]
+
 
     def precompute_attributes(self, model_arr):
 

@@ -1,3 +1,7 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from cubical.machines.abstract_machine import MasterMachine
 from cubical.machines.complex_2x2_machine import Complex2x2Gains
 import numpy as np
@@ -21,13 +25,13 @@ class JonesChain(MasterMachine):
         # DI terms, we need to be initialise the DI terms using only one direction - we do this with 
         # slicing rather than summation as it is slightly faster. 
 
-        self.n_terms = len(jones_options)
-
         self.jones_terms = []
-        for term_opts in jones_options:
+        for term_opts in jones_options['chain']:
             self.jones_terms.append(Complex2x2Gains(term_opts["label"], data_arr, 
                                     ndir if term_opts["dd-term"] else 1,
                                     nmod, times, frequencies, term_opts))
+
+        self.n_terms = len(self.jones_terms)
 
         self.active_index = 0
         self.last_active_index = 100 
@@ -40,8 +44,11 @@ class JonesChain(MasterMachine):
     def export_solutions(self):
         """This method saves the solutions to a dict of {label: solutions,grids} items"""
         soldict = {}
+        # prefix jones label to solution name
         for term in self.jones_terms:
-            soldict.update(term.export_solutions())
+            for label, sol in term.export_solutions().iteritems():
+                soldict["{}:{}".format(term.jones_label, label)] = sol
+        soldict['prefixed'] = True
         return soldict
 
     def importable_solutions(self):
@@ -144,11 +151,7 @@ class JonesChain(MasterMachine):
         else:
             self.gains = update
 
-        if self.update_type == "diag":
-            self.gains[...,(0,1),(1,0)] = 0
-        elif self.update_type == "phase-diag":
-            self.gains[...,(0,1),(1,0)] = 0
-            self.gains[...,(0,1),(0,1)] = self.gains[...,(0,1),(0,1)]/np.abs(self.gains[...,(0,1),(0,1)])
+        self.restrict_solution()
 
         return flag_count
 
@@ -194,17 +197,21 @@ class JonesChain(MasterMachine):
         if corr_vis is None:
             corr_vis = np.empty_like(resid_vis)
 
+        flag_count = 0
+
         for ind in xrange(self.n_terms):  
             term = self.jones_terms[ind]
 
             if term.dd_term:
                 break
 
-            term.apply_inv_gains(resid_vis, corr_vis)
+            _, fc = term.apply_inv_gains(resid_vis, corr_vis)
+
+            flag_count += fc
 
             resid_vis[:] = corr_vis[:]
 
-        return corr_vis
+        return corr_vis, flag_count
 
     def apply_gains(self):
         """
@@ -233,6 +240,10 @@ class JonesChain(MasterMachine):
         """
 
         self.active_term.update_conv_params(min_delta_g)
+
+    def restrict_solution(self):
+
+        self.active_term.restrict_solution()
 
     def flag_solutions(self):
         """
@@ -403,13 +414,15 @@ class JonesChain(MasterMachine):
         Note that a ChainMachine Factory expects a list of jones options (one dict per Jones term), not a single dict.
         """
         def __init__(self, machine_cls, grid, double_precision, apply_only, global_options, jones_options):
-            MasterMachine.Factory.__init__(self, machine_cls, grid, double_precision, apply_only, global_options,
-                                           jones_options, jones_label="chain")
-
+            # manufacture dict of "Jones options" for the outer chain
+            opts = dict(label="chain", solvable=not apply_only, chain=jones_options)
+            self.chain_options = jones_options
+            MasterMachine.Factory.__init__(self, machine_cls, grid, double_precision, apply_only,
+                                           global_options, opts)
 
         def init_solutions(self):
-            for opts in self.jones_options:
+            for opts in self.chain_options:
                 label = opts["label"]
                 self._init_solutions(label, self._make_filename(opts["load-from"]),
-                                            not self.apply_only and opts["solvable"] and self._make_filename(opts["save-to"]),
-                                     Complex2x2Gains.exportable_solutions(label))
+                                     self.solvable and opts["solvable"] and self._make_filename(opts["save-to"]),
+                                     Complex2x2Gains.exportable_solutions())

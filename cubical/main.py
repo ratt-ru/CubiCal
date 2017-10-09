@@ -1,3 +1,7 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
 import cPickle
 import os
 import os.path
@@ -14,9 +18,7 @@ from cubical.tools import logger, parsets, myoptparse, shm_utils, ModColor
 from cubical.machines import complex_2x2_machine
 from cubical.machines import complex_W_2x2_machine
 from cubical.machines import phase_diag_machine
-from cubical.machines import f_slope_machine
-from cubical.machines import t_slope_machine
-from cubical.machines import tf_plane_machine
+from cubical.machines import slope_machine
 from cubical.machines import jones_chain_machine
 
 log = logger.getLogger("main")
@@ -216,9 +218,9 @@ def main(debugging=False):
             JONES_TYPES = {'complex-2x2': complex_2x2_machine.Complex2x2Gains,
                            'phase-diag': phase_diag_machine.PhaseDiagGains,
                            'robust-2x2': complex_W_2x2_machine.ComplexW2x2Gains,
-                           'f-slope': f_slope_machine.PhaseSlopeGains,
-                           't-slope': t_slope_machine.PhaseSlopeGains,
-                           'tf-plane': tf_plane_machine.PhaseSlopeGains}
+                           'f-slope': slope_machine.PhaseSlopeGains,
+                           't-slope': slope_machine.PhaseSlopeGains,
+                           'tf-plane': slope_machine.PhaseSlopeGains}
             jones_class = JONES_TYPES.get(jones_opts['type'])
             if jones_class is None:
                 raise ValueError("unknown Jones type '{}'".format(jones_opts['type']))

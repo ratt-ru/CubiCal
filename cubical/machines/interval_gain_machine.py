@@ -1,8 +1,11 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from abc import ABCMeta, abstractmethod
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
-from functools import partial
 from numpy.ma import masked_array
 
 class PerIntervalGains(MasterMachine):
@@ -33,7 +36,11 @@ class PerIntervalGains(MasterMachine):
         t1[:-1] = times[self.t_int-1:-1:self.t_int]
         f1[:-1] = frequencies[self.f_int-1:-1:self.f_int]
         t1[-1], f1[-1] = times[-1], frequencies[-1]
-        self._grid = dict(time=(t0+t1)/2, freq=(f0+f1)/2)
+
+        # interval_grid determines the per-interval grid poins
+        self.interval_grid = dict(time=(t0+t1)/2, freq=(f0+f1)/2)
+        # data_grid determines the full resolution grid
+        self.data_grid = dict(time=times, freq=frequencies)
 
         # n_tim and n_fre are the time and frequency dimensions of the data arrays.
         # n_timint and n_freint are the time and frequnecy dimensions of the gains.
@@ -41,10 +48,6 @@ class PerIntervalGains(MasterMachine):
         self.n_timint = int(np.ceil(float(self.n_tim) / self.t_int))
         self.n_freint = int(np.ceil(float(self.n_fre) / self.f_int))
         self.n_tf_ints = self.n_timint * self.n_freint
-
-        # Total number of solutions.
-
-        self.n_sols = float(self.n_dir * self.n_tf_ints)
 
         # Initialise attributes used for computing values over intervals.
 
@@ -65,6 +68,7 @@ class PerIntervalGains(MasterMachine):
         self.maxiter = options["max-iter"]
         self.min_quorum = options["conv-quorum"]
         self.update_type = options["update-type"]
+        self.ref_ant = options["ref-ant"]
         self.dd_term = options["dd-term"]
         self.term_iters = options["term-iters"]
 
@@ -79,31 +83,47 @@ class PerIntervalGains(MasterMachine):
         self.clip_lower = options["clip-low"]
         self.clip_upper = options["clip-high"]
         self.clip_after = options["clip-after"]
-        self.flag_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant]
-        self.gflags = np.zeros(self.flag_shape, FL.dtype)
         self.flagbit = FL.ILLCOND
 
-    # describe our solutions
-    def get_solutions_grid(self):
-        return self._grid
+        self.init_gains()
+        self.old_gains = self.gains.copy()
+
+    def init_gains(self):
+        """Construct gain and flag arrays. Normally we have one gain/one flag per
+        interval, but subclasses may redefine this, if they deal in full-resolution gains.
+        """
+        self.gain_grid = self.interval_grid
+        self.gain_shape = [self.n_dir,self.n_timint,self.n_freint,self.n_ant,self.n_cor,self.n_cor]
+        self.gains = np.empty(self.gain_shape, dtype=self.dtype)
+        self.gains[:] = np.eye(self.n_cor)
+        self.flag_shape = self.gain_shape[:-2]
+        self.gflags = np.zeros(self.flag_shape,FL.dtype)
+        # Total number of independent gain problems to be solved
+        self.n_sols = float(self.n_dir * self.n_tf_ints)
+
+        # function used to unpack the gains or flags into full time/freq resolution
+        self._gainres_to_fullres  = self.unpack_intervals
+        # function used to unpack interval resolution to gain resolution
+        self._interval_to_gainres = lambda array,time_ind=0: array
+
 
     @staticmethod
-    def exportable_solutions(label):
-        return { "{}:gain".format(label): (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
+    def exportable_solutions():
+        return { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
 
     def importable_solutions(self):
-        return { "{}:gain".format(self.jones_label): self._grid }
+        return { "gain": self.interval_grid }
 
     def export_solutions(self):
         """This method saves the solutions to a dict of {label: solutions,grids} items"""
         # make a mask from gain flags by broadcasting the corr1/2 axes
         mask = np.zeros_like(self.gains, bool)
         mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
-        return { "{}:gain".format(self.jones_label): (masked_array(self.gains, mask), self._grid) }
+        return { "gain".format(self.jones_label): (masked_array(self.gains, mask), self.gain_grid) }
 
     def import_solutions(self, soldict):
         """This method loads solutions from a dict"""
-        sol = soldict.get("{}:gain".format(self.jones_label))
+        sol = soldict.get("gain")
         if sol is not None:
             self.gains[:] = sol.data
             # collapse the corr1/2 axes
@@ -129,19 +149,17 @@ class PerIntervalGains(MasterMachine):
         # Pre-flag gain solution intervals that are completely flagged in the input data 
         # (i.e. MISSING|PRIOR). This has shape (n_timint, n_freint, n_ant).
 
-        missing_gains = self.interval_and((flags&(FL.MISSING|FL.PRIOR) != 0).all(axis=-1))
+        missing_intervals = self.interval_and((flags&(FL.MISSING|FL.PRIOR) != 0).all(axis=-1))
 
-        # Gain flags have shape (n_dir, n_timint, n_freint, n_ant). All intervals with no prior data
-        # are flagged as FL.MISSING.
-        
-        self.gflags[:, missing_gains] = FL.MISSING
-        self.missing_gain_fraction = missing_gains.sum() / float(missing_gains.size)
+        self.missing_gain_fraction = missing_intervals.sum() / float(missing_intervals.size)
+
+        # convert the intervals array to gain shape, and apply flags
+        self.gflags[:, self._interval_to_gainres(missing_intervals)] = FL.MISSING
 
     def flag_solutions(self):
         """
         This method will do basic flagging of the gain solutions.
         """
-
         gain_mags = np.abs(self.gains)
 
         # Anything previously flagged for another reason will not be reflagged.
@@ -177,8 +195,8 @@ class PerIntervalGains(MasterMachine):
         self.n_flagged = (self.gflags&~FL.MISSING != 0).sum()
 
     def propagate_gflags(self, flags):
-
-        nodir_flags = self.unpack_intervals(np.bitwise_or.reduce(self.gflags, axis=0))
+        # convert gain flags to full time/freq resolution
+        nodir_flags = self._gainres_to_fullres(np.bitwise_or.reduce(self.gflags, axis=0))
 
         flags |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING 
         flags |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
@@ -195,23 +213,35 @@ class PerIntervalGains(MasterMachine):
 
         norm_diff_g = diff_g/norm_g
 
-        self.max_update = np.max(diff_g)
+        self.max_update = np.sqrt(np.max(diff_g))
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
+
+    def restrict_solution(self):
+
+        if self.update_type == "diag":
+            self.gains[...,(0,1),(1,0)] = 0
+        elif self.update_type == "phase-diag":
+            self.gains[...,(0,1),(1,0)] = 0
+            self.gains[...,(0,1),(0,1)] = self.gains[...,(0,1),(0,1)]/np.abs(self.gains[...,(0,1),(0,1)])
+        elif self.update_type == "amp-diag":
+            self.gains[...,(0,1),(1,0)] = 0
+            np.abs(self.gains, out=self.gains)
 
     def update_term(self):
 
         self.iters += 1
 
     def unpack_intervals(self, arr, tdim_ind=0):
-
+        """Helper method. Unpacks an array that has time/freq axes in terms of intervals into a shape
+        that has time/freq axes at full resolution. tdim_ind gives the position of the time axis"""
         return arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
 
     def interval_sum(self, arr, tdim_ind=0):
-   
+        """Helper method. Sums an array with full resolution time/freq axes into time/freq intervals"""
         return np.add.reduceat(np.add.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1)
 
     def interval_and(self, arr, tdim_ind=0):
-   
+        """Helper method. Logical-ands an array with full resolution time/freq axes into time/freq intervals"""
         return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1)
 
     @property

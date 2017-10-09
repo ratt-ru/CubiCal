@@ -1,3 +1,7 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
 # this is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does, even if one is only
 # trying to save figures to .png...)
 import matplotlib
