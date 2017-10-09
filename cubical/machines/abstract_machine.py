@@ -13,8 +13,8 @@ class MasterMachine(object):
     This is a base class for all solution machines. It is completely generic and lays out the basic
     requirements for all machines.
     
-    It also provides a Factory class that takes care of creating machines and interfacing to solution
-    tables on disk
+    It also provides a Factory class that takes care of creating machines and interfacing with 
+    solution tables on disk.
     """
 
     __metaclass__ = ABCMeta
@@ -23,7 +23,25 @@ class MasterMachine(object):
         """
         The init method of the overall abstract machine should know about the times and frequencies 
         associated with its gains.
+        
+        Args:
+            label (str):
+                Label identifying the Jones term.
+            data_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities. 
+            ndir (int):
+                Number of directions.
+            nmod (nmod):
+                Number of models.
+            times (np.ndarray):
+                Times for the data being processed.
+            freqs (np.ndarray):
+                Frequencies for the data being processsed.
+            options (dict): 
+                Dictionary of options. 
         """
+
         self.jones_label = label
         self.times = times
         self.freqs = freqs
@@ -37,50 +55,113 @@ class MasterMachine(object):
 		very flexible, as it is only used in the compute_update method and need only be consistent
 		with that usage. Should support the use of both the true residual and the observed data. 
 		"""
+
         return NotImplementedError
 
     @abstractmethod
-    def compute_update(self):
+    def compute_update(self, model_arr, obser_arr):
         """
         This method is expected to compute the parameter update. As such, it must fetch or compute 
         the terms of the update in order to update the gains. Should call the compute_js but is 
-        very flexible, provided it ultimately updates the gains. 
+        very flexible, provided it ultimately updates the gains. Function signature consistent with
+        the one defined here.
+
+        Args:
+            model_arr (np.ndarray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities. 
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities. 
         """
+
         return NotImplementedError
 
     @abstractmethod
-    def compute_residual(self):
+    def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
         This method should compute the residual at the the full time-frequency resolution of the
-        data. Should return the residual.
+        data. Must populate resid_arr with the values of the residual. Function signature must be 
+        consistent with the one defined here.
+
+        Args:
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities. 
+            model_arr (np.ndarray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities.
+            resid_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array in which to place the 
+                residual values.
         """
+
         return NotImplementedError
 
     @abstractmethod
-    def apply_inv_gains(self):
+    def apply_inv_gains(self, obser_arr, corr_vis=None):
         """
-        This method should be able to apply the inverse of the gains to an array at full time-
-        frequency resolution. Should return the input array at full resolution after the application
-        of the inverse gains.
+        This method should be able to apply the inverse of the gains assosciated with the gain
+        machines to an array at full time-frequency resolution. Should populate an input array with
+        the result or return a new array. Function signature must be consistent with the one defined
+        here.
+
+        Args:
+            obser_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities.
+            corr_vis (np.ndarray or None, optional):
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array to fill with the corrected 
+                visibilities.
+
+        Returns:
+            2-element tuple
+                
+                - Corrected visibilities (np.ndarray)
+                - Flags raised (int)
         """
+        
         return NotImplementedError
 
     @abstractmethod			
-    def apply_gains(self):
+    def apply_gains(self, model_arr):
         """
         This method should be able to apply the gains to an array at full time-frequency
         resolution. Should return the input array at full resolution after the application of the 
-        gains.
+        gains. Function signature must be consistent with the one defined here.
+
+        Args:
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities.
+
+        Returns:
+            np.ndarray:
+                Resulting array after applying the gains.
         """
+
         return NotImplementedError
 
     @abstractmethod				
-    def update_stats(self):
+    def update_stats(self, flags_arr, eqs_per_tf_slot):
         """
         This method should compute a variety of useful parameters regarding the conditioning and 
-        degrees of freedom of the current time-frequency chunk. Specifically, it must populate 
-        an attribute containing the degrees of freedom per time-frequency slot. 
+        degrees of freedom of the current time-frequency chunk. Specifically, it must populate:
+        
+            - self.eqs_per_interval
+            - self.valid_intervals
+            - self.num_valid_intervals
+            - self.missing_gain_fraction
+        
+        Function signature must be consistent with the one defined here.
+
+        Args:
+            flags_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags.
+            eqs_per_tf_slot (np.ndarray):
+                Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
         """
+
         return NotImplementedError
 
     @abstractmethod				

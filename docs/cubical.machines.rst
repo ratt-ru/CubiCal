@@ -8,7 +8,7 @@ cubical\.machines\.abstract\_machine module
     :members:
     :special-members:
     :private-members:
-    :undoc-members:
+    :exclude-members: __dict__,__weakref__,Factory,__metaclass__
 
 cubical\.machines\.complex\_2x2\_machine module
 -----------------------------------------------
