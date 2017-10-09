@@ -307,6 +307,51 @@ def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
                     upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,1] + \
                                         jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,1]
 
+
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
+                     complex3264 [:,:] cov,
+                     complex3264[:,:,:,:,:,:] w,
+                     float v):
+    """
+    This function updates the weights, using the 
+    expression w[i] = (v+8)/(v + 2*r[i].T.cov.r[i])
+    r: the reisudals
+    cov : the weigted covariance matrix
+    """
+
+    cdef int d, t, f, aa, ab = 0
+    cdef int n_mod, n_tim, n_fre, n_ant
+    cdef complex3264 r00, r01, r10, r11, denom
+    cdef complex3264 c00, c01, c02, c03, c10, c11, c12, c13, c20, c21, c22, c23, c30, c31, c32, c33
+
+    c00, c01, c02, c03 = cov[0,0], cov[0,1], cov[0,2], cov[0,3]
+    c10, c11, c12, c13 = cov[1,0], cov[1,1], cov[1,2], cov[1,3]
+    c20, c21, c22, c23 = cov[2,0], cov[2,1], cov[2,2], cov[2,3]
+    c30, c31, c32, c33 = cov[3,0], cov[3,1], cov[3,2], cov[3,3]
+
+
+    n_mod = r.shape[0]
+    n_tim = r.shape[1]
+    n_fre = r.shape[2]
+    n_ant = r.shape[3]
+
+    for i in xrange(n_mod):
+        for t in xrange(n_tim):
+            for f in xrange(n_fre):
+                for aa in xrange(n_ant):
+                    for ab in xrange(n_ant):
+                        r00, r01, r10, r11 = r[i,t,f,aa,ab,0,0], r[i,t,f,aa,ab,0,1], r[i,t,f,aa,ab,1,0], r[i,t,f,aa,ab,1,1]
+                        
+                        denom = r00*(c00*r00.conjugate() + c10*r10.conjugate() + c20*r01.conjugate() + c30*r11.conjugate()) + r01*(c02*r00.conjugate() + c12*r10.conjugate() + c22*r01.conjugate() + c32*r11.conjugate()) + r10*(c01*r00.conjugate() + c11*r10.conjugate() + c21*r01.conjugate() + c31*r11.conjugate()) + r11*(c03*r00.conjugate() + c13*r10.conjugate() + c23*r01.conjugate() + c33*r11.conjugate())
+
+                        w[i,t,f,aa,ab,0] = (v+8)/(v + 2*denom)
+
+
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)

@@ -2,9 +2,8 @@ from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyfull_W_complex as cyfull
 import cPickle
-#from scipy.optimize import fsolve
 from scipy import special
-#import scipy.stats as st
+
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -13,7 +12,7 @@ class ComplexW2x2Gains(PerIntervalGains):
     
     def __init__(self, label, model_arr, ndir, nmod, chunk_ts, chunk_fs, options):
         
-        PerIntervalGains.__init__(self, model_arr, chunk_ts, chunk_fs, options)
+        PerIntervalGains.__init__(self, label, model_arr, ndir, nmod, chunk_ts, chunk_fs, options)
         
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         
@@ -26,16 +25,6 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.weights = np.ones(self.weights_shape, dtype=self.dtype)
         
         self.v = 2.
-        
-        self.weight_dict = {}
-        
-        self.weight_dict["weights"] = {}
-        
-        self.weight_dict["vvals"] = {}
-        
-        self.label = label
-
-        print "truly here"
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -82,7 +71,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         return jhwr, jhwjinv, flag_count
 
-    def compute_update(self, model_arr, obser_arr, iters):
+    def compute_update(self, model_arr, obser_arr):
         """
         This function computes the update step of the GN/LM method. This is
         equivalent to the complete (((J^H)J)^-1)(J^H)R.
@@ -106,46 +95,22 @@ class ComplexW2x2Gains(PerIntervalGains):
         cyfull.cycompute_update(jhwr, jhwjinv, update)
 
         if model_arr.shape[0]>1:
-            
-            update = self.gains + update
+			update = self.gains + update
 
-        if iters % 2 == 0:
-            
+        if self.iters % 2 == 0 or self.n_dir>1:
             self.gains = 0.5*(self.gains + update)
-        
         else:
-            
             self.gains = update
 
         #Computing the weights
         resid_arr = np.empty_like(obser_arr)
         residuals = self.compute_residual(obser_arr, model_arr, resid_arr)
 
-    
         covinv = self.compute_covinv(residuals)
-
-        weights = self.weights
-
-        v = self.v
         
-        #self.weights, self.v = self.cycompute_weights(residuals, covinv, weights, v, self.t_int, self.f_int)
-
-        #self.weight_dict["weights"][iters] = self.weights
-        
-        #self.weight_dict["vvals"][iters] = self.v
-        
-        #self.weight_dict["t_int"] = self.t_int
-        
-        #self.weight_dict["f_int"] = self.f_int
-        
-        #f = open(str(self.label) + "_weights_dict.cp", "wb")
-        
-        #cPickle.dump(self.weight_dict, f)
-        
-        #f.close()
+        self.weights, self.v = self.update_weights(residuals, covinv, self.weights, self.v)
 
         return flag_count
-
 
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
@@ -205,66 +170,51 @@ class ComplexW2x2Gains(PerIntervalGains):
         return np.array(covinv, dtype=self.dtype)
 
 
-    def cycompute_weights(self, r, covinv, w, v, t_int, f_int):
+    def update_weights(self, r, covinv, w, v):
         
-        """
-        This computes the weights, given the latest residual visibilities and the v parameter.
-        w[i] = (v+2)/(v + 2*residual[i]^2). Next v is update using the newly compute weights.
-        """
+		"""
+		This computes the weights, given the latest residual visibilities and the v parameter.
+		w[i] = (v+8)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
+		"""
         
-        def  _brute_solve_v(f, low, high):
-            """finds the value of v by brute for using Gauss newton method"""
-            root = None  # Initialization
-            x = np.linspace(low, high, 58) #constraint the root to be between 2 and 30
-            y = f(x)
+		def  _brute_solve_v(f, low, high):
+			"""finds the value of v by brute for using Gauss newton method"""
+			root = None  # Initialization
+			x = np.linspace(low, high, 100) #constraint the root to be between 2 and 30
+			y = f(x)
     
-            for i in range(len(x)-1):
-                if y[i]*y[i+1] < 0:
-                    root = x[i] - (x[i+1] - x[i])/(y[i+1] - y[i])*y[i]
-                    break  # Jump out of loop
-                elif y[i] == 0:       
-                    root = x[i]
-                    break  # Jump out of loop
+			for i in range(len(x)-1):
+				if y[i]*y[i+1] < 0:
+					root = x[i] - (x[i+1] - x[i])/(y[i+1] - y[i])*y[i]
+					break  # Jump out of loop
+				elif y[i] == 0:       
+					root = x[i]
+					break  # Jump out of loop
 
-            if root is None:
-                dist = np.abs(y)
-                root = x[np.argmin(dist)]
-                print "Root not found, chosen value is %g"%root
-                return root
-            else:
-                print 'Found a root, x=%g' % root
-            return root
+			if root is None:
+				dist = np.abs(y)
+				root = x[np.argmin(dist)]
+				return root
+			else:
+				return root
 
-        n_mod = r.shape[0]
-        n_tim = r.shape[1]
-        n_fre = r.shape[2]
-        n_ant = r.shape[3]
+		cyfull.cycompute_weights(r,covinv,w,v)
 
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
-                for f in xrange(n_fre):
-                    for aa in xrange(n_ant):
-                        for ab in xrange(n_ant):
-                            rr = np.reshape(r[i,t,f,aa,ab,:,:],(4))
-                            w[i,t,f,aa,ab,0] = (v+8)/(v+ 2*rr.conj().T.dot(covinv.dot(rr)))
+		#---------normalising the weights to mean 1 --------------------------#
+
+		norm = np.average(np.real(w.flatten()))
+		w = w/norm              
+
+		#-----------computing the v parameter---------------------#
+       
+		wn = np.real(w.flatten())
+		m = len(wn)
+
+		vfunc = lambda a: special.digamma(0.5*(a+8)) - np.log(0.5*(a+8)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
+
+		v = _brute_solve_v(vfunc, 2, 30)
         
-        #---------normalising to mean 1--------------------------#
-        wnew = np.real(np.reshape(w[:,:,:,:,:,:],(n_tim*n_fre*n_ant*n_ant)))
-        wnew_no_zero = wnew[np.where(wnew!=0)]
-        norm = np.average(wnew_no_zero)
-        w = w/norm              
-
-        #-----------computing the v parameter---------------------#
-        
-        winit = np.real(np.reshape(w[:,:,:,:,:,:],(n_tim*n_fre*n_ant*n_ant)))
-        wn = winit[np.where(winit!=0)]
-        m = len(wn)
-
-        vfunc = lambda a: special.digamma(0.5*(a+8)) - np.log(0.5*(a+8)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
-
-        v = _brute_solve_v(vfunc, 2, 30)
-        
-        return w, v 
+		return w, v 
 
     def apply_inv_gains(self, obser_arr, corr_vis=None):
         """

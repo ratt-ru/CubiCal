@@ -84,7 +84,7 @@ class Complex2x2Gains(PerIntervalGains):
         if model_arr.shape[0]>1:
             update = self.gains + update
 
-        if self.iters % 2 == 0 or self.n_dir>1:
+        if self.iters % 2 == 0:
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
