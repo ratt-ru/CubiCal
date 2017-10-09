@@ -98,7 +98,7 @@ def parse_config_string(string, name='config', extended=True, type=None):
 
     # if attributes contain an option list, enforce this
     if 'options' in attrs:
-        opts = attrs['options'].split("|")
+        attrs['options'] = opts = attrs['options'].split("|")
         if string not in opts:
             raise ValueError("%s: value %s not in options list"%(name, string))
 
