@@ -61,3 +61,10 @@ README.md~
 cubical.last
 cubical.parset
 cubical.stats.pickle
+
+# Folders #
+###########
+/home/kenyon/CubiCal/docs/_static/
+/home/kenyon/CubiCal/docs/_build/
+/home/kenyon/CubiCal/docs/_templates/
+
