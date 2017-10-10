@@ -1,23 +1,10 @@
-#!/usr/bin/env python
-'''
-DDFacet, a facet-based radio imaging package
-Copyright (C) 2013-2016  Cyril Tasse, l'Observatoire de Paris,
-SKA South Africa, Rhodes University
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
 
-This program is free software; you can redistribute it and/or
-modify it under the terms of the GNU General Public License
-as published by the Free Software Foundation; either version 2
-of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-'''
+# This module has been adapted from the DDFacet package,
+# (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
 import collections
 import optparse as OptParse
@@ -70,11 +57,14 @@ class MyOptParse():
         # if default is None:
         #     default = self.DefaultDict[self.CurrentGroupKey][name]
         opttype = attrs.get('type', str)
-        metavar = attrs.get('options') or attrs.get('metavar', None)
+        choices = attrs.get('options', None)
+        metavar = attrs.get('metavar', None) or choices
         action = None
         if opttype is bool:
             opttype = str
             metavar = "0|1"
+        if choices is not None:
+            opttype = "choice"
         # handle doc string
         if 'doc' in attrs:
             help = attrs['doc']
@@ -92,7 +82,8 @@ class MyOptParse():
         #         option_names.append("--%s" % name)
 
         self.CurrentGroup.add_option(*option_names,
-            help=help, type=opttype, default=default, metavar=metavar, action=action,
+            help=help, type=opttype, default=default, metavar=metavar,
+            action=action, choices=choices,
             dest=self.GiveKeyDest(self.CurrentGroupKey,name))
 
     def GiveKeyDest(self,GroupKey,Name):

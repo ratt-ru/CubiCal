@@ -1,3 +1,7 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
 """
 Cython kernels for the time and frequency slopes (delay and rates) gain machine. Functions require 
 output arrays to be provided. Common dimensions of arrays are:
