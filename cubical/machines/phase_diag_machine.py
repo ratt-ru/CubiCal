@@ -7,6 +7,26 @@ class PhaseDiagGains(PerIntervalGains):
     This class implements the diagonal phase-only gain machine.
     """
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+        """
+        Initialises a diagonal phase-only gain machine.
+        
+        Args:
+            label (str):
+                Label identifying the Jones term.
+            data_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities. 
+            ndir (int):
+                Number of directions.
+            nmod (nmod):
+                Number of models.
+            chunk_ts (np.ndarray):
+                Times for the data being processed.
+            chunk_fs (np.ndarray):
+                Frequencies for the data being processsed.
+            options (dict): 
+                Dictionary of options. 
+        """
         
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
 
@@ -19,15 +39,19 @@ class PhaseDiagGains(PerIntervalGains):
 
     def compute_js(self, obser_arr, model_arr):
         """
-        This method computes the (J^H)R term of the GN/LM method for the
-        full-polarisation, diagonal phase-only gains case.
+        This function computes the J\ :sup:`H`\R term of the GN/LM method. 
 
         Args:
-            obser_arr (np.array): Array containing the observed visibilities.
-            model_arr (np.array): Array containing the model visibilities.
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
 
         Returns:
-            jhr (np.array): Array containing the result of computing (J^H)R.
+            np.ndarray:
+                J\ :sup:`H`\R
         """
 
         n_dir, n_timint, n_freint, n_ant, n_cor, n_cor = self.gains.shape
@@ -55,18 +79,16 @@ class PhaseDiagGains(PerIntervalGains):
 
     def compute_update(self, model_arr, obser_arr):
         """
-        This function computes the update step of the GN/LM method. This is
-        equivalent to the complete (((J^H)J)^-1)(J^H)R.
+        This function computes the update step of the GN/LM method. This is equivalent to the 
+        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
 
         Args:
-            obser_arr (np.array): Array containing the observed visibilities.
-            model_arr (np.array): Array containing the model visibilities.
-            gains (np.array): Array containing the current gain estimates.
-            jhjinv (np.array): Array containing (J^H)J)^-1. (Invariant)
-
-        Returns:
-            update (np.array): Array containing the result of computing
-                (((J^H)J)^-1)(J^H)R
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
         """
 
         jhr = self.compute_js(obser_arr, model_arr)
@@ -91,18 +113,19 @@ class PhaseDiagGains(PerIntervalGains):
         observed data, and the model data with the gains applied to it.
 
         Args:
-            resid_arr (np.array): Array which will receive residuals.
-                              Shape is n_dir, n_tim, n_fre, n_ant, a_ant, n_cor, n_cor
-            obser_arr (np.array): Array containing the observed visibilities.
-                              Same shape
-            model_arr (np.array): Array containing the model visibilities.
-                              Same shape
-            gains (np.array): Array containing the current gain estimates.
-                              Shape of n_dir, n_timint, n_freint, n_ant, n_cor, n_cor
-                              Where n_timint = ceil(n_tim/t_int), n_fre = ceil(n_fre/t_int)
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
+            resid_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the 
+                computed residuals should be placed.
 
         Returns:
-            residual (np.array): Array containing the result of computing D-GMG^H.
+            np.ndarray: 
+                Array containing the result of computing D - GMG\ :sup:`H`.
         """
         
         gains_h = self.gains.transpose(0,1,2,3,5,4).conj()
@@ -118,11 +141,16 @@ class PhaseDiagGains(PerIntervalGains):
         Applies the inverse of the gain estimates to the observed data matrix.
 
         Args:
-            obser_arr (np.array): Array of the observed visibilities.
-            gains (np.array): Array of the gain estimates.
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            corr_vis (np.ndarray or None, optional): 
+                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
+                into which the corrected visibilities should be placed.
 
         Returns:
-            inv_gdgh (np.array): Array containing (G^-1)D(G^-H).
+            np.ndarray: 
+                Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
         """
 
         g_inv = self.gains.conj()
@@ -138,13 +166,27 @@ class PhaseDiagGains(PerIntervalGains):
 
     def apply_gains(self):
         """
-        This method should be able to apply the gains to an array at full time-frequency
-        resolution. Should return the input array at full resolution after the application of the 
-        gains.
+        Applies the gains to an array at full time-frequency resolution. 
+
+        Args:
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities.
+
+        Returns:
+            np.ndarray:
+                Array containing the result of GMG\ :sup:`H`.
         """
+        
+        #TODO: Implement this function.
+
         return
 
     def restrict_solution(self):
+        """
+        Restricts the solution by invoking the inherited restrict_soultion method and applying
+        any machine specific restrictions.
+        """
 
         PerIntervalGains.restrict_solution(self)
 
@@ -153,6 +195,14 @@ class PhaseDiagGains(PerIntervalGains):
 
 
     def precompute_attributes(self, model_arr):
+        """
+        Precompute (J\ :sup:`H`\J)\ :sup:`-1`, which does not vary with iteration.
+
+        Args:
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities.
+        """
 
         self.jhjinv = np.zeros_like(self.gains)
 

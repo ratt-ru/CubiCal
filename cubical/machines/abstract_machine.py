@@ -51,10 +51,11 @@ class MasterMachine(object):
     @abstractmethod
     def compute_js(self):
         """
-		This method is expected to compute (J^HJ)^-1 and J^HR. In practice, this method can be 
-		very flexible, as it is only used in the compute_update method and need only be consistent
-		with that usage. Should support the use of both the true residual and the observed data. 
-		"""
+        This method is expected to compute (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R. 
+        In practice, this method can be very flexible, as it is only used in the compute_update 
+        method and need only be consistent with that usage. Should support the use of both the true 
+        residual and the observed data. 
+        """
 
         return NotImplementedError
 
@@ -165,45 +166,81 @@ class MasterMachine(object):
         return NotImplementedError
 
     @abstractmethod				
-    def update_conv_params(self):
+    def update_conv_params(self, min_delta_g):
         """
-        This method should check the convergence of the current time-frequency chunk. Should return 
-        a Boolean.
+        This method should update the convergence parameters of the current time-frequency chunk. 
+        It must update:
+
+            - self.max_update
+            - self.n_cnvgd
+
+        Function signature must be consistent with the one defined here.
+
+        Args:
+            min_delta_g (float):
+                Threshold for the minimum change in the gains - convergence criterion.
         """
+
         return NotImplementedError
 
     @abstractmethod
     def flag_solutions(self):
         """
-        This method should do solution flagging based on the gains.
+        This method should flag gains solutions based on certain criteria. It should update:
+
+            - self.gflags
+            - self.flagged
+            - self.n_flagged
+
+        Function signature must be consistent with the one defined here.
         """
+
         return NotImplementedError
 
     @abstractmethod
     def propagate_gflags(self, flags):
         """
         This method should propagate the flags raised by the gain machine back into the data.
-        This is necessary as the gain flags may not have the same shape as the data.
+        This is necessary as the gain flags may not have the same shape as the data. Function 
+        signature must be consistent with the one defined here.
+
+        Args:
+            flags (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
         """
+
         return NotImplementedError
 
     @abstractmethod
     def update_term(self):
         """
         This method should update the current iteration as well as handling any more complicated
-        behaviour required for multiple Jones terms.
+        behaviour required for multiple Jones terms. It must update:
+
+            - self.iters
+
+        Function signature must be consistent with the one defined here.
         """
+
         return NotImplementedError
 
     @abstractmethod
     def restrict_solution(self):
         """
         This method should perform any necessary restrictions on the solution, eg. selecting a 
-        reference antenna or taking only the amplitude.
+        reference antenna or taking only the amplitude. Function signature must be consistent with 
+        the one defined here.
         """
+
         return NotImplementedError
 
     def precompute_attributes(self, *args, **kwargs):
+        """
+        This method is not required to have a working gain machine. However, it is included in the
+        base class for compatibility with solvers which require it. It can be used to do compute
+        elements of the problem which do not vary with iteration, thus providing a speed-up.
+        """
+
         return
 
     @abstractproperty
@@ -211,50 +248,63 @@ class MasterMachine(object):
         """
         This property must return the convergence status of the gain machine. 
         """
+
         return NotImplementedError
 
-    # Returns dict of {label: (empty_value, axes_list)} describing the types of parameters that
-    # this machine can export. Axes is a list of axis labels.
-    # Static method, as it is called before any GM is actually created.
-    # If empty_value is float or complex, global precision settings will be used.
     @staticmethod
     def exportable_solutions():
+        """
+        Returns dict of {label: (empty_value, axes_list)} describing the types of parameters that
+        this machine can export. Axes is a list of axis labels. Static method, as it is called
+        before any GM is actually created. If empty_value is float or complex, global precision 
+        settings will be used.
+        """
+
         return {}
 
-    # Returns dict of parameters that this machine can import, as {label: grid_dict}
-    # Grid_dict tells what grid the parameters must be interpolated onto for this machine.
-    # Called when a machine has been created (so grids are available)
     def importable_solutions(self):
+        """
+        Returns dict of parameters that this machine can import, as {label: grid_dict}. Grid_dict 
+        knows which grid the parameters must be interpolated onto for this machine. Called when a 
+        machine has been created (so grids are available).
+        """
+
         return {}
 
     @abstractmethod
     def export_solutions(self):
-        """This method returns the solutions as a dict of {label: masked_array, grid} elements.
-        Array are masked since solutions have flags on them.
-        Labels must be consistent with whatever exportable_solutions() returns, but
-        not all solutions promised by exportable_solutions() will actually need 
-        to be exported.
-        Grid is a dict, defining axes on which solutions are given, e.g. {'time': vector, 'freq': vector}
-        Note that axes which are fully spanned (e.g. antenna, correlation) need not be present in the grid.
         """
+        This method returns the solutions as a dict of {label: masked_array, grid} elements. Arrays
+        are masked since solutions have associated flags. Labels must be consistent with whatever 
+        exportable_solutions() returns, but not all solutions promised by exportable_solutions() 
+        will actually need to be exported.
+        
+        Grid is a dict, defining axes on which solutions are given, e.g. {'time': vector, 
+        'freq': vector}. Note that axes which are fully spanned (e.g. antenna, correlation) need 
+        not be present in the grid.
+        """
+
         return NotImplementedError
 
     @abstractmethod
     def import_solutions(self, solutions_dict):
-        """This method loads the internal solutions from a dict of {label: array} elements
-        Labels must be in importable_solutions. 
-        Array are masked since solutions have flags on them.
-        Arrays shapes will conform to importable_solutions() results.
         """
+        This method loads the internal solutions from a dict of {label: array} elements. Labels 
+        must be in importable_solutions. Array are masked since solutions have associated flags.
+        Array shapes will conform to importable_solutions() results.
+        """
+
         return NotImplementedError
 
 
     @classmethod
     def create_factory(machine_cls, *args, **kw):
-        """This method creates a Machine Factory that will initialize the correct type of gain machine.
-
-        This must be called via the subclasses, so that the factory gets the proper class information
         """
+        This method creates a Machine Factory that will initialize the correct type of gain machine.
+        This must be called via the subclasses, so that the factory gets the proper class 
+        information.
+        """
+
         return machine_cls.Factory(machine_cls, *args, **kw)
 
 
