@@ -203,6 +203,8 @@ epub_exclude_files = ['search.html']
 
 # Attempt to mock missing modules.
 
+import sys
+
 try:
     from unittest.mock import MagicMock
 except ImportError:
