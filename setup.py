@@ -90,7 +90,8 @@ if on_rtd:
                     'futures', 
                     'sharedarray', 
                     'matplotlib',
-                    'scipy']
+                    'scipy',
+                    'sphinxcontrib-napoleon']
 else:
     requirements = ['numpy', 
                     'cython', 
