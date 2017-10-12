@@ -22,7 +22,7 @@ CubiCal depends on python-casacore which should be installed from the radio-astr
 	apt-get update
 	apt-get install -y python-casacore
 
-It highly recommended to install CubiCal in a virtual enviroment. To install
+It is highly recommended to install CubiCal in a virtual enviroment. To install
 virtualenv using pip, run:
 
 .. code:: bash
@@ -88,7 +88,7 @@ CubiCal depends on python-casacore which should be installed from the kern-2 ppa
 	apt-get update
 	apt-get install -y python-casacore
 
-It highly recommended to install CubiCal in a virtual enviroment. To install
+It is highly recommended to install CubiCal in a virtual enviroment. To install
 virtualenv using pip, run:
 
 .. code:: bash
