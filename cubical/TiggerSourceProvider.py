@@ -10,14 +10,8 @@ import logging
 import numpy as np
 
 import montblanc
-import montblanc.util as mbu
 
-from montblanc.impl.rime.tensorflow.ms import MeasurementSetManager
-from montblanc.impl.rime.tensorflow.sources import (SourceProvider,
-    FitsBeamSourceProvider,
-    MSSourceProvider)
-from montblanc.impl.rime.tensorflow.sinks import (SinkProvider,
-    MSSinkProvider)
+from montblanc.impl.rime.tensorflow.sources import SourceProvider
 
 import Tigger
 import pyrap.tables as pt

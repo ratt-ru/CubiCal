@@ -18,11 +18,8 @@ import logging
 import montblanc.util as mbu
 import montblanc.impl.rime.tensorflow.ms.ms_manager as MS
 
-from montblanc.impl.rime.tensorflow.sources import (SourceProvider,
-                                                    FitsBeamSourceProvider,
-                                                    MSSourceProvider)
-from montblanc.impl.rime.tensorflow.sinks import (SinkProvider,
-                                                  MSSinkProvider)
+from montblanc.impl.rime.tensorflow.sources import SourceProvider
+from montblanc.impl.rime.tensorflow.sinks import SinkProvider
 
 class MSSourceProvider(SourceProvider):
     """
