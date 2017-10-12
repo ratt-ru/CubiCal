@@ -215,5 +215,14 @@ class Mock(MagicMock):
     def __getattr__(cls, name):
             return MagicMock()
 
-MOCK_MODULES = ['pyrap', 'pyrap.tables', 'pyrap.measures', 'SharedArray', 'montblanc']
+MOCK_MODULES = ['pyrap', 
+                'pyrap.tables', 
+                'pyrap.measures', 
+                'SharedArray', 
+                'montblanc', 
+                'montblanc.util',
+                'montblanc.impl.rime.tensorflow.ms.ms_manager',
+                'montblanc.impl.rime.tensorflow.sources',
+                'montblanc.impl.rime.tensorflow.sinks']
+
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
