@@ -223,7 +223,9 @@ MOCK_MODULES = ['pyrap',
                 'SharedArray', 
                 'montblanc',
                 'montblanc.util',
-                'SourceProvider',
+                'montblanc.impl',
+                'montblanc.impl.rime',
+                'montblanc.impl.rime.tensorflow',
                 'montblanc.impl.rime.tensorflow.sources',
                 'montblanc.impl.rime.tensorflow.sinks']
 
