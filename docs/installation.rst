@@ -68,6 +68,12 @@ CubiCal can now be installed by running the following:
 	pip install -r CubiCal/requirements.txt
 	pip install CubiCal/
 
+To install in development mode, run the following instead:
+
+.. code:: bash
+
+	pip install -e CubiCal/
+
 Ubuntu 16.04
 ~~~~~~~~~~~~
 
@@ -115,7 +121,7 @@ For compatibility with Tigger sky models, it is necessary to install vext.pyqy4:
 
 	pip install vext.pyqt4
 
-At this point, if simultion mode is required, it is necessary to install Montblanc. 
+At this point, if simulation mode is required, it is necessary to install Montblanc. 
 To install Montblanc, follow the instructions here_.
 
 .. _here: https://montblanc.readthedocs.io
@@ -127,3 +133,9 @@ CubiCal can now be installed by running the following:
 	git clone https://github.com/ratt-ru/CubiCal.git
 	pip install -r CubiCal/requirements.txt
 	pip install CubiCal/
+
+To install in development mode, run the following instead:
+
+.. code:: bash
+
+	pip install -e CubiCal/
