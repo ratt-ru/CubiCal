@@ -88,7 +88,6 @@ if on_rtd:
     requirements = ['numpy', 
                     'cython', 
                     'futures', 
-                    'sharedarray', 
                     'matplotlib',
                     'scipy']
 else:

@@ -215,5 +215,5 @@ class Mock(MagicMock):
     def __getattr__(cls, name):
             return MagicMock()
 
-MOCK_MODULES = ['pyrap', 'pyrap.tables', 'pyrap.measures']
+MOCK_MODULES = ['pyrap', 'pyrap.tables', 'pyrap.measures', 'SharedArray']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
