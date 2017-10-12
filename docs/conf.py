@@ -227,7 +227,9 @@ MOCK_MODULES = ['pyrap',
                 'montblanc.impl.rime',
                 'montblanc.impl.rime.tensorflow',
                 'montblanc.impl.rime.tensorflow.sources',
-                'montblanc.impl.rime.tensorflow.sinks']
+                'montblanc.impl.rime.tensorflow.sinks',
+                'montblanc.impl.rime.tensorflow.ms',
+                'montblanc.impl.rime.tensorflow.ms.ms_manager']
 
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 
