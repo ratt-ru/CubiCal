@@ -1,6 +1,9 @@
 cubical\.machines package
 =========================
 
+Gain machines which perform various types of gain calibration. Each machine has at
+least one assosciated Cython kernel.  
+
 cubical\.machines\.abstract\_machine module
 -------------------------------------------
 

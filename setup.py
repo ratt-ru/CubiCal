@@ -98,7 +98,8 @@ else:
                     'python-casacore', 
                     'sharedarray', 
                     'matplotlib',
-                    'scipy']
+                    'scipy',
+                    'astro-tigger']
 
 setup(name='cubical',
       version='0.2.1',

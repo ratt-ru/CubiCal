@@ -1,6 +1,8 @@
 cubical\.kernels package
 ========================
 
+Cython kernels which perform the majority of CubiCal's compute intensive tasks.
+
 cubical\.kernels\.cyfull\_complex module
 ----------------------------------------
 
