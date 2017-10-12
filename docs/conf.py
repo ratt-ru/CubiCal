@@ -44,6 +44,8 @@ extensions = ['sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
     'sphinxcontrib.napoleon']
 
+
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
@@ -203,27 +205,28 @@ epub_exclude_files = ['search.html']
 
 # Attempt to mock missing modules.
 
-import sys
+# import sys
 
-try:
-    from unittest.mock import MagicMock
-except ImportError:
-    from mock import Mock as MagicMock
+# try:
+#     from unittest.mock import MagicMock
+# except ImportError:
+#     from mock import Mock as MagicMock
 
-class Mock(MagicMock):
-    @classmethod
-    def __getattr__(cls, name):
-            return MagicMock()
+# class Mock(MagicMock):
+#     @classmethod
+#     def __getattr__(cls, name):
+#             return MagicMock()
 
-MOCK_MODULES = ['pyrap', 
-                'pyrap.tables', 
-                'pyrap.measures', 
-                'SharedArray', 
-                'montblanc', 
-                'montblanc.util',
-                'montblanc.impl.rime.tensorflow.ms',
-                'montblanc.impl.rime.tensorflow.ms.ms_manager',
-                'montblanc.impl.rime.tensorflow.sources',
-                'montblanc.impl.rime.tensorflow.sinks']
+# MOCK_MODULES = ['pyrap', 
+#                 'pyrap.tables', 
+#                 'pyrap.measures', 
+#                 'SharedArray', 
+#                 'montblanc',
+#                 'montblanc.util',
+#                 'montblanc.impl.rime.tensorflow.ms.ms_manager']
 
-sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
+# sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
+
+autodoc_mock_imports = ['pyrap', 
+                        'SharedArray', 
+                        'montblanc']
