@@ -30,6 +30,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.v = 2.
 
+        self.iter_type = options["iter-type"]
+
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J^H)WR term of the GN/LM method for the
@@ -98,13 +100,24 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         cyfull.cycompute_update(jhwr, jhwjinv, update)
 
-        if model_arr.shape[0]>1:
+        if model_arr.shape[0]>1 or self.n_dir>1:
 			update = self.gains + update
 
-        if self.iters % 2 == 0 or self.n_dir>1:
-            self.gains = 0.5*(self.gains + update)
+        if self.iter_type == "both_avg":
+            #print "in both avg"
+            if self.iters % 2 == 0 or self.n_dir>1 :
+                self.gains = 0.5*(self.gains + update)
+            else:
+                self.gains = update
+        elif self.iter_type == "single_avg":
+            #print "in single avg"
+            if self.iters % 2 == 0 :
+                self.gains = 0.5*(self.gains + update)
+            else:
+               self.gains = update
         else:
-            self.gains = update
+            #print "no avg mode"
+            self.gains = update  
 
         #Computing the weights
         resid_arr = np.empty_like(obser_arr)
