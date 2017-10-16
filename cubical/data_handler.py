@@ -14,7 +14,8 @@ import cubical.flagging as flagging
 from cubical.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
-# try to import montblanc: if not successful, remember error for later
+# Try to import montblanc: if not successful, remember error for later.
+
 try:
     import montblanc
 except:
@@ -30,10 +31,29 @@ from cubical.tools import logger, ModColor
 log = logger.getLogger("data_handler")
 
 def _parse_range(arg, nmax):
-    """Helper function. Parses an argument into a list of numbers. Nmax is max number.
-    Supports e.g. 5, "5", "5~7" (inclusive range), "5:8" (pythonic range), "5,6,7" (list)
     """
+    Helper function. Parses an argument into a list of numbers. Nmax is max number.
+    Supports e.g. 5, "5", "5~7" (inclusive range), "5:8" (pythonic range), "5,6,7" (list).
+
+    Args:
+        arg (int or tuple or list or str):
+            Raw range expression.
+        nmax (int):
+            Maximum possible range.
+
+    Returns:
+        list:
+            Range of numbers.
+
+    Raises:
+        TypeError:
+            If the type of arg is not understood. 
+        ValueError:
+            If the range cannot be parsed.
+    """
+
     fullrange = range(nmax)
+
     if arg is None:
         return fullrange
     elif type(arg) is int:
@@ -43,12 +63,15 @@ def _parse_range(arg, nmax):
     elif type(arg) is list:
         return arg
     elif type(arg) is not str:
-        raise TypeError("can't parse range of type '%s'"%type(arg))
+        raise TypeError("Cannot parse range of type '%s'."%type(arg))
+
     arg = arg.strip()
+
     if re.match("\d+$", arg):
         return [ int(arg) ]
     elif "," in arg:
         return map(int,','.split(arg))
+    
     if re.match("(\d*)~(\d*)$", arg):
         i0, i1 = arg.split("~", 1)
         i0 = int(i0) if i0 else None
@@ -58,35 +81,61 @@ def _parse_range(arg, nmax):
         i0 = int(i0) if i0 else None
         i1 = int(i1) if i1 else None
     else:
-        raise ValueError("can't parse range '%s'"%arg)
+        raise ValueError("Cannot parse range '%s'."%arg)
+    
     return fullrange[slice(i0,i1)]
 
 
 ## TERMINOLOGY:
-## A "chunk" is data for one DDID, a range of timeslots (thus, a subset of the MS rows), and a slice of channels.
-## Chunks are the basic parallelization unit. Solver deal with a chunk of data.
+## A "chunk" is data for one DDID, a range of timeslots (thus, a subset of the MS rows), and a 
+## slice of channels. Chunks are the basic parallelization unit. Solver deals with a chunk of data.
 ##
-## A "row chunk" is data for one DDID, a range of timeslots, and *all* channels. One can imagine a row chunk
-## as a "horizontal" vector of chunks across frequency.
+## A "row chunk" is data for one DDID, a range of timeslots, and *all* channels. One can imagine a 
+## row chunk as a "horizontal" vector of chunks across frequency.
 ##
-## A "tile" is a collection of row chunks that are adjacent in time and/or DDID. One can imagine a tile as
-## a vertical stack of row chunks
-
+## A "tile" is a collection of row chunks that are adjacent in time and/or DDID. One can imagine a 
+## tile as a vertical stack of row chunks
 
 class RowChunk(object):
-    """Very basic helper class, encapsulates a row chunk"""
+    """ Very basic helper class. Encapsulates a row chunk. """
+
     def __init__(self, ddid, tchunk, rows):
+        """
+        Initialises a RowChunk.
+
+        Args:
+            ddid (int):
+                DDID index for the RowChunk.
+            tchunk (int):
+                Time index for the RowChunk.
+            rows (np.ndarray):
+                An (nrows_in_chunk) size array of row indices.
+        """
+
         self.ddid, self.tchunk, self.rows = ddid, tchunk, rows
 
-
 class Tile(object):
-    """Helper class, encapsulates a tile. A tile is a sequence of row chunks that's read and written as a unit.
     """
-    # the tile list is effectively global. This is needed because worker subprocesses need to access the tiles.
+    Helper class which encapsulates a tile. A tile is a sequence of row chunks that's read and
+    written as a unit.
+    """
+    
+    # The tile list is effectively global. This is needed because worker subprocesses need to 
+    # access the tiles.
+    
     tile_list = None
 
     def __init__(self, handler, chunk):
-        """Creates a tile, sets the first row chunk"""
+        """
+        Initialises a tile and sets the first row chunk.
+
+        Args:
+            handler (:obj:`~cubical.data_handler.ReadModelHandler`):
+                Data hander object.
+            chunk (:obj:`~cubical.data_handler.RowChunk`):
+                Row chunk which is used to initialise the tile.
+        """
+
         self.handler = handler
         self.rowchunks = [chunk]
         self.first_row = chunk.rows[0]
@@ -95,35 +144,51 @@ class Tile(object):
         self._updated = False
         self.data = None
 
-
     def append(self, chunk):
-        """Appends a row chunk to a tile"""
+        """
+        Appends a row chunk to a tile.
+
+        Args:
+            chunk (:obj:`~cubical.data_handler.RowChunk`):
+                Row chunk which will be appended to the assosciated tile.
+        """
+
         self.rowchunks.append(chunk)
         self.first_row = min(self.first_row, chunk.rows[0])
         self.last_row = max(self.last_row, chunk.rows[-1])
 
     def merge(self, other):
-        """Merges another tile into this one"""
+        """
+        Merges another tile into this one.
+
+        Args:
+            other (:obj:`~cubical.data_handler.Tile`):
+                Tile which will be merged.
+        """
+
         self.rowchunks += other.rowchunks
         self.first_row = min(self.first_row, other.first_row)
         self.last_row = max(self.last_row, other.last_row)
 
     def finalize(self):
         """
-        Creates a list of chunks within the tile that can be iterated over, returns list of chunk labels.
+        Creates a list of chunks within the tile that can be iterated over and creates a list of
+        chunk labels.
 
-        This also adjusts the row indices of all row chunks so that they become relative to the start of the tile.
+        This also adjusts the row indices of all row chunks so that they become relative to the 
+        start of the tile.
         """
+
         self._data_dict_name = "DATA:{}:{}".format(self.first_row, self.last_row)
 
-        # adjust row indices so they become relative to the first row of the tile
+        # Adjust row indices so they become relative to the first row of the tile.
 
         if not self._rows_adjusted:
             for rowchunk in self.rowchunks:
                 rowchunk.rows -= self.first_row
             self._rows_adjusted = True
 
-        # create dict of { chunk_label: rows, chan0, chan1 } for all chunks in this tile
+        # Create a dict of { chunk_label: rows, chan0, chan1 } for all chunks in this tile.
 
         self._chunk_dict = OrderedDict()
         self._chunk_indices = {}
@@ -135,7 +200,7 @@ class Tile(object):
                 self._chunk_dict[key] = rowchunk, chan0, chan1
                 self._chunk_indices[key] = rowchunk.tchunk, rowchunk.ddid * num_freq_chunks + ifreq
 
-        # copy various useful info from handler and make a simple list of unique ddids.
+        # Copy various useful info from handler and make a simple list of unique ddids.
 
         self.ddids = np.unique([rowchunk.ddid for rowchunk,_,_ in self._chunk_dict.itervalues()])
         self.ddid_col = self.handler.ddid_col[self.first_row:self.last_row+1]
@@ -149,28 +214,54 @@ class Tile(object):
         self.nchan = self.handler._nchans[0]
 
     def get_chunk_indices(self, key):
+        """ Returns chunk indices based on the key value. """
+
         return self._chunk_indices[key]
 
     def get_chunk_keys(self):
+        """ Returns all chunk keys. """
+
         return self._chunk_dict.iterkeys()
 
     def get_chunk_tfs(self, key):
         """
-        Returns timestamps and freqs for the given chunk, as well as two slice objects describing its
-        position in the global time/freq space
+        Returns timestamps and freqs for the given chunk assosicated with key, as well as two slice 
+        objects describing its position in the global time/freq space.
+
+        Args:
+            key (str):
+                The label corresponding to the chunk of interest.
+
+        Returns:
+            tuple:
+                Unique times, channel frequencies, time axis slice, frequency axis slice.
         """
+        
         rowchunk, chan0, chan1 = self._chunk_dict[key]
         timeslice = slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1)
-        return self.handler.uniq_times[timeslice], self.handler._chanfr[rowchunk.ddid, chan0:chan1], \
+        
+        return self.handler.uniq_times[timeslice], \
+               self.handler._chanfr[rowchunk.ddid, chan0:chan1], \
                slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1), \
                slice(rowchunk.ddid * self.handler.nfreq + chan0, rowchunk.ddid * self.handler.nfreq + chan1)
 
     def load(self, load_model=True):
         """
-        Fetches data from MS into tile data shared dict. Returns dict.
-        This is meant to be called in the main or I/O process.
+        Fetches data from MS into tile data shared dict. This is meant to be called in the main 
+        or I/O process.
         
-        If load_model is False, omits weights and model visibilities
+        Args:
+            load_model (bool, optional):
+                If False, omits weights and model visibilities.
+
+        Returns:
+            :obj:`~cubical.tools.shared_dict.SharedDict`:
+                Shared dictionary containing the MS data relevant to the tile.
+        
+        Raises:
+            RuntimeError:
+                If neither --model-lsm nor --model-column set (see [model] section in 
+                DefaultParset.cfg).
         """
         
         # Create a shared dict for the data arrays.
@@ -187,11 +278,16 @@ class Tile(object):
         
         nrows = self.last_row - self.first_row + 1
         
-        data['obvis'] = self.handler.fetch(self.handler.data_column, self.first_row, nrows).astype(self.handler.ctype)
+        data['obvis'] = self.handler.fetch(
+                         self.handler.data_column, self.first_row, nrows).astype(self.handler.ctype)
         print>> log(2), "  read " + self.handler.data_column
 
         data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
         print>> log(2), "  read UVW coordinates"
+
+        # The following either reads model visibilities from the measurement set, or uses an lsm 
+        # and Montblanc to simulate them. Data may need to be massaged to be compatible with 
+        # Montblanc's strict requirements. 
 
         if load_model:
             if self.handler.sm_name:
@@ -205,8 +301,9 @@ class Tile(object):
                 measet_src = MSSourceProvider(self, data, sort_ind)
                 tigger_src = TiggerSourceProvider(self)
                 cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
-                cached_ms_src = CachedSourceProvider(measet_src, cache_data_sources=["parallactic_angles"],
-                                                        clear_start=False, clear_stop=False)
+                cached_ms_src = CachedSourceProvider(measet_src, 
+                                                     cache_data_sources=["parallactic_angles"],
+                                                     clear_start=False, clear_stop=False)
 
                 srcs.append(cached_ms_src)
                 srcs.append(cached_src)
@@ -246,8 +343,9 @@ class Tile(object):
 
             if self.handler.model_column:
 
-                data['movis'][0,0,...] += self.handler.fetch(self.handler.model_column, self.first_row,
-                                                                nrows).astype(self.handler.ctype)
+                data['movis'][0,0,...] += self.handler.fetch(self.handler.model_column, 
+                                                             self.first_row,
+                                                             nrows).astype(self.handler.ctype)
 
                 print>> log(2), "  read " + self.handler.model_column
 
@@ -266,10 +364,13 @@ class Tile(object):
         # aim is to correctly populate flag_arr from the various flag sources.
 
         # Make a flag array. This will contain FL.PRIOR for any points flagged in the MS.
+
         flag_arr = data.addSharedArray("flags", data['obvis'].shape, dtype=FL.dtype)
 
-        # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them
+        # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them.
+
         flagcol = flagrow = None
+
         if self.handler._apply_flags or self.handler._auto_fill_bitflag:
             flagcol = self.handler.fetch("FLAG", self.first_row, nrows)
             flagrow = self.handler.fetch("FLAG_ROW", self.first_row, nrows)
@@ -320,6 +421,22 @@ class Tile(object):
         return data
 
     def prep_data(self, data):
+        """
+        Manipulates data to be consistent with Montblanc's requirements. Mainly adds elements 
+        which are missing from the measurement set.
+
+        Args:
+            data (:obj:`~cubical.tools.shared_dict.SharedDict`):
+                Shared dictionary containing data from the measurement set.
+
+        Returns:
+            tuple:
+                The expected_nrows, sorted_ind and row_identifiers for the massaged data.
+
+        Raises: 
+            ValueError:
+                If the number of rows remains inconsistent after removing auto-correlations.")
+        """
 
         # Given data, we need to make sure that it looks the way MB wants it to.
         # First step - check the number of rows.
@@ -344,15 +461,22 @@ class Tile(object):
         row_identifiers = ddid_ind*n_bl*ntime + (self.times - np.min(self.times))*n_bl + \
                           (-0.5*self.antea**2 + (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
 
+        # Based on the number of rows versus the expected number of rows, we determine whether rows
+        # must be added or removed. If rows must be removed, we assume they are all 
+        # auto-correlations and raise an error if removing them still yields and inconsistent 
+        # number of rows.
+
         if nrows == expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log, "  {} rows consistent with {} timeslots and {} baselines across {} bands".format(*logstr)
+            print>> log, "  {} rows consistent with {} timeslots and {} baselines" \
+                                                                "across {} bands".format(*logstr)
             
             sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
 
         elif nrows < expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines across {} bands".format(*logstr)
+            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines" \
+                                                                "across {} bands".format(*logstr)
             print>> log, "  {} fewer rows than expected".format(expected_nrows - nrows)
 
             nmiss = expected_nrows - nrows
@@ -387,7 +511,8 @@ class Tile(object):
 
         elif nrows > expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines across {} bands".format(*logstr)
+            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines" \
+                                                                "across {} bands".format(*logstr)
             print>> log, "  {} more rows than expected".format(nrows - expected_nrows)
             print>> log, "  assuming additional rows are auto-correlations - ignoring"
 
@@ -400,26 +525,43 @@ class Tile(object):
         return expected_nrows, sorted_ind, row_identifiers
 
     def unprep_data(self, data, nrows):
+        """
+        Reverts the changes made by prepdata. Makes data consistent with the measurement set.
 
-            data['uvwco'] = data['uvwco'][:nrows,...]
-            self.antea = self.antea[:nrows]
-            self.anteb = self.anteb[:nrows]
-            self.time_col = self.time_col[:nrows]
-            self.ddid_col = self.ddid_col[:nrows]
+        Args:
+            data (:obj:`~cubical.tools.shared_dict.SharedDict`):
+                Shared dictionary containing data from the measurement set.
+            nrows (int):
+                Number of rows which were present in the measurement set prior to prep_data.
+        """
+
+        data['uvwco'] = data['uvwco'][:nrows,...]
+        self.antea = self.antea[:nrows]
+        self.anteb = self.anteb[:nrows]
+        self.time_col = self.time_col[:nrows]
+        self.ddid_col = self.ddid_col[:nrows]
 
     def get_chunk_cubes(self, key):
         """
-        Returns data, model, flags, weights cubes for the given chunk key.
+        Produces the CubiCal data cubes corresponding to the specified key.
 
-        Shapes are as follows:
-            data:       [Nmod, Ntime, Nfreq, Nant, Nant, 2, 2]
-            model:      [Ndir, Nmod, Ntime, Nfreq, Nant, Nant, 2, 2]
-            flags:      [Ntime, Nfreq, Nant, Nant]
-            weights:    [Nmod, Ntime, Nfreq, Nant, Nant] or None for no weighting
+        Args:
+            key (str):
+                The label corresponding to the chunk of interest.
+    
+        Returns:
+            tuple:
+                The data, model, flags and weights cubes for the given chunk key. 
+                Shapes are as follows:
+            
+                - data (np.ndarray):    [n_mod, n_tim, n_fre, n_ant, n_ant, 2, 2]
+                - model (np.ndarray):   [n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, 2, 2]
+                - flags (np.ndarray):   [n_tim, n_fre, n_ant, n_ant]
+                - weights (np.ndarray): [n_mod, n_tim, n_fre, n_ant, n_ant] or None for no weighting
 
-        Nmod refers to number of models simultaneously fitted.
-
+                n_mod refers to number of models simultaneously fitted.
         """
+
         data = shared_dict.attach(self._data_dict_name)
 
         rowchunk, freq0, freq1 = self._chunk_dict[key]
@@ -462,7 +604,19 @@ class Tile(object):
         return obs_arr, mod_arr, flags, wgt_arr
 
     def set_chunk_cubes(self, cube, flag_cube, key, column='covis'):
-        """Copies a visibility cube, and an optional flag cube, back to tile column"""
+        """
+        Copies a visibility cube, and an optional flag cube, back to tile column.
+
+        Args:
+            cube (np.ndarray):
+                Cube containing visibilities.
+            flag_cube (np.ndarray):
+                Cube containing flags.
+            key (str):
+                The label corresponding to the chunk of interest.
+            column (str, optional):
+                The column to which the cube must be copied.
+        """
         data = shared_dict.attach(self._data_dict_name)
         rowchunk, freq0, freq1 = self._chunk_dict[key]
         rows = rowchunk.rows
@@ -475,15 +629,36 @@ class Tile(object):
             self._cube_to_column(data['flags'], flag_cube, rows, freq_slice, flags=True)
 
     def create_solutions_chunk_dict(self, key):
-        """Creates a shared dict for the given chunk, to store gain solutions in.
-        Returns SharedDict object. This will contain a chunk_key field."""
+        """
+        Creates a shared dict for the given chunk in which to store gain solutions.
+        
+        Args:
+            key (str):
+                The label corresponding to the chunk of interest.
+
+        Returns:
+            :obj:`~cubical.tools.shared_dict.SharedDict`:
+                Shared dictionary containing gain solutions.
+        """
+
         data = shared_dict.attach(self._data_dict_name)
         sd = data['solutions'].addSubdict(key)
+
         return sd
 
     def iterate_solution_chunks(self):
-        """Iterates over per-chunk solution dictionaries. Yields tuple of
-        subdict, timeslice, freqslice"""
+        """
+        Iterates over per-chunk solution dictionaries. 
+
+        Yields:
+            tuple:
+                A gain subdictionary and the time and frequency slices to which it corresponds:
+
+                - Subdictionary (:obj:`~cubical.tools.shared_dict.SharedDict`))
+                - Time slice (slice)
+                - Frequency slice (slice)
+        """
+        
         data = shared_dict.attach(self._data_dict_name)
         soldict = data['solutions']
         for key in soldict.iterkeys():
@@ -492,6 +667,10 @@ class Tile(object):
     def save(self, unlock=False):
         """
         Saves 'corrected' column, and any updated flags, back to MS.
+
+        Args:
+            unlock (bool, optional):
+                If True, calls the unlock method on the handler.
         """
         nrows = self.last_row - self.first_row + 1
         data = shared_dict.attach(self._data_dict_name)
@@ -522,9 +701,8 @@ class Tile(object):
             self.handler.unlock()
 
     def release(self):
-        """
-        Releases the data dict
-        """
+        """ Releases the shared memory data dict. """
+
         data = shared_dict.attach(self._data_dict_name)
         data.delete()
 
@@ -533,16 +711,26 @@ class Tile(object):
         Converts input data into N-dimensional measurement matrices.
 
         Args:
-            column:      column array from which this will be filled
-            chunk_tdim (int):  Timeslots per chunk.
-            chunk_fdim (int): Frequencies per chunk.
-            rows:        row slice (or set of indices)
-            freqs:       frequency slice
-            dtype:       data type
-            zeroval:     null value to fill missing elements with
+            column (np.ndarray):
+                column array from which this will be filled
+            chunk_tdim (int):  
+                Timeslots per chunk.
+            chunk_fdim (int): 
+                Frequencies per chunk.
+            rows (np.ndarray):
+                Row slice (or set of indices).
+            freqs (slice):       
+                Frequency slice.
+            dtype (various):       
+                Data type of the resulting measurement matrix.
+            zeroval (various, optional):
+                Null value with which to fill missing array elements.
+            reqdims (int):
+                Required number of output dimensions.
 
         Returns:
-            Output cube of shape [chunk_tdim, chunk_fdim, self.nants, self.nants, 4]
+            np.ndarray:
+                Output cube of with reqdims axes.
         """
 
         # Start by establishing the possible dimensions and those actually present. Dimensions which
@@ -623,40 +811,92 @@ class Tile(object):
 
     def _cube_to_column(self, column, in_arr, rows, freqs, flags=False):
         """
-        Converts the calibrated measurement matrix back into the MS style.
+        Converts a measurement matrix back into an MS style column.
 
         Args:
-            in_arr (np.array): Input array which is to be made MS friendly.
-            rows: row indices or slice
-            freqs: freq indices or slice
-            flags: if True, input array is a flag cube (i.e. no correlation axes)
+            in_arr (np.ndarray):
+                Input array which is to be made MS friendly.
+            rows (np.ndarray): 
+                Row indices or slice.
+            freqs (slice): 
+                Frequency slice.
+            flags (bool, optional): 
+                If True, input array is a flag cube (i.e. no correlation axes).
         """
+
         tchunk = self.times[rows]
         tchunk -= tchunk[0]  # is this correct -- does in_array start from beginning of chunk?
         achunk = self.antea[rows]
         bchunk = self.anteb[rows]
-        # flag cube has no correlation axis, so copy it into coutput column
+
+        # Flag cube has no correlation axis, so copy it into output column.
+        
         if flags:
             column[rows, freqs, :] = in_arr[tchunk, :, achunk, bchunk, np.newaxis]
-        # for other cubes, reform the 2,2 axes at end into 4
+        
+        # For other cubes, rehape the last two axes into one (faltten 2x2 correlation block).
         else:
             chunk = in_arr[tchunk, :, achunk, bchunk, :]
             newshape = list(chunk.shape[:-2]) + [chunk.shape[-2]*chunk.shape[-1]]
             chunk = chunk.reshape(newshape)
             if self.ncorr == 4:
                 column[rows, freqs, :] = chunk
-            elif self.ncorr == 2:
-                column[rows, freqs, :] = chunk[..., ::3]  # 2 corrs -- take elements 0,3
+            elif self.ncorr == 2:                         # 2 corr -- take elements 0,3
+                column[rows, freqs, :] = chunk[..., ::3]  
             elif self.ncorr == 1:                         # 1 corr -- take element 0
                 column[rows, freqs, :] = chunk[..., :1]
 
 
-class ReadModelHandler:
+class DataHandler:
+    """ Main data handler. Interfaces with the measurement set. """
 
     def __init__(self, ms_name, data_column, sm_name, model_column, output_column=None,
                  taql=None, fid=None, ddid=None, flagopts={}, double_precision=False, ddes=False, 
                  weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
                  mb_opts=None):
+        """
+        Initialises a DataHandler object.
+
+        Args:
+            ms_name (str):
+                Name of measeurement set.
+            data_colum (str):
+                Name of the input observed data column.
+            sm_name (str):
+                Name of sky model.
+            model_column (str):
+                Name of input model column.
+            output_column (str or None, optional):
+                Name of output column if specified, else None.
+            taql (str):
+                Additional TAQL query for data selection.
+            fid (int or None, optional):
+                Field identifier if specified, else None.
+            ddid (int, list or None, optional):
+                Data descriptor identifer/s if specified, else None.
+            flagopts (dict, optional):
+                Flagging options.
+            double_precision (bool, optional):
+                Use 64-bit precision if True, else 32-bit.
+            ddes (bool, optional):
+                If True, use direction dependent simulation.
+            weight_column (str or None, optional):
+                Name of input weight column if specified, else None.
+            beam_pattern (str or None, optional):
+                Pattern for reading beam files if specified, else None.
+            beam_l_axis (str or None, optional):
+                Corresponding axis in fits beam, else None.
+            beam_m_axis (str or None, optional):
+                Corresponding axis in fits beam, else None.
+            mb_opts (dict or None):
+                Dictionary of Montblanc options if specified, else None.
+
+        Raises:
+            RuntimeError:
+                If Montblanc cannot be imported but simulation is required.
+            ValueError:
+                If selection from MS returns no rows.
+        """
 
         if montblanc is None and sm_name:
             print>>log, ModColor.Str("Error importing Montblanc: ")
@@ -828,6 +1068,21 @@ class ReadModelHandler:
         self.gain_dict = {}
 
     def build_taql(self, taql=None, fid=None, ddid=None):
+        """
+        Generate a combined TAQL query using possible options.
+
+        Args:
+            taql (str or None, optional):
+                Additional TAQL query for data selection.
+            fid (int or None, optional):
+                Field identifier if specified, else None.
+            ddid (int, list or None, optional):
+                Data descriptor identifer/s if specified, else None.
+
+        Returns:
+            str:
+                A TAQL query string. 
+        """
 
         if taql:
             taqls = [ "(" + taql +")" ]
@@ -850,38 +1105,49 @@ class ReadModelHandler:
         Convenience function which mimics pyrap.tables.table.getcol().
 
         Args:
-            *args: Variable length argument list.
-            **kwargs: Arbitrary keyword arguments.
+            args (tuple): 
+                Variable length argument list.
+            kwargs (dict): 
+                Arbitrary keyword arguments.
 
         Returns:
-            data.getcol(*args, **kwargs)
+            np.ndarray:
+                Result of getcol(\*args, \*\*kwargs).
         """
 
         return self.data.getcol(*args, **kwargs)
 
     def define_chunk(self, tdim=1, fdim=1, chunk_by=None, chunk_by_jump=0, min_chunks_per_tile=4):
         """
-        Fetches indexing columns (TIME, DDID, ANTENNA1/2) and defines the chunk dimensions for the data.
+        Fetches indexing columns (TIME, DDID, ANTENNA1/2) and defines the chunk dimensions for 
+        the data.
 
         Args:
-            tdim (int): Timeslots per chunk.
-            fdim (int): Frequencies per chunk.
-            chunk_by:   If set, chunks will have boundaries imposed by jumps in the listed columns
-            chunk_by_jump: The magnitude of a jump has to be over this value to force a chunk boundary.
-            min_chunks_per_tile: minimum number of chunks to be placed in a tile
+            tdim (int): 
+                Timeslots per chunk.
+            fdim (int): 
+                Frequencies per chunk.
+            chunk_by (str or None, optional):   
+                If set, chunks will have boundaries imposed by jumps in the listed columns
+            chunk_by_jump (int, optional): 
+                The magnitude of a jump has to be over this value to force a chunk boundary.
+            min_chunks_per_tile (int, optional): 
+                The minimum number of chunks to be placed in a single tile.
             
-        Initializes:
-            self.antea: ANTENNA1 column of MS subset
-            self.anteb: ANTENNA2 column of MS subset
-            self.ddid_col: DDID column of MS subset
-            self.time_col: TIME column of MS subset
-            self.times:    timeslot index number: same size as self.time_col
-            self.uniq_times: unique timestamps in self.time_col
-            
-            Tile.tile_list: list of tiles corresponding to the chunking strategy
-            
-            
+        Attributes:
+            antea (np.ndarray): ANTENNA1 column of MS subset.
+            anteb (np.ndarray): 
+                ANTENNA2 column of MS subset.
+            ddid_col (np.ndarray): 
+                DDID column of MS subset.
+            time_col (np.ndarray): 
+                TIME column of MS subset.
+            times (np.ndarray):    
+                Timeslot index number with same size as self.time_col.
+            uniq_times (np.ndarray): 
+                Unique timestamps in time_col.
         """
+
         self.antea = self.fetch("ANTENNA1")
         self.anteb = self.fetch("ANTENNA2")
         # read TIME and DDID columns, because those determine our chunking strategy
@@ -936,7 +1202,6 @@ class ReadModelHandler:
             timechunk_mask[tchunk] = (self.times>=ts0) & (self.times<ts1)
             self.chunk_ntimes.append(ts1-ts0)
             self.chunk_timestamps.append(np.unique(self.times[timechunk_mask[tchunk]]))
-
 
         # now make list of "row chunks": each element will be a tuple of (ddid, time_chunk_number, rowlist)
 
@@ -995,7 +1260,18 @@ class ReadModelHandler:
     def check_contig(self, columns, jump_by=0):
         """
         Helper method, finds ranges of timeslots where the named columns do not change.
+
+        Args:
+            columns (list):
+                Column names on which it base the check.
+            jump_by (int, optional):
+                Magnitude of a jump after which we force a chunk boundary.
+
+        Returns:
+            list:
+                The chunk boundaries.
         """
+
         boundaries = {0, self.ntime}
         
         for column in columns:
@@ -1010,10 +1286,12 @@ class ReadModelHandler:
         Converts a 3D flag cube (ntime, nddid, nchan) back into the MS style.
 
         Args:
-            flag3 (np.array): Input array which is to be made MS friendly.
+            flag3 (np.ndarray): 
+                Input array which is to be made MS friendly.
 
         Returns:
-            bool array, same shape as self.obvis
+            np.ndarray:
+                Boolean array with same shape as self.obvis.
         """
 
         ntime, nddid, nchan = flag3.shape
@@ -1031,6 +1309,19 @@ class ReadModelHandler:
         return flagout
 
     def add_to_gain_dict(self, gains, bounds, t_int=1, f_int=1):
+        """
+        Adds a gain array to the gain dictionary.
+
+        Args:
+            gains (np.ndarray):
+                Gains for the current chunk.
+            bounds (tuple):
+                Tuple of (ddid, timechunk, first_f, last_f).
+            t_int (int, optional):
+                Number of timeslots per solution interval.
+            f_int (int, optional):
+                Number of frequencies per soultion interval.
+        """
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
 
@@ -1051,6 +1342,13 @@ class ReadModelHandler:
                     self.gain_dict[comp_idx] = gains[d,t,f,:]
 
     def write_gain_dict(self, output_name=None):
+        """
+        Writes out a gain dictionary to disk.
+
+        Args:
+            output_name (str or None, optional):
+                Name of output pickle file.
+        """
 
         if output_name is None:
             output_name = self.ms_name + "/gains.p"
@@ -1059,13 +1357,21 @@ class ReadModelHandler:
 
     def _add_column (self, col_name, like_col="DATA", like_type=None):
         """
-        Inserts new column ionto MS.
-        col_name (str): Name of target column.
-        like_col (str): Column will be patterned on the named column.
-        like_type (str or None): if set, column type will be changed
+        Inserts a new column into the measurement set.
 
-        Returns True if new column was inserted
+        Args:
+            col_name (str): 
+                Name of target column.
+            like_col (str, optional): 
+                Column will be patterned on the named column.
+            like_type (str or None, optional): 
+                If set, column type will be changed.
+
+        Returns:
+            bool:
+                True if a new column was inserted, else False.
         """
+
         if col_name not in self.ms.colnames():
             # new column needs to be inserted -- get column description from column 'like_col'
             print>> log, "  inserting new column %s" % (col_name)
@@ -1080,27 +1386,36 @@ class ReadModelHandler:
         return False
 
     def unlock(self):
+        """ Unlocks the measurement set and shared memory dictionary. """
+
         if self.taql:
             self.data.unlock()
         self.ms.unlock()
 
     def lock(self):
+        """ Locks the measurement set and shared memory dictionary. """
+
         self.ms.lock()
         if self.taql:
             self.data.lock()
 
     def close(self):
+        """ Closes the measurement set and shared memory dictionary. """
+
         if self.taql:
             self.data.close()
         self.ms.close()
 
     def flush(self):
+        """ Flushes the measurement set and shared memory dictionary. """
+
         if self.taql:
             self.data.flush()
         self.ms.flush()
 
     def reopen(self):
-        """Reopens the MS. Unfortunately, this is needed when new columns are added"""
+        """ Reopens the MS. Unfortunately, this is needed when new columns are added. """
+
         self.close()
         self.ms = self.data = pt.table(self.ms_name, readonly=False, ack=False)
         if self.taql:
@@ -1110,10 +1425,11 @@ class ReadModelHandler:
         """
         Saves flags to column in MS.
 
-        Args
-        flags (np.array): Values to be written to column.
-        bitflag (str or int): Bitflag to save to.
+        Args:
+            flags (np.ndarray): 
+                Flag values to be written to column.
         """
+        
         print>>log,"Writing out new flags"
         bflag_col = self.fetch("BITFLAG")
         # raise specified bitflag
@@ -1123,9 +1439,11 @@ class ReadModelHandler:
         print>>log, "  updating BITFLAG_ROW column"
         self.data.putcol("BITFLAG_ROW", np.bitwise_and.reduce(bflag_col, axis=(-1,-2)))
         flag_col = bflag_col != 0
-        print>> log, "  updating FLAG column ({:.2%} visibilities flagged)".format(flag_col.sum()/float(flag_col.size))
+        print>> log, "  updating FLAG column ({:.2%} visibilities flagged)".format(
+                                                                flag_col.sum()/float(flag_col.size))
         self.data.putcol("FLAG", flag_col)
         flag_row = flag_col.all(axis=(-1,-2))
-        print>> log, "  updating FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum()/float(flag_row.size))
+        print>> log, "  updating FLAG_ROW column ({:.2%} rows flagged)".format(
+                                                                flag_row.sum()/float(flag_row.size))
         self.data.putcol("FLAG_ROW", flag_row)
 

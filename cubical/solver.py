@@ -3,7 +3,7 @@
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 """
-Implements the solver loop
+Implements the solver loop.
 """
 import numpy as np
 import traceback
@@ -20,33 +20,33 @@ gm_factory = None
 
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
-    This function is the main body of the GN/LM method. It handles iterations
-    and convergence tests.
+    Main body of the GN/LM method. Handles iterations and convergence tests.
 
     Args:
-        obser_arr (np.array: n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): 
-            Array containing the observed visibilities.
-        model_arr (np.array: n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): 
-            Array containing the model visibilities.
-        flags_arr (np.array: n_tim, n_fre, n_ant, n_ant): 
-            Integer array containing flagging data.
-
-        sol_opts: 
-            Dictionary of various solver options (see [sol] section in DefaultParset.cfg)
-
-        chunk_key:         
-            Tuple of (n_time_chunk, n_freq_chunk) which identifies the current chunk.
-        label:             
-            String label identifying the current chunk (e.d. "D0T1F2").
-
-        compute_residuals: 
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).
+        label (str, optional):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        compute_residuals (bool, optional): 
             If set, the final residuals will be computed and returned.
 
     Returns:
-        gains (np.array): 
-            Array containing the final gain estimates,
-        resid (np.array): 
-            Array containing the final residuals (if compute_residuals is set), else None.
+        2-element tuple
+            
+            - resid (np.ndarray)
+                The final residuals (if compute_residuals is set), else None.
+            - stats (:obj:`~cubical.statistics.SolverStats`)
+                An object containing solver statistics.
     """
 
     min_delta_g  = sol_opts["delta-g"]
@@ -395,7 +395,39 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
 
 def solve_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # apply weights
+    """
+    Run the solver and neither save nor apply solutions. All arguments excluding the weights
+    are passed through to _solve_gains.
+
+    Args:
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        weight_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant) array containing weights.
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2-element tuple
+
+            - _ (None) 
+                None (required for compatibility)
+            - stats (:obj:`~cubical.statistics.SolverStats`)
+                An object containing solver statistics.
+    """
+
+    # Apply weights to model and data arrays.
+
     if weight_arr is not None:
         obser_arr *= weight_arr[..., np.newaxis, np.newaxis]
         model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
@@ -406,8 +438,41 @@ def solve_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts)
 
 
 def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # if weights are set, multiply data and model by weights, but keep an unweighted copy
-    # of the data, since we need to correct
+    """
+    Run the solver and save and apply the resulting gain solutions to the observed data. Produces
+    corrected data. All arguments excluding the weights are passed through to _solve_gains.
+
+    Args:
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        weight_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant) array containing weights.
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2-element tuple
+            
+            - corr_vis (np.ndarray) 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
+                visibilities. 
+            - stats (:obj:`~cubical.statistics.SolverStats`)
+                An object containing solver statistics.
+    """
+
+    # If weights are set, multiply data and model by weights. Keep an unweighted copy of the data, 
+    # since we need to apply the solutions to the unweighted data.
+
     if weight_arr is not None:
         obser_arr1 = obser_arr*weight_arr[..., np.newaxis, np.newaxis]
         model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
@@ -416,7 +481,8 @@ def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, so
 
     _, stats = _solve_gains(gm, obser_arr1, model_arr, flags_arr, sol_opts, label=label)
 
-    # for corrected visibilities, take the first data/model pair only
+    # For corrected visibilities, take only the first data/model pair only.
+
     corr_vis = np.zeros_like(obser_arr[0,...])
     gm.apply_inv_gains(obser_arr[0,...], corr_vis)
 
@@ -424,8 +490,40 @@ def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, so
 
 
 def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts, correct=True):
-    # if weights are set, multiply data and model by weights, but keep an unweighted copy
-    # of the model and data, since we need to correct the residuals
+    """
+    Run the solver and apply the resulting gain solutions to the residuals. Produces corrected 
+    residuals. All arguments excluding the weights are passed through to _solve_gains.
+
+    Args:
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        weight_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant) array containing weights.
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2-element tuple
+            
+            - corr_vis (np.ndarray)
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
+                residuals. 
+            - stats (:obj:`~cubical.statistics.SolverStats`)
+                An object containing solver statistics.
+    """
+
+    # If weights are set, multiply data and model by weights. Keep an unweighted copy of the model 
+    # and data, as we need to apply the solutions to the unweighted residuals.
 
     if weight_arr is not None:
         obser_arr1 = obser_arr * weight_arr[..., np.newaxis, np.newaxis]
@@ -433,13 +531,14 @@ def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr,
     else:
         obser_arr1, model_arr1 = obser_arr, model_arr
 
-    # use the residuals computed in solve_gains() only if no weights. Otherwise need
-    # to recompute them from unweighted versions
+    # Use the residuals computed in _solve_gains() only if no weights are specified. Otherwise
+    # recompute the residuals from the unweighted model and data.
+
     resid_vis, stats = _solve_gains(gm, obser_arr1, model_arr1, flags_arr, sol_opts, label=label,
                                         compute_residuals=(weight_arr is None))
 
-    # if we reweighted things above, then recompute the residuals, else use returned residuals
-    # note that here we take the first data/model pair only (hence the 0:1 slice)
+    # If we reweighted things above, then recompute the residuals, otherwise use returned residuals.
+    # We take only the first data/model pair (hence the 0:1 slice).
 
     if weight_arr is not None:
         resid_vis = np.zeros_like(obser_arr[0:1,...])
@@ -454,26 +553,156 @@ def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr,
         return resid_vis, stats
 
 def solve_and_subtract(*args, **kw):
+    """
+    Run the solver and subtract the resulting corrupted model from the data. All arguments 
+    excluding the weights are passed through to _solve_gains.
+
+    Args:
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        weight_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant) array containing weights.
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2-element tuple          
+                
+            - resid_vis (np.ndarray) 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
+                visbilities. 
+            - _ (None)  
+                None (required for compatibility).
+    """
+
     return solve_and_correct_residuals(correct=False, *args, **kw)
 
 def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # for corrected visibilities, take the first data/model pair only
+    """
+    Apply gain solutions to the observed data.
+
+    Args:
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        weight_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant) array containing weights.
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2-element tuple
+
+            - corr_vis (np.ndarray) 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
+                visbilities. 
+            - _ (None)
+                None (required for compatibility).
+    """
+
+    # We take only the first data/model pair (hence the 0:1 slice).
+
     corr_vis = np.zeros_like(obser_arr[0,...])
     gm.apply_inv_gains(obser_arr[0,...], corr_vis)
 
     return corr_vis, None
 
 def correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # for corrected visibilities, take the first data/model pair only
+    """
+    Apply the gain solutions to the residuals.
+
+    Args:
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        weight_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant) array containing weights.
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2 element tuple
+
+            - corr_vis (np.ndarray) 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
+                visbilities. 
+            - _ (None)
+                None (required for compatibility).
+    """
+
+    # We take only the first data/model pair (hence the 0:1 slice).
+
     resid_vis = np.zeros_like(obser_arr[0:1,...])
     gm.compute_residual(obser_arr[0:1, ...], model_arr[:, 0:1, ...], resid_vis)
     corr_vis, _ = gm.apply_inv_gains(resid_vis[0,...])
+
     return corr_vis, None
 
 def subtract_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # for corrected visibilities, take the first data/model pair only
+    """
+    Subtract the corrupted model from the data.
+
+    Args:
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        weight_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant) array containing weights.
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2-element tuple          
+                
+            - resid_vis (np.ndarray) 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
+                visbilities. 
+            - _ (None)  
+                None (required for compatibility).
+    """
+
+    # We take only the first data/model pair (hence the 0:1 slice).
+
     resid_vis = np.zeros_like(obser_arr[0:1,...])
     gm.compute_residual(obser_arr[0:1, ...], model_arr[:, 0:1, ...], resid_vis)
+
     return resid_vis[0,...], None
 
 SOLVERS = { 'so': solve_only,
@@ -487,6 +716,28 @@ SOLVERS = { 'so': solve_only,
 
 
 def run_solver(solver_type, itile, chunk_key, sol_opts):
+    """
+    Initialises a gain machine and invokes the solver for the current chunk.
+
+    Args:
+        solver_type (str):
+            Specifies type of solver to use.
+        itile (int):
+            Index of current Tile object.
+        chunk_key (str):
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict):
+            Solver options (see [sol] section in DefaultParset.cfg).
+
+    Returns:
+        :obj:`~cubical.statistics.SolverStats`:
+            An object containing solver statistics.
+
+    Raises:
+        RuntimeError:
+            If gain factory has not been initialised.
+    """
+
     label = None
     
     try:
@@ -494,7 +745,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         label = chunk_key
         solver = SOLVERS[solver_type]
 
-        # get chunk data from tile
+        # Get chunk data from tile.
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
 
@@ -505,26 +756,27 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         else:
             n_dir = n_mod = 1
 
-        # initialize the gain machine for this chunk
+        # Initialize the gain machine for this chunk.
 
         if gm_factory is None:
             raise RuntimeError("Gain machine factory has not been initialized")
 
         gm = gm_factory.create_machine(obser_arr, n_dir, n_mod, chunk_ts, chunk_fs)
 
-        # invoke solver with cubes from tile
+        # Invoke solver with cubes from tile.
 
         corr_vis, stats = solver(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts)
 
-        # copy results back into tile
+        # Copy results back into tile.
 
         tile.set_chunk_cubes(corr_vis, flags_arr if (stats and stats.chunk.num_sol_flagged) else None, chunk_key)
 
-        # ask the gain machine to store its solutions in the shared dict
+        # Ask the gain machine to store its solutions in the shared dict.
 
         gm_factory.export_solutions(gm, tile.create_solutions_chunk_dict(chunk_key))
 
         return stats
+
     except Exception, exc:
         print>>log,ModColor.Str("Solver for tile {} chunk {} failed with exception: {}".format(itile, label, exc))
         print>>log,traceback.format_exc()

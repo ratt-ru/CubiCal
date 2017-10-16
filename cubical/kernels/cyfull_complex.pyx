@@ -2,6 +2,32 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+"""
+Cython kernels for the full-complex 2x2 gain machine. Functions require output arrays to be 
+provided. Common dimensions of arrays are:
+
++----------------+------+
+| Dimension      | Size |
++================+======+
+| Direction      |   d  |
++----------------+------+
+| Model          |   m  |
++----------------+------+
+| Time           |   t  |
++----------------+------+
+| Time Intervals |   ti |
++----------------+------+
+| Frequency      |   f  |
++----------------+------+
+| Freq Intervals |   fi |
++----------------+------+
+| Antenna        |   a  |
++----------------+------+
+| Correlation    |   c  |
++----------------+------+
+
+"""
+
 from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
@@ -23,8 +49,23 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
                        int f_int):
 
     """
-    This computes the residual, resulting in large matrix indexed by 
-    (direction, model, time, frequency, antenna, antenna, correclation, correlation).
+    Given the model, gains, and their conjugates, computes the residual. Residual has full time and
+    frequency resolution - solution intervals are used to correctly associate the gains with the 
+    model. 
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model array with dimensions (d, m, t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        r (np.complex64 or np.complex128):
+            Typed memoryview of residual array with dimensions (m, t, f, a, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -79,7 +120,22 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
                  int f_int):
 
     """
-    This computes the the non-zero elements of jh. The result does have a model index.  
+    Given the model and gains, computes the non-zero elements of J\ :sup:`H`. J\ :sup:`H` has full 
+    time and frequency resolution - solution intervals are used to correctly associate the gains 
+    with the model. The result here contains the useful elements of J\ :sup:`H` but does not look 
+    like the analytic solution.   
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model array with dimensions (d, m, t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
+        jh (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H` array with dimensions (d, m, t, f, a, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.  
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
@@ -125,8 +181,20 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:,:,:] jh,
                   int f_int):
 
     """
-    This computes the jhr term on the GN/LM method. Note that while jh is indexed by model, the 
-    resulting jhr has no model index. 
+    Given J\ :sup:`H` and the residual (or observed data, in special cases), computes J\ :sup:`H`\R.
+    J\ :sup:`H`\R is computed over intervals. 
+
+    Args:
+        jh (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H` array with dimensions (d, m, t, f, a, a, c, c).
+        r (np.complex64 or np.complex128):
+            Typed memoryview of residual array with dimensions (m, t, f, a, a, c, c).
+        jhr (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H`\R array with dimensions (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.  
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -170,9 +238,19 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:,:] jh,
                   complex3264 [:,:,:,:,:,:] jhj,
                   int t_int,
                   int f_int):
-
     """
-    This computes the approximation to the Hessian, jhj. 
+    Given J\ :sup:`H` ,computes the diagonal entries of J\ :sup:`H`\J. J\ :sup:`H`\J is computed 
+    over intervals. This is an approximation of the Hessian.  
+
+    Args:
+        jh (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H` array with dimensions (d, m, t, f, a, a, c, c).
+        jhj (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H`\J array with dimensions (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.  
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -218,10 +296,25 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
                      float eps,
                      int flagbit):
     """
-    This inverts the approximation to the Hessian, jhj. Note that asa as useful side effect, it is 
-    also suitable for inverting the gains.
+    Given J\ :sup:`H`\J (or an array with similar dimensions), computes its inverse. Takes flags
+    into account and will flag additional visibilities if the inverse is too large.  
 
-    Returns number of points flagged
+    Args:
+        jhj (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H`\J array with dimensions (d, ti, fi, a, c, c).
+        jhjinv (np.complex64 or np.complex128):
+            Typed memoryview of (J\ :sup:`H`\J)\ :sup:`-1` array with dimensions 
+            (d, ti, fi, a, c, c).
+        flags (np.uint16_t):
+            Typed memoryview of flag array with dimensions (d, t, f, a).
+        eps (float):
+            Threshold beneath which the denominator is regarded as too small for inversion.
+        flagbit (int):
+            The bitflag which will be raised if flagging is required.
+
+    Returns:
+        int:
+            Number of visibilities flagged.
     """
 
     cdef int d, t, f, aa, ab = 0
@@ -275,11 +368,20 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
-                     complex3264 [:,:,:,:,:,:] jhj,
+                     complex3264 [:,:,:,:,:,:] jhjinv,
                      complex3264 [:,:,:,:,:,:] upd):
     """
-    This computes the update by computing the product of jhj and jhr. These should already have been
-    reduced to the correct dimension so that this operation is very simple. 
+    Given J\ :sup:`H`\R and (J\ :sup:`H`\J)\ :sup:`-1`, computes the gain update. The dimensions of
+    the input should already be consistent, making this operation simple.
+
+    Args:
+        jhr (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H`\R array with dimensions (d, ti, fi, a, c, c).
+        jhjinv (np.complex64 or np.complex128):
+            Typed memoryview of (J\ :sup:`H`\J)\ :sup:`-1` array with dimensions 
+            (d, ti, fi, a, c, c).
+        upd (np.complex64 or np.complex128):
+            Typed memoryview of gain update array with dimensions (d, ti, fi, a, c, c).
     """
 
     cdef int d, t, f, aa = 0
@@ -295,17 +397,17 @@ def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
 
-                    upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,0] + \
-                                        jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,0]
+                    upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,0] + \
+                                        jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,0]
 
-                    upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhj[d,t,f,aa,0,1] + \
-                                        jhr[d,t,f,aa,0,1]*jhj[d,t,f,aa,1,1]
+                    upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,1] + \
+                                        jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,1]
 
-                    upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,0] + \
-                                        jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,0]
+                    upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,0] + \
+                                        jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,0]
 
-                    upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhj[d,t,f,aa,0,1] + \
-                                        jhr[d,t,f,aa,1,1]*jhj[d,t,f,aa,1,1]
+                    upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,1] + \
+                                        jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,1]
                     
 
 @cython.cdivision(True)
@@ -320,10 +422,22 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
                         int f_int):
 
     """
-    This computes the corrected visiblities, given the observed visiblities and the inverse of the 
-    gains. Note that the observed array expected here MUST NOT have a model index. This is because 
-    we only obtain a single gain estimate across all models and want to apply it to the raw the 
-    visibility data.
+    Given the observed visbilities, inverse gains, and their conjugates, computes the corrected 
+    visibilitites.  
+
+    Args:
+        o (np.complex64 or np.complex128):
+            Typed memoryview of observed visibility array with dimensions (t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of inverse gain array with dimensions (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of inverse conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        corr (np.complex64 or np.complex128):
+            Typed memoryview of corrected data array with dimensions (t, f, a, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.  
     """
 
     cdef int d, t, f, aa, ab, rr, rc = 0
@@ -377,9 +491,21 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
                   int f_int):
 
     """
-    Apply the gains to the model array - this is useful in general, but is required for using an 
-    arbitrary chain of Jones matrices. NOTE: This will perform the computation in place - be wary of 
-    overwriting the original model data.  
+    Applies the gains and their cinjugates to the model array. This operation is performed in place
+    - be wary of losing the original array. The result has full time and frequency resolution - 
+    solution intervals are used to correctly associate the gains with the model.
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model visibility array with dimensions (d, m , t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimensions (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc, gd = 0

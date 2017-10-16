@@ -2,6 +2,10 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+"""
+Creates summary plots using the solver stats.
+"""
+
 import matplotlib
 matplotlib.use("Agg")
 
@@ -16,12 +20,15 @@ ZOOM = 10  # image zoom. Roughly determines size of "pixels" when rendering imag
 
 def make_summary_plots(st, GD, basename):
     """
+    Creates interesting summary plots.
 
     Args:
-        st:         statistics.SolverStats object
-        GD:         dict of global options
-    Returns:
-
+        st (:obj:`~cubical.statistics.SolverStats`):
+            Object containing solver statistics.
+        GD (dict):
+            Dictionary of global options.
+        basename (str):
+            Base name for output files.
     """
     import pylab
 
