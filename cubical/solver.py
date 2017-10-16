@@ -41,10 +41,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             If set, the final residuals will be computed and returned.
 
     Returns:
-        tuple:
-            resid (np.ndarray):
+        2-element tuple
+            
+            - resid (np.ndarray)
                 The final residuals (if compute_residuals is set), else None.
-            stats (:obj:`~cubical.statistics.SolverStats`): 
+            - stats (:obj:`~cubical.statistics.SolverStats`)
                 An object containing solver statistics.
     """
 
@@ -417,10 +418,11 @@ def solve_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts)
             Solver options (see [sol] section in DefaultParset.cfg).        
 
     Returns:
-        tuple:
-            _ (None): 
+        2-element tuple
+
+            - _ (None) 
                 None (required for compatibility)
-            stats (:obj:`~cubical.statistics.SolverStats`): 
+            - stats (:obj:`~cubical.statistics.SolverStats`)
                 An object containing solver statistics.
     """
 
@@ -459,11 +461,12 @@ def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, so
             Solver options (see [sol] section in DefaultParset.cfg).        
 
     Returns:
-        tuple:
-            corr_vis (np.ndarray): 
+        2-element tuple
+            
+            - corr_vis (np.ndarray) 
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
                 visibilities. 
-            stats (:obj:`~cubical.statistics.SolverStats`): 
+            - stats (:obj:`~cubical.statistics.SolverStats`)
                 An object containing solver statistics.
     """
 
@@ -510,11 +513,12 @@ def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr,
             Solver options (see [sol] section in DefaultParset.cfg).        
 
     Returns:
-        tuple:
-            corr_vis (np.ndarray): 
+        2-element tuple
+            
+            - corr_vis (np.ndarray)
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
                 residuals. 
-            stats (:obj:`~cubical.statistics.SolverStats`): 
+            - stats (:obj:`~cubical.statistics.SolverStats`)
                 An object containing solver statistics.
     """
 
@@ -549,12 +553,9 @@ def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr,
         return resid_vis, stats
 
 def solve_and_subtract(*args, **kw):
-    return solve_and_correct_residuals(correct=False, *args, **kw)
-
-def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
     """
-    Apply gain solutions to the observed data. All arguments excluding the weights are passed 
-    through to _solve_gains.
+    Run the solver and subtract the resulting corrupted model from the data. All arguments 
+    excluding the weights are passed through to _solve_gains.
 
     Args:
         gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
@@ -575,11 +576,46 @@ def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opt
             Solver options (see [sol] section in DefaultParset.cfg).        
 
     Returns:
-        tuple:
-            corr_vis (np.ndarray): 
+        2-element tuple          
+                
+            - resid_vis (np.ndarray) 
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
                 visbilities. 
-            _ (None):
+            - _ (None)  
+                None (required for compatibility).
+    """
+
+    return solve_and_correct_residuals(correct=False, *args, **kw)
+
+def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
+    """
+    Apply gain solutions to the observed data.
+
+    Args:
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        weight_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant) array containing weights.
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2-element tuple
+
+            - corr_vis (np.ndarray) 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
+                visbilities. 
+            - _ (None)
                 None (required for compatibility).
     """
 
@@ -592,8 +628,7 @@ def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opt
 
 def correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
     """
-    Apply the gain solutions to the residuals. All arguments excluding the weights are passed 
-    through to _solve_gains.
+    Apply the gain solutions to the residuals.
 
     Args:
         gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
@@ -614,11 +649,12 @@ def correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, so
             Solver options (see [sol] section in DefaultParset.cfg).        
 
     Returns:
-        tuple:
-            corr_vis (np.ndarray): 
+        2 element tuple
+
+            - corr_vis (np.ndarray) 
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
                 visbilities. 
-            _ (None):
+            - _ (None)
                 None (required for compatibility).
     """
 
@@ -631,9 +667,42 @@ def correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, so
     return corr_vis, None
 
 def subtract_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # for corrected visibilities, take the first data/model pair only
+    """
+    Subtract the corrupted model from the data.
+
+    Args:
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        weight_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant) array containing weights.
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2-element tuple          
+                
+            - resid_vis (np.ndarray) 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
+                visbilities. 
+            - _ (None)  
+                None (required for compatibility).
+    """
+
+    # We take only the first data/model pair (hence the 0:1 slice).
+
     resid_vis = np.zeros_like(obser_arr[0:1,...])
     gm.compute_residual(obser_arr[0:1, ...], model_arr[:, 0:1, ...], resid_vis)
+
     return resid_vis[0,...], None
 
 SOLVERS = { 'so': solve_only,
