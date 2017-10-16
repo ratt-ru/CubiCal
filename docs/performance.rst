@@ -18,5 +18,5 @@ massive increase in cache-misses on the CPU. This will degrade performance quite
 There is no hard-and-fast rule for selecting the sizes, but users should be aware of the negative
 impact of setting them too large, as well as the wasted compute if they are too small. Due to
 the dependence of this problem on architecture, it may take users a while to get a feel for the 
-optimal. Note that soltion intervals can only be as large as a chunk; for large time/frequency 
+optimal. Note that solution intervals can only be as large as a chunk; for large time/frequency 
 solution intervals there is no alternative but to accept the decreased performance. 
