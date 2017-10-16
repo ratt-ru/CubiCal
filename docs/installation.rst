@@ -49,16 +49,17 @@ It is usually necessary to update pip, setuptools and wheel inside the environme
 
 	pip install -U pip setuptools wheel
 
-For compatibility with Tigger sky models, it is necessary to install vext.pyqy4:
+At this point, if CubiCal is required to predict model visiblities, it is necessary 
+to install Montblanc. To install Montblanc, follow the instructions here_.
+
+.. _here: https://montblanc.readthedocs.io
+
+Additionally, for compatibility with Tigger sky models inside a virtual environment, 
+it is necessary to install vext.pyqy4:
 
 .. code:: bash
 
 	pip install vext.pyqt4
-
-At this point, if simultion mode is required, it is necessary to install Montblanc. 
-To install Montblanc, follow the instructions here_.
-
-.. _here: https://montblanc.readthedocs.io
 
 CubiCal can now be installed by running the following:
 
@@ -115,16 +116,17 @@ It is usually necessary to update pip, setuptools and wheel inside the environme
 
 	pip install -U pip setuptools wheel
 
-For compatibility with Tigger sky models, it is necessary to install vext.pyqy4:
+At this point, if CubiCal is required to predict model visiblities, it is necessary 
+to install Montblanc. To install Montblanc, follow the instructions here_.
+
+.. _here: https://montblanc.readthedocs.io
+
+Additionally, for compatibility with Tigger sky models inside a virtual environment, 
+it is necessary to install vext.pyqy4:
 
 .. code:: bash
 
 	pip install vext.pyqt4
-
-At this point, if simulation mode is required, it is necessary to install Montblanc. 
-To install Montblanc, follow the instructions here_.
-
-.. _here: https://montblanc.readthedocs.io
 
 CubiCal can now be installed by running the following:
 
