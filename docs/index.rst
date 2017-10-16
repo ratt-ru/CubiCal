@@ -13,6 +13,7 @@ Contents:
 
    introduction
    installation
+   usage
    cubical
    performance
    licence
