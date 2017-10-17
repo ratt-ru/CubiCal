@@ -26,10 +26,16 @@ import os
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.install import install
-import numpy as np 
 
 USE_CYTHON = False
-         
+       
+try:
+	import numpy as np
+	include_path = np.get_include()
+except:
+	print "Numpy failed to import."
+	include_path = ""
+
 if USE_CYTHON:
 
 	from Cython.Build import cythonize
@@ -40,43 +46,43 @@ if USE_CYTHON:
 	extensions = \
 		[Extension(
 	        "cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.pyx"],
-	        include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+	        include_dirs=[include_path], extra_compile_args=['-fopenmp', 
 	        '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
 	        extra_link_args=['-lgomp']
 	       ),
 	     Extension(
 	        "cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
-	        include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+	        include_dirs=[include_path], extra_compile_args=['-fopenmp', 
 	        '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
 	        extra_link_args=['-lgomp']
 	                   ),
 	     Extension(
 	        "cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.pyx"],
-	        include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+	        include_dirs=[include_path], extra_compile_args=['-fopenmp', 
 	        '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
 	        extra_link_args=['-lgomp']
 	         ),
 	     Extension(
 	        "cubical.kernels.cychain", ["cubical/kernels/cychain.pyx"],
-	        include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
+	        include_dirs=[include_path], extra_compile_args=['-fopenmp', 
 	        '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
 	        extra_link_args=['-lgomp']
 	         ),
 	     Extension(
 	        "cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.pyx"],
-	        include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
+	        include_dirs=[include_path], language="c++", extra_compile_args=['-fopenmp', 
 	        '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
 	        extra_link_args=['-lgomp']
 	         ),
 	     Extension(
 	        "cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.pyx"],
-	        include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
+	        include_dirs=[include_path], language="c++", extra_compile_args=['-fopenmp', 
 	        '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
 	        extra_link_args=['-lgomp']
 	         ),
 	     Extension(
 	        "cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.pyx"],
-	        include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
+	        include_dirs=[include_path], language="c++", extra_compile_args=['-fopenmp', 
 	        '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
 	        extra_link_args=['-lgomp']
 	         )]
@@ -87,19 +93,19 @@ else:
 
 	extensions = \
 		[Extension("cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.c"], 
-			include_dirs=[np.get_include()]),
+			include_dirs=[include_path]),
       	 Extension("cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.c"], 
-      	 	include_dirs=[np.get_include()]),
+      	 	include_dirs=[include_path]),
       	 Extension("cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.c"], 
-      	 	include_dirs=[np.get_include()]),
+      	 	include_dirs=[include_path]),
       	 Extension("cubical.kernels.cychain", ["cubical/kernels/cychain.c"], 
-      	 	include_dirs=[np.get_include()]),
+      	 	include_dirs=[include_path]),
       	 Extension("cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.cpp"], 
-      	 	include_dirs=[np.get_include()]),
+      	 	include_dirs=[include_path]),
       	 Extension("cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.cpp"], 
-      	 	include_dirs=[np.get_include()]),
+      	 	include_dirs=[include_path]),
       	 Extension("cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.cpp"], 
-      	 	include_dirs=[np.get_include()])]
+      	 	include_dirs=[include_path])]
 
 
 class custom_install(install):
