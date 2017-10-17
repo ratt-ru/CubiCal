@@ -12,8 +12,8 @@ import pyrap.tables as pt
 import re
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("flagging")
 import cubical.plots as plots
+log = logger.getLogger("flagging")
 from collections import OrderedDict
 
 class FL(object):
@@ -152,10 +152,6 @@ class Flagsets (object):
     ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order));
     ms.flush();
     return mask;
-
-
-
-
 
 def flag_chisq (st, GD, basename, nddid):
     """

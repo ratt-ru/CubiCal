@@ -8,15 +8,21 @@ Implements the solver loop
 import numpy as np
 import traceback
 from cubical.tools import logger, ModColor
-from cubical.data_handler import FL, Tile
+from cubical.data_handler import Tile
+from cubical.flagging import FL
 from cubical.machines import jones_chain_machine
 from cubical.statistics import SolverStats
+from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
 log = logger.getLogger("solver")
 #log.verbosity(2)
 
 # gain machine factory to use
 gm_factory = None
+
+# IFR-based gain machine to use
+ifrgain_machine = None
+
 
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
@@ -393,62 +399,123 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     return (resid_arr if compute_residuals else None), stats
 
 
+class VisDataManager(object):
+    """A VisDataManager holds internal data, model, flag and weight arrays, and computes
+    various derived arrays (weighted versions, corrupt models, etc.) as necessary."""
+    def __init__(self, obser_arr, model_arr, flags_arr, weight_arr, freq_slice):
+        self.gm = None
+        self.obser_arr, self.model_arr, self.flags_arr, self.weight_arr = \
+            obser_arr, model_arr, flags_arr, weight_arr
+        self._wobs_arr = self._wmod_arr = None
+        self.cmodel_arr = None
+        self.freq_slice = freq_slice
 
-def solve_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # apply weights
-    if weight_arr is not None:
-        obser_arr *= weight_arr[..., np.newaxis, np.newaxis]
-        model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
+    @property
+    def weighted_obser(self):
+        if self._wobs_arr is None:
+            if self.weight_arr is not None:
+                self._wobs_arr = self.obser_arr[np.newaxis,...] * self.weight_arr[..., np.newaxis, np.newaxis]
+            else:
+                self._wobs_arr = np.empty_like(self.model_arr[0,...])
+                self._wobs_arr[np.newaxis, ...] = self.obser_arr
+        return self._wobs_arr
 
-    _, stats = _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label=label)
+    @property
+    def weighted_model(self):
+        if self._wmod_arr is None:
+            if self.weight_arr is not None:
+                self._wmod_arr = self.model_arr * self.weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
+            # if no weights, the simply duplicate the model axis in obser_arr
+            else:
+                self._wmod_arr = self.model_arr
+        return self._wmod_arr
+
+    @property
+    def corrupt_weighted_model(self):
+        cmod = self.corrupt_model()
+        if self.weight_arr is not None:
+            return cmod*self.weight_arr[..., np.newaxis, np.newaxis]
+        else:
+            return cmod
+
+    def corrupt_residual(self, imod=0):
+        """Computes corrupt residual w.r.t. given model.
+        If we already have a corrupted model cached, use that, else use gm to compute residuals.
+        Returns array of shape [ntime,nfreq,nant,nant,ncorr,ncorr]
+        """
+        if self.cmodel_arr is not None:
+            return self.obser_arr - self.cmodel_arr[imod,...]
+        else:
+            resid_vis = np.empty_like(self.model_arr[0,0:1,...])
+            self.gm.compute_residual(self.obser_arr, self.model_arr[:,0:1,...], resid_vis)
+            return resid_vis[0,...]
+
+
+    def corrupt_model(self, imod=None):
+        """Returns corrupted model: model(s) times gains. Note that this modifies the model in place.
+        Returns array of shape [ntime,nfreq,nant,nant,ncorr,ncorr] if imod is set (i.e. one model),
+        else [nmod,ntime,nfreq,nant,nant,ncorr,ncorr]
+        
+        Note that this corrupts the model array in place
+        """
+        # if asking for all models (imod=None), or we only have one model, then cache result
+        if imod is None or self.model_arr.shape[1] == 1:
+            if self.cmodel_arr is None:
+                self.gm.apply_gains(self.model_arr)
+                self.cmodel_arr = self.model_arr.sum(0)
+            return self.cmodel_arr if imod is None else self.cmodel_arr[imod,...]
+        # else just compute one particular model
+        elif self.cmodel_arr is not None:
+            return self.cmodel_arr[imod,...]
+        else:
+            return self.gm.apply_gains(self.model_arr[:, imod:imod+1, ...]).sum(0)
+
+
+def solve_only(vdm, soldict, label, sol_opts):
+
+    _, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
+    if ifrgain_machine.is_computing():
+        ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
     return None, stats
 
 
-def solve_and_correct(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # if weights are set, multiply data and model by weights, but keep an unweighted copy
-    # of the data, since we need to correct
-    if weight_arr is not None:
-        obser_arr1 = obser_arr*weight_arr[..., np.newaxis, np.newaxis]
-        model_arr *= weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
-    else:
-        obser_arr1 = obser_arr
+def solve_and_correct(vdm, soldict, label, sol_opts):
 
-    _, stats = _solve_gains(gm, obser_arr1, model_arr, flags_arr, sol_opts, label=label)
+    _, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
 
     # for corrected visibilities, take the first data/model pair only
-    corr_vis = np.zeros_like(obser_arr[0,...])
-    gm.apply_inv_gains(obser_arr[0,...], corr_vis)
+    corr_vis = np.zeros_like(vdm.obser_arr)
+    vdm.gm.apply_inv_gains(vdm.obser_arr, corr_vis)
+
+    if ifrgain_machine.is_computing():
+        ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
     return corr_vis, stats
 
 
-def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts, correct=True):
-    # if weights are set, multiply data and model by weights, but keep an unweighted copy
-    # of the model and data, since we need to correct the residuals
-
-    if weight_arr is not None:
-        obser_arr1 = obser_arr * weight_arr[..., np.newaxis, np.newaxis]
-        model_arr1 = model_arr * weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
-    else:
-        obser_arr1, model_arr1 = obser_arr, model_arr
-
+def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
-    resid_vis, stats = _solve_gains(gm, obser_arr1, model_arr1, flags_arr, sol_opts, label=label,
-                                        compute_residuals=(weight_arr is None))
+    resid_vis, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr,
+                                        sol_opts, label=label,
+                                        compute_residuals=(vdm.weight_arr is None))
 
-    # if we reweighted things above, then recompute the residuals, else use returned residuals
-    # note that here we take the first data/model pair only (hence the 0:1 slice)
+    # compute IFR gains, if needed. Note that this computes corrupt models, so it makes sense
+    # doing it before recomputing the residuals: saves time
+    if ifrgain_machine.is_computing():
+        ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-    if weight_arr is not None:
-        resid_vis = np.zeros_like(obser_arr[0:1,...])
-        gm.compute_residual(obser_arr[0:1,...], model_arr[:,0:1,...], resid_vis)
+    # compute residuals if needed
+    if vdm.weight_arr is not None:
+        resid_vis = vdm.corrupt_residual(0)
+    else:
+        resid_vis = resid_vis[0, ...]
 
-    resid_vis = resid_vis[0, ...]
+    # correct residual if required
     if correct:
         corr_vis = np.zeros_like(resid_vis)
-        gm.apply_inv_gains(resid_vis, corr_vis)
+        vdm.gm.apply_inv_gains(resid_vis, corr_vis)
         return corr_vis, stats
     else:
         return resid_vis, stats
@@ -456,25 +523,35 @@ def solve_and_correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr,
 def solve_and_subtract(*args, **kw):
     return solve_and_correct_residuals(correct=False, *args, **kw)
 
-def correct_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
+def correct_only(vdm, soldict, label, sol_opts):
     # for corrected visibilities, take the first data/model pair only
-    corr_vis = np.zeros_like(obser_arr[0,...])
-    gm.apply_inv_gains(obser_arr[0,...], corr_vis)
+    corr_vis = np.zeros_like(vdm.obser_arr)
+    vdm.gm.apply_inv_gains(vdm.obser_arr, corr_vis)
+
+    if vdm.model_arr is not None and ifrgain_machine.is_computing():
+        ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
     return corr_vis, None
 
-def correct_residuals(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # for corrected visibilities, take the first data/model pair only
-    resid_vis = np.zeros_like(obser_arr[0:1,...])
-    gm.compute_residual(obser_arr[0:1, ...], model_arr[:, 0:1, ...], resid_vis)
-    corr_vis, _ = gm.apply_inv_gains(resid_vis[0,...])
-    return corr_vis, None
+def correct_residuals(vdm, soldict, label, sol_opts, correct=True):
+    # compute IFR gains, if needed. Note that this computes corrupt models, so it makes sense
+    # doing it before recomputing the residuals: saves time
+    if ifrgain_machine.is_computing():
+        ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-def subtract_only(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts):
-    # for corrected visibilities, take the first data/model pair only
-    resid_vis = np.zeros_like(obser_arr[0:1,...])
-    gm.compute_residual(obser_arr[0:1, ...], model_arr[:, 0:1, ...], resid_vis)
-    return resid_vis[0,...], None
+    resid_vis = vdm.corrupt_residual(0)
+
+    # correct residual if required
+    if correct:
+        corr_vis = np.zeros_like(resid_vis)
+        vdm.gm.apply_inv_gains(resid_vis, corr_vis)
+        return corr_vis, None
+    else:
+        return resid_vis, None
+
+def subtract_only(*args, **kw):
+    return correct_residuals(correct=False, *args, **kw)
+
 
 SOLVERS = { 'so': solve_only,
             'sc': solve_and_correct,
@@ -493,36 +570,38 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         tile = Tile.tile_list[itile]
         label = chunk_key
         solver = SOLVERS[solver_type]
-
-        # get chunk data from tile
-
-        obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
-
-        chunk_ts, chunk_fs, _, _ = tile.get_chunk_tfs(chunk_key)
-
-        if model_arr is not None:
-            n_dir, n_mod = model_arr.shape[:2]
-        else:
-            n_dir = n_mod = 1
-
         # initialize the gain machine for this chunk
 
         if gm_factory is None:
             raise RuntimeError("Gain machine factory has not been initialized")
 
-        gm = gm_factory.create_machine(obser_arr, n_dir, n_mod, chunk_ts, chunk_fs)
+        # get chunk data from tile
+
+        obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
+
+        chunk_ts, chunk_fs, _, freq_slice = tile.get_chunk_tfs(chunk_key)
+
+        # apply IFR-based gains, if any
+        ifrgain_machine.apply(obser_arr, freq_slice)
+
+        # create subdict in shared dict for solutions etc.
+        soldict = tile.create_solutions_chunk_dict(chunk_key)
+
+        vdm = VisDataManager(obser_arr, model_arr, flags_arr, weight_arr, freq_slice)
+
+        n_dir, n_mod = model_arr.shape[0:2] if model_arr is not None else (1,1)
+
+        vdm.gm = gm_factory.create_machine(vdm.weighted_obser, n_dir, n_mod, chunk_ts, chunk_fs)
 
         # invoke solver with cubes from tile
 
-        corr_vis, stats = solver(gm, obser_arr, model_arr, flags_arr, weight_arr, label, sol_opts)
+        corr_vis, stats = solver(vdm, soldict, label, sol_opts)
 
         # copy results back into tile
 
         tile.set_chunk_cubes(corr_vis, flags_arr if (stats and stats.chunk.num_sol_flagged) else None, chunk_key)
 
-        # ask the gain machine to store its solutions in the shared dict
-
-        gm_factory.export_solutions(gm, tile.create_solutions_chunk_dict(chunk_key))
+        gm_factory.export_solutions(vdm.gm, soldict)
 
         return stats
     except Exception, exc:

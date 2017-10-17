@@ -20,6 +20,7 @@ from cubical.machines import complex_W_2x2_machine
 from cubical.machines import phase_diag_machine
 from cubical.machines import slope_machine
 from cubical.machines import jones_chain_machine
+from cubical.machines import ifr_gain_machine
 
 log = logger.getLogger("main")
 
@@ -182,6 +183,7 @@ def main(debugging=False):
                               taql=GD["sel"]["taql"],
                               fid=GD["sel"]["field"], 
                               ddid=GD["sel"]["ddid"],
+                              channels=GD["sel"]["chan"],
                               flagopts=GD["flags"],
                               double_precision=double_precision,
                               ddes=GD["model"]["ddes"],
@@ -189,9 +191,24 @@ def main(debugging=False):
                               beam_pattern=GD["model"]["beam-pattern"], 
                               beam_l_axis=GD["model"]["beam-l-axis"], 
                               beam_m_axis=GD["model"]["beam-m-axis"],
+                              active_subset=GD["sol"]["subset"],
+                              min_baseline=GD["sol"]["min-bl"],
+                              max_baseline=GD["sol"]["max-bl"],
                               mb_opts=GD["montblanc"])
 
         data_handler.global_handler = ms
+
+        # set up chunking
+        chunk_by = GD["data"]["chunk-by"]
+        if type(chunk_by) is str:
+            chunk_by = chunk_by.split(",")
+        jump = float(GD["data"]["chunk-by-jump"])
+
+        print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+            ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
+        ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+                        chunk_by=chunk_by, chunk_by_jump=jump,
+                        min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
 
         # set up RIME
 
@@ -229,22 +246,13 @@ def main(debugging=False):
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
-        solver.gm_factory = jones_class.create_factory(grid=dict(ant=range(ms.nants), corr=ms.feeds),
+        grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
+        solver.gm_factory = jones_class.create_factory(grid=grid,
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
-
-        # set up chunking
-        chunk_by = GD["data"]["chunk-by"]
-        if type(chunk_by) is str:
-            chunk_by = chunk_by.split(",")
-        jump = float(GD["data"]["chunk-by-jump"])
-
-        print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
-            ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
-        ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
-                        chunk_by=chunk_by, chunk_by_jump=jump,
-                        min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
+        # create IFR-based gain machine
+        solver.ifrgain_machine = ifr_gain_machine.IfrGainMachine(solver.gm_factory, GD["bbc"])
 
         t0 = time()
 
@@ -274,7 +282,9 @@ def main(debugging=False):
                 tile.save()
                 for sd in tile.iterate_solution_chunks():
                     solver.gm_factory.save_solutions(sd)
+                    solver.ifrgain_machine.accumulate(sd)
                 tile.release()
+            solver.ifrgain_machine.save()
             solver.gm_factory.close()
 
         else:
@@ -312,7 +322,8 @@ def main(debugging=False):
 
                     for key in tile.get_chunk_keys():
                         if not single_chunk or key == single_chunk:
-                            solver_futures[executor.submit(solver.run_solver, solver_type, itile, key, solver_opts)] = key
+                            solver_futures[executor.submit(solver.run_solver, solver_type,
+                                                           itile, key, solver_opts)] = key
                             print>> log(3), "submitted solver job for chunk {}".format(key)
 
                     # wait for solvers to finish
@@ -355,7 +366,7 @@ def main(debugging=False):
 
             # make plots
             if GD["out"]["plots"]:
-                plots.make_summary_plots(st, GD, basename)
+                plots.make_summary_plots(st, ms, GD, basename)
 
         ms.close()
 
@@ -377,7 +388,9 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
             tile.save(unlock=finalize)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
+                solver.ifrgain_machine.accumulate(sd)
             if finalize:
+                solver.ifrgain_machine.save()
                 solver.gm_factory.close()
             tile.release()
         if load is not None:
