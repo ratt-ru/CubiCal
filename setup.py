@@ -27,7 +27,7 @@ from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.install import install
 
-USE_CYTHON = True
+USE_CYTHON = False
          
 if USE_CYTHON:
 
@@ -112,7 +112,6 @@ if on_rtd:
                     'scipy']
 else:
     requirements = ['numpy', 
-                    'cython', 
                     'futures', 
                     'python-casacore', 
                     'sharedarray', 
