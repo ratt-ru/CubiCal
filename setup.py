@@ -26,14 +26,14 @@ import os
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.install import install
+import numpy as np 
 
 USE_CYTHON = False
          
 if USE_CYTHON:
 
 	from Cython.Build import cythonize
-	import Cython.Compiler.Options as CCO
-	import numpy as np 
+	import Cython.Compiler.Options as CCO	
 
 	CCO.buffer_max_dims = 9
 
@@ -86,13 +86,20 @@ if USE_CYTHON:
 else:
 
 	extensions = \
-		[Extension("cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.c"]),
-      	 Extension("cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.c"]),
-      	 Extension("cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.c"]),
-      	 Extension("cubical.kernels.cychain", ["cubical/kernels/cychain.c"]),
-      	 Extension("cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.cpp"]),
-      	 Extension("cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.cpp"]),
-      	 Extension("cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.cpp"])]
+		[Extension("cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.c"], 
+			include_dirs=[np.get_include()]),
+      	 Extension("cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.c"], 
+      	 	include_dirs=[np.get_include()]),
+      	 Extension("cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.c"], 
+      	 	include_dirs=[np.get_include()]),
+      	 Extension("cubical.kernels.cychain", ["cubical/kernels/cychain.c"], 
+      	 	include_dirs=[np.get_include()]),
+      	 Extension("cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.cpp"], 
+      	 	include_dirs=[np.get_include()]),
+      	 Extension("cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.cpp"], 
+      	 	include_dirs=[np.get_include()]),
+      	 Extension("cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.cpp"], 
+      	 	include_dirs=[np.get_include()])]
 
 
 class custom_install(install):
