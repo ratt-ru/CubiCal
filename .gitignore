@@ -6,7 +6,6 @@
 *.exe
 *.o
 *.so
-*.cpp
 
 # Packages #
 ############
@@ -40,7 +39,6 @@ Thumbs.db
 # Unecessary Python #
 #####################
 *.pyc
-*.c
 
 # Installer junk #
 ##################
