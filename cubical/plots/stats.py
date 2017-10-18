@@ -4,6 +4,7 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 import matplotlib
 matplotlib.use("Agg")
+from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
 import numpy as np
 from cubical.tools import logger

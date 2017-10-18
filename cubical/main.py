@@ -275,15 +275,24 @@ def main(debugging=False):
         if debugging or ncpu <= 1 or single_chunk:
             for itile, tile in enumerate(Tile.tile_list):
                 tile.load(load_model=load_model)
+                processed = False
                 for key in tile.get_chunk_keys():
                     if not single_chunk or key == single_chunk:
+                        processed = True
                         stats_dict[tile.get_chunk_indices(key)] = \
                             solver.run_solver(solver_type, itile, key, solver_opts)
-                tile.save()
-                for sd in tile.iterate_solution_chunks():
-                    solver.gm_factory.save_solutions(sd)
-                    solver.ifrgain_machine.accumulate(sd)
+                if processed:
+                    tile.save()
+                    for sd in tile.iterate_solution_chunks():
+                        solver.gm_factory.save_solutions(sd)
+                        solver.ifrgain_machine.accumulate(sd)
+                    print>>log(0),ModColor.Str("single-chunk {} was processed in this tile. Will now finish".format(single_chunk))
+                else:
+                    print>>log(0),"  single-chunk {} not in this tile, skipping it.".format(single_chunk)
                 tile.release()
+                # break out after single chunk is processed
+                if processed and single_chunk:
+                    break
             solver.ifrgain_machine.save()
             solver.gm_factory.close()
 
