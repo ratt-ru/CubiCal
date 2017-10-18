@@ -110,7 +110,9 @@ def enableMemoryLogging (enable=True):
 def logToFile (filename,append=False):
     global file_handler
     if not file_handler:
-        file_handler = logging.FileHandler(filename,mode='a' if append else 'w')
+        file_handler = logging.FileHandler(filename, mode='a' if append else 'w')
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(M._formatter)
     logging.getLogger('').addHandler(file_handler)
 
 def getLogFilename():
@@ -160,10 +162,6 @@ class MyLogger():
         if not(name in self.Dico.keys()):
             logger = logging.getLogger(name)
             logger.addFilter(self._myfilter)
-            if file_handler:
-                file_handler.setLevel(logging.DEBUG)
-                file_handler.setFormatter(self._formatter)
-                # logger.addHandler(file_handler)
             fp = LoggerWriter(logger, logging.INFO, verbose)
             self.Dico[name]=fp
             
