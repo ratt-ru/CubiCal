@@ -213,14 +213,16 @@ class JonesChain(MasterMachine):
 
         return corr_vis, flag_count
 
-    def apply_gains(self):
+    def apply_gains(self, vis):
         """
         This method should be able to apply the gains to an array at full time-frequency
         resolution. Should return the input array at full resolution after the application of the 
         gains.
         """
-        return
-           
+        for term in self.jones_terms[::-1]:
+            term.apply_gains(vis)
+        return vis
+
     def update_stats(self, flags, eqs_per_tf_slot):
         """
         This method should compute a variety of useful parameters regarding the conditioning and 
