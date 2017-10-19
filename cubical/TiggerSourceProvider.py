@@ -27,7 +27,7 @@ class TiggerSourceProvider(SourceProvider):
         self._tile = tile
         self._handler = tile.handler
         self._sm = Tigger.load(self._handler.sm_name)
-        self._phase_center = self._handler._phadir
+        self._phase_center = self._handler.phadir
         self._use_ddes = self._handler.use_ddes
 
         self._clusters = cluster_sources(self._sm, self._use_ddes)

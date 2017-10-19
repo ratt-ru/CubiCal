@@ -30,7 +30,7 @@ class MSSourceProvider(SourceProvider):
         self._name = "Measurement set '{ms}'".format(ms=self._ms_name)
 
         self._ntime = len(np.unique(self._tile.times))
-        self._nchan = self._handler._nchans[0]
+        self._nchan = self._handler.nfreq
         self._nants = self._handler.nants
         self._ncorr = self._handler.ncorr
         self._nbl   = (self._nants*(self._nants - 1))/2
@@ -55,7 +55,7 @@ class MSSourceProvider(SourceProvider):
                 ('npolchan', 4*self._nchan)]
 
     def frequency(self, context):
-        channels = self._handler._chanfr[self._ddids, :]
+        channels = self._handler._ddid_chanfreqs[self._ddids, :]
         return channels.reshape(context.shape).astype(context.dtype)
 
     def uvw(self, context):
@@ -115,8 +115,8 @@ class MSSourceProvider(SourceProvider):
         # Time and antenna extents
         (lt, ut), (la, ua) = context.dim_extents('ntime', 'na')
 
-        return mbu.parallactic_angles(np.unique(self._times[self.sort_ind])[lt:ut], self._handler._antpos[la:ua], 
-                    self._handler._phadir).reshape(context.shape).astype(context.dtype)
+        return mbu.parallactic_angles(np.unique(self._times[self.sort_ind])[lt:ut], self._handler.antpos[la:ua],
+                    self._handler.phadir).reshape(context.shape).astype(context.dtype)
 
     def __enter__(self):
         return self

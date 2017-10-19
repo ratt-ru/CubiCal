@@ -729,7 +729,7 @@ class ReadModelHandler:
 
         self.antpos   = _anttab.getcol("POSITION")
         self.antnames = _anttab.getcol("NAME")
-        # self._phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
+        self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
         self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
         
         if np.any([pol in self._poltype for pol in ['L','l','R','r']]):
