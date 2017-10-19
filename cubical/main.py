@@ -6,6 +6,13 @@
 Main code body. Handles options, invokes solvers and manages multiprocessing.
 """
 
+import logging 
+
+if 'vext' in logging.Logger.manager.loggerDict.keys():
+    for handler in logging.root.handlers:
+        logging.root.removeHandler(handler)
+    logging.getLogger('vext').setLevel(logging.WARNING)
+
 import cPickle
 import os
 import os.path

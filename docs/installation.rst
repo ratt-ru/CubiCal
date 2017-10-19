@@ -54,13 +54,6 @@ to install Montblanc. To install Montblanc, follow the instructions here_.
 
 .. _here: https://montblanc.readthedocs.io
 
-Additionally, for compatibility with Tigger sky models inside a virtual environment, 
-it is necessary to install vext.pyqy4:
-
-.. code:: bash
-
-	pip install vext.pyqt4
-
 CubiCal can now be installed by running the following:
 
 .. code:: bash
@@ -120,13 +113,6 @@ At this point, if CubiCal is required to predict model visiblities, it is necess
 to install Montblanc. To install Montblanc, follow the instructions here_.
 
 .. _here: https://montblanc.readthedocs.io
-
-Additionally, for compatibility with Tigger sky models inside a virtual environment, 
-it is necessary to install vext.pyqy4:
-
-.. code:: bash
-
-	pip install vext.pyqt4
 
 CubiCal can now be installed by running the following:
 
