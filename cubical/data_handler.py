@@ -17,14 +17,15 @@ from pdb import set_trace as BREAK  # useful: can set static breakpoints by putt
 # try to import montblanc: if not successful, remember error for later
 try:
     import montblanc
+    # all of these potentially fall over if Montblanc is the wrong version or something, so moving them here
+    # for now
+    from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
+    from cubical.TiggerSourceProvider import TiggerSourceProvider
+    from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
 except:
     montblanc = None
     montblanc_import_error = sys.exc_info()
 
-if montblanc is not None:
-    from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
-    from cubical.TiggerSourceProvider import TiggerSourceProvider
-    from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("data_handler")
@@ -760,8 +761,8 @@ class ReadModelHandler:
         # apply the slices to each spw
         self._ddid_spw = _ddesctab.getcol("SPECTRAL_WINDOW_ID")
         ddid_chanfreqs = [ self._spw_chanfreqs[self._ddid_spw[ddid]] for ddid in self._ddids]
-        nchan = len(ddid_chanfreqs[0])
-        if not all([len(fq) == nchan for fq in ddid_chanfreqs]):
+        self._nchan_orig = len(ddid_chanfreqs[0])
+        if not all([len(fq) == self._nchan_orig for fq in ddid_chanfreqs]):
             raise ValueError("Selected DDIDs do not have a uniform number of channels. This is not currently supported.")
         self._ddid_chanfreqs = np.array([fq[self._channel_slice] for fq in ddid_chanfreqs])
         self.nfreq = len(self._ddid_chanfreqs[0])
@@ -932,12 +933,23 @@ class ReadModelHandler:
 
     def putslice(self, column, value, startrow, nrows):
         """
-        The put equivalent of fetch
+        The put equivalent of fetchslice
         """
+        # if no slicing, just use putcol to put the whole thing. This always works,
+        # unless the MS is screwed up
         if self._channel_slice == slice(None):
             return self.data.putcol(column, value, startrow, nrows)
-        return self.data.putcolslice(column, value, self._ms_blc, self._ms_trc, [], startrow, nrows)
-
+        # A variable-shape column may be uninitialized, in which case putcolslice will not work.
+        # But we try it first anyway, especially if the first row of the block looks initialized
+        if self.data.iscelldefined(column, startrow):
+            try:
+                return self.data.putcolslice(column, value, self._ms_blc, self._ms_trc, [], startrow, nrows)
+            except Exception, exc:
+                pass
+        print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
+        value0 = np.zeros((nrows, self._nchan_orig, value.shape[2]), value.dtype)
+        value0[:, self._channel_slice, :] = value
+        return self.data.putcol(column, value0, startrow, nrows)
 
     def define_chunk(self, tdim=1, fdim=1, chunk_by=None, chunk_by_jump=0, min_chunks_per_tile=4):
         """
