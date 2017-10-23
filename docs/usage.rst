@@ -93,3 +93,7 @@ command line argument), and specifying ncpu. basic.parset would then look as fol
 
 	[dist]
 	ncpu = 4
+
+Note that a parset can be combined with options specified on the command line - the 
+command line options will take precedence, making it easy to experiment without 
+having to create a new parset.

@@ -248,11 +248,13 @@ def flag_chisq (st, GD, basename, nddid):
         import pylab
         pylab.figure(figsize=(32, 10))
         pylab.subplot(161)
-        pylab.imshow(chi2, vmin=0, vmax=5 * median)
+        if chi2.count():
+            pylab.imshow(chi2, vmin=0, vmax=5 * median)
         pylab.title("$\chi^2$")
         pylab.colorbar()
         pylab.subplot(162)
-        pylab.imshow(chi2n)
+        if chi2n.count():
+            pylab.imshow(chi2n)
         pylab.title("counts")
         pylab.colorbar()
 
@@ -264,7 +266,8 @@ def flag_chisq (st, GD, basename, nddid):
 
     if make_plots:
         pylab.subplot(163)
-        pylab.imshow(chi2)
+        if chi2.count():
+            pylab.imshow(chi2)
         pylab.title("$\chi^2$ median flagged")
         pylab.colorbar()
 
@@ -277,7 +280,8 @@ def flag_chisq (st, GD, basename, nddid):
     chi2[flag] = np.ma.masked
     if make_plots:
         pylab.subplot(164)
-        pylab.imshow(chi2)
+        if chi2.count():
+            pylab.imshow(chi2)
         pylab.title("counts flagged")
         pylab.colorbar()
 
@@ -299,7 +303,8 @@ def flag_chisq (st, GD, basename, nddid):
     chi2[flag] = np.ma.masked
     if make_plots:
         pylab.subplot(165)
-        pylab.imshow(chi2)
+        if chi2.count():
+            pylab.imshow(chi2)
         pylab.title("overdense flagged")
         pylab.colorbar()
 
@@ -317,8 +322,9 @@ def flag_chisq (st, GD, basename, nddid):
     chi2[flag] = np.ma.masked
     if make_plots:
         pylab.subplot(166)
-        pylab.imshow(chi2)
         pylab.title("overdense DDID")
+        if chi2.count():
+            pylab.imshow(chi2)
         pylab.colorbar()
         filename = basename+".chiflag.png"
         pylab.savefig(filename, DPI=plots.DPI)
