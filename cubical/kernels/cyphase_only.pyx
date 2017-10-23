@@ -28,7 +28,6 @@ provided. Common dimensions of arrays are:
 
 """
 
-from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
 import cython
