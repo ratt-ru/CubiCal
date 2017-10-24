@@ -34,7 +34,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
     def compute_js(self, obser_arr, model_arr):
         """
-        This function computes the (J^H)WR term of the GN/LM method for the
+        This function computes the (J^H)WR term of the weighted GN/LM method for the
         full-polarisation, phase-only case.
 
         Args:
@@ -43,7 +43,10 @@ class ComplexW2x2Gains(PerIntervalGains):
             gains (np.array): Array containing the current gain estimates.
 
         Returns:
-            jhwr (np.array): Array containing the result of computing (J^H)R.
+            Returns:
+            jhwr (np.array): Array containing the result of computing (J^H)WR.
+            jhwjinv (np.array): Array containing the result of computing (J^HW.J)^-1
+            flag_count:     Number of flagged (ill-conditioned) elements
         """
         w = self.weights
         
@@ -79,14 +82,14 @@ class ComplexW2x2Gains(PerIntervalGains):
 
     def compute_update(self, model_arr, obser_arr):
         """
-        This function computes the update step of the GN/LM method. This is
-        equivalent to the complete (((J^H)J)^-1)(J^H)R.
+        This function computes the update step of the weighted GN/LM method. This is
+        equivalent to the complete (((J^H)WJ)^-1)(J^H)WR.
 
         Args:
             obser_arr (np.array): Array containing the observed visibilities.
             model_arr (np.array): Array containing the model visibilities.
             gains (np.array): Array containing the current gain estimates.
-            jhjinv (np.array): Array containing (J^H)J)^-1. (Invariant)
+            jhwjinv (np.array): Array containing (J^H)WJ)^-1. (Invariant)
 
         Returns:
             update (np.array): Array containing the result of computing
@@ -126,6 +129,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         covinv = self.compute_covinv(residuals)
         
         self.weights, self.v = self.update_weights(residuals, covinv, self.weights, self.v)
+
+        self.restrict_solution()
 
         return flag_count
 
@@ -167,11 +172,11 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         Args:
             residuals (np.array) : Array containing the residuals.
-                              Shape is n_dir, n_tim, n_fre, n_ant, a_ant, n_cor, n_cor
+                Shape is n_dir, n_tim, n_fre, n_ant, a_ant, n_cor, n_cor
 
         Returns:
             covinv (np.array) : Shape is ncor*n_cor x ncor*n_cor (4x4)
-            Array containing the diagonal elements of the inverse covariance matrix
+            Array containing the inverse covariance matrix
         """
 
         N = self.n_tim*self.n_fre*self.n_ant*self.n_ant
@@ -192,10 +197,30 @@ class ComplexW2x2Gains(PerIntervalGains):
 		"""
 		This computes the weights, given the latest residual visibilities and the v parameter.
 		w[i] = (v+8)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
+        
+        Args:
+            r (np.array): Array of the residual visibilities.
+            covinc (np.array) : Array containing the inverse of 
+               covariance of residual visibilities
+            w (np.array): Array containing the weights
+            v (float) : v -- number of degrees of freedom
+
+        Returns:
+            w (np.array) : new weights
+            v (float) : new value for v
+
 		"""
         
 		def  _brute_solve_v(f, low, high):
-			"""finds the value of v by brute for using Gauss newton method"""
+			"""Finds a root for the function f constraint between low and high
+            Args:
+                f (callable) : function
+                low (float): lower bound
+                high (float): upper bound
+
+            Returns:
+                root (float) : The root of f or minimum point    
+            """
 			root = None  # Initialization
 			x = np.linspace(low, high, 100) #constraint the root to be between 2 and 30
 			y = f(x)
@@ -270,3 +295,11 @@ class ComplexW2x2Gains(PerIntervalGains):
         cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
 
         return model_arr
+
+    def restrict_solution(self):
+        
+        PerIntervalGains.restrict_solution(self)
+
+        if self.ref_ant is not None:
+            phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
+            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]

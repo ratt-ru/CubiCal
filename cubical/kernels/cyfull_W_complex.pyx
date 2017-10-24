@@ -127,7 +127,7 @@ def cycompute_jhwr(complex3264 [:,:,:,:,:,:,:,:] jh,
                   int f_int):
 
     """
-    This computes the jhwr term on the weigted GN/LM method. Note that while jh is indexed by model, the 
+    This computes the jhwr term of the weigted GN/LM method. Note that while jh is indexed by model, the 
     resulting jhwr has no model index. 
     """
 
@@ -175,7 +175,7 @@ def cycompute_jhwj(complex3264[:,:,:,:,:,:,:,:] jh,
                   int f_int):
 
     """
-    This computes the approximation to the Hessian, jhj. 
+    This computes the approximation to the weighted Hessian, jhwj. 
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -326,6 +326,8 @@ def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
     expression w[i] = (v+8)/(v + 2*r[i].T.cov.r[i])
     r: the reisudals
     cov : the weigted covariance matrix
+    w : weights
+    v : v (degrees of freedom of the t-distribution)
     """
 
     cdef int d, t, f, aa, ab = 0
