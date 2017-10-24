@@ -37,6 +37,7 @@ class Complex2x2Gains(PerIntervalGains):
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
         self.old_gains = self.gains.copy()
+        self.iter_type = options["iter-type"]
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -115,12 +116,24 @@ class Complex2x2Gains(PerIntervalGains):
         if model_arr.shape[0]>1:
             update = self.gains + update
 
-        if self.iters % 2 == 0 or self.n_dir>1:
-            self.gains = 0.5*(self.gains + update)
+        if self.iter_type == "both_avg":
+            #print "in both avg"
+            if self.iters % 2 == 0 or self.n_dir>1 :
+                self.gains = 0.5*(self.gains + update)
+            else:
+                self.gains = update
+        elif self.iter_type == "single_avg":
+            #print "in single avg"
+            if self.iters % 2 == 0 :
+                self.gains = 0.5*(self.gains + update)
+            else:
+               self.gains = update
         else:
-            self.gains = update
+            #print "no avg mode"
+            self.gains = update  
 
-        self.restrict_solution()
+
+        #self.restrict_solution()
 
         return flag_count
 
