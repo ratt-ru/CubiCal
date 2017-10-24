@@ -194,7 +194,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
     def update_weights(self, r, covinv, w, v):
         
-		"""
+	   """
 		This computes the weights, given the latest residual visibilities and the v parameter.
 		w[i] = (v+8)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
         
