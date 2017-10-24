@@ -115,6 +115,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         fstats = ""
 
         for flag, mask in FL.categories().iteritems():
+            n_vis2x2 = 100. #TODO remove this when n_vis2x2 is fixed
 
             n_flag = np.sum((flags_arr & mask) != 0)
             fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./flags_arr.size)) if n_flag else ""
