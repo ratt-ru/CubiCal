@@ -30,8 +30,6 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.v = 2.
 
-        self.iter_type = options["iter-type"]
-
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J^H)WR term of the weighted GN/LM method for the
@@ -106,22 +104,11 @@ class ComplexW2x2Gains(PerIntervalGains):
         if model_arr.shape[0]>1 or self.n_dir>1:
 			update = self.gains + update
 
-        if self.iter_type == "both_avg":
-            #print "in both avg"
-            if self.iters % 2 == 0 or self.n_dir>1 :
-                self.gains = 0.5*(self.gains + update)
-            else:
-                self.gains = update
-        elif self.iter_type == "single_avg":
-            #print "in single avg"
-            if self.iters % 2 == 0 :
-                self.gains = 0.5*(self.gains + update)
-            else:
-               self.gains = update
+        if self.iters % 2 == 0 or self.n_dir>1 :
+            self.gains = 0.5*(self.gains + update)
         else:
-            #print "no avg mode"
-            self.gains = update  
-
+            self.gains = update
+        
         #Computing the weights
         resid_arr = np.empty_like(obser_arr)
         residuals = self.compute_residual(obser_arr, model_arr, resid_arr)
@@ -194,8 +181,8 @@ class ComplexW2x2Gains(PerIntervalGains):
 
     def update_weights(self, r, covinv, w, v):
         
-	   """
-		This computes the weights, given the latest residual visibilities and the v parameter.
+        """
+	   This computes the weights, given the latest residual visibilities and the v parameter.
 		w[i] = (v+8)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
         
         Args:
@@ -209,9 +196,9 @@ class ComplexW2x2Gains(PerIntervalGains):
             w (np.array) : new weights
             v (float) : new value for v
 
-		"""
+	   """
         
-		def  _brute_solve_v(f, low, high):
+	   def  _brute_solve_v(f, low, high):
 			"""Finds a root for the function f constraint between low and high
             Args:
                 f (callable) : function
