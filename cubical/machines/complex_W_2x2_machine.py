@@ -182,24 +182,23 @@ class ComplexW2x2Gains(PerIntervalGains):
     def update_weights(self, r, covinv, w, v):
         
         """
-	   This computes the weights, given the latest residual visibilities and the v parameter.
-		w[i] = (v+8)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
+            This computes the weights, given the latest residual visibilities and the v parameter.
+            w[i] = (v+8)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
         
-        Args:
-            r (np.array): Array of the residual visibilities.
-            covinc (np.array) : Array containing the inverse of 
+            Args:
+                r (np.array): Array of the residual visibilities.
+                covinc (np.array) : Array containing the inverse of 
                covariance of residual visibilities
-            w (np.array): Array containing the weights
-            v (float) : v -- number of degrees of freedom
+                w (np.array): Array containing the weights
+                v (float) : v -- number of degrees of freedom
 
-        Returns:
-            w (np.array) : new weights
-            v (float) : new value for v
-
+            Returns:
+                w (np.array) : new weights
+                v (float) : new value for v
 	   """
         
-	   def  _brute_solve_v(f, low, high):
-			"""Finds a root for the function f constraint between low and high
+        def  _brute_solve_v(f, low, high):
+            """Finds a root for the function f constraint between low and high
             Args:
                 f (callable) : function
                 low (float): lower bound
@@ -208,42 +207,42 @@ class ComplexW2x2Gains(PerIntervalGains):
             Returns:
                 root (float) : The root of f or minimum point    
             """
-			root = None  # Initialization
-			x = np.linspace(low, high, 100) #constraint the root to be between 2 and 30
-			y = f(x)
+            root = None  # Initialization
+            x = np.linspace(low, high, 100) #constraint the root to be between 2 and 30
+            y = f(x)
     
-			for i in range(len(x)-1):
-				if y[i]*y[i+1] < 0:
-					root = x[i] - (x[i+1] - x[i])/(y[i+1] - y[i])*y[i]
-					break  # Jump out of loop
-				elif y[i] == 0:       
-					root = x[i]
-					break  # Jump out of loop
+            for i in range(len(x)-1):
+                if y[i]*y[i+1] < 0:
+                    root = x[i] - (x[i+1] - x[i])/(y[i+1] - y[i])*y[i]
+                    break  # Jump out of loop
+                elif y[i] == 0:       
+                    root = x[i]
+                    break  # Jump out of loop
 
-			if root is None:
-				dist = np.abs(y)
-				root = x[np.argmin(dist)]
-				return root
-			else:
-				return root
+            if root is None:
+                dist = np.abs(y)
+                root = x[np.argmin(dist)]
+                return root
+            else:
+                return root
 
-		cyfull.cycompute_weights(r,covinv,w,v)
+        cyfull.cycompute_weights(r,covinv,w,v)
 
-		#---------normalising the weights to mean 1 --------------------------#
+        #---------normalising the weights to mean 1 --------------------------#
 
-		norm = np.average(np.real(w.flatten()))
-		w = w/norm              
+        norm = np.average(np.real(w.flatten()))
+        w = w/norm              
 
-		#-----------computing the v parameter---------------------#
+        #-----------computing the v parameter---------------------#
        
-		wn = np.real(w.flatten())
-		m = len(wn)
+        wn = np.real(w.flatten())
+        m = len(wn)
 
-		vfunc = lambda a: special.digamma(0.5*(a+8)) - np.log(0.5*(a+8)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
+        vfunc = lambda a: special.digamma(0.5*(a+8)) - np.log(0.5*(a+8)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
 
-		v = _brute_solve_v(vfunc, 2, 30)
+        v = _brute_solve_v(vfunc, 2, 30)
         
-		return w, v 
+        return w, v 
 
     def apply_inv_gains(self, obser_arr, corr_vis=None):
         """
