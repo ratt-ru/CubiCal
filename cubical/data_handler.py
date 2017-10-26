@@ -982,7 +982,7 @@ class ReadModelHandler:
             mblogger = logging.getLogger("montblanc")
             mblogger.propagate = False
             # NB: this assume that the first handler of the Montblanc logger is the console logger
-            mblogger.handlers[0].setLevel(getattr(logging, mb_opts["log-level"]))
+            mblogger.handlers[0].setLevel(getattr(logging, mb_opts["verbosity"]))
 
 
 
