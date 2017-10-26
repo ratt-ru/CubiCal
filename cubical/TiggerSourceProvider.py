@@ -21,16 +21,18 @@ import pyrap.tables as pt
 class TiggerSourceProvider(SourceProvider):
     """ Simulates sources provided by a Tigger sky model. """
 
-    def __init__(self, tile):
+    def __init__(self, lsm, phase_center, dde_tag='dE'):
         """ Simulate sources in different directions """
 
-        self._tile = tile
-        self._handler = tile.handler
-        self._sm = Tigger.load(self._handler.sm_name)
-        self._phase_center = self._handler.phadir
-        self._use_ddes = self._handler.use_ddes
+#        self._tile = tile
+#        self._handler = tile.handler
+        self.filename = lsm
+        self._sm = Tigger.load(lsm)
+        self._phase_center = phase_center
+        self._use_ddes = bool(dde_tag)
+        self._dde_tag = dde_tag
 
-        self._clusters = cluster_sources(self._sm, self._use_ddes)
+        self._clusters = cluster_sources(self._sm, dde_tag)
         self._cluster_keys = self._clusters.keys()
         self._nclus = len(self._cluster_keys)
 
@@ -53,7 +55,7 @@ class TiggerSourceProvider(SourceProvider):
             self._ngsrc = len(self._gau_sources)
 
     def name(self):
-        return "Tigger sky model source provider"
+        return self.filename
 
     def point_lm(self, context):
         """ Return a lm coordinate array to montblanc """
@@ -203,13 +205,13 @@ class TiggerSourceProvider(SourceProvider):
         return [('npsrc', self._npsrc),
                 ('ngsrc', self._ngsrc)]
 
-def cluster_sources(sm, use_ddes):
+def cluster_sources(sm, dde_tag):
 
     ddes = {'True': [], 'False': []}
 
     for s in sm.sources:
-        if use_ddes:
-            ddes['True'].append(s) if (s.getTag('dE')==True) \
+        if dde_tag:
+            ddes['True'].append(s) if (s.getTag(dde_tag)==True) \
                 else ddes['False'].append(s)
         else:
             ddes['False'].append(s)

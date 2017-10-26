@@ -13,6 +13,8 @@ import multiprocessing
 # global verbosity level
 verbosity = 0
 
+# application name, used as the base of the logger
+app_name = "app"
 
 class NullWriter(object):
     """A null writer ignores messages"""
@@ -159,16 +161,12 @@ class MyLogger():
 
     def getLogger(self, name, verbose=None):
 
-        if not(name in self.Dico.keys()):
-            logger = logging.getLogger(name)
+        if name not in self.Dico:
+            logger = logging.getLogger("{}.{}".format(app_name, name))
             logger.addFilter(self._myfilter)
-            fp = LoggerWriter(logger, logging.INFO, verbose)
-            self.Dico[name]=fp
-            
-        #self.Dico[name].logger.log(logging.DEBUG, "Get Logger for: %s"%name)
-        log=self.Dico[name]
+            self.Dico[name] = LoggerWriter(logger, logging.INFO, verbose)
 
-        return log
+        return self.Dico[name]
 
 
 
