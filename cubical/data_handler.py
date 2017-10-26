@@ -9,6 +9,9 @@ import cPickle
 import re
 import traceback
 import sys
+import os.path
+import logging
+
 from cubical.tools import shared_dict
 import cubical.flagging as flagging
 from cubical.flagging import FL
@@ -28,7 +31,7 @@ except:
 
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("data_handler")
+log = logger.getLogger("data_handler", 1)
 
 def _parse_slice(arg, what="slice"):
     """Helper function. Parses an string argument into a slice. 
@@ -202,78 +205,102 @@ class Tile(object):
         
         nrows = self.last_row - self.first_row + 1
         
-        data['obvis'] = self.handler.fetchslice(self.handler.data_column, self.first_row, nrows).astype(self.handler.ctype)
+        data['obvis'] = obvis = self.handler.fetchslice(self.handler.data_column, self.first_row, nrows).astype(self.handler.ctype)
         print>> log(2), "  read " + self.handler.data_column
 
-        data['uvwco'] = uvw = self.handler.fetch("UVW", self.first_row, nrows)
+        self.uvwco = uvw = data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
         print>> log(2), "  read UVW coordinates"
 
         if load_model:
-            if self.handler.sm_name:
+            model_shape = [ len(self.handler.model_directions), len(self.handler.models) ] + list(obvis.shape)
+            loaded_models = {}
+            expected_nrows = None
+            movis = data.addSharedArray('movis', model_shape, self.handler.ctype)
 
-                print>>log, "computing model visibilities"
+            for imod, (dirmodels, _) in enumerate(self.handler.models):
+                # populate directions of this model
+                for idir,dirname in enumerate(self.handler.model_directions):
+                    if dirname in dirmodels:
+                        # loop over additive components
+                        for model_source, cluster in dirmodels[dirname]:
+                            # see if data for this model is already loaded
+                            if model_source in loaded_models:
+                                print>>log(1),"  reusing {}{} for model {} direction {}".format(model_source,
+                                                "" if not cluster else ("()" if cluster == 'die' else "({})".format(cluster)),
+                                                imod, idir)
+                                model = loaded_models[model_source][cluster]
+                            # cluster of None signifies that this is a visibility column
+                            elif cluster is None:
+                                print>>log(0),"  reading {} for model {} direction {}".format(model_source, imod, idir)
+                                model = self.handler.fetchslice(model_source, self.first_row, nrows)
+                                loaded_models.setdefault(model_source, {})[None] = model
+                            # else evaluate a Tigger model with Montblanc
+                            else:
+                                # massage data into Montblanc-friendly shapes
+                                if expected_nrows is None:
+                                    expected_nrows, sort_ind, row_identifiers = self.prep_for_montblanc()
+                                    measet_src = MSSourceProvider(self, self.uvwco, sort_ind)
+                                    cached_ms_src = CachedSourceProvider(measet_src, cache_data_sources=["parallactic_angles"],
+                                                                         clear_start=False, clear_stop=False)
+                                    if self.handler.beam_pattern:
+                                        arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
+                                                                            self.handler.beam_l_axis,
+                                                                            self.handler.beam_m_axis)
 
-                expected_nrows, sort_ind, row_identifiers = self.prep_data(data)
+                                print>>log(0),"  computing visibilities for {}".format(model_source)
+                                # setup Montblanc computation for this LSM
+                                tigger_source = model_source
+                                cached_src = CachedSourceProvider(tigger_source, clear_start=True, clear_stop=True)
+                                srcs = [cached_ms_src, cached_src]
+                                if self.handler.beam_pattern:
+                                    srcs.append(arbeam_src)
 
-                srcs, snks = [], []
+                                # make a sink with an array to receive visibilities
+                                ndirs = model_source._nclus
+                                model_shape = (ndirs, 1, expected_nrows, self.nchan, self.ncorr)
+                                full_model = np.zeros(model_shape, self.handler.ctype)
+                                column_snk = ColumnSinkProvider(self, full_model, sort_ind)
+                                snks = [ column_snk ]
 
-                measet_src = MSSourceProvider(self, data, sort_ind)
-                tigger_src = TiggerSourceProvider(self)
-                cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
-                cached_ms_src = CachedSourceProvider(measet_src, cache_data_sources=["parallactic_angles"],
-                                                        clear_start=False, clear_stop=False)
+                                for direction in xrange(ndirs):
+                                    simulate(srcs, snks, self.handler.mb_opts)
+                                    tigger_source.update_target()
+                                    column_snk._dir += 1
 
-                srcs.append(cached_ms_src)
-                srcs.append(cached_src)
+                                # now associate each cluster in the LSM with an entry in the loaded_models cache
+                                loaded_models[model_source] = {
+                                    clus: full_model[i, 0, row_identifiers, :, :]
+                                    for i, clus in enumerate(tigger_source._cluster_keys) }
 
-                if self.handler.beam_pattern:
-                    arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
-                                                        self.handler.beam_l_axis,
-                                                        self.handler.beam_m_axis)
-                    srcs.append(arbeam_src)
+                                model = loaded_models[model_source][cluster]
+                                print>> log(1), "  using {}{} for model {} direction {}".format(model_source,
+                                                  "" if not cluster else
+                                                        ("()" if cluster == 'die' else "({})".format(cluster)),
+                                                  imod, idir)
 
-                ndirs = tigger_src._nclus
-                model_shape = np.array([ndirs, 1, expected_nrows, self.nchan, self.ncorr])
+                            # finally, add model in at correct slot
+                            movis[idir, imod, ...] += model
 
-                data.addSharedArray('movis', model_shape, self.handler.ctype)
+            del loaded_models
+            # if data was massaged for Montblanc shape, back out of that
+            if expected_nrows is not None:
+                self.unprep_for_montblanc(nrows)
 
-                column_snk = ColumnSinkProvider(self, data, sort_ind)
-
-                snks.append(column_snk)
-
-                for direction in xrange(ndirs):
-                    print>>log(2), "simulating visbilities in direction {}.".format(direction)
-                    simulate(srcs, snks, self.handler.mb_opts)
-                    tigger_src.update_target()
-                    column_snk._dir += 1
-
-                self.unprep_data(data, nrows)
-
-                data['movis'] = data['movis'][:,:,row_identifiers,:,:]
-
-            elif self.handler.model_column:
-                print>>log, "no LSM specified, reading {} only".format(self.handler.model_column)
-                model_shape = [1,1] + list(data['obvis'].shape)
-                data.addSharedArray('movis', model_shape, self.handler.ctype)
-
-            else:
-                raise RuntimeError("neither --model-lsm nor --model-column set")
-
-            if self.handler.model_column:
-
-                data['movis'][0,0,...] += self.handler.fetchslice(self.handler.model_column, self.first_row,
-                                                                nrows).astype(self.handler.ctype)
-
-                print>> log(2), "  read " + self.handler.model_column
-
-            if self.handler.weight_column:
-                weight = self.handler.fetch(self.handler.weight_column, self.first_row, nrows)
-                # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
-                if self.handler.weight_column == "WEIGHT":
-                    data['weigh'] = weight[:, np.newaxis, :].repeat(self.handler.nfreq, 1)
-                else:
-                    data['weigh'] = weight[:, self.handler._channel_slice, :]
-                print>> log(2), "  read weights from column {}".format(self.handler.weight_column)
+            # read weight columns
+            if self.handler.has_weights:
+                weights = data.addSharedArray('weigh', [ len(self.handler.models) ] + list(obvis.shape), self.handler.ftype)
+                wcol_cache = {}
+                for i, (_, weight_col) in enumerate(self.handler.models):
+                    if weight_col not in wcol_cache:
+                        print>> log(1), "  reading weights from {}".format(weight_col)
+                        wcol = self.handler.fetch(weight_col, self.first_row, nrows)
+                        # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
+                        if weight_col == "WEIGHT":
+                            wcol_cache[weight_col] = wcol[:, np.newaxis, :].repeat(self.handler.nfreq, 1)
+                        else:
+                            wcol_cache[weight_col] = wcol[:, self.handler._channel_slice, :]
+                    weights[i, ...] = wcol_cache[weight_col]
+                del wcol_cache
 
         data.addSharedArray('covis', data['obvis'].shape, self.handler.ctype)
 
@@ -356,7 +383,7 @@ class Tile(object):
 
         return data
 
-    def prep_data(self, data):
+    def prep_for_montblanc(self):
 
         # Given data, we need to make sure that it looks the way MB wants it to.
         # First step - check the number of rows.
@@ -414,7 +441,7 @@ class Tile(object):
             missing_t = np.array(missing_t)
             missing_ddids = np.array(missing_ddids)
 
-            data['uvwco'] = np.concatenate((data['uvwco'], missing_uvw))
+            self.uvwco = np.concatenate((self.uvwco, missing_uvw))
             self.antea = np.concatenate((self.antea, missing_antea))
             self.anteb = np.concatenate((self.anteb, missing_anteb))
             self.time_col = np.concatenate((self.time_col, missing_t))
@@ -436,9 +463,9 @@ class Tile(object):
 
         return expected_nrows, sorted_ind, row_identifiers
 
-    def unprep_data(self, data, nrows):
+    def unprep_for_montblanc(self, nrows):
 
-            data['uvwco'] = data['uvwco'][:nrows,...]
+            self.uvwco = self.uvwco[:nrows,...]
             self.antea = self.antea[:nrows]
             self.anteb = self.anteb[:nrows]
             self.time_col = self.time_col[:nrows]
@@ -690,21 +717,13 @@ class Tile(object):
 
 class ReadModelHandler:
 
-    def __init__(self, ms_name, data_column, sm_name, model_column, output_column=None,
-                 taql=None, fid=None, ddid=None, channels=None, flagopts={}, double_precision=False, ddes=False,
-                 weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
-                 active_subset=None, min_baseline=0, max_baseline=0,
+    def __init__(self, ms_name, data_column, models, output_column=None,
+                 taql=None, fid=None, ddid=None, channels=None, flagopts={}, double_precision=False,
+                 weights=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
+                 active_subset=None, min_baseline=0, max_baseline=0, use_ddes=True,
                  mb_opts=None):
 
-        if montblanc is None and sm_name:
-            print>>log, ModColor.Str("Error importing Montblanc: ")
-            for line in traceback.format_exception(*montblanc_import_error):
-                print>>log, "  "+ModColor.Str(line)
-            print>>log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
-            raise RuntimeError("Error importing Montblanc")
-
         self.ms_name = ms_name
-        self.sm_name = sm_name
         self.mb_opts = mb_opts
         self.beam_pattern = beam_pattern
         self.beam_l_axis = beam_l_axis
@@ -715,6 +734,7 @@ class ReadModelHandler:
         self.ms = pt.table(self.ms_name, readonly=False, ack=False)
 
         print>>log, ModColor.Str("reading MS %s"%self.ms_name, col="green")
+
 
         _anttab = pt.table(self.ms_name + "::ANTENNA", ack=False)
         _fldtab = pt.table(self.ms_name + "::FIELD", ack=False)
@@ -815,11 +835,7 @@ class ReadModelHandler:
 
 
         self.data_column = data_column
-        self.model_column = model_column
-        self.weight_column = weight_column
         self.output_column = output_column
-        self.simulate = bool(self.sm_name)
-        self.use_ddes = ddes
 
         # figure out flagging situation
         if "BITFLAG" in self.ms.colnames():
@@ -890,6 +906,85 @@ class ReadModelHandler:
                 print>> log, ModColor.Str("No flags will be read, since --flags-apply was not set.")
 
         self.gain_dict = {}
+
+        # now parse the model composition
+
+        # ensure we have as many weights as models
+        self.has_weights = weights is not None
+        if weights is None:
+            weights = [None] * len(models)
+        elif len(weights) == 1:
+            weights = weights*len(models)
+        elif len(weights) != len(models):
+            raise ValueError,"need as many sets of weights as there are models"
+
+        self.models = []
+        self.model_directions = set() # keeps track of directions in Tigger models
+        for imodel, (model, weight_col) in enumerate(zip(models, weights)):
+            # list of per-direction models
+            dirmodels = {}
+            self.models.append((dirmodels, weight_col))
+            for idir, dirmodel in enumerate(model.split(":")):
+                if not dirmodel:
+                    continue
+                idirtag = " dir{}".format(idir if use_ddes else 0)
+                for component in dirmodel.split("+"):
+                    if component.startswith("./") or component not in self.ms.colnames():
+                        # check if LSM ends with @tag specification
+                        if "@" in component:
+                            component, tag = component.rsplit("@",1)
+                        else:
+                            tag = "dE"
+                        if os.path.exists(component):
+                            if montblanc is None:
+                                print>> log, ModColor.Str("Error importing Montblanc: ")
+                                for line in traceback.format_exception(*montblanc_import_error):
+                                    print>> log, "  " + ModColor.Str(line)
+                                print>> log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
+                                raise RuntimeError("Error importing Montblanc")
+
+                            component = TiggerSourceProvider(component, self.phadir, dde_tag=use_ddes and tag)
+                            for key in component._cluster_keys:
+                                dirname = idirtag if key == 'die' else key
+                                dirmodels.setdefault(dirname, []).append((component, key))
+                        else:
+                            raise ValueError,"model component {} is neither a valid LSM nor an MS column".format(component)
+                    else:
+                        dirmodels.setdefault(idirtag, []).append((component, None))
+            self.model_directions.update(dirmodels.iterkeys())
+        # Now, each model is a dict of dirmodels, keyed by direction name (unnamed directions are _dir0, _dir1, etc.)
+        # Get all possible direction names
+        self.model_directions = sorted(self.model_directions)
+
+        # print out the results
+        print>>log(0),ModColor.Str("Using {} model(s) for {} directions(s){}".format(
+                                        len(self.models),
+                                        len(self.model_directions),
+                                        " (DDEs explicitly disabled)" if not use_ddes else""),
+                                   col="green")
+        for imod, (dirmodels, weight_col) in enumerate(self.models):
+            print>>log(1),"  model {} (weight {}):".format(imod, weight_col)
+            for idir, dirname in enumerate(self.model_directions):
+                if dirname in dirmodels:
+                    comps = []
+                    for comp, tag in dirmodels[dirname]:
+                        if not tag or tag == 'die':
+                            comps.append("{}".format(comp))
+                        else:
+                            comps.append("{}({})".format(tag, comp))
+                    print>>log(1),"    direction {}: {}".format(idir, " + ".join(comps))
+                else:
+                    print>>log(1),"    direction {}: empty".format(idir)
+
+        self.use_ddes = len(self.model_directions) > 1
+
+        if montblanc is not None:
+            mblogger = logging.getLogger("montblanc")
+            mblogger.propagate = False
+            # NB: this assume that the first handler of the Montblanc logger is the console logger
+            mblogger.handlers[0].setLevel(getattr(logging, mb_opts["log-level"]))
+
+
 
     def build_taql(self, taql=None, fid=None, ddid=None):
 

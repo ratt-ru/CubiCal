@@ -21,25 +21,24 @@ from montblanc.impl.rime.tensorflow.sinks import (SinkProvider,
                                                   MSSinkProvider)
 
 class MSSourceProvider(SourceProvider):
-    def __init__(self, tile, data, sort_ind):
+    def __init__(self, tile, uvw, sort_ind):
 
-        self._tile = tile
         self._handler = tile.handler
         self._ms = self._handler.ms
         self._ms_name = self._handler.ms_name
         self._name = "Measurement set '{ms}'".format(ms=self._ms_name)
 
-        self._ntime = len(np.unique(self._tile.times))
+        self._ntime = len(np.unique(tile.times))
         self._nchan = self._handler.nfreq
         self._nants = self._handler.nants
         self._ncorr = self._handler.ncorr
         self._nbl   = (self._nants*(self._nants - 1))/2
-        self._times = self._tile.time_col
-        self._antea = self._tile.antea
-        self._anteb = self._tile.anteb
-        self._ddids = self._tile.ddids
-        self._nddid = len(self._tile.ddids)
-        self._uvwco = data['uvwco']
+        self._times = tile.time_col
+        self._antea = tile.antea
+        self._anteb = tile.anteb
+        self._ddids = tile.ddids
+        self._nddid = len(tile.ddids)
+        self._uvwco = uvw                  #  data['uvwco']
         self.sort_ind = sort_ind
 
     def name(self):
@@ -95,7 +94,11 @@ class MSSourceProvider(SourceProvider):
         for ti, t in enumerate(xrange(t_low, t_high)):
             # Inspection confirms that this achieves the same effect as
             # ant_uvw[ti,1:na,:] = ...getcol(UVW, ...).reshape(na-1, -1)
-            ant_uvw[ti,1:na,:] = self._uvwco[self.sort_ind, ...][t*nbl:t*nbl+na-1, :]
+            try:
+                ant_uvw[ti,1:na,:] = self._uvwco[self.sort_ind, ...][t*nbl:t*nbl+na-1, :]
+            except:
+                print ti,self.sort_ind,max(self.sort_ind),t,nbl,na
+                raise
 
         return ant_uvw
 
@@ -129,9 +132,9 @@ class MSSourceProvider(SourceProvider):
 
 
 class ColumnSinkProvider(SinkProvider):
-    def __init__(self, tile, data, sort_ind):
+    def __init__(self, tile, model, sort_ind):
         self._tile = tile
-        self._data = data
+        self._model = model
         self._handler = tile.handler
         self._ncorr = self._handler.ncorr
         self._name = "Measurement Set '{ms}'".format(ms=self._handler.ms_name)
@@ -166,7 +169,7 @@ class ColumnSinkProvider(SinkProvider):
             ur = upper + offset
             lc = ddid_ind*chan_per_ddid
             uc = (ddid_ind+1)*chan_per_ddid
-            self._data['movis'][self._dir, 0, lr:ur, :, :] = \
+            self._model[self._dir, 0, lr:ur, :, :] = \
                     context.data[:,:,lc:uc,sel].reshape(-1, chan_per_ddid, self._ncorr)
 
     def __str__(self):
@@ -177,9 +180,6 @@ _mb_slvr = None
 def simulate(src_provs, snk_provs, opts):
 
     global _mb_slvr
-
-    mblogger = logging.Logger.manager.loggerDict["montblanc"]
-    mblogger.propagate = False
 
     if _mb_slvr is None:
         slvr_cfg = montblanc.rime_solver_cfg(

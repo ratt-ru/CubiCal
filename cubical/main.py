@@ -11,16 +11,23 @@ from time import time
 
 import concurrent.futures as cf
 
+from cubical.tools import logger
+# set the base name of the logger. This happens
+logger.app_name = "cubical"
+
 import cubical.data_handler as data_handler
 from cubical.data_handler import ReadModelHandler, Tile
-from cubical.tools import logger, parsets, myoptparse, shm_utils, ModColor
-
+from cubical.tools import parsets, myoptparse, shm_utils, ModColor
 from cubical.machines import complex_2x2_machine
 from cubical.machines import complex_W_2x2_machine
 from cubical.machines import phase_diag_machine
 from cubical.machines import slope_machine
 from cubical.machines import jones_chain_machine
 from cubical.machines import ifr_gain_machine
+
+
+# set the base name of the logger
+logger.app_name = "cubical"
 
 log = logger.getLogger("main")
 
@@ -161,8 +168,6 @@ def main(debugging=False):
         # enable verbosity
         logger.verbosity = GD["debug"]["verbose"]
 
-        if not (GD["model"]["lsm"] or GD["model"]["column"]):
-            raise UserInputError("Neither --model-lsm nor --model-column was specified, nothing to calibrate on.")
         double_precision = GD["sol"]["precision"] == 64
 
         solver_type = GD['out']['mode']
@@ -177,8 +182,7 @@ def main(debugging=False):
 
         ms = ReadModelHandler(GD["data"]["ms"], 
                               GD["data"]["column"], 
-                              GD["model"]["lsm"], 
-                              GD["model"]["column"],
+                              GD["model"]["list"].split(","),
                               output_column=GD["out"]["column"],
                               taql=GD["sel"]["taql"],
                               fid=GD["sel"]["field"], 
@@ -186,14 +190,14 @@ def main(debugging=False):
                               channels=GD["sel"]["chan"],
                               flagopts=GD["flags"],
                               double_precision=double_precision,
-                              ddes=GD["model"]["ddes"],
-                              weight_column=GD["weight"]["column"],
+                              weights=GD["weight"]["column"].split(","),
                               beam_pattern=GD["model"]["beam-pattern"], 
                               beam_l_axis=GD["model"]["beam-l-axis"], 
                               beam_m_axis=GD["model"]["beam-m-axis"],
                               active_subset=GD["sol"]["subset"],
                               min_baseline=GD["sol"]["min-bl"],
                               max_baseline=GD["sol"]["max-bl"],
+                              use_ddes=GD["model"]["ddes"],
                               mb_opts=GD["montblanc"])
 
         data_handler.global_handler = ms
