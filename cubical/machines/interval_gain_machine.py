@@ -6,6 +6,8 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
+import cubical.kernels.cyfull_complex as cyfull
+
 from numpy.ma import masked_array
 
 class PerIntervalGains(MasterMachine):
@@ -105,6 +107,20 @@ class PerIntervalGains(MasterMachine):
         self._gainres_to_fullres  = self.unpack_intervals
         # function used to unpack interval resolution to gain resolution
         self._interval_to_gainres = lambda array,time_ind=0: array
+
+
+    def apply_gains(self, model_arr):
+        """
+        This method applies the gains ta a model array in place.
+        The same method should work for all derived classes, since they all maintain a self.gains
+        array.
+        """
+
+        gh = self.gains.transpose(0,1,2,3,5,4).conj()
+
+        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+
+        return model_arr
 
 
     @staticmethod

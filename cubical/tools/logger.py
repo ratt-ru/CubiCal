@@ -134,6 +134,7 @@ class LoggerMemoryFilter (logging.Filter):
         setattr(event,"virtual_memory_gb",vss)
         setattr(event,"resident_memory_gb",rss)
         setattr(event,"shared_memory_gb",shm)
+        setattr(event,"shortname",event.name.split('.',1)[1] if '.' in event.name else event.name)
         if log_memory and hasattr(event,"msg"):
             event.msg = "[%.1f/%.1f %.1f/%.1f %.1fGb] "%(rss,rss_peak,vss,vss_peak,shm) + event.msg
         subprocess_id = multiprocessing.current_process().name
@@ -149,7 +150,7 @@ verbosity = 0
 class MyLogger():
     def __init__(self):
 #       fmt="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s"
-        fmt = " - %(asctime)s - %(name)-18.18s | %(message)s"
+        fmt = " - %(asctime)s - %(shortname)-18.18s | %(message)s"
 #        fmt = "%(asctime)s %(name)-25.25s | %(message)s"
         datefmt = '%H:%M:%S'#'%H:%M:%S.%f'
         logging.basicConfig(level=logging.DEBUG,format=fmt,datefmt=datefmt)

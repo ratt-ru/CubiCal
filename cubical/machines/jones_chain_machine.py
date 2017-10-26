@@ -215,10 +215,9 @@ class JonesChain(MasterMachine):
 
     def apply_gains(self, vis):
         """
-        This method should be able to apply the gains to an array at full time-frequency
-        resolution. Should return the input array at full resolution after the application of the 
-        gains.
+        Applies gains to model array. 
         """
+        # simply go through the chain in reverse, applying each Jones term in turn
         for term in self.jones_terms[::-1]:
             term.apply_gains(vis)
         return vis

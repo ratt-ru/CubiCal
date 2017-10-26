@@ -13,7 +13,7 @@ import concurrent.futures as cf
 
 from cubical.tools import logger
 # set the base name of the logger. This happens
-logger.app_name = "cubical"
+logger.app_name = "cc"
 
 import cubical.data_handler as data_handler
 from cubical.data_handler import ReadModelHandler, Tile
@@ -27,7 +27,7 @@ from cubical.machines import ifr_gain_machine
 
 
 # set the base name of the logger
-logger.app_name = "cubical"
+logger.app_name = "cc"
 
 log = logger.getLogger("main")
 
@@ -179,6 +179,8 @@ def main(debugging=False):
         apply_only = solver.SOLVERS[solver_type] in (solver.correct_only, solver.correct_residuals)
         load_model = solver.SOLVERS[solver_type] is not solver.correct_only   # no model needed in "correct only" mode
 
+        if load_model and not GD["model"]["list"]:
+            raise UserInputError("--model-list must be specified")
 
         ms = ReadModelHandler(GD["data"]["ms"], 
                               GD["data"]["column"], 

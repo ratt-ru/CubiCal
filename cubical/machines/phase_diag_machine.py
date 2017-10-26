@@ -140,14 +140,6 @@ class PhaseDiagGains(PerIntervalGains):
 
         return corr_vis, 0   # no flags raised here, since phase-only always invertible
 
-    def apply_gains(self):
-        """
-        This method should be able to apply the gains to an array at full time-frequency
-        resolution. Should return the input array at full resolution after the application of the 
-        gains.
-        """
-        return
-
     def restrict_solution(self):
 
         PerIntervalGains.restrict_solution(self)
