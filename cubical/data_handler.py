@@ -934,7 +934,7 @@ class ReadModelHandler:
                         if "@" in component:
                             component, tag = component.rsplit("@",1)
                         else:
-                            tag = "dE"
+                            tag = None
                         if os.path.exists(component):
                             if montblanc is None:
                                 print>> log, ModColor.Str("Error importing Montblanc: ")
