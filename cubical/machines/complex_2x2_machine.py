@@ -38,6 +38,7 @@ class Complex2x2Gains(PerIntervalGains):
         self.gains[:]  = np.eye(self.n_cor)
         self.old_gains = self.gains.copy()
 
+
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
@@ -115,11 +116,11 @@ class Complex2x2Gains(PerIntervalGains):
         if model_arr.shape[0]>1:
             update = self.gains + update
 
-        if self.iters % 2 == 0 or self.n_dir>1:
+        if self.iters % 2 == 0 or self.n_dir>1 :
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
-
+        
         self.restrict_solution()
 
         return flag_count
