@@ -6,16 +6,37 @@
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
-import logging, os, re, sys, multiprocessing
+import logging, logging.handlers, os, re, sys, multiprocessing
 import ModColor
 
-# global verbosity level (used for loggers for which an explicit level is not set)
-_global_verbosity = 0
+# dict of logger wrappers created by the application
+_loggers = {}
 
-class _NullWriter(object):
-    """A null writer ignores messages"""
-    def write(self, message):
-        pass
+# global verbosity levels (used for loggers for which an explicit level is not set)
+_global_verbosity = 0
+_global_log_verbosity = 0
+
+# this will be the handler for the log file
+_file_handler = None
+# this will be a null handler
+_null_handler = logging.NullHandler()
+
+def logToFile(filename, append=False):
+    global _file_handler
+    if not _file_handler:
+        _file_handler = logging.FileHandler(filename, mode='a' if append else 'w')
+        _file_handler.setLevel(logging.DEBUG)
+        _file_handler.setFormatter(_logfile_formatter)
+        # set it as the target for the existing wrappers' handlers
+        for wrapper in _loggers.itervalues():
+            wrapper.logfile_handler.setTarget(_file_handler)
+
+def getLogFilename():
+    '''Returns log filename if logToFile has been called previously, None otherwise'''
+    global _file_handler
+    if not _file_handler:
+        return None
+    return _file_handler.baseFilename
 
 class _DefaultWriter(object):
     """A default writer logs messages to a logger"""
@@ -26,46 +47,62 @@ class _DefaultWriter(object):
         self.bold = bool(color) if bold is None else bold
 
     def write(self, message):
-        if message != '\n':
-            if self.color:
-                message = ModColor.Str(message, col=self.color, Bold=self.bold)
-            self.logger.log(self.level, message)
+        message = message.strip()
+        if self.color and message:  # do not colorize empty messages, else "\n" is issued independently
+            message = ModColor.Str(message, col=self.color, Bold=self.bold)
+        self.logger.log(self.level, message)
 
-_null_writer = _NullWriter()
-
-class LogWriter(object):
-    def __init__(self, logger, level, verbose=None):
+class LoggerWrapper(object):
+    def __init__(self, logger, verbose=None, log_verbose=None):
         self.logger = logger
-        self.level = level
-        self.verbose = verbose
-        self._default_writer = _DefaultWriter(logger, level)
+        logger.propagate = False
+        self._verbose = verbose if verbose is not None else _global_verbosity
+        self._log_verbose = log_verbose if log_verbose is not None else _global_log_verbosity
+        self.console_handler = logging.StreamHandler(sys.stderr)
+        self.console_handler.setFormatter(_console_formatter)
+        self.console_handler.setLevel(logging.INFO - self._verbose)
+
+        self.logfile_handler = logging.handlers.MemoryHandler(1,
+            logging.INFO - (self._log_verbose if self._log_verbose is not None else self._verbose),
+            _file_handler or _null_handler)
+        self.logfile_handler.setFormatter(_logfile_formatter)
+
+        self.logger.addHandler(self.console_handler)
+        self.logger.addHandler(self.logfile_handler)
+        self.logger.addFilter(_log_filter)
+
+        # make logger methods available
+        for method in "log", "debug", "info", "warning", "error", "critical", "exception":
+            setattr(self,method, getattr(self.logger, method))
 
     def verbosity(self, set_verb=None):
-        global _global_verbosity
         if set_verb is not None:
-            self.verbose = set_verb
-        return self.verbose if self.verbose is not None else _global_verbosity
+            self._verbose = set_verb
+            self.console_handler.setLevel(logging.INFO - set_verb)
+            if self._log_verbose is None:
+                self.logfile_handler.setLevel(logging.INFO - set_verb)
+        return self._verbose
+
+    def log_verbosity(self, set_verb=None):
+        if set_verb is not None:
+            self._log_verbose = set_verb
+            self.logfile_handler.setLevel(logging.INFO - set_verb)
+        return self._log_verbose if self._log_verbose is not None else self._verbose
 
     def __call__(self, level, color=None):
         """
         Function call operator on logger. Use to issue messages at different verbosity levels.
-        E.g. print>>log(2),"message" will only print message if the verbosity level is set to 2 or higher.
+        E.g. print>>log(2),"message" will issue a message at level logging.INFO - 2.
         An optional color argument will colorize the message.
 
         Returns:
             A writer object (to which a message may be sent with "<<")
         """
         # effective verbosity level is either set explicitly when the writer is created, or else use global level
-        if level <= self.verbosity():
-            if color:
-                return _DefaultWriter(self.logger, self.level, color=color)
-            else:
-                return self._default_writer
-        else:
-            return _null_writer
+        return _DefaultWriter(self.logger, logging.INFO - level, color=color)
 
     def write(self, message):
-        return self._default_writer.write(message)
+        return self.logger.info(message.strip())
 
 
 _proc_status = '/proc/%d/status' % os.getpid()
@@ -116,23 +153,6 @@ def _stacksize(since=0.0):
     '''Return stack size in bytes.'''
     return _VmB('VmStk:') - since
 
-_file_handler = None
-
-def logToFile(filename, append=False):
-    global _file_handler
-    if not _file_handler:
-        _file_handler = logging.FileHandler(filename, mode='a' if append else 'w')
-        _file_handler.setLevel(logging.DEBUG)
-        _file_handler.setFormatter(_logfile_formatter)
-    _root_logger.addHandler(_file_handler)
-
-def getLogFilename():
-    '''Returns log filename if logToFile has been called previously, None otherwise'''
-    global _file_handler
-    if not _file_handler:
-        return None
-    return _file_handler.baseFilename
-
 _log_memory = False
 def enableMemoryLogging(enable=True):
     global _log_memory
@@ -141,6 +161,8 @@ def enableMemoryLogging(enable=True):
 class LogFilter(logging.Filter):
     """LogFilter augments the event by a few new attributes used by our formatter"""
     def filter(self, event):
+        if not event.getMessage().strip():
+            return False
         # short logger name (without app_name in front of it)
         setattr(event, 'shortname', event.name.split('.',1)[1] if '.' in event.name else event.name)
         setattr(event, 'separator', '| ')
@@ -183,7 +205,6 @@ class ColorStrippingFormatter(logging.Formatter):
         else:
             return msg
 
-
 _fmt = " - %(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
 #        _fmt = "%(asctime)s %(name)-25.25s | %(message)s"
 _datefmt = '%H:%M:%S'#'%H:%M:%S.%f'
@@ -200,28 +221,17 @@ def init(app_name):
         logging.basicConfig(level=logging.DEBUG, fmt=_fmt, datefmt=_datefmt)
         _app_name = app_name
         _root_logger = logging.getLogger(app_name)
-        _root_logger.propagate = False
-        _console_handler = logging.StreamHandler(sys.stderr)
-        _console_handler.setFormatter(_console_formatter)
-        _console_handler.setLevel(logging.DEBUG)
-        _root_logger.addFilter(_log_filter)
-        _root_logger.addHandler(_console_handler)
         global log
-        log = _loggers[''] = LogWriter(_root_logger, logging.INFO)
+        log = _loggers[''] = LoggerWrapper(_root_logger)
 
-# dict of LogWriters
-_loggers = {}
-
-def getLogger(name, verbose=None):
+def getLogger(name, verbose=None, log_verbose=None):
     """Creates a new logger (or returns one, if already created)"""
     init("app")
     if name in _loggers:
         return _loggers[name]
 
     logger = logging.getLogger("{}.{}".format(_app_name, name))
-    logger.addFilter(_log_filter)
-#    logger.propagate = True
-    lw = _loggers[name] = LogWriter(logger, logging.INFO, verbose)
+    lw = _loggers[name] = LoggerWrapper(logger, verbose, log_verbose)
     print>>lw(2), "logger initialized"
 
     return lw
@@ -229,28 +239,50 @@ def getLogger(name, verbose=None):
 def setBoring(boring=True):
     _console_formatter.strip = boring
 
-def setVerbosity(verbosity):
+def setGlobalVerbosity(verbosity):
+    global _global_verbosity
     if type(verbosity) is int:
-        _global_verbosity = verbosity
-        if _global_verbosity:
-            print>>log(0, "green"), "set global verbosity level {}".format(_global_verbosity)
-    elif type(verbosity) is str and re.match("^[0-9]+$", verbosity):
-        _global_verbosity = int(verbosity)
-        if _global_verbosity:
-            print>>log(0, "green"), "set global verbosity level {}".format(_global_verbosity)
-    else:
-        if isinstance(verbosity, str):
-            verbosity = verbosity.split(",")
-        elif not isinstance(verbosity, (list, tuple)):
-            raise TypeError("can't parse verbosity specification of type '{}'".format(type(verbosity)))
-        for element in verbosity:
+        verbosity = [verbosity]
+    elif type(verbosity) is str:
+        verbosity = verbosity.split(",")
+    elif not isinstance(verbosity, (list, tuple)):
+        raise TypeError("can't parse verbosity specification of type '{}'".format(type(verbosity)))
+    for element in verbosity:
+        if type(element) is int or re.match("^[0-9]+$", element):
+            _global_verbosity = int(element)
+            print>> log(0, "green"), "set global console verbosity level {}".format(_global_verbosity)
+        else:
             m = re.match("^(.+)=([0-9]+)$", element)
             if not m:
                 raise ValueError("can't parse verbosity specification '{}'".format(element))
             logger = getLogger(m.group(1))
-            verbosity = int(m.group(2))
-            logger.verbosity(verbosity)
-            print>>logger(0,"green"),"set verbosity level {}".format(verbosity)
+            level = int(m.group(2))
+            logger.verbosity(level)
+            print>>logger(0,"green"),"set console verbosity level {}={}".format(m.group(1), level)
+
+def setGlobalLogVerbosity(verbosity):
+    # ensure verbosity is turned into a list.
+    global _global_log_verbosity
+    if type(verbosity) is int or verbosity is None:
+        verbosity = [verbosity]
+    elif type(verbosity) is str:
+        verbosity = verbosity.split(",")
+    elif not isinstance(verbosity, (list, tuple)):
+        raise TypeError("can't parse verbosity specification of type '{}'".format(type(verbosity)))
+    for element in verbosity:
+        if type(element) is int or re.match("^[0-9]+$", element):
+            _global_log_verbosity = int(element)
+            if _global_log_verbosity is not None:
+                print>> log(0, "green"), "set global log verbosity level {}".format(_global_log_verbosity)
+        else:
+            m = re.match("^(.+)=([0-9]+)$", element)
+            if not m:
+                raise ValueError("can't parse verbosity specification '{}'".format(element))
+            logger = getLogger(m.group(1))
+            level = int(m.group(2))
+            logger.log_verbosity(level)
+            print>>logger(0,"green"),"set log verbosity level {}={}".format(m.group(1), level)
+
 
 def setSilent(Lname):
     """Silences the specified sublogger(s)"""

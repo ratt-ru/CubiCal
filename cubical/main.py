@@ -159,15 +159,13 @@ def main(debugging=False):
         logger.logToFile(basename + ".log", append=GD["log"]["append"])
         logger.enableMemoryLogging(GD["log"]["memory"])
         logger.setBoring(GD["log"]["boring"])
-        logger.setVerbosity(GD["debug"]["verbose"])
+        logger.setGlobalVerbosity(GD["log"]["verbose"])
+        logger.setGlobalLogVerbosity(GD["log"]["file-verbose"])
 
         if not debugging:
             print>>log, "started " + " ".join(sys.argv)
         # print current options
         optparser.Print(dest=log)
-
-        # enable verbosity
-        logger.verbosity = GD["debug"]["verbose"]
 
         double_precision = GD["sol"]["precision"] == 64
 
