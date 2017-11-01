@@ -2,6 +2,10 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+"""
+Handles the interface between measurement sets, CubiCal and Montblanc.
+"""
+
 import collections
 import functools
 import types
@@ -14,14 +18,27 @@ import logging
 import montblanc.util as mbu
 import montblanc.impl.rime.tensorflow.ms.ms_manager as MS
 
-from montblanc.impl.rime.tensorflow.sources import (SourceProvider,
-                                                    FitsBeamSourceProvider,
-                                                    MSSourceProvider)
-from montblanc.impl.rime.tensorflow.sinks import (SinkProvider,
-                                                  MSSinkProvider)
+from montblanc.impl.rime.tensorflow.sources import SourceProvider
+from montblanc.impl.rime.tensorflow.sinks import SinkProvider
 
 class MSSourceProvider(SourceProvider):
+    """
+    Handles interface between CubiCal tiles and Montblanc simulation.
+    """
+
     def __init__(self, tile, uvw, sort_ind):
+        """
+        Initialises this source provider.
+
+        Args:
+            tile (:obj:`~cubical.data_handler.Tile`):
+                Tile object containing information about current data selection.
+            uvw (np.darray):
+                (n_row, 3) array of UVW coordinates.
+            sort_ind (np.ndarray):
+                Indices which will produce sorted data. Montblanc expects data to be ordered in a specific way.
+
+        """
 
         self._handler = tile.handler
         self._ms = self._handler.ms
@@ -42,9 +59,13 @@ class MSSourceProvider(SourceProvider):
         self.sort_ind = sort_ind
 
     def name(self):
+        """ Returns name of associated source provider. """
+        
         return self._name
 
     def updated_dimensions(self):
+        """ Inform Montblanc of the dimensions assosciated with this source provider. """
+
         return [('ntime', self._ntime),
                 ('nbl', self._nbl),
                 ('na', self._nants),
@@ -54,18 +75,20 @@ class MSSourceProvider(SourceProvider):
                 ('npolchan', 4*self._nchan)]
 
     def frequency(self, context):
+        """ Provides Montblanc with an array of frequencies. """
         channels = self._handler._ddid_chanfreqs[self._ddids, :]
         return channels.reshape(context.shape).astype(context.dtype)
 
     def uvw(self, context):
-        """ Special case for handling antenna uvw code """
+        """ Provides Montblanc with an array of uvw coordinates. """
 
-        # Figure out our extents in the time dimension
-        # and our global antenna and baseline sizes
+        # Figure out our extents in the time dimension and our global antenna and baseline sizes.
+
         (t_low, t_high) = context.dim_extents('ntime')
         na, nbl = context.dim_global_size('na', 'nbl')
 
-        # We expect to handle all antenna at once
+        # We expect to handle all antenna at once.
+
         if context.shape != (t_high - t_low, na, 3):
             raise ValueError("Received an unexpected shape "
                 "{s} in (ntime,na,3) antenna reading code".format(s=context.shape))
@@ -86,11 +109,13 @@ class MSSourceProvider(SourceProvider):
         # Then, other baseline values can be derived as
         # u_21 = u_1 - u_2
 
-        # Allocate space for per-antenna UVW, zeroing antenna 0 at each timestep
+        # Allocate space for per-antenna UVW, zeroing antenna 0 at each timestep.
+
         ant_uvw = np.empty(shape=context.shape, dtype=context.dtype)
         ant_uvw[:,0,:] = 0
 
-        # Read in uvw[1:na] row at each timestep
+        # Read in uvw[1:na] row at each timestep.
+
         for ti, t in enumerate(xrange(t_low, t_high)):
             # Inspection confirms that this achieves the same effect as
             # ant_uvw[ti,1:na,:] = ...getcol(UVW, ...).reshape(na-1, -1)
@@ -103,23 +128,31 @@ class MSSourceProvider(SourceProvider):
         return ant_uvw
 
     def antenna1(self, context):
+        """ Provides Montblanc with an array of antenna1 values. """
+
         lrow, urow = MS.uvw_row_extents(context)
         antenna1 = self._antea[self.sort_ind][lrow:urow]
 
         return antenna1.reshape(context.shape).astype(context.dtype)
 
     def antenna2(self, context):
+        """ Provides Montblanc with an array of antenna2 values. """
+
         lrow, urow = MS.uvw_row_extents(context)
         antenna2 = self._anteb[self.sort_ind][lrow:urow]
 
         return antenna2.reshape(context.shape).astype(context.dtype)
 
     def parallactic_angles(self, context):
+        """ Provides Montblanc with an array of parallactic angles. """
+
         # Time and antenna extents
         (lt, ut), (la, ua) = context.dim_extents('ntime', 'na')
 
-        return mbu.parallactic_angles(np.unique(self._times[self.sort_ind])[lt:ut], self._handler.antpos[la:ua],
-                    self._handler.phadir).reshape(context.shape).astype(context.dtype)
+        return mbu.parallactic_angles(
+                        np.unique(self._times[self.sort_ind])[lt:ut],
+                        self._handler.antpos[la:ua],
+                        self._handler.phadir).reshape(context.shape).astype(context.dtype)
 
     def __enter__(self):
         return self
@@ -132,7 +165,23 @@ class MSSourceProvider(SourceProvider):
 
 
 class ColumnSinkProvider(SinkProvider):
+    """
+    Handles Montblanc output and makes it consistent with the measurement set.
+    """
     def __init__(self, tile, model, sort_ind):
+        """
+        Initialises this sink provider.
+
+        Args:
+            tile (:obj:`~cubical.data_handler.Tile`):
+                Tile object containing information about current data selection.
+            model (np.ndarray):
+                Array of model visibilities into which output will be written.
+            sort_ind (np.ndarray):
+                Indices which will produce sorted data. Montblanc expects adata to be ordered.
+
+        """
+
         self._tile = tile
         self._model = model
         self._handler = tile.handler
@@ -144,9 +193,21 @@ class ColumnSinkProvider(SinkProvider):
         self._nddid = len(self._ddids)
 
     def name(self):
+        """ Returns name of associated sink provider. """
+
         return self._name
 
+    def set_direction(self, idir):
+        """Sets current direction being simulated.
+        
+        Args:
+            idir (int):
+                Direction number, from 0 to n_dir-1
+        """
+        self._dir = idir
+
     def model_vis(self, context):
+        """ Tells Montblanc how to handle the model visibility output. """
 
         (lt, ut), (lbl, ubl), (lc, uc) = context.dim_extents('ntime', 'nbl', 'nchan')
 
@@ -178,6 +239,20 @@ class ColumnSinkProvider(SinkProvider):
 _mb_slvr = None
 
 def simulate(src_provs, snk_provs, opts):
+    """
+    Convenience function which creates and executes a Montblanc solver for the given source and 
+    sink providers.
+
+    Args:
+        src_provs (list): 
+            List of :obj:`~montblanc.impl.rime.tensorflow.sources.SourceProvider` objects. See
+            Montblanc's documentation.
+        snk_provs (list):
+            List of :obj:`~montblanc.impl.rime.tensorflow.sinks.SinkProvider` objects. See
+            Montblanc's documentation. 
+        opts (dict):
+            Montblanc simulation options (see [montblanc] section in DefaultParset.cfg).
+    """
 
     global _mb_slvr
 

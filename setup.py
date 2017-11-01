@@ -80,6 +80,26 @@ extensions = [Extension(
             extra_link_args=['-lgomp']
              )]
 
+# Check for readthedocs environment variable.
+
+on_rtd = os.environ.get('READTHEDOCS') == 'True'
+
+if on_rtd:
+    requirements = ['numpy', 
+                    'cython', 
+                    'futures', 
+                    'matplotlib',
+                    'scipy']
+else:
+    requirements = ['numpy', 
+                    'cython', 
+                    'futures', 
+                    'python-casacore', 
+                    'sharedarray', 
+                    'matplotlib',
+                    'scipy',
+                    'astro-tigger']
+
 setup(name='cubical',
       version='0.2.1',
       description='Fast calibration implementation exploiting complex optimisation.',
@@ -99,13 +119,7 @@ setup(name='cubical',
       cmdclass={'install': custom_install},  
       packages=['cubical', 'cubical/tools', 'cubical/kernels', 'cubical/machines'],
       setup_requires=['numpy', 'cython'],
-      install_requires=[  'numpy', 
-                          'cython', 
-                          'futures', 
-                          'python-casacore', 
-                          'sharedarray', 
-                          'matplotlib',
-                          'scipy'  ],
+      install_requires=requirements,
       include_package_data=True,
       package_data={'cubical'   :   [   'main.py',
                                         'solver.py', 
@@ -133,7 +147,7 @@ setup(name='cubical',
                                         'cubical/machines/slope_machine.py',
                                         'cubical/machines/parameterised_machine.py' ] },
       zip_safe=False,
-      ext_modules = cythonize(extensions),
+      ext_modules = cythonize(extensions, compiler_directives={'binding': True}),
       scripts=['cubical/bin/gocubical'],
 )
 

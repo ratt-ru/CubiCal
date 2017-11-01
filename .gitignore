@@ -61,3 +61,11 @@ README.md~
 cubical.last
 cubical.parset
 cubical.stats.pickle
+*.bat
+
+# Folders #
+###########
+docs/_static/
+docs/_build/
+docs/_templates/
+

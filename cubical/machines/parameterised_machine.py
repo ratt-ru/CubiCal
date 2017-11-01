@@ -17,7 +17,8 @@ class ParameterisedGains(PerIntervalGains):
 
     def init_gains(self):
         """
-        Construct gain and flag arrays, at full resolution.
+        Construct gain and flag arrays at full-resolution. Parameterisation of gains may not be at
+        full resolution.
         """
         
         self.gain_grid = self.data_grid

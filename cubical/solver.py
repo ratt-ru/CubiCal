@@ -3,7 +3,7 @@
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 """
-Implements the solver loop
+Implements the solver loop.
 """
 import numpy as np
 import traceback
@@ -26,33 +26,33 @@ ifrgain_machine = None
 
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
-    This function is the main body of the GN/LM method. It handles iterations
-    and convergence tests.
+    Main body of the GN/LM method. Handles iterations and convergence tests.
 
     Args:
-        obser_arr (np.array: n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): 
-            Array containing the observed visibilities.
-        model_arr (np.array: n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor): 
-            Array containing the model visibilities.
-        flags_arr (np.array: n_tim, n_fre, n_ant, n_ant): 
-            Integer array containing flagging data.
-
-        sol_opts: 
-            Dictionary of various solver options (see [sol] section in DefaultParset.cfg)
-
-        chunk_key:         
-            Tuple of (n_time_chunk, n_freq_chunk) which identifies the current chunk.
-        label:             
-            String label identifying the current chunk (e.d. "D0T1F2").
-
-        compute_residuals: 
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+            The gain machine which will be used in the solver loop.
+        obser_arr (np.ndarray): 
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+            visibilities. 
+        model_arr (np.ndarray): 
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
+            visibilities. 
+        flags_arr (np.ndarray): 
+            Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).
+        label (str, optional):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        compute_residuals (bool, optional): 
             If set, the final residuals will be computed and returned.
 
     Returns:
-        gains (np.array): 
-            Array containing the final gain estimates,
-        resid (np.array): 
-            Array containing the final residuals (if compute_residuals is set), else None.
+        2-element tuple
+            
+            - resid (np.ndarray)
+                The final residuals (if compute_residuals is set), else None.
+            - stats (:obj:`~cubical.statistics.SolverStats`)
+                An object containing solver statistics.
     """
 
     min_delta_g  = sol_opts["delta-g"]
@@ -399,10 +399,31 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     return (resid_arr if compute_residuals else None), stats
 
 
-class VisDataManager(object):
-    """A VisDataManager holds internal data, model, flag and weight arrays, and computes
-    various derived arrays (weighted versions, corrupt models, etc.) as necessary."""
+class _VisDataManager(object):
+    """A _VisDataManager object holds data, model, flag and weight arrays associated with a single
+    chunk of visibility data. It also holds a GainMachine. It provides methods and properties for 
+    computing/caching various derived arrays (weighted versions of data and model, corrupt models, etc.) 
+    on demand.
+    
+    _VisDataManagers are used to unify the interface to the various solving methods defined below. 
+    """
     def __init__(self, obser_arr, model_arr, flags_arr, weight_arr, freq_slice):
+        """
+        Initialises a VisDataManager.
+
+        Args:
+            obser_arr (np.ndarray): 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) complex array containing observed visibilities. 
+            model_arr (np.ndarray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) complex array containing model 
+                visibilities. 
+            flags_arr (np.ndarray): 
+                Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flags.
+            weight_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) float array containing weights.
+            freq_slice (slice): 
+                Slice into the full data frequency axis corresponding to this chunk. 
+        """
         self.gm = None
         self.obser_arr, self.model_arr, self.flags_arr, self.weight_arr = \
             obser_arr, model_arr, flags_arr, weight_arr
@@ -412,6 +433,12 @@ class VisDataManager(object):
 
     @property
     def weighted_obser(self):
+        """
+        This property gives the observed visibilities times the weights
+        
+        Returns:
+            Weighted observed visibilities (np.ndarray) of shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
+        """
         if self._wobs_arr is None:
             if self.weight_arr is not None:
                 self._wobs_arr = self.obser_arr[np.newaxis,...] * self.weight_arr[..., np.newaxis, np.newaxis]
@@ -422,6 +449,12 @@ class VisDataManager(object):
 
     @property
     def weighted_model(self):
+        """
+        This property gives the model visibilities times the weights
+
+        Returns:
+            Weighted model visibilities (np.ndarray) of shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
+        """
         if self._wmod_arr is None:
             if self.weight_arr is not None:
                 self._wmod_arr = self.model_arr * self.weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
@@ -432,6 +465,12 @@ class VisDataManager(object):
 
     @property
     def corrupt_weighted_model(self):
+        """
+        This property gives the model visibilities, corrupted by the gains, times the weights
+
+        Returns:
+            Weighted corrupted model visibilities (np.ndarray) of shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
+        """
         cmod = self.corrupt_model()
         if self.weight_arr is not None:
             return cmod*self.weight_arr[..., np.newaxis, np.newaxis]
@@ -439,9 +478,15 @@ class VisDataManager(object):
             return cmod
 
     def corrupt_residual(self, imod=0):
-        """Computes corrupt residual w.r.t. given model.
-        If we already have a corrupted model cached, use that, else use gm to compute residuals.
-        Returns array of shape [ntime,nfreq,nant,nant,ncorr,ncorr]
+        """
+        This method returns the (corrupted) residual with respect to a given model
+        
+        Args:
+            imod (int): 
+                Index of model (0 to n_mod-1). 
+
+        Returns:
+            Weighted residual visibilities (np.ndarray) of shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
         """
         if self.cmodel_arr is not None:
             return self.obser_arr - self.cmodel_arr[imod,...]
@@ -452,11 +497,18 @@ class VisDataManager(object):
 
 
     def corrupt_model(self, imod=None):
-        """Returns corrupted model: model(s) times gains. Note that this modifies the model in place.
-        Returns array of shape [ntime,nfreq,nant,nant,ncorr,ncorr] if imod is set (i.e. one model),
-        else [nmod,ntime,nfreq,nant,nant,ncorr,ncorr]
-        
-        Note that this corrupts the model array in place
+        """
+        This method retuns the model visibilities, corrupted by the gains. If n_mod>1, then
+        corrupt_model(None) must be called first (to corrupt all models). Note that this corrupts 
+        the model array in place.
+
+        Args:
+            imod (int or None): 
+                Index of model (0 to n_mod-1), or None to corrupt all models
+
+        Returns:
+            Corrupted model visibilities (np.ndarray) of shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
+            if imod is None, otherwise the model axis is omitted.
         """
         # if asking for all models (imod=None), or we only have one model, then cache result
         if imod is None or self.model_arr.shape[1] == 1:
@@ -472,6 +524,28 @@ class VisDataManager(object):
 
 
 def solve_only(vdm, soldict, label, sol_opts):
+    """
+    Run the solver and neither save nor apply solutions. 
+
+    Args:
+        vdm (:obj:`_VisDataManager`): 
+            VisDataManager for this chunk of data
+        soldict (:obj:~cubical.tools.shared_dict.SharedDict): 
+            Shared dict used to pass solutions (IFR gain solutions, primarily) back out to the
+            calling thread. 
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+
+    Returns:
+        2-element tuple
+
+            - _ (None) 
+                None (required for compatibility)
+            - stats (:obj:`~cubical.statistics.SolverStats`)
+                An object containing solver statistics.
+    """
 
     _, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
     if ifrgain_machine.is_computing():
@@ -481,6 +555,30 @@ def solve_only(vdm, soldict, label, sol_opts):
 
 
 def solve_and_correct(vdm, soldict, label, sol_opts):
+    """
+    Run the solver and save and apply the resulting gain solutions to the observed data. Produces
+    corrected data. 
+    
+    Args:
+        vdm (:obj:`_VisDataManager`): 
+            VisDataManager for this chunk of data
+        soldict (:obj:~cubical.tools.shared_dict.SharedDict): 
+            Shared dict used to pass solutions (IFR gain solutions, primarily) back out to the
+            calling thread. 
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+    
+    Returns:
+        2-element tuple
+            
+            - corr_vis (np.ndarray) 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected 
+                visibilities. 
+            - stats (:obj:`~cubical.statistics.SolverStats`)
+                An object containing solver statistics.
+    """
 
     _, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
 
@@ -495,6 +593,33 @@ def solve_and_correct(vdm, soldict, label, sol_opts):
 
 
 def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
+    """
+    Run the solver, generate residuals, and (optionally) apply the resulting gain solutions to the residuals. 
+    Produces (un)corrected residuals. 
+
+    Args:
+        vdm (:obj:`_VisDataManager`): 
+            VisDataManager for this chunk of data
+        soldict (:obj:~cubical.tools.shared_dict.SharedDict): 
+            Shared dict used to pass solutions (IFR gain solutions, primarily) back out to the
+            calling thread. 
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+        correct (bool):
+            If True, residuals are corrected
+
+    Returns:
+        2-element tuple
+            
+            - res_vis (np.ndarray)
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing (un)corrected 
+                residuals. 
+            - stats (:obj:`~cubical.statistics.SolverStats`)
+                An object containing solver statistics.
+    """
+
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
     resid_vis, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr,
@@ -521,10 +646,37 @@ def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
         return resid_vis, stats
 
 def solve_and_subtract(*args, **kw):
+    """
+    Run the solver, generate residuals. Produces uncorrected residuals. Equivalent to calling
+    solve_and_correct_residuals(..., correct=False)
+    """
     return solve_and_correct_residuals(correct=False, *args, **kw)
 
+
 def correct_only(vdm, soldict, label, sol_opts):
-    # for corrected visibilities, take the first data/model pair only
+    """
+    Do not solve. Apply priot gain solutions to the observed data, generating corrected data.
+    
+    Args:
+        vdm (:obj:`_VisDataManager`): 
+            VisDataManager for this chunk of data
+        soldict (:obj:~cubical.tools.shared_dict.SharedDict): 
+            Shared dict used to pass solutions (IFR gain solutions, primarily) back out to the
+            calling thread. 
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+            
+    Returns:
+        2-element tuple
+            
+            - corr_vis (np.ndarray)
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing corrected visibilities. 
+            - _ (None)
+                None (required for compatibility)
+    """
+
     corr_vis = np.zeros_like(vdm.obser_arr)
     vdm.gm.apply_inv_gains(vdm.obser_arr, corr_vis)
 
@@ -533,7 +685,32 @@ def correct_only(vdm, soldict, label, sol_opts):
 
     return corr_vis, None
 
+
 def correct_residuals(vdm, soldict, label, sol_opts, correct=True):
+    """
+    Do not solve. Apply prior gain solutions, generate (un)corrected residuals.
+
+    Args:
+        vdm (:obj:`_VisDataManager`): 
+            VisDataManager for this chunk of data
+        soldict (:obj:~cubical.tools.shared_dict.SharedDict): 
+            Shared dict used to pass solutions (IFR gain solutions, primarily) back out to the
+            calling thread. 
+        label (str):             
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict): 
+            Solver options (see [sol] section in DefaultParset.cfg).        
+        correct (bool):
+            If True, residuals are corrected
+
+    Returns:
+        2-element tuple
+
+            - resid_vis (np.ndarray)
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing (un)corrected residuals. 
+            - _ (None)
+                None (required for compatibility)
+    """
     # compute IFR gains, if needed. Note that this computes corrupt models, so it makes sense
     # doing it before recomputing the residuals: saves time
     if ifrgain_machine.is_computing():
@@ -550,6 +727,10 @@ def correct_residuals(vdm, soldict, label, sol_opts, correct=True):
         return resid_vis, None
 
 def subtract_only(*args, **kw):
+    """
+    Do not solve. Apply prior gain solutions, generate uncorrected residuals. Equivalent to calling
+    correct_residuals(..., correct=False)
+    """
     return correct_residuals(correct=False, *args, **kw)
 
 
@@ -564,6 +745,28 @@ SOLVERS = { 'so': solve_only,
 
 
 def run_solver(solver_type, itile, chunk_key, sol_opts):
+    """
+    Initialises a gain machine and invokes the solver for the current chunk.
+
+    Args:
+        solver_type (str):
+            Specifies type of solver to use.
+        itile (int):
+            Index of current Tile object.
+        chunk_key (str):
+            Label identifying the current chunk (e.g. "D0T1F2").
+        sol_opts (dict):
+            Solver options (see [sol] section in DefaultParset.cfg).
+
+    Returns:
+        :obj:`~cubical.statistics.SolverStats`:
+            An object containing solver statistics.
+
+    Raises:
+        RuntimeError:
+            If gain factory has not been initialised.
+    """
+
     label = None
     
     try:
@@ -575,7 +778,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         if gm_factory is None:
             raise RuntimeError("Gain machine factory has not been initialized")
 
-        # get chunk data from tile
+        # Get chunk data from tile.
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
 
@@ -587,23 +790,28 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         # create subdict in shared dict for solutions etc.
         soldict = tile.create_solutions_chunk_dict(chunk_key)
 
-        vdm = VisDataManager(obser_arr, model_arr, flags_arr, weight_arr, freq_slice)
+        # create VisDataManager for this chunk
+
+        vdm = _VisDataManager(obser_arr, model_arr, flags_arr, weight_arr, freq_slice)
 
         n_dir, n_mod = model_arr.shape[0:2] if model_arr is not None else (1,1)
 
+        # create GainMachine
         vdm.gm = gm_factory.create_machine(vdm.weighted_obser, n_dir, n_mod, chunk_ts, chunk_fs)
 
-        # invoke solver with cubes from tile
+        # Invoke solver method
 
         corr_vis, stats = solver(vdm, soldict, label, sol_opts)
 
-        # copy results back into tile
+        # Copy results back into tile.
 
         tile.set_chunk_cubes(corr_vis, flags_arr if (stats and stats.chunk.num_sol_flagged) else None, chunk_key)
 
+        # Ask the gain machine to store its solutions in the shared dict.
         gm_factory.export_solutions(vdm.gm, soldict)
 
         return stats
+
     except Exception, exc:
         print>>log,ModColor.Str("Solver for tile {} chunk {} failed with exception: {}".format(itile, label, exc))
         print>>log,traceback.format_exc()

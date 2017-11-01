@@ -2,6 +2,18 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+"""
+Main code body. Handles options, invokes solvers and manages multiprocessing.
+"""
+
+## OMS: this workaround should not be necessary, now that https://github.com/ratt-ru/CubiCal/issues/75 is fixed
+# import logging
+# if 'vext' in logging.Logger.manager.loggerDict.keys():
+#     for handler in logging.root.handlers:
+#         logging.root.removeHandler(handler)
+#     logging.getLogger('vext').setLevel(logging.WARNING)
+##
+
 import cPickle
 import os
 import os.path
@@ -17,8 +29,8 @@ from cubical.tools import logger
 logger.init("cc")
 
 import cubical.data_handler as data_handler
-from cubical.data_handler import ReadModelHandler, Tile
-from cubical.tools import parsets, myoptparse, shm_utils, ModColor
+from cubical.data_handler import DataHandler, Tile
+from cubical.tools import logger, parsets, myoptparse, shm_utils, ModColor
 from cubical.machines import complex_2x2_machine
 from cubical.machines import complex_W_2x2_machine
 from cubical.machines import phase_diag_machine
@@ -36,7 +48,6 @@ import cubical.solver as solver
 import cubical.plots as plots
 import cubical.flagging as flagging
 
-
 from cubical.statistics import SolverStats
 
 class UserInputError(Exception):
@@ -44,12 +55,18 @@ class UserInputError(Exception):
 
 def init_options(parset, savefile=None):
     """
-    Creates an command-line option parser, populates it based on the content of the given Parset object,
-    and parses the command line.
+    Creates an command-line option parser, populates it based on the content of the given Parset
+    object, and parses the command line.
 
-    If savefile is set, dumps the option settings to savefile.
+    Args:
+        parset (:obj:`~cubical.tools.parsets.Parset`):
+            A parset object which contains options.
+        savefile (str or None, optional):
+            If savefile is set, dumps the option settings to savefile.
 
-    Returns the option parser.
+    Returns:
+        :obj:`~cubical.tools.myoptparse.MyOptParse`:
+            The resulting option parser.
     """
 
     default_values = parset.value_dict
@@ -57,7 +74,8 @@ def init_options(parset, savefile=None):
 
     desc = """Questions and suggestions: RATT"""
 
-    OP = myoptparse.MyOptParse(usage='Usage: %prog [parset file] <options>', version='%prog version 0.1',
+    OP = myoptparse.MyOptParse(usage='Usage: %prog [parset file] <options>', 
+                               version='%prog version 0.1',
                                description=desc, defaults=default_values, attributes=attrs)
 
     # create options based on contents of parset
@@ -77,25 +95,36 @@ def init_options(parset, savefile=None):
 
     return OP
 
-
-
-
 # set to true with --Debug-Pdb 1, causes pdb to be invoked on exception
 enable_pdb = False
 
 def debug():
-    """
-    This calls the main() function in debugging mode.
-    """
+    """ Calls the main() function in debugging mode. """
+
     main(debugging=True)
 
 def main(debugging=False):
     """
-    Main cubical driver function.
+    Main cubical driver function. Reads options, sets up MS and solvers, calls the solver, etc.
 
-    Reads options, sets up MS and solvers, calls the solver, etc.
+    Args:
+        debugging (bool, optional):
+            If True, run in debugging mode.
+
+    Raises:
+        UserInputError:
+            If neither --model-lsm nor --model-column were specified.
+        UserInputError:
+            If no Jones terms are enabled.
+        UserInputError:
+            If --out-mode is invalid.
+        ValueError:
+            If unknown Jones type is specified.
+        RuntimeError:
+            If I/O job on a tile failed.
     """
-    # cl;ean up shared memory from any previous runs
+
+    # clean up shared memory from any previous runs
     shm_utils.cleanupStaleShm()
 
     # this will be set below if a custom parset is specified on the command line
@@ -181,7 +210,7 @@ def main(debugging=False):
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
 
-        ms = ReadModelHandler(GD["data"]["ms"], 
+        ms = DataHandler(GD["data"]["ms"],
                               GD["data"]["column"], 
                               GD["model"]["list"].split(","),
                               output_column=GD["out"]["column"],
@@ -388,7 +417,8 @@ def main(debugging=False):
 
     except Exception, exc:
         import traceback
-        print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc()))
+        print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__, 
+                                                                    exc, traceback.format_exc()))
         if enable_pdb and not isinstance(exc, UserInputError):
             import pdb
             exc, value, tb = sys.exc_info()
@@ -396,6 +426,24 @@ def main(debugging=False):
         sys.exit(1)
 
 def _io_handler(save=None, load=None, load_model=True, finalize=False):
+    """
+    Handles disk reads and writes for the multiprocessing case.
+
+    Args:
+        save (None or int, optional):
+            If specified, corresponds to index of Tile to save.
+        load (None or int, optional):
+            If specified, corresponds to index of Tile to load.
+        load_model (bool, optional):
+            If specified, loads model column from measurement set.
+        finalize (bool, optional):
+            If True, save will call the unlock method on the handler.
+
+    Returns:
+        bool:
+            True if load/save was successful.
+    """
+    
     try:
         if save is not None:
             tile = Tile.tile_list[save]

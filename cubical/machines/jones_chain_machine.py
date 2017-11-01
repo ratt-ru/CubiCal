@@ -10,9 +10,32 @@ import cubical.kernels.cychain as cychain
 
 class JonesChain(MasterMachine):
     """
-    This class implements a gain machine for an arbitrary chain of Jones matrices.
+    This class implements a gain machine for an arbitrary chain of Jones matrices. Most of its
+    functionality is consistent with a complex 2x2 solver - many of its methods mimic those of the 
+    underlying complex 2x2 machines.
     """
+
     def __init__(self, label, data_arr, ndir, nmod, times, frequencies, jones_options):
+        """
+        Initialises a chain of complex 2x2 gain machines.
+        
+        Args:
+            label (str):
+                Label identifying the Jones term.
+            data_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities. 
+            ndir (int):
+                Number of directions.
+            nmod (nmod):
+                Number of models.
+            times (np.ndarray):
+                Times for the data being processed.
+            frequencies (np.ndarray):
+                Frequencies for the data being processsed.
+            jones_options (dict): 
+                Dictionary of options pertaining to the chain. 
+        """
         
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies, jones_options)
 
@@ -42,32 +65,59 @@ class JonesChain(MasterMachine):
         self.cached_resid_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
 
     def export_solutions(self):
-        """This method saves the solutions to a dict of {label: solutions,grids} items"""
+        """ Saves the solutions to a dict of {label: solutions,grids} items. """
+
         soldict = {}
         # prefix jones label to solution name
         for term in self.jones_terms:
             for label, sol in term.export_solutions().iteritems():
                 soldict["{}:{}".format(term.jones_label, label)] = sol
         soldict['prefixed'] = True
+
         return soldict
 
     def importable_solutions(self):
-        """This method loads solutions from a dict"""
+        """ Returns a dictionary of importable solutions for the chain. """
+
         soldict = {}
         for term in self.jones_terms:
             soldict.update(term.importable_solutions())
+
         return soldict
 
     def import_solutions(self, soldict):
-        """This method loads solutions from a dict"""
+        """
+        Loads solutions from a dict. 
+        
+        Args:
+            soldict (dict):
+                Contains gains solutions which must be loaded.
+        """
+
         for term in self.jones_terms:
             term.import_solutions(soldict)
 
     def compute_js(self, obser_arr, model_arr):
         """
-        This method is expected to compute (J^HJ)^-1 and J^HR. In practice, this method can be 
-        very flexible, as it is only used in the compute_update method and need only be consistent
-        with that usage. Should support the use of both the true residual and the observed data. 
+        This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
+        method. This method is more complicated than a more conventional gain machine. The use of
+        a chain means there are additional terms which need to be considered when computing the 
+        parameter updates.
+
+        Args:
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
+
+        Returns:
+            3-element tuple
+                
+                - J\ :sup:`H`\R (np.ndarray)
+                - (J\ :sup:`H`\J)\ :sup:`-1` (np.ndarray)
+                - Count of flags raised (int)     
         """     
 
         n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.gains.shape
@@ -127,9 +177,20 @@ class JonesChain(MasterMachine):
 
     def compute_update(self, model_arr, obser_arr):
         """
-        This method is expected to compute the parameter update. As such, it must fetch or compute 
-        the terms of the update in order to update the gains. Should call the compute_js but is 
-        very flexible, provided it ultimately updates the gains. 
+        This function computes the update step of the GN/LM method. This is equivalent to the 
+        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
+
+        Args:
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
+
+        Returns:
+            int:
+                Count of flags raised.
         """
 
         # if not(self.dd_term) and model_arr.shape[0]>1:
@@ -161,18 +222,19 @@ class JonesChain(MasterMachine):
         observed data, and the model data with the gains applied to it.
 
         Args:
-            resid_arr (np.array): Array which will receive residuals.
-                              Shape is n_dir, n_tim, n_fre, n_ant, a_ant, n_cor, n_cor
-            obser_arr (np.array): Array containing the observed visibilities.
-                              Same shape
-            model_arr (np.array): Array containing the model visibilities.
-                              Same shape
-            gains (np.array): Array containing the current gain estimates.
-                              Shape of n_dir, n_timint, n_freint, n_ant, n_cor, n_cor
-                              Where n_timint = ceil(n_tim/t_int), n_fre = ceil(n_fre/t_int)
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
+            resid_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the 
+                computed residuals should be placed.
 
         Returns:
-            residual (np.array): Array containing the result of computing D-GMG^H.
+            np.ndarray: 
+                Array containing the result of computing D - GMG\ :sup:`H`.
         """
 
         self.cached_resid_arr[:] = model_arr
@@ -189,9 +251,19 @@ class JonesChain(MasterMachine):
 
     def apply_inv_gains(self, resid_vis, corr_vis=None):
         """
-        This method should be able to apply the inverse of the gains to an array at full time-
-        frequency resolution. Should return the input array at full resolution after the application
-        of the inverse gains.
+        Applies the inverse of the gain estimates to the observed data matrix.
+
+        Args:
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            corr_vis (np.ndarray or None, optional): 
+                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
+                into which the corrected visibilities should be placed.
+
+        Returns:
+            np.ndarray: 
+                Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
         """
 
         if corr_vis is None:
@@ -215,7 +287,16 @@ class JonesChain(MasterMachine):
 
     def apply_gains(self, vis):
         """
-        Applies gains to model array. 
+        Applies the gains to an array at full time-frequency resolution. 
+
+        Args:
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities.
+
+        Returns:
+            np.ndarray:
+                Array containing the result of GMG\ :sup:`H`.
         """
         # simply go through the chain in reverse, applying each Jones term in turn
         for term in self.jones_terms[::-1]:
@@ -224,9 +305,15 @@ class JonesChain(MasterMachine):
 
     def update_stats(self, flags, eqs_per_tf_slot):
         """
-        This method should compute a variety of useful parameters regarding the conditioning and 
-        degrees of freedom of the current time-frequency chunk. Specifically, it must populate 
-        an attribute containing the degrees of freedom per time-frequency slot. 
+        This method computes various stats and totals based on the current state of the flags.
+        These values are used for weighting the chi-squared and doing intelligent convergence
+        testing.
+
+        Args:
+            flags_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags.
+            eqs_per_tf_slot (np.ndarray):
+                Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
         """
 
         if hasattr(self.active_term, 'num_valid_intervals'):
@@ -236,36 +323,45 @@ class JonesChain(MasterMachine):
    
     def update_conv_params(self, min_delta_g):
         """
-        This method should check the convergence of the current time-frequency chunk. Should return 
-        a Boolean.
+        Updates the convergence parameters of the current time-frequency chunk. 
+
+        Args:
+            min_delta_g (float):
+                Threshold for the minimum change in the gains - convergence criterion.
         """
 
         self.active_term.update_conv_params(min_delta_g)
 
     def restrict_solution(self):
+        """
+        Restricts the solutions by, for example, selecting a reference antenna or taking only the 
+        amplitude. 
+        """
 
         self.active_term.restrict_solution()
 
     def flag_solutions(self):
-        """
-        This method should do solution flagging based on the gains.
-        """
+        """ Flags gain solutions based on certain criteria, e.g. out-of-bounds, null, etc. """
 
         self.active_term.flag_solutions()
 
     def propagate_gflags(self, flags):
         """
-        This method should propagate the flags raised by the gain machine back into the data.
-        This is necessary as the gain flags may not have the same shape as the data.
+        Propagates the flags raised by the gain machine back into the data. This is necessary as 
+        the gain flags may not have the same shape as the data.
+
+        Args:
+            flags (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
         """
         
         self.active_term.propagate_gflags(flags)
 
     def update_term(self):
         """
-        This function will update the iteration count on the relevant element of the Jones chain.
-        It will also handle updating the active Jones term. Ultimately, this should handle any
-        complicated convergence/term switching functionality.
+        Updates the iteration count on the relevant element of the Jones chain. It will also handle 
+        updating the active Jones term. Ultimately, this should handle any complicated 
+        convergence/term switching functionality.
         """
 
         self.last_active_index = self.active_index
