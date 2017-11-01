@@ -23,77 +23,96 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import sys
+import logging
+
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.install import install
 
-USE_CYTHON = False
-       
-# try:
-# 	import numpy as np
-# 	include_path = np.get_include()
-# except:
-# 	print "Numpy failed to import."
-# 	include_path = ""
+logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+log = logging.getLogger()
 
-def get_exts():
+# Courtesy of rasterio's setup.py.
 
+try:
     import numpy as np
-    include_path = np.get_include()
+except ImportError:
+    log.critical("Numpy and its headers are required to run setup(). Exiting.")
+    sys.exit(1)
 
-    if USE_CYTHON:
+# Use Cython if available.
 
-    	from Cython.Build import cythonize
-    	import Cython.Compiler.Options as CCO	
+try:
+    from Cython.Build import cythonize
+    import Cython.Compiler.Options as CCO
+except ImportError:
+    cythonize = None
 
-    	CCO.buffer_max_dims = 9
+include_path = np.get_include()
 
-    	extensions = \
-    		[Extension(
-    	        "cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.pyx"],
-    	        include_dirs=[include_path]),
-    	     Extension(
-    	        "cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
-    	        include_dirs=[include_path]),
-    	     Extension(
-    	        "cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.pyx"],
-    	        include_dirs=[include_path]),
-    	     Extension(
-    	        "cubical.kernels.cychain", ["cubical/kernels/cychain.pyx"],
-    	        include_dirs=[include_path]),
-    	     Extension(
-    	        "cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.pyx"],
-    	        include_dirs=[include_path], language="c++"),
-    	     Extension(
-    	        "cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.pyx"],
-    	        include_dirs=[include_path], language="c++"),
-    	     Extension(
-    	        "cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.pyx"],
-    	        include_dirs=[include_path], language="c++")]
+cmpl_args = ['-fopenmp',
+             '-ffast-math', 
+             '-O2', 
+             '-march=native',  
+             '-mtune=native', 
+             '-ftree-vectorize']
+    
+link_args = ['-lgomp']
 
-    	extensions = cythonize(extensions, compiler_directives={'binding': True})
+if cythonize:
 
-        return extensions
+    log.info("Cython is available. Cythonizing...")
 
-    else:
+    CCO.buffer_max_dims = 9
 
-    	extensions = \
-    		[Extension("cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.c"], 
-    			include_dirs=[include_path]),
-          	 Extension("cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.c"], 
-          	 	include_dirs=[include_path]),
-          	 Extension("cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.c"], 
-          	 	include_dirs=[include_path]),
-          	 Extension("cubical.kernels.cychain", ["cubical/kernels/cychain.c"], 
-          	 	include_dirs=[include_path]),
-          	 Extension("cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.cpp"], 
-          	 	include_dirs=[include_path]),
-          	 Extension("cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.cpp"], 
-          	 	include_dirs=[include_path]),
-          	 Extension("cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.cpp"], 
-          	 	include_dirs=[include_path])]
+    extensions = \
+        [Extension(
+            "cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
+            "cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
+            "cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
+            "cubical.kernels.cychain", ["cubical/kernels/cychain.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
+            "cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.pyx"],
+            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
+            extra_link_args=link_args),
+         Extension(
+            "cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.pyx"],
+            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
+            extra_link_args=link_args),
+         Extension(
+            "cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.pyx"],
+            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
+            extra_link_args=link_args)]
 
-        return extensions
+    extensions = cythonize(extensions, compiler_directives={'binding': True})
+
+else:
+
+    log.info("Cython unavailable. Using bundled .c and .cpp files.")
+
+    extensions = \
+        [Extension("cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.c"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.c"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.c"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cychain", ["cubical/kernels/cychain.c"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.cpp"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.cpp"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.cpp"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args)]
 
 class custom_install(install):
     def run(self):
@@ -119,8 +138,6 @@ else:
                     'scipy',
                     'astro-tigger']
 
-print find_packages()
-
 setup(name='cubical',
       version='0.2.5',
       description='Fast calibration implementation exploiting complex optimisation.',
@@ -137,15 +154,11 @@ setup(name='cubical',
       license='GNU GPL v3',
       cmdclass={'install': custom_install},  
       packages=['cubical', 'cubical.machines', 'cubical.tools', 'cubical.kernels'],
-      setup_requires=['numpy'],
       install_requires=requirements,
       include_package_data=True,
       zip_safe=False,
-      ext_modules = get_exts(),
-      entry_points={'console_scripts': ['nocubical = cubical.main:main']},           
+      ext_modules = extensions,
+      entry_points={'console_scripts': ['gocubical = cubical.main:main']},           
 )
-# scripts = ['cubical/bin/gocubical'],      
-# scripts = ['cubical/bin/gocubical'],
-#scripts=[os.path.join('cubical', script_name) for script_name in ['DDF.py', 'CleanSHM.py', 'MemMonitor.py', 'Restore.py', 'SelfCal.py']],
-# cythonize(extensions, compiler_directives={'binding': True}),
+
 

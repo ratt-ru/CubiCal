@@ -7,6 +7,17 @@
             "/home/jonathan/venvs/setupenv/local/lib/python2.7/site-packages/numpy/core/include/numpy/arrayobject.h", 
             "/home/jonathan/venvs/setupenv/local/lib/python2.7/site-packages/numpy/core/include/numpy/ufuncobject.h"
         ], 
+        "extra_compile_args": [
+            "-fopenmp", 
+            "-ffast-math", 
+            "-O2", 
+            "-march=native", 
+            "-mtune=native", 
+            "-ftree-vectorize"
+        ], 
+        "extra_link_args": [
+            "-lgomp"
+        ], 
         "include_dirs": [
             "/home/jonathan/venvs/setupenv/local/lib/python2.7/site-packages/numpy/core/include"
         ], 
