@@ -12,8 +12,9 @@ from time import time
 import concurrent.futures as cf
 
 from cubical.tools import logger
-# set the base name of the logger. This happens
-logger.app_name = "cc"
+# set the base name of the logger. This must happen before any other loggers are instantiated
+# (Thus before anything else that uses the logger is imported!)
+logger.init("cc")
 
 import cubical.data_handler as data_handler
 from cubical.data_handler import ReadModelHandler, Tile
@@ -97,9 +98,6 @@ def main(debugging=False):
     # cl;ean up shared memory from any previous runs
     shm_utils.cleanupStaleShm()
 
-    # init logger
-    logger.enableMemoryLogging(True)
-
     # this will be set below if a custom parset is specified on the command line
     parset_file = None
     # "GD" is a global defaults dict, containing options set up from parset + command line
@@ -160,6 +158,9 @@ def main(debugging=False):
         # now setup logging
         logger.logToFile(basename + ".log", append=GD["log"]["append"])
         logger.enableMemoryLogging(GD["log"]["memory"])
+        logger.setBoring(GD["log"]["boring"])
+        logger.setVerbosity(GD["debug"]["verbose"])
+
         if not debugging:
             print>>log, "started " + " ".join(sys.argv)
         # print current options
