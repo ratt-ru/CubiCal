@@ -241,6 +241,10 @@ def setBoring(boring=True):
 
 def setGlobalVerbosity(verbosity):
     global _global_verbosity
+    if verbosity is None:
+        _global_verbosity = 0
+        return
+    # ensure verbosity is turned into a list.
     if type(verbosity) is int:
         verbosity = [verbosity]
     elif type(verbosity) is str:
@@ -261,9 +265,12 @@ def setGlobalVerbosity(verbosity):
             print>>logger(0,"green"),"set console verbosity level {}={}".format(m.group(1), level)
 
 def setGlobalLogVerbosity(verbosity):
-    # ensure verbosity is turned into a list.
     global _global_log_verbosity
-    if type(verbosity) is int or verbosity is None:
+    if verbosity is None:
+        _global_log_verbosity = None  # None means follow console default
+        return
+    # ensure verbosity is turned into a list.
+    if type(verbosity) is int:
         verbosity = [verbosity]
     elif type(verbosity) is str:
         verbosity = verbosity.split(",")
