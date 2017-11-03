@@ -47,7 +47,7 @@ class _DefaultWriter(object):
         self.bold = bool(color) if bold is None else bold
 
     def write(self, message):
-        message = message.strip()
+        message = message.rstrip()
         if self.color and message:  # do not colorize empty messages, else "\n" is issued independently
             message = ModColor.Str(message, col=self.color, Bold=self.bold)
         self.logger.log(self.level, message)
