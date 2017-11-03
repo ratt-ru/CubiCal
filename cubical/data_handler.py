@@ -421,7 +421,7 @@ class Tile(object):
         # the clear the flags
         if self.handler.active_row_numbers is not None:
             rows = self.handler.active_row_numbers - self.first_row
-            rows = rows[rows<nrows]
+            rows = rows[(rows>=0)&(rows<nrows)]
             inactive = np.ones(nrows, bool)
             inactive[rows] = False
         else:
@@ -989,8 +989,7 @@ class DataHandler:
             self._poltype = "linear"
             self.feeds = "xy"
         else:
-            print>>log,"  unsupported feed type. Terminating."
-            sys.exit()
+            raise TypeError("unsupported POLARIZATION_TYPE {}. Terminating.".format(self._poltype))
 
         # print some info on MS layout
         print>>log,"  detected {} ({}) feeds".format(self._poltype, self.feeds)
@@ -1002,20 +1001,33 @@ class DataHandler:
         print>>log,"  MS contains {} spectral windows of {} channels each".format(len(self._spw_chanfreqs), nchan)
 
         # figure out DDID range
-        self._ddids = _parse_range(ddid, _ddesctab.nrows())
+        self._num_total_ddids = _ddesctab.nrows()
+        self._ddids = _parse_range(ddid, self._num_total_ddids)
+        if not self._ddids:
+            raise ValueError("'ddid' did not select any valid DDIDs".format(ddid))
 
         # figure out channel slices per DDID
         self._channel_slice = _parse_slice(channels)
 
         # apply the slices to each spw
         self._ddid_spw = _ddesctab.getcol("SPECTRAL_WINDOW_ID")
-        ddid_chanfreqs = [ self._spw_chanfreqs[self._ddid_spw[ddid]] for ddid in self._ddids]
-        self._nchan_orig = len(ddid_chanfreqs[0])
-        if not all([len(fq) == self._nchan_orig for fq in ddid_chanfreqs]):
+        ddid_chanfreqs = [ self._spw_chanfreqs[d] for d in xrange(self._num_total_ddids) ]
+        self._nchan_orig = len(ddid_chanfreqs[self._ddids[0]])
+        if not all([len(ddid_chanfreqs[d]) == self._nchan_orig for d in self._ddids]):
             raise ValueError("Selected DDIDs do not have a uniform number of channels. This is not currently supported.")
-        self._ddid_chanfreqs = np.array([fq[self._channel_slice] for fq in ddid_chanfreqs])
-        self.nfreq = len(self._ddid_chanfreqs[0])
-        self.all_freqs = self._ddid_chanfreqs.ravel()
+        # get slice through first DDID, this will give us the number of selected channels per DDID
+        freqs0 = ddid_chanfreqs[self._ddids[0]][self._channel_slice]
+        self.nfreq = len(freqs0)
+        # form up array of per-DDID frequencies
+        self._ddid_chanfreqs = np.zeros((self._num_total_ddids, self.nfreq), float)
+        # fill in slices for selected DDIDs (non-selected ones remain unfilled)
+        for d in self._ddids:
+            freqs = ddid_chanfreqs[d][self._channel_slice]
+            if len(freqs) != self.nfreq:
+                raise ValueError("Selected DDIDs do not have a uniform number of channels. This is not currently supported.")
+            self._ddid_chanfreqs[d, :] = freqs
+        # make flat array of all frequencies
+        self.all_freqs = self._ddid_chanfreqs[self._ddids,:].ravel()
 
         # form up blc/trc arguments for getcolslice() and putcolslice()
         if self._channel_slice != slice(None):
@@ -1057,7 +1069,7 @@ class DataHandler:
 
 
         print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels per DDID, %d corrs" % (self.nants,
-                    self.nrows, len(self._ddids), _ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
+                    self.nrows, len(self._ddids), self._num_total_ddids, self.ntime, self.nfreq, self.ncorr)
         print>>log,"  DDID central frequencies are at {} GHz".format(
                     " ".join(["%.2f"%(self._ddid_chanfreqs[i][self.nfreq/2]*1e-9) for i in range(len(self._ddids))]))
         self.nddid = len(self._ddids)
