@@ -102,7 +102,7 @@ class LoggerWrapper(object):
         return _DefaultWriter(self.logger, logging.INFO - level, color=color)
 
     def write(self, message):
-        return self.logger.info(message.strip())
+        return self.logger.info(message.rstrip())
 
 
 _proc_status = '/proc/%d/status' % os.getpid()
