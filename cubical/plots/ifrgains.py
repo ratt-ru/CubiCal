@@ -39,7 +39,8 @@ def _complexifrgain(rr):
 
 
 def _is_unity(rr, ll):
-    return (rr==1).all() and (ll==1).all()
+    return (not rr.count() or (rr==1).all()) and \
+           (not ll.count() or (ll==1).all())
 
 
 #def make_ifrgain_plots(filename="$STEFCAL_DIFFGAIN_SAVE", prefix="IG", feed="$IFRGAIN_PLOT_FEED", msname="$MS"):
