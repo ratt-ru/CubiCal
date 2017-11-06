@@ -110,8 +110,10 @@ def make_ifrgain_plots(ig, ms, GD, basename):
     def plot_hist(content, title):
         """Plots histogram"""
         values = [x for l, (x, xe), (y, ye) in content] + [y for l, (x, xe), (y, ye) in content]
-        hist = pylab.hist(values)
-        pylab.xlim(min(values), max(values))
+        x0, x1 = min(values), max(values)
+        if (x1-x0) > 1e-5:
+            hist = pylab.hist(values)
+            pylab.xlim(x0, x1)
         pylab.title(title)
 
     def plot_complex(content, title):
