@@ -32,10 +32,13 @@ def _complexifrgain(rr):
         return rr, 0
     else:
         vals = rr[rr != 1]
-        offset = float(abs(vals).mean())
-        mean = vals.mean().ravel()[0]
-        mean = cmath.rect(offset, cmath.phase(mean))
-        return mean, abs(vals - mean).std()
+        if vals.count():
+            offset = float(abs(vals).mean())
+            mean = vals.mean().ravel()[0]
+            mean = cmath.rect(offset, cmath.phase(mean))
+            return mean, abs(vals - mean).std()
+        else:
+            return 1,0
 
 
 def _is_unity(rr, ll):
