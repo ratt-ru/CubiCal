@@ -23,7 +23,10 @@ def _normifrgain(rr):
         return abs(rr), 0
     else:
         offset = abs(rr[rr != 1])
-        return float(offset.mean()), float(offset.std())
+        if offset.count():
+            return float(offset.mean()), float(offset.std())
+        else:
+            return 1, 0
 
 
 def _complexifrgain(rr):
@@ -32,14 +35,18 @@ def _complexifrgain(rr):
         return rr, 0
     else:
         vals = rr[rr != 1]
-        offset = float(abs(vals).mean())
-        mean = vals.mean().ravel()[0]
-        mean = cmath.rect(offset, cmath.phase(mean))
-        return mean, abs(vals - mean).std()
+        if vals.count():
+            offset = float(abs(vals).mean())
+            mean = vals.mean().ravel()[0]
+            mean = cmath.rect(offset, cmath.phase(mean))
+            return mean, abs(vals - mean).std()
+        else:
+            return 1,0
 
 
 def _is_unity(rr, ll):
-    return (rr==1).all() and (ll==1).all()
+    return (not rr.count() or (rr==1).all()) and \
+           (not ll.count() or (ll==1).all())
 
 
 #def make_ifrgain_plots(filename="$STEFCAL_DIFFGAIN_SAVE", prefix="IG", feed="$IFRGAIN_PLOT_FEED", msname="$MS"):
@@ -106,8 +113,10 @@ def make_ifrgain_plots(ig, ms, GD, basename):
     def plot_hist(content, title):
         """Plots histogram"""
         values = [x for l, (x, xe), (y, ye) in content] + [y for l, (x, xe), (y, ye) in content]
-        hist = pylab.hist(values)
-        pylab.xlim(min(values), max(values))
+        x0, x1 = min(values), max(values)
+        if (x1-x0) > 1e-5:
+            hist = pylab.hist(values)
+            pylab.xlim(x0, x1)
         pylab.title(title)
 
     def plot_complex(content, title):

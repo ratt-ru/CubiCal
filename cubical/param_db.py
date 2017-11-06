@@ -12,10 +12,11 @@ from numpy.ma import masked_array
 import traceback
 from cubical.tools import logger, ModColor
 log = logger.getLogger("param_db", verbose=1)
-import scipy.interpolate
+import scipy.interpolate, scipy.spatial
 import itertools
 import time
 from collections import OrderedDict, Iterator
+
 
 class _Record(object):
     """
@@ -496,30 +497,46 @@ class Parameter(object):
                     print>> log(2), "  slice {} preparing {}D interpolator for {}".format(slicer,
                                         len(segment_grid),
                                         ",".join(["{}:{}".format(*seg) for seg in input_grid_segment]))
-                    # make a meshgrid of all points
+                    # arav: linear array of all values, adata: all unflagged values
                     arav = array[array_segment_slice].ravel()
+                    adata = arav.data[~arav.mask] if arav.mask is not np.ma.nomask else arav.data
+                    # edge case: no valid data. Make fake interpolator
+                    if not len(adata):
+                        interpolator = lambda coords: np.full(coords.shape[:-1], np.nan, adata.dtype)
                     # for ndim=0, just return the 0,0 element of array
-                    if not len(segment_grid):
-                        interpolator = lambda coords:array[tuple(input_slice_reduction)]
+                    elif not len(segment_grid):
+                        interpolator = lambda coords: array[tuple(input_slice_reduction)]
                     # for ndim=1, use interp1d...
                     elif len(segment_grid) == 1:
-                        if arav.mask is np.ma.nomask:
-                            interpolator = scipy.interpolate.interp1d(segment_grid[0], arav.data,
-                                                            bounds_error=False, fill_value=np.nan)
-                        else:
-                            interpolator = scipy.interpolate.interp1d(segment_grid[0][~arav.mask], arav.data[~arav.mask],
-                                                            bounds_error=False, fill_value=np.nan)
+                        agrid = segment_grid[0]
+                        if arav.mask is not np.ma.nomask:
+                            agrid = agrid[~arav.mask]
+                        # handle edge case of 1 valid point, since interp1d() falls over on this
+                        if len(adata) == 1:
+                            adata = np.array([adata[0], adata[0]])
+                            agrid = np.array([agrid[0]-1e-6, agrid[0]+1e-6])
+                        # make normal interpolator
+                        interpolator = scipy.interpolate.interp1d(agrid, adata, bounds_error=False, fill_value=np.nan)
                     # ...because LinearNDInterpolator works for ndim>1 only
                     else:
                         meshgrids = np.array([g.ravel() for g in np.meshgrid(*segment_grid, 
                                                                                 indexing='ij')]).T
-                        if arav.mask is np.ma.nomask:
-                            interpolator = scipy.interpolate.LinearNDInterpolator(meshgrids, 
-                                                                    arav.data, fill_value=np.nan)
-                        else:
-                            interpolator = scipy.interpolate.LinearNDInterpolator(
-                                meshgrids[~arav.mask, :], arav.data[~arav.mask], fill_value=np.nan)
-                        self._interpolators[slicer] = interpolator, input_grid_segment
+                        if arav.mask is not np.ma.nomask:
+                            meshgrids = meshgrids[~arav.mask, :]
+                        qhull_options = "Qbb Qc Qz Q12"
+                        # edge case of <4 valid points. Delaunay falls over, so artificially duplicate points,
+                        # and allow Qhull juggling with the QJ option
+                        if len(adata) < 4:
+                            adata = np.resize(adata, 4)
+                            meshgrids = np.resize(meshgrids, (4,2))
+                            qhull_options += " QJ"
+                        # edge case of all points along an axis being on the same line. Allow juggling then,
+                        # else Delaunay also falls over
+                        elif len(set(meshgrids[:,0]))<2 or len(set(meshgrids[:,1]))<2:
+                            qhull_options += " QJ"
+                        triang = scipy.spatial.Delaunay(meshgrids, qhull_options=qhull_options)
+                        interpolator = scipy.interpolate.LinearNDInterpolator(triang, adata, fill_value=np.nan)
+                    self._interpolators[slicer] = interpolator, input_grid_segment
                 # make a meshgrid of output and massage into correct shape for interpolator
                 coords = np.array([x.ravel() for x in np.meshgrid(*output_slice_grid, indexing='ij')])
                 result = interpolator(coords.T).reshape([len(x) for x in output_slice_grid])
