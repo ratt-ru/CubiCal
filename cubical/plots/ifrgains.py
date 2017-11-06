@@ -23,7 +23,10 @@ def _normifrgain(rr):
         return abs(rr), 0
     else:
         offset = abs(rr[rr != 1])
-        return float(offset.mean()), float(offset.std())
+        if offset.count():
+            return float(offset.mean()), float(offset.std())
+        else:
+            return 1, 0
 
 
 def _complexifrgain(rr):
