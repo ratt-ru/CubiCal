@@ -218,7 +218,10 @@ class Tile(object):
 
         # Copy various useful info from handler and make a simple list of unique ddids.
 
+        # list of DDIDs in this tile
         self.ddids = np.unique([rowchunk.ddid for rowchunk,_,_ in self._chunk_dict.itervalues()])
+
+        # various columns
         self.ddid_col = self.handler.ddid_col[self.first_row:self.last_row+1]
         self.time_col = self.handler.time_col[self.first_row:self.last_row+1]
         self.antea = self.handler.antea[self.first_row:self.last_row+1]
@@ -241,7 +244,7 @@ class Tile(object):
 
     def get_chunk_tfs(self, key):
         """
-        Returns timestamps and freqs for the given chunk assosicated with key, as well as two slice 
+        Returns timestamps and freqs for the given chunk associated with key, as well as two slice 
         objects describing its position in the global time/freq space.
 
         Args:
@@ -250,15 +253,17 @@ class Tile(object):
 
         Returns:
             tuple:
-                Unique times, channel frequencies, time axis slice, frequency axis slice.
+                Unique times, channel frequencies, time axis slice, frequency axis slice (in overall subset of freqs)
         """
-        
+
         rowchunk, chan0, chan1 = self._chunk_dict[key]
         timeslice = slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1)
+        # lookup ordinal number of this DDID, and convert this to offset in frequencies
+        chan_offset = self.handler._ddid_index[rowchunk.ddid] * self.handler.nfreq
         return self.handler.uniq_times[timeslice], \
                self.handler._ddid_chanfreqs[rowchunk.ddid, chan0:chan1], \
                slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1), \
-               slice(rowchunk.ddid * self.handler.nfreq + chan0, rowchunk.ddid * self.handler.nfreq + chan1)
+               slice(chan_offset + chan0, chan_offset + chan1)
 
     def load(self, load_model=True):
         """
@@ -500,7 +505,7 @@ class Tile(object):
         ntime = len(np.unique(self.time_col))
 
         nrows = self.last_row - self.first_row + 1
-        expected_nrows = n_bl*ntime*len(self.ddids)
+        expected_nrows = n_bl*ntime*len(self.nfreq)
 
         # The row identifiers determine which rows in the SORTED/ALL ROWS are required for the data
         # that is present in the MS. Essentially, they allow for the selection of an array of a size
@@ -1028,6 +1033,8 @@ class DataHandler:
             self._ddid_chanfreqs[d, :] = freqs
         # make flat array of all frequencies
         self.all_freqs = self._ddid_chanfreqs[self._ddids,:].ravel()
+        # make index of DDID -> ordinal number within selection
+        self._ddid_index = { d: num for num,d in enumerate(self._ddids) }
 
         # form up blc/trc arguments for getcolslice() and putcolslice()
         if self._channel_slice != slice(None):
