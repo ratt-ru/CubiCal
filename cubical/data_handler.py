@@ -741,6 +741,8 @@ class Tile(object):
 
         if self.handler._save_bitflag and data['updated'][1]:
             print>> log, "saving flags for MS rows {}~{}".format(self.first_row, self.last_row)
+            # clear bitflag column first
+            self.bflagcol &= ~self.handler._save_bitflag
             # add bitflag to points where data wasn't flagged for prior reasons
             self.bflagcol[(data['flags']&~FL.PRIOR) != 0] |= self.handler._save_bitflag
             self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
@@ -1629,7 +1631,8 @@ class DataHandler:
         print>>log,"Writing out new flags"
         bflag_col = self.fetch("BITFLAG")
         # raise specified bitflag
-        print>> log, "  updating BITFLAG column with flagbit %d"%self._save_bitflag
+        print>> log, "  updating BITFLAG column flagbit %d"%self._save_bitflag
+        bflag_col[:, self._channel_slice, :] &= ~self._save_bitflag         # clear the flagbit first
         bflag_col[:, self._channel_slice, :][flags] |= self._save_bitflag
         self.data.putcol("BITFLAG", bflag_col)
         print>>log, "  updating BITFLAG_ROW column"
