@@ -214,7 +214,8 @@ class Tile(object):
                 key = "D{}T{}F{}".format(rowchunk.ddid, rowchunk.tchunk, ifreq)
                 chan0, chan1 = self.handler.chunk_find[ifreq:ifreq + 2]
                 self._chunk_dict[key] = rowchunk, chan0, chan1
-                self._chunk_indices[key] = rowchunk.tchunk, rowchunk.ddid * num_freq_chunks + ifreq
+                self._chunk_indices[key] = rowchunk.tchunk, \
+                                           self.handler._ddid_index[rowchunk.ddid] * num_freq_chunks + ifreq
 
         # Copy various useful info from handler and make a simple list of unique ddids.
 
@@ -230,7 +231,7 @@ class Tile(object):
         self.ctype = self.handler.ctype
         self.nants = self.handler.nants
         self.ncorr = self.handler.ncorr
-        self.nchan = self.handler.nfreq
+        self.nfreq = self.handler.nfreq
 
     def get_chunk_indices(self, key):
         """ Returns chunk indices based on the key value. """
@@ -259,7 +260,7 @@ class Tile(object):
         rowchunk, chan0, chan1 = self._chunk_dict[key]
         timeslice = slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1)
         # lookup ordinal number of this DDID, and convert this to offset in frequencies
-        chan_offset = self.handler._ddid_index[rowchunk.ddid] * self.handler.nfreq
+        chan_offset = self.handler._ddid_index[rowchunk.ddid] * self.nfreq
         return self.handler.uniq_times[timeslice], \
                self.handler._ddid_chanfreqs[rowchunk.ddid, chan0:chan1], \
                slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1), \
@@ -355,7 +356,7 @@ class Tile(object):
 
                                 # make a sink with an array to receive visibilities
                                 ndirs = model_source._nclus
-                                model_shape = (ndirs, 1, expected_nrows, self.nchan, self.ncorr)
+                                model_shape = (ndirs, 1, expected_nrows, self.nfreq, self.ncorr)
                                 full_model = np.zeros(model_shape, self.handler.ctype)
                                 column_snk = ColumnSinkProvider(self, full_model, sort_ind)
                                 snks = [ column_snk ]
@@ -505,7 +506,7 @@ class Tile(object):
         ntime = len(np.unique(self.time_col))
 
         nrows = self.last_row - self.first_row + 1
-        expected_nrows = n_bl*ntime*len(self.nfreq)
+        expected_nrows = n_bl*ntime*len(self.ddids)
 
         # The row identifiers determine which rows in the SORTED/ALL ROWS are required for the data
         # that is present in the MS. Essentially, they allow for the selection of an array of a size
