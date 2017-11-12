@@ -443,7 +443,7 @@ class Tile(object):
                 inactive[uv2 > self.handler.max_baseline**2] = True
             print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(inactive.sum() - num_inactive)
 
-        flag_arr[inactive] |= FL.PRIOR
+        flag_arr[inactive] |= FL.SKIPSOL
 
         # Form up bitflag array, if needed.
         if self.handler._apply_bitflags or self.handler._save_bitflag or self.handler._auto_fill_bitflag:
@@ -655,10 +655,10 @@ class Tile(object):
         else:
             wgt_arr = None
 
-        # zero flagged entries in data and model
-        obs_arr[flagged, :, :] = 0
-        if mod_arr is not None:
-            mod_arr[0, 0, flagged, :, :] = 0
+        # # zero flagged entries in data and model. NB: this is now done in the solver instead
+        # obs_arr[flagged, :, :] = 0
+        # if mod_arr is not None:
+        #     mod_arr[0, 0, flagged, :, :] = 0
 
         return obs_arr, mod_arr, flags, wgt_arr
 
@@ -744,7 +744,7 @@ class Tile(object):
             # clear bitflag column first
             self.bflagcol &= ~self.handler._save_bitflag
             # add bitflag to points where data wasn't flagged for prior reasons
-            self.bflagcol[(data['flags']&~FL.PRIOR) != 0] |= self.handler._save_bitflag
+            self.bflagcol[data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0] |= self.handler._save_bitflag
             self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
             print>> log, "  updated BITFLAG column"
             self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))

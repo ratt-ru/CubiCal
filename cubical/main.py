@@ -19,6 +19,7 @@ import os
 import os.path
 import traceback
 import sys
+import numpy as np
 from time import time
 
 import concurrent.futures as cf
@@ -39,9 +40,6 @@ from cubical.machines import jones_chain_machine
 from cubical.machines import ifr_gain_machine
 
 
-# set the base name of the logger
-logger.app_name = "cc"
-
 log = logger.getLogger("main")
 
 import cubical.solver as solver
@@ -49,6 +47,8 @@ import cubical.plots as plots
 import cubical.flagging as flagging
 
 from cubical.statistics import SolverStats
+
+GD = None
 
 class UserInputError(Exception):
     pass
@@ -277,6 +277,23 @@ def main(debugging=False):
                 raise ValueError("unknown Jones type '{}'".format(jones_opts['type']))
         else:
             jones_class = jones_chain_machine.JonesChain
+
+        # set up subtraction options
+        solver_opts["subtract-model"] = GD["out"]["subtract-model"]
+        # parse subtraction directions as a slice or list
+        subdirs = GD["out"]["subtract-dirs"]
+        if subdirs:
+            try:
+                if ',' in subdirs:
+                    subdirs = map(int, subdirs.split(","))
+                else:
+                    subdirs = eval("np.s_[{}]".format(subdirs))
+            except:
+                raise UserInputError("invalid --out-subtract-dirs option '{}'".format(subdirs))
+        else:
+            subdirs = slice(None)
+        print>>log(1),"will subtract directions {}".format(subdirs)
+        solver_opts["subtract-dirs"] = subdirs
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number

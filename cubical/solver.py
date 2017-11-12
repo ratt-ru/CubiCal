@@ -428,8 +428,8 @@ class _VisDataManager(object):
         self.obser_arr, self.model_arr, self.flags_arr, self.weight_arr = \
             obser_arr, model_arr, flags_arr, weight_arr
         self._wobs_arr = self._wmod_arr = None
-        self.cmodel_arr = None
         self.freq_slice = freq_slice
+        self._model_corrupted = False
 
     @property
     def weighted_obser(self):
@@ -445,6 +445,9 @@ class _VisDataManager(object):
             else:
                 self._wobs_arr = np.empty_like(self.model_arr[0,...])
                 self._wobs_arr[np.newaxis, ...] = self.obser_arr
+                # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
+                # as they will already get zero weight in data_handler
+                self._wobs_arr[:, self.flags_arr, :, :] = 0
         return self._wobs_arr
 
     @property
@@ -458,26 +461,28 @@ class _VisDataManager(object):
         if self._wmod_arr is None:
             if self.weight_arr is not None:
                 self._wmod_arr = self.model_arr * self.weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
-            # if no weights, the simply duplicate the model axis in obser_arr
             else:
-                self._wmod_arr = self.model_arr
+                self._wmod_arr = self.model_arr.copy()
+                # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
+                # as they will already get zero weight in data_handler
+                self._wmod_arr[:, self.flags_arr, :, :] = 0
         return self._wmod_arr
 
     @property
     def corrupt_weighted_model(self):
         """
-        This property gives the model visibilities, corrupted by the gains, times the weights
+        This property gives the model visibilities, corrupted by the gains, times the weights, summed over directions.
 
         Returns:
-            Weighted corrupted model visibilities (np.ndarray) of shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
+            Weighted corrupted model visibilities (np.ndarray) of shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
         """
-        cmod = self.corrupt_model()
+        cmod = self.corrupt_model(None).sum(0)
         if self.weight_arr is not None:
             return cmod*self.weight_arr[..., np.newaxis, np.newaxis]
         else:
             return cmod
 
-    def corrupt_residual(self, imod=0):
+    def corrupt_residual(self, imod=0, idir=slice(None)):
         """
         This method returns the (corrupted) residual with respect to a given model
         
@@ -488,39 +493,29 @@ class _VisDataManager(object):
         Returns:
             Weighted residual visibilities (np.ndarray) of shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
         """
-        if self.cmodel_arr is not None:
-            return self.obser_arr - self.cmodel_arr[imod,...]
-        else:
-            resid_vis = np.empty_like(self.model_arr[0,0:1,...])
-            self.gm.compute_residual(self.obser_arr, self.model_arr[:,0:1,...], resid_vis)
-            return resid_vis[0,...]
+        return self.obser_arr - self.corrupt_model(imod, idir)
 
 
-    def corrupt_model(self, imod=None):
+    def corrupt_model(self, imod=0, idir=slice(None)):
         """
-        This method retuns the model visibilities, corrupted by the gains. If n_mod>1, then
-        corrupt_model(None) must be called first (to corrupt all models). Note that this corrupts 
-        the model array in place.
-
+        This method returns the model visibilities, corrupted by the gains. 
+        The first time it is called, the model is corrupted in-place. 
         Args:
             imod (int or None): 
-                Index of model (0 to n_mod-1), or None to corrupt all models
+                Index of model (0 to n_mod-1), or None to return all models
+            idir (slice or list)
+                Directions to include in corrupted moel
 
         Returns:
             Corrupted model visibilities (np.ndarray) of shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor)
             if imod is None, otherwise the model axis is omitted.
         """
-        # if asking for all models (imod=None), or we only have one model, then cache result
-        if imod is None or self.model_arr.shape[1] == 1:
-            if self.cmodel_arr is None:
-                self.gm.apply_gains(self.model_arr)
-                self.cmodel_arr = self.model_arr.sum(0)
-            return self.cmodel_arr if imod is None else self.cmodel_arr[imod,...]
-        # else just compute one particular model
-        elif self.cmodel_arr is not None:
-            return self.cmodel_arr[imod,...]
-        else:
-            return self.gm.apply_gains(self.model_arr[:, imod:imod+1, ...]).sum(0)
+        if not self._model_corrupted:
+            self.gm.apply_gains(self.model_arr)
+            self._model_corrupted = True
+        if imod is None:
+            return self.model_arr
+        return self.model_arr[idir, imod].sum(0)
 
 
 def solve_only(vdm, soldict, label, sol_opts):
@@ -623,19 +618,15 @@ def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
     resid_vis, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr,
-                                        sol_opts, label=label,
-                                        compute_residuals=(vdm.weight_arr is None))
+                                        sol_opts, label=label, compute_residuals=False)
 
     # compute IFR gains, if needed. Note that this computes corrupt models, so it makes sense
     # doing it before recomputing the residuals: saves time
     if ifrgain_machine.is_computing():
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-    # compute residuals if needed
-    if vdm.weight_arr is not None:
-        resid_vis = vdm.corrupt_residual(0)
-    else:
-        resid_vis = resid_vis[0, ...]
+    # compute residuals
+    resid_vis = vdm.corrupt_residual(sol_opts["subtract-model"],  sol_opts["subtract-dirs"])
 
     # correct residual if required
     if correct:
@@ -716,7 +707,7 @@ def correct_residuals(vdm, soldict, label, sol_opts, correct=True):
     if ifrgain_machine.is_computing():
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-    resid_vis = vdm.corrupt_residual(0)
+    resid_vis = vdm.corrupt_residual(sol_opts["subtract-model"],  sol_opts["subtract-dirs"])
 
     # correct residual if required
     if correct:
