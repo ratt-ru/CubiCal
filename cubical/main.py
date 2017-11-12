@@ -283,12 +283,15 @@ def main(debugging=False):
         # parse subtraction directions as a slice or list
         subdirs = GD["out"]["subtract-dirs"]
         if subdirs:
-            try:
-                if ',' in subdirs:
-                    subdirs = map(int, subdirs.split(","))
-                else:
-                    subdirs = eval("np.s_[{}]".format(subdirs))
-            except:
+            if type(subdirs) is str:
+                try:
+                    if ',' in subdirs:
+                        subdirs = map(int, subdirs.split(","))
+                    else:
+                        subdirs = eval("np.s_[{}]".format(subdirs))
+                except:
+                    raise UserInputError("invalid --out-subtract-dirs option '{}'".format(subdirs))
+            elif type(subdirs) is not int and type(subdirs) is not list:
                 raise UserInputError("invalid --out-subtract-dirs option '{}'".format(subdirs))
         else:
             subdirs = slice(None)

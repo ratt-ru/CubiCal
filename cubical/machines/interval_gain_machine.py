@@ -90,6 +90,7 @@ class PerIntervalGains(MasterMachine):
         self.ref_ant = options["ref-ant"]
         self.dd_term = options["dd-term"]
         self.term_iters = options["term-iters"]
+        self.fix_directions = options["fix-dirs"] or []
 
         # Construct the appropriate shape for the gains.
 
@@ -303,6 +304,8 @@ class PerIntervalGains(MasterMachine):
         elif self.update_type == "amp-diag":
             self.gains[...,(0,1),(1,0)] = 0
             np.abs(self.gains, out=self.gains)
+        for idir in self.fix_directions:
+            self.gains[idir, ...] = self.old_gains[idir, ...]
 
     def update_term(self):
         """ Updates the current iteration. """
