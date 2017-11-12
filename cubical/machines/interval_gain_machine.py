@@ -140,6 +140,11 @@ class PerIntervalGains(MasterMachine):
             np.ndarray:
                 Array containing the result of GMG\ :sup:`H`.
         """
+        gh = self.gains.transpose(0,1,2,3,5,4).conj()
+
+        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+
+        return model_arr
 
 
     @staticmethod
