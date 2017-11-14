@@ -91,6 +91,8 @@ class PerIntervalGains(MasterMachine):
         self.dd_term = options["dd-term"]
         self.term_iters = options["term-iters"]
         self.fix_directions = options["fix-dirs"] or []
+        if type(self.fix_directions) is int:
+            self.fix_directions = [self.fix_directions]
 
         # Construct the appropriate shape for the gains.
 

@@ -232,18 +232,6 @@ def main(debugging=False):
 
         data_handler.global_handler = ms
 
-        # set up chunking
-        chunk_by = GD["data"]["chunk-by"]
-        if type(chunk_by) is str:
-            chunk_by = chunk_by.split(",")
-        jump = float(GD["data"]["chunk-by-jump"])
-
-        print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
-            ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
-        ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
-                        chunk_by=chunk_by, chunk_by_jump=jump,
-                        min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
-
         # set up RIME
 
         solver_opts = GD["sol"]
@@ -274,14 +262,19 @@ def main(debugging=False):
                            'tf-plane': slope_machine.PhaseSlopeGains}
             jones_class = JONES_TYPES.get(jones_opts['type'])
             if jones_class is None:
-                raise ValueError("unknown Jones type '{}'".format(jones_opts['type']))
+                raise UserInputError("unknown Jones type '{}'".format(jones_opts['type']))
         else:
             jones_class = jones_chain_machine.JonesChain
 
         # set up subtraction options
-        solver_opts["subtract-model"] = GD["out"]["subtract-model"]
+        solver_opts["subtract-model"] = smod = GD["out"]["subtract-model"]
+        if smod < 0 or smod >= len(ms.models):
+            raise UserInputError("--out-subtract-model {} out of range for {} model(s)".format(smod, len(ms.models)))
+        
         # parse subtraction directions as a slice or list
         subdirs = GD["out"]["subtract-dirs"]
+        if type(subdirs) is int:
+            subdirs = [subdirs]
         if subdirs:
             if type(subdirs) is str:
                 try:
@@ -290,12 +283,18 @@ def main(debugging=False):
                     else:
                         subdirs = eval("np.s_[{}]".format(subdirs))
                 except:
-                    raise UserInputError("invalid --out-subtract-dirs option '{}'".format(subdirs))
-            elif type(subdirs) is not int and type(subdirs) is not list:
+                    raise UserInputError("invalid --out-subtract-model option '{}'".format(subdirs))
+            elif type(subdirs) is not list:
                 raise UserInputError("invalid --out-subtract-dirs option '{}'".format(subdirs))
+            # check ranges
+            if type(subdirs) is list:
+                out_of_range = [ d for d in subdirs if d < 0 or d >= len(ms.model_directions) ]
+                if out_of_range:
+                    raise UserInputError("--out-subtract-dirs {} out of range for {} model direction(s)".format(
+                            ",".join(map(str, out_of_range)), len(ms.model_directions)))
+            print>>log(0),"subtraction directions set to {}".format(subdirs)
         else:
             subdirs = slice(None)
-        print>>log(1),"will subtract directions {}".format(subdirs)
         solver_opts["subtract-dirs"] = subdirs
 
         # create gain machine factory
@@ -307,6 +306,19 @@ def main(debugging=False):
                                                        global_options=GD, jones_options=jones_opts)
         # create IFR-based gain machine
         solver.ifrgain_machine = ifr_gain_machine.IfrGainMachine(solver.gm_factory, GD["bbc"])
+        
+        # set up chunking
+        chunk_by = GD["data"]["chunk-by"]
+        if type(chunk_by) is str:
+            chunk_by = chunk_by.split(",")
+        jump = float(GD["data"]["chunk-by-jump"])
+
+        print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+            ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
+        ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+                        chunk_by=chunk_by, chunk_by_jump=jump,
+                        min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
+
 
         t0 = time()
 
