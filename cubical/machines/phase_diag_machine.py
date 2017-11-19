@@ -178,6 +178,8 @@ class PhaseDiagGains(PerIntervalGains):
 
         if self.ref_ant is not None:
             self.phases -= self.phases[:,:,:,self.ref_ant,:,:][:,:,:,np.newaxis,:,:]
+        for idir in self.fix_directions:
+            self.phases[idir, ...] = 0
 
 
     def precompute_attributes(self, model_arr):

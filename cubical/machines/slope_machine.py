@@ -311,6 +311,8 @@ class PhaseSlopeGains(ParameterisedGains):
         
         if self.ref_ant is not None:
             self.slope_params -= self.slope_params[:,:,:,self.ref_ant,:,:,:][:,:,:,np.newaxis,:,:,:]
+        for idir in self.fix_directions:
+            self.slope_params[idir, ...] = 0
 
     def precompute_attributes(self, model_arr):
         """
