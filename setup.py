@@ -94,7 +94,7 @@ else:
     requirements = ['numpy', 
                     'cython', 
                     'futures', 
-                    'python-casacore', 
+                    'python-casacore==2.1.2', 
                     'sharedarray', 
                     'matplotlib',
                     'scipy',
