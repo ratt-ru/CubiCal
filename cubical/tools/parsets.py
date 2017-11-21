@@ -152,7 +152,11 @@ class Parset():
                         if alias:
                             self.value_dict[secname][alias] = value
 
-    def read (self, filename):
+    def read (self, filename, default_parset=False):
+        """Reads parset from filename.
+        default_parset: if True, this is treated as the default parset, and things like templated
+        section names are expanded.
+        """
         self.filename = filename
         self.Config = config = ConfigParser.ConfigParser(dict_type=OrderedDict)
         config.optionxform = str

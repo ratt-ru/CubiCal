@@ -19,8 +19,10 @@ import os
 import os.path
 import traceback
 import sys
+import re
 import numpy as np
 from time import time
+from collections import OrderedDict
 
 import concurrent.futures as cf
 
@@ -29,9 +31,10 @@ from cubical.tools import logger
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
 
+import cubical
 import cubical.data_handler as data_handler
 from cubical.data_handler import DataHandler, Tile
-from cubical.tools import logger, parsets, myoptparse, shm_utils, ModColor
+from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import complex_2x2_machine
 from cubical.machines import complex_W_2x2_machine
 from cubical.machines import phase_diag_machine
@@ -53,50 +56,8 @@ GD = None
 class UserInputError(Exception):
     pass
 
-def init_options(parset, savefile=None):
-    """
-    Creates an command-line option parser, populates it based on the content of the given Parset
-    object, and parses the command line.
-
-    Args:
-        parset (:obj:`~cubical.tools.parsets.Parset`):
-            A parset object which contains options.
-        savefile (str or None, optional):
-            If savefile is set, dumps the option settings to savefile.
-
-    Returns:
-        :obj:`~cubical.tools.myoptparse.MyOptParse`:
-            The resulting option parser.
-    """
-
-    default_values = parset.value_dict
-    attrs = parset.attr_dict
-
-    desc = """Questions and suggestions: RATT"""
-
-    OP = myoptparse.MyOptParse(usage='Usage: %prog [parset file] <options>', 
-                               version='%prog version 0.1',
-                               description=desc, defaults=default_values, attributes=attrs)
-
-    # create options based on contents of parset
-    for section in parset.sections:
-        values = default_values[section]
-        # "_Help" value in each section is its documentation string
-        OP.OptionGroup(values.get("_Help", section), section)
-        for name, value in default_values[section].iteritems():
-            if not attrs[section][name].get("no_cmdline"):
-                OP.add_option(name, value)
-
-    OP.Finalise()
-    OP.ReadInput()
-
-    if savefile:
-        cPickle.dump(OP, open(savefile,"w"))
-
-    return OP
-
 # set to true with --Debug-Pdb 1, causes pdb to be invoked on exception
-enable_pdb = False
+enable_pdb = True
 
 def debug():
     """ Calls the main() function in debugging mode. """
@@ -124,9 +85,6 @@ def main(debugging=False):
             If I/O job on a tile failed.
     """
 
-    # clean up shared memory from any previous runs
-    shm_utils.cleanupStaleShm()
-
     # this will be set below if a custom parset is specified on the command line
     parset_file = None
     # "GD" is a global defaults dict, containing options set up from parset + command line
@@ -135,31 +93,38 @@ def main(debugging=False):
     try:
         if debugging:
             print>> log, "initializing from cubical.last"
-            optparser = cPickle.load(open("cubical.last"))
-            # "GD" is a global defaults dict, containing options set up from parset + command line
-            GD = optparser.DicoConfig
+            GD = cPickle.load(open("cubical.last"))
         else:
             default_parset = parsets.Parset("%s/DefaultParset.cfg" % os.path.dirname(__file__))
-            optparser = init_options(default_parset, "cubical.last")
 
-            positional_args = optparser.GiveArguments()
+            def parse_command_line():
+                parser = dynoptparse.DynamicOptionParser(usage='Usage: %prog [parset file] <options>',
+                    description="""Questions, bug reports, suggestions: https://github.com/ratt-ru/CubiCal""",
+                    version='%prog version {}'.format(cubical.VERSION),
+                    defaults=default_parset.value_dict,
+                    attributes=default_parset.attr_dict)
+                parser.read_input()
+                return parser
+
+            parser = parse_command_line()
+
+            positional_args = parser.get_arguments()
             # if a single argument is given, treat it as a parset and see if we can read it
             if len(positional_args) == 1:
                 parset_file = positional_args[0]
                 parset = parsets.Parset(parset_file)
                 if not parset.success:
-                    optparser.ExitWithError("%s must be a valid parset file. Use -h for help."%parset_file)
-                    sys.exit(1)
+                    raise UserInputError("{} must be a valid parset file. Use -h for help.".format(parset_file))
                 # update default parameters with values from parset
                 default_parset.update_values(parset, newval=False)
                 # re-read command-line options, since defaults will have been updated by the parset
-                optparser = init_options(default_parset, "cubical.last")
+                parser = parse_command_line()
             elif len(positional_args):
-                optparser.ExitWithError("Incorrect number of arguments. Use -h for help.")
-                sys.exit(1)
+                raise UserInputError("{} must be a valid parset file. Use -h for help.".format(parset_file))
 
             # "GD" is a global defaults dict, containing options set up from parset + command line
-            GD = optparser.DicoConfig
+            GD = parser.get_config()
+            cPickle.dump(GD, open("cubical.last", "w"))
 
             # get basename for all output files
             basename = GD["out"]["name"]
@@ -180,9 +145,11 @@ def main(debugging=False):
                 save_parset = basename + ".parset"
                 print>> log, ModColor.Str(
                     "Your --Output-Name would overwrite its own parset. Using %s instead." % basename)
-            optparser.ToParset(save_parset)
+            parser.write_to_parset(save_parset)
 
         enable_pdb = GD["debug"]["pdb"]
+        # clean up shared memory from any previous runs
+        shm_utils.cleanupStaleShm()
 
         # now setup logging
         logger.logToFile(basename + ".log", append=GD["log"]["append"])
@@ -194,7 +161,7 @@ def main(debugging=False):
         if not debugging:
             print>>log, "started " + " ".join(sys.argv)
         # print current options
-        optparser.Print(dest=log)
+        parser.print_config(dest=log)
 
         double_precision = GD["sol"]["precision"] == 64
 
@@ -238,15 +205,11 @@ def main(debugging=False):
         sol_jones = solver_opts["jones"]
         if type(sol_jones) is str:
             sol_jones = set(sol_jones.split(','))
-        jones_opts = []
+        jones_opts = [GD[j.lower()] for j in sol_jones]
         # collect list of options from enabled Jones matrices
-        for i in xrange(1, 11):
-            section = "j{}".format(i)
-            if section in GD and GD[section]["label"] in sol_jones:
-                jones_opts.append(GD[section])
-                print>> log, ModColor.Str("Enabling {}-Jones".format(GD[section]["label"]), col="green")
         if not len(jones_opts):
             raise UserInputError("No Jones terms are enabled")
+        print>> log, ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green")
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
@@ -451,11 +414,11 @@ def main(debugging=False):
         import traceback
         print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__, 
                                                                     exc, traceback.format_exc()))
-        if enable_pdb and not isinstance(exc, UserInputError):
+        if enable_pdb and not type(exc) is UserInputError:
             import pdb
             exc, value, tb = sys.exc_info()
             pdb.post_mortem(tb)  # more "modern"
-        sys.exit(1)
+        sys.exit(2 if type(exc) is UserInputError else 1)
 
 def _io_handler(save=None, load=None, load_model=True, finalize=False):
     """
