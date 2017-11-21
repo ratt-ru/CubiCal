@@ -127,8 +127,7 @@ class DynamicOptionParser(object):
         parser = self._make_parser()
         self._options, self._arguments = parser.parse_args()
         # propagate results back into defaults dict
-        for key in vars(self._options):
-            value = getattr(self._options, key)
+        for key, value in vars(self._options).iteritems():
             group, name = self._parse_dest_key(key)
             group_dict = self._defaults[group]
             attrs = self._attributes.get(group, {}).get(name, {})
@@ -161,7 +160,7 @@ class DynamicOptionParser(object):
         P = ClassPrint.ClassPrint(HW=50)
         print>>dest, ModColor.Str(" Selected Options:")
         for group, group_dict in self._defaults.iteritems():
-            if group in skip_groups:
+            if group in skip_groups or '_NameTemplate' in group_dict:
                 continue
     
             title = self._groups.get(group, (group, None))[0]
@@ -191,6 +190,9 @@ class DynamicOptionParser(object):
                 self.add_option(name, value, callback, callback_args)
 
     def _instantiate_section_template_callback(self, option, opt_str, value, parser, section_template):
+        # store value in parser
+        if parser is not None:
+            setattr(parser.values, option.dest, value)
         print>>log(2),"callback invoked for {}".format(value)
         # get template contents
         if type(value) is str:

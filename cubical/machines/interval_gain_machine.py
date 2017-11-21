@@ -89,7 +89,6 @@ class PerIntervalGains(MasterMachine):
         self.update_type = options["update-type"]
         self.ref_ant = options["ref-ant"]
         self.dd_term = options["dd-term"]
-        self.term_iters = options["term-iters"]
         self.fix_directions = options["fix-dirs"] or []
         if type(self.fix_directions) is int:
             self.fix_directions = [self.fix_directions]
