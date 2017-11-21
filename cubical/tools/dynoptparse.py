@@ -193,7 +193,11 @@ class DynamicOptionParser(object):
     def _instantiate_section_template_callback(self, option, opt_str, value, parser, section_template):
         print>>log(2),"callback invoked for {}".format(value)
         # get template contents
-        for num, label in enumerate(value.split(",")):
+        if type(value) is str:
+            value = value.split(",")
+        elif type(value) is not list:
+            raise TypeError,"list or string expected for {}, got {}".format(opt_str, type(value))
+        for num, label in enumerate(value):
             substitutions = dict(LABEL=label, NUM=num)
             # init values from templated section
             values = self._defaults[section_template].copy()
