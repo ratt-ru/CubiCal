@@ -139,7 +139,7 @@ else:
                     'astro-tigger']
 
 setup(name='cubical',
-      version='0.2.5',
+      version='0.9.3',
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/JSKenyon/phd-code',
       classifiers=[
