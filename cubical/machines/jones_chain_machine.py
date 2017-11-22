@@ -530,6 +530,6 @@ class JonesChain(MasterMachine):
         def init_solutions(self):
             for opts in self.chain_options:
                 label = opts["label"]
-                self._init_solutions(label, self.make_filename(opts["load-from"]),
-                                     self.solvable and opts["solvable"] and self.make_filename(opts["save-to"]),
+                self._init_solutions(label, self.make_filename(opts["load-from"], label),
+                                     self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
                                      Complex2x2Gains.exportable_solutions())

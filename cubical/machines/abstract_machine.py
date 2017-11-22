@@ -368,10 +368,10 @@ class MasterMachine(object):
                                  self.solvable and self.make_filename(self.jones_options["save-to"]),
                                  self.machine_class.exportable_solutions())
 
-        def make_filename(self, filename):
+        def make_filename(self, filename, jones_label=None):
             """Helper method: expands full filename from templated interpolation string"""
             try:
-                return filename.format(JONES=self.jones_label, **self.global_options)
+                return filename.format(JONES=jones_label or self.jones_label, **self.global_options)
             except Exception, exc:
                 print>> log,"{}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc())
                 print>>log,ModColor.Str("Error parsing filename '{}', see above".format(filename))
