@@ -60,7 +60,8 @@ class JonesChain(MasterMachine):
         self.n_terms = len(self.jones_terms)
         # make list of number of iterations per solvable term
         # If not specified, just use the maxiter setting of each term
-        self.term_iters = jones_options['sol']['term-iters'] or [term.maxiter for term in self.jones_terms if term.solvable]
+        # note that this list is updated as we converge, so make a copy
+        self.term_iters = list(jones_options['sol']['term-iters']) or [term.maxiter for term in self.jones_terms if term.solvable]
         self.solvable = bool(self.term_iters)
 
         # setup first solvable term in chain

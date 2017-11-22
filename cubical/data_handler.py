@@ -530,7 +530,7 @@ class Tile(object):
         if nrows == expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
             print>> log, "  {} rows consistent with {} timeslots and {} baselines" \
-                                                                "across {} bands".format(*logstr)
+                                                                " across {} bands".format(*logstr)
             
             sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
 
