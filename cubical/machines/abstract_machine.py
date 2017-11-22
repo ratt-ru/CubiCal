@@ -371,7 +371,7 @@ class MasterMachine(object):
         def make_filename(self, filename):
             """Helper method: expands full filename from templated interpolation string"""
             try:
-                return filename.format(**self.global_options)
+                return filename.format(JONES=self.jones_label, **self.global_options)
             except Exception, exc:
                 print>> log,"{}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc())
                 print>>log,ModColor.Str("Error parsing filename '{}', see above".format(filename))
