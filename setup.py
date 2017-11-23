@@ -28,18 +28,18 @@ import logging
 
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
-from setuptools.command.install import install
+from setuptools.command.build_ext import build_ext
 
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 log = logging.getLogger()
 
-# Courtesy of rasterio's setup.py.
+# Try get location of numpy headers. Compilation requires these headers. 
 
 try:
     import numpy as np
-except ImportError:
-    log.critical("Numpy and its headers are required to run setup(). Exiting.")
-    sys.exit(1)
+    include_path = np.get_include()
+except:
+    include_path = ''
 
 # Use Cython if available.
 
@@ -48,8 +48,6 @@ try:
     import Cython.Compiler.Options as CCO
 except ImportError:
     cythonize = None
-
-include_path = np.get_include()
 
 cmpl_args = ['-fopenmp',
              '-ffast-math', 
@@ -114,11 +112,6 @@ else:
          Extension("cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.cpp"], 
             include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args)]
 
-class custom_install(install):
-    def run(self):
-        os.system("python setup.py build_ext --inplace -f")
-        install.run(self)
-
 # Check for readthedocs environment variable.
 
 on_rtd = os.environ.get('READTHEDOCS') == 'True'
@@ -152,7 +145,7 @@ setup(name='cubical',
       author='Jonathan Kenyon',
       author_email='jonosken@gmail.com',
       license='GNU GPL v3',
-      cmdclass={'install': custom_install},  
+      cmdclass={'build_ext': build_ext},  
       packages=['cubical', 'cubical.machines', 'cubical.tools', 'cubical.kernels'],
       install_requires=requirements,
       include_package_data=True,
