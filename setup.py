@@ -37,9 +37,10 @@ log = logging.getLogger()
 
 try:
     import numpy as np
-    include_path = np.get_include()
-except:
+except ImportError:
     include_path = ''
+else:
+    include_path = np.get_include()
 
 # Use Cython if available.
 
