@@ -72,7 +72,8 @@ To install in development mode, run the following instead:
 Ubuntu 16.04
 ~~~~~~~~~~~~
 
-CubiCal depends on python-casacore which should be installed from the kern-3 ppa.
+CubiCal depends on python-casacore, the dependencies of which should be 
+installed from the KERN-3 ppa.
 
 .. code:: bash
 
