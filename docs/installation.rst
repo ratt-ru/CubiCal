@@ -105,7 +105,7 @@ Activate the environment using:
 
 This should change the command line prompt to be consistent with the virtualenv name.
 
-It is usually necessary to update pip, setuptools and wheel inside the environment:
+It is necessary to update pip, setuptools and wheel inside the environment:
 
 .. code:: bash
 
