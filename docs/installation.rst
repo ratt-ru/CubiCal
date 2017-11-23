@@ -62,10 +62,12 @@ CubiCal can now be installed by running the following:
 
 	pip install git+https://github.com/ratt-ru/CubiCal.git
 
-To install in development mode, run the following instead:
+To install in development mode, you will need to install Cython and run the following 
+instead:
 
 .. code:: bash
 
+	pip install cython
 	git clone https://github.com/ratt-ru/CubiCal.git
 	pip install -e CubiCal/
 
@@ -128,9 +130,11 @@ CubiCal can now be installed by running the following:
 
 	pip install git+https://github.com/ratt-ru/CubiCal.git
 
-To install in development mode, run the following instead:
+To install in development mode, you will need to install Cython and run the following 
+instead:
 
 .. code:: bash
 
+	pip install cython
 	git clone https://github.com/ratt-ru/CubiCal.git
 	pip install -e CubiCal/
