@@ -386,14 +386,14 @@ def main(debugging=False):
 
         if not apply_only:
             # now summarize the stats
-            print>> log, "computing summary statistics"
+            print>> log, "computing summary statistinddidcs"
             st = SolverStats(stats_dict)
             filename = basename + ".stats.pickle"
             st.save(filename)
             print>> log, "saved summary statistics to %s" % filename
 
             # flag based on summary stats
-            flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid)
+            flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid_actual)
 
             if flag3 is not None:
                 st.apply_flagcube(flag3)

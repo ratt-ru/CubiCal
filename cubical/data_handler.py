@@ -1405,13 +1405,16 @@ class DataHandler:
 
         chunklist = []
 
+        self._actual_ddids = []
         for ddid in self._ddids:
             ddid_rowmask = self.ddid_col==ddid
-
-            for tchunk in range(len(timechunks)-1):
-                rows = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
-                if rows.size:
-                    chunklist.append(RowChunk(ddid, tchunk, rows))
+            if ddid_rowmask.any():
+                self._actual_ddids.append(ddid)
+                for tchunk in range(len(timechunks)-1):
+                    rows = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
+                    if rows.size:
+                        chunklist.append(RowChunk(ddid, tchunk, rows))
+        self.nddid_actual = len(self._actual_ddids)
 
         print>>log,"  generated {} row chunks based on time and DDID".format(len(chunklist))
 
