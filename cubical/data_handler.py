@@ -35,8 +35,25 @@ from cubical.tools import logger, ModColor
 log = logger.getLogger("data_handler", 1)
 
 def _parse_slice(arg, what="slice"):
-    """Helper function. Parses an string argument into a slice. 
+    """
+    Helper function. Parses an string argument into a slice.  
     Supports e.g. "5~7" (inclusive range), "5:8" (pythonic range)
+
+    Args:
+        arg (str):
+            Raw range expression.
+        what (str):
+            How to refer to the slice in error messages. Default is "slice"
+
+    Returns:
+        slice:
+            Slice object.
+
+    Raises:
+        TypeError:
+            If the type of arg is not understood. 
+        ValueError:
+            If the slice cannot be parsed.
     """
     if not arg:
         return slice(None)
@@ -325,8 +342,8 @@ class Tile(object):
                             # see if data for this model is already loaded
                             if model_source in loaded_models:
                                 print>>log(1),"  reusing {}{} for model {} direction {}".format(model_source,
-                                                "" if not cluster else ("()" if cluster == 'die' else "({})".format(cluster)),
-                                                imod, idir)
+                                        "" if not cluster else ("()" if cluster == 'die' else "({})".format(cluster)),
+                                        imod, idir)
                                 model = loaded_models[model_source][cluster]
                             # cluster of None signifies that this is a visibility column
                             elif cluster is None:
@@ -339,7 +356,8 @@ class Tile(object):
                                 if expected_nrows is None:
                                     expected_nrows, sort_ind, row_identifiers = self.prep_for_montblanc()
                                     measet_src = MSSourceProvider(self, self.uvwco, sort_ind)
-                                    cached_ms_src = CachedSourceProvider(measet_src, cache_data_sources=["parallactic_angles"],
+                                    cached_ms_src = CachedSourceProvider(measet_src,
+                                                                         cache_data_sources=["parallactic_angles"],
                                                                          clear_start=False, clear_stop=False)
                                     if self.handler.beam_pattern:
                                         arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
@@ -1289,7 +1307,19 @@ class DataHandler:
 
     def fetchslice(self, column, startrow, nrows):
         """
-        Like fetch, but assumes a column of NFREQxNCORR shape and applies the channel slice
+        Convenience function similar to fetch(), but assumes a column of NFREQxNCORR shape,
+        and calls pyrap.tables.table.getcolslice() if there's a channel slice to be applied,
+        else just uses getcol().
+        
+        Args:
+            startrow (int):
+                Starting row to read.
+            nrows (int):
+                Number of rows to read.
+
+        Returns:
+            np.ndarray:
+                Result of getcolslice()
         """
         if self._channel_slice == slice(None):
             return self.data.getcol(column, startrow, nrows)
@@ -1297,7 +1327,21 @@ class DataHandler:
 
     def putslice(self, column, value, startrow, nrows):
         """
-        The put equivalent of fetchslice
+        The opposite of fetchslice(). Assumes a column of NFREQxNCORR shape,
+        and calls pyrap.tables.table.putcolslice() if there's a channel slice to be applied,
+        else just uses putcol().
+        If column is variable-shaped and the cell at startrow is not initialized, attempts to
+        initialize an entire section of the column before writing the slice.
+
+        Args:
+            startrow (int):
+                Starting row to write.
+            nrows (int):
+                Number of rows to write.
+
+        Returns:
+            np.ndarray:
+                Result of putcolslice()
         """
         # if no slicing, just use putcol to put the whole thing. This always works,
         # unless the MS is screwed up

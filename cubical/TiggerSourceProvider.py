@@ -34,8 +34,6 @@ class TiggerSourceProvider(SourceProvider):
             
         """
 
-#        self._tile = tile
-#        self._handler = tile.handler
         self.filename = lsm
         self._sm = Tigger.load(lsm)
         self._phase_center = phase_center

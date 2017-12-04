@@ -8,13 +8,12 @@ log = logger.getLogger("plots")
 
 from cubical.plots import DPI, ZOOM
 
-
-def _cmp_antenna (sa,sb):
-  """Helper function to sort antenna names. Try numeric compare first, fall back to text compare if failed""";
-  try:
-    return cmp(int(sa),int(sb));
-  except:
-    return cmp(sa,sb);
+def _cmp_antenna (sa, sb):
+    """Helper function to sort antenna names. Try numeric compare first, fall back to text compare if failed""";
+    try:
+        return cmp(int(sa), int(sb));
+    except:
+        return cmp(sa, sb);
 
 
 def _normifrgain(rr):
@@ -95,7 +94,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         for l, (x, xe), (y, ye) in content:
             b = baseline.get(l, None)
             if b is None:
-                warn("baseline $l not found in MS ANTENNA table")
+                print>>log(0, "red"),"baseline '{}' not found in MS ANTENNA table".format(l)
             else:
                 lab += ["%s:%s" % (l, feeds[0]), "%s:%s" % (l, feeds[1])]
                 col += ["blue", "red"]

@@ -119,11 +119,7 @@ class MSSourceProvider(SourceProvider):
         for ti, t in enumerate(xrange(t_low, t_high)):
             # Inspection confirms that this achieves the same effect as
             # ant_uvw[ti,1:na,:] = ...getcol(UVW, ...).reshape(na-1, -1)
-            try:
-                ant_uvw[ti,1:na,:] = self._uvwco[self.sort_ind, ...][t*nbl:t*nbl+na-1, :]
-            except:
-                print ti,self.sort_ind,max(self.sort_ind),t,nbl,na
-                raise
+            ant_uvw[ti,1:na,:] = self._uvwco[self.sort_ind, ...][t*nbl:t*nbl+na-1, :]
 
         return ant_uvw
 
