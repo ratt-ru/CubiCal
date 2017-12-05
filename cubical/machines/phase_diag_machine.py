@@ -168,24 +168,6 @@ class PhaseDiagGains(PerIntervalGains):
 
         return corr_vis, 0   # no flags raised here, since phase-only always invertible
 
-    def apply_gains(self):
-        """
-        Applies the gains to an array at full time-frequency resolution. 
-
-        Args:
-            model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
-                model visibilities.
-
-        Returns:
-            np.ndarray:
-                Array containing the result of GMG\ :sup:`H`.
-        """
-        
-        #TODO: Implement this function.
-
-        return
-
     def restrict_solution(self):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying
@@ -196,6 +178,8 @@ class PhaseDiagGains(PerIntervalGains):
 
         if self.ref_ant is not None:
             self.phases -= self.phases[:,:,:,self.ref_ant,:,:][:,:,:,np.newaxis,:,:]
+        for idir in self.fix_directions:
+            self.phases[idir, ...] = 0
 
 
     def precompute_attributes(self, model_arr):

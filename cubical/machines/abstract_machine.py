@@ -330,7 +330,7 @@ class MasterMachine(object):
                 machine_cls: the class of the gain machine that will be created
                 
                 grid: the grid on which solutions are expected, for axes that are already known (antennas, correlations)
-                  A dictianary of {axis_name:values_vector}. time/freq need not be supplied, as it is filled in chunk by chunk.
+                  A dictionary of {axis_name:values_vector}. time/freq need not be supplied, as it is filled in chunk by chunk.
                   
                 double_precision: if True, gain machines will use 64-bit float arithmetic
                 
@@ -348,8 +348,8 @@ class MasterMachine(object):
                 self.jones_options['solvable'] = False
             self.solvable = self.jones_options['solvable']
             self.grid = grid
-            self._ctype = np.complex128 if double_precision else np.complex64
-            self._ftype = np.float64    if double_precision else np.float32
+            self.ctype = np.complex128 if double_precision else np.complex64
+            self.ftype = np.float64    if double_precision else np.float32
             # dict of jones label -> param database object to init from
             self._init_sols = {}
             # dict of jones label -> param database object to save to. Multiple jones labels
@@ -361,22 +361,56 @@ class MasterMachine(object):
             self.init_solutions()
 
         def init_solutions(self):
-            """Internal method. Initializes solution databases. Note that this is reimplemented in JonesChain."""
-            self._init_solutions(self.jones_label, self._make_filename(self.jones_options["load-from"]),
-                                 self.solvable and self._make_filename(self.jones_options["save-to"]),
+            """
+            Internal method, called from constructor. Initializes solution databases.
+            Default behaviour uses the _init_solutions() implementation below.
+            Note that this is reimplemented in JonesChain to collect solution info from chain.
+            """
+            self._init_solutions(self.jones_label, self.make_filename(self.jones_options["load-from"]),
+                                 self.solvable and self.make_filename(self.jones_options["save-to"]),
                                  self.machine_class.exportable_solutions())
 
-        def _make_filename(self, filename):
-            """Helper method: expands full filename from templated interpolation string"""
+        def make_filename(self, filename, jones_label=None):
+            """
+            Helper method: expands full filename a from templated filename. This uses the standard 
+            str.format() function, passing in self.global_options, as well as JONES=jones_label, as keyword 
+            arguments. This allows for filename templates that include strings from the global options
+            dictionary, e.g. "{data[ms]}-ddid{sel[ddid]}".
+            
+            Args:
+                filename (str): 
+                    the templated filename
+                jones_label (str, optional):
+                    Jones matrix label, overrides self.jones_label if specified.
+                
+            Returns:
+                str:
+                    Expanded filename
+                
+            """
             try:
-                return filename.format(**self.global_options)
+                return filename.format(JONES=jones_label or self.jones_label, **self.global_options)
             except Exception, exc:
                 print>> log,"{}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc())
-                print>>log,ModColor.Str("Error parsing {} filename '{}', see above".format(key, filename))
+                print>>log,ModColor.Str("Error parsing filename '{}', see above".format(filename))
                 raise ValueError(filename)
 
         def _init_solutions(self, label, load_from, save_to, exportables):
-            """Internal helper method for init_solutions(): initializes a pair of solution databases"""
+            """
+            Internal helper implementation for init_solutions(): this initializes a pair of solution databases.
+            
+            Args:
+                label (str): 
+                    the Jones matrix label
+                load_from (str):
+                    filename of solution DB to load from. Can be empty or None.
+                save_to (str):
+                    filename of solution DB to save to. Can be empty or None.
+                exportables (dict):
+                    Dictionary of {key: (empty_value, axis_list)} describing the solutions that will be saved.
+                    As returned by exportable_solutions() of the gain machine.
+                
+            """
             # init solutions from database
             if load_from:
                 print>>log(0),ModColor.Str("{} solutions will be initialized from {}".format(label, load_from), col="green")
@@ -387,24 +421,66 @@ class MasterMachine(object):
                 self._init_sols[label] = param_db.load(filename), prefix
             # create database to save to
             if save_to:
-                db = self._save_sols_byname.get(save_to)
-                if db is None:
-                    self._save_sols_byname[save_to] = db = param_db.create(save_to, backup=True)
-                self._save_sols[label] = db
+                # define parameters in DB
                 for sol_label, (empty_value, axes) in exportables.iteritems():
-                    if type(empty_value) is float:
-                        dtype = self._ftype
-                    elif type(empty_value) is complex:
-                        dtype = self._ctype
-                    else:
-                        dtype = type(empty_value)
-                    db.define_param("{}:{}".format(label, sol_label), dtype, axes, empty=empty_value,
-                                    interpolation_axes=["time", "freq"], grid=self.grid)
+                    self.define_param(save_to, "{}:{}".format(label, sol_label), empty_value, axes)
                 print>> log(0), "{} solutions will be saved to {}".format(label, save_to)
 
+        def define_param(self, save_to, name, empty_value, axes,
+                          interpolation_axes=("time", "freq")):
+            """
+            Internal helper method for _init_solutions(). Defines a parameter to be saved.
+            
+            Args:
+                save_to (str):
+                    filename of solution DB to save to. Can be empty or None.
+                name (str):
+                    name of parameter to be saved
+                empty_value:
+                    Scalar representing an empty (default) solution, e.g. zero or unity of int, float or complex type.
+                axes (iterable):
+                    List of axes over which the parameter is defined, e.g. ["time", "freq", "ant1", "ant2"]
+                interpolation_axes (iterable):
+                    List of axes over which the parameter can be interpolated. Subset of axes.
+            """
+            # init DB, if needed
+            db = self._save_sols_byname.get(save_to)
+            if db is None:
+                self._save_sols_byname[save_to] = db = param_db.create(save_to, backup=True)
+            self._save_sols[name] = db
+            # work out type of empty value
+            if type(empty_value) is float:
+                dtype = self.ftype
+            elif type(empty_value) is complex:
+                dtype = self.ctype
+            else:
+                dtype = type(empty_value)
+            # build parameter grid from predefined grid. Trailing digits are handled:
+            # solution axes such as "ant", "ant1" and "ant2" will map to predefined axis "ant",
+            # if this is available.
+            grid = {}
+            for axis in axes:
+                if axis in self.grid:
+                    grid[axis] = self.grid[axis]
+                elif axis[-1].isdigit() and axis[:-1] in self.grid:
+                    grid[axis] = self.grid[axis[:-1]]
+            return db.define_param(name, dtype, axes, empty=empty_value,
+                                   interpolation_axes=interpolation_axes, grid=grid)
+
         def export_solutions(self, gm, subdict):
-            """Exports a slice of solutions from a gain machine into a shared dictionary.
-            This is called in a solver process.
+            """
+            Exports a slice of solutions from a gain machine into a shared dictionary.
+            We use shared memory (shared_dict.SharedDict) objects to pass solutions between
+            worker (solver) processes and the I/O process which ultimately saves them. This 
+            method is called on the solver process side to populate the shared dict.
+            
+            Args:
+                gm:
+                    An instance of a gain machine
+                    
+                subdict (shared_dict.SharedDict):
+                    Shared dictionary to be populated (this is generally a subdict of some
+                    larger shared dictionary, uniquely assigned to this solver process)
             """
             if not self.solvable:
                 return
@@ -418,20 +494,32 @@ class MasterMachine(object):
                 subdict["{}:grid__".format(name)]  = grid
                 subdict["{}:flags__".format(name)] = value.mask
 
+        def get_solution_db(self, name):
+            """
+            Returns (output) solution database corresponding to the named parameter
+            """
+            return self._save_sols[name]
+
         def save_solutions(self, subdict):
-            """Saves a slice of the solutions from a dictionary to the database.
-            This is called in an I/O process"""
+            """
+            Saves a slice of the solutions from a dictionary to the database. This is called in the I/O process
+            to actually save the solutions that are exported by export_solutions().
+
+            Args:
+                subdict (shared_dict.SharedDict):
+                    Shared dictionary to be saved. This is presumed to be populated by export_solutions() above.
+            """
             # add slices for all parameters
             for name in subdict.iterkeys():
-                if not name.endswith("__"):
-                    jones_label = name.split(':')[0]
-                    if jones_label in self._save_sols:
-                        sd = subdict["{}:grid__".format(name)]
-                        grids = {key: sd[key] for key in sd.iterkeys()}
-                        self._save_sols[jones_label].add_chunk(name, masked_array(subdict[name],
-                                                                                  subdict[name+":flags__"]), grids)
-
+                if not name.endswith("__") and name in self._save_sols:
+                    sd = subdict["{}:grid__".format(name)]
+                    grids = {key: sd[key] for key in sd.iterkeys()}
+                    self.get_solution_db(name).add_chunk(name, masked_array(subdict[name],
+                                                                       subdict[name+":flags__"]), grids)
         def close(self):
+            """
+            Closes all solution databases and releases various caches.
+            """
             for db, prefix in self._init_sols.values():
                 db.close()
             for db in self._save_sols_byname.values():
@@ -445,7 +533,7 @@ class MasterMachine(object):
             Creates a gain machine, given a model, and a time and frequency subset of the global solution space.
 
             Args:
-                model_arr: model array, of shape (ndir,nmod,ntim,nfreq,nant,nant,ncorr,ncorr)
+                data_arr: model array, of shape (nmod,ntim,nfreq,nant,nant,ncorr,ncorr)
                 times: times
                 freqs: frequencies
 

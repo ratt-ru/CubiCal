@@ -9,6 +9,9 @@ import cPickle
 import re
 import traceback
 import sys
+import os.path
+import logging
+
 from cubical.tools import shared_dict
 import cubical.flagging as flagging
 from cubical.flagging import FL
@@ -18,17 +21,59 @@ from pdb import set_trace as BREAK  # useful: can set static breakpoints by putt
 
 try:
     import montblanc
+    # all of these potentially fall over if Montblanc is the wrong version or something, so moving them here
+    # for now
+    from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
+    from cubical.TiggerSourceProvider import TiggerSourceProvider
+    from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
 except:
     montblanc = None
     montblanc_import_error = sys.exc_info()
 
-if montblanc is not None:
-    from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
-    from cubical.TiggerSourceProvider import TiggerSourceProvider
-    from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("data_handler")
+log = logger.getLogger("data_handler", 1)
+
+def _parse_slice(arg, what="slice"):
+    """
+    Helper function. Parses an string argument into a slice.  
+    Supports e.g. "5~7" (inclusive range), "5:8" (pythonic range)
+
+    Args:
+        arg (str):
+            Raw range expression.
+        what (str):
+            How to refer to the slice in error messages. Default is "slice"
+
+    Returns:
+        slice:
+            Slice object.
+
+    Raises:
+        TypeError:
+            If the type of arg is not understood. 
+        ValueError:
+            If the slice cannot be parsed.
+    """
+    if not arg:
+        return slice(None)
+    elif type(arg) is not str:
+        raise TypeError("can't parse argument of type '{}' as a {}".format(type(arg), what))
+    arg = arg.strip()
+    if re.match("(\d*)~(\d*)$", arg):
+        i0, i1 = arg.split("~", 1)
+        i0 = int(i0) if i0 else None
+        i1 = int(i1)+1 if i1 else None
+    elif re.match("(\d*):(\d*)$", arg):
+        i0, i1 = arg.split(":", 1)
+        i0 = int(i0) if i0 else None
+        i1 = int(i1) if i1 else None
+    else:
+        raise ValueError("can't parse '{}' as a {}".format(arg, what))
+    if i0 is None and i1 is None:
+        return slice(None)
+    return slice(i0,i1)
+
 
 def _parse_range(arg, nmax):
     """
@@ -63,27 +108,15 @@ def _parse_range(arg, nmax):
     elif type(arg) is list:
         return arg
     elif type(arg) is not str:
-        raise TypeError("Cannot parse range of type '%s'."%type(arg))
-
+        raise TypeError("can't parse argument of type '%s' as a range or slice"%type(arg))
     arg = arg.strip()
 
     if re.match("\d+$", arg):
         return [ int(arg) ]
     elif "," in arg:
         return map(int,','.split(arg))
-    
-    if re.match("(\d*)~(\d*)$", arg):
-        i0, i1 = arg.split("~", 1)
-        i0 = int(i0) if i0 else None
-        i1 = int(i1)+1 if i1 else None
-    elif re.match("(\d*):(\d*)$", arg):
-        i0, i1 = arg.split(":", 1)
-        i0 = int(i0) if i0 else None
-        i1 = int(i1) if i1 else None
-    else:
-        raise ValueError("Cannot parse range '%s'."%arg)
-    
-    return fullrange[slice(i0,i1)]
+
+    return fullrange[_parse_range(arg, "range or slice")]
 
 
 ## TERMINOLOGY:
@@ -198,11 +231,15 @@ class Tile(object):
                 key = "D{}T{}F{}".format(rowchunk.ddid, rowchunk.tchunk, ifreq)
                 chan0, chan1 = self.handler.chunk_find[ifreq:ifreq + 2]
                 self._chunk_dict[key] = rowchunk, chan0, chan1
-                self._chunk_indices[key] = rowchunk.tchunk, rowchunk.ddid * num_freq_chunks + ifreq
+                self._chunk_indices[key] = rowchunk.tchunk, \
+                                           self.handler._ddid_index[rowchunk.ddid] * num_freq_chunks + ifreq
 
         # Copy various useful info from handler and make a simple list of unique ddids.
 
+        # list of DDIDs in this tile
         self.ddids = np.unique([rowchunk.ddid for rowchunk,_,_ in self._chunk_dict.itervalues()])
+
+        # various columns
         self.ddid_col = self.handler.ddid_col[self.first_row:self.last_row+1]
         self.time_col = self.handler.time_col[self.first_row:self.last_row+1]
         self.antea = self.handler.antea[self.first_row:self.last_row+1]
@@ -211,7 +248,7 @@ class Tile(object):
         self.ctype = self.handler.ctype
         self.nants = self.handler.nants
         self.ncorr = self.handler.ncorr
-        self.nchan = self.handler._nchans[0]
+        self.nfreq = self.handler.nfreq
 
     def get_chunk_indices(self, key):
         """ Returns chunk indices based on the key value. """
@@ -225,7 +262,7 @@ class Tile(object):
 
     def get_chunk_tfs(self, key):
         """
-        Returns timestamps and freqs for the given chunk assosicated with key, as well as two slice 
+        Returns timestamps and freqs for the given chunk associated with key, as well as two slice 
         objects describing its position in the global time/freq space.
 
         Args:
@@ -234,16 +271,17 @@ class Tile(object):
 
         Returns:
             tuple:
-                Unique times, channel frequencies, time axis slice, frequency axis slice.
+                Unique times, channel frequencies, time axis slice, frequency axis slice (in overall subset of freqs)
         """
-        
+
         rowchunk, chan0, chan1 = self._chunk_dict[key]
         timeslice = slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1)
-        
+        # lookup ordinal number of this DDID, and convert this to offset in frequencies
+        chan_offset = self.handler._ddid_index[rowchunk.ddid] * self.nfreq
         return self.handler.uniq_times[timeslice], \
-               self.handler._chanfr[rowchunk.ddid, chan0:chan1], \
+               self.handler._ddid_chanfreqs[rowchunk.ddid, chan0:chan1], \
                slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1), \
-               slice(rowchunk.ddid * self.handler.nfreq + chan0, rowchunk.ddid * self.handler.nfreq + chan1)
+               slice(chan_offset + chan0, chan_offset + chan1)
 
     def load(self, load_model=True):
         """
@@ -278,11 +316,11 @@ class Tile(object):
         
         nrows = self.last_row - self.first_row + 1
         
-        data['obvis'] = self.handler.fetch(
-                         self.handler.data_column, self.first_row, nrows).astype(self.handler.ctype)
+        data['obvis'] = obvis = self.handler.fetchslice(
+            self.handler.data_column, self.first_row, nrows).astype(self.handler.ctype)
         print>> log(2), "  read " + self.handler.data_column
 
-        data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
+        self.uvwco = uvw = data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
         print>> log(2), "  read UVW coordinates"
 
         # The following either reads model visibilities from the measurement set, or uses an lsm 
@@ -290,73 +328,96 @@ class Tile(object):
         # Montblanc's strict requirements. 
 
         if load_model:
-            if self.handler.sm_name:
+            model_shape = [ len(self.handler.model_directions), len(self.handler.models) ] + list(obvis.shape)
+            loaded_models = {}
+            expected_nrows = None
+            movis = data.addSharedArray('movis', model_shape, self.handler.ctype)
 
-                print>>log, "computing model visibilities"
+            for imod, (dirmodels, _) in enumerate(self.handler.models):
+                # populate directions of this model
+                for idir,dirname in enumerate(self.handler.model_directions):
+                    if dirname in dirmodels:
+                        # loop over additive components
+                        for model_source, cluster in dirmodels[dirname]:
+                            # see if data for this model is already loaded
+                            if model_source in loaded_models:
+                                print>>log(1),"  reusing {}{} for model {} direction {}".format(model_source,
+                                        "" if not cluster else ("()" if cluster == 'die' else "({})".format(cluster)),
+                                        imod, idir)
+                                model = loaded_models[model_source][cluster]
+                            # cluster of None signifies that this is a visibility column
+                            elif cluster is None:
+                                print>>log(0),"  reading {} for model {} direction {}".format(model_source, imod, idir)
+                                model = self.handler.fetchslice(model_source, self.first_row, nrows)
+                                loaded_models.setdefault(model_source, {})[None] = model
+                            # else evaluate a Tigger model with Montblanc
+                            else:
+                                # massage data into Montblanc-friendly shapes
+                                if expected_nrows is None:
+                                    expected_nrows, sort_ind, row_identifiers = self.prep_for_montblanc()
+                                    measet_src = MSSourceProvider(self, self.uvwco, sort_ind)
+                                    cached_ms_src = CachedSourceProvider(measet_src,
+                                                                         cache_data_sources=["parallactic_angles"],
+                                                                         clear_start=False, clear_stop=False)
+                                    if self.handler.beam_pattern:
+                                        arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
+                                                                            self.handler.beam_l_axis,
+                                                                            self.handler.beam_m_axis)
 
-                expected_nrows, sort_ind, row_identifiers = self.prep_data(data)
+                                print>>log(0),"  computing visibilities for {}".format(model_source)
+                                # setup Montblanc computation for this LSM
+                                tigger_source = model_source
+                                cached_src = CachedSourceProvider(tigger_source, clear_start=True, clear_stop=True)
+                                srcs = [cached_ms_src, cached_src]
+                                if self.handler.beam_pattern:
+                                    srcs.append(arbeam_src)
 
-                srcs, snks = [], []
+                                # make a sink with an array to receive visibilities
+                                ndirs = model_source._nclus
+                                model_shape = (ndirs, 1, expected_nrows, self.nfreq, self.ncorr)
+                                full_model = np.zeros(model_shape, self.handler.ctype)
+                                column_snk = ColumnSinkProvider(self, full_model, sort_ind)
+                                snks = [ column_snk ]
 
-                measet_src = MSSourceProvider(self, data, sort_ind)
-                tigger_src = TiggerSourceProvider(self)
-                cached_src = CachedSourceProvider(tigger_src, clear_start=True, clear_stop=True)
-                cached_ms_src = CachedSourceProvider(measet_src, 
-                                                     cache_data_sources=["parallactic_angles"],
-                                                     clear_start=False, clear_stop=False)
+                                for direction in xrange(ndirs):
+                                    tigger_source.set_direction(direction)
+                                    column_snk.set_direction(direction)
+                                    simulate(srcs, snks, self.handler.mb_opts)
 
-                srcs.append(cached_ms_src)
-                srcs.append(cached_src)
+                                # now associate each cluster in the LSM with an entry in the loaded_models cache
+                                loaded_models[model_source] = {
+                                    clus: full_model[i, 0, row_identifiers, :, :]
+                                    for i, clus in enumerate(tigger_source._cluster_keys) }
 
-                if self.handler.beam_pattern:
-                    arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
-                                                        self.handler.beam_l_axis,
-                                                        self.handler.beam_m_axis)
-                    srcs.append(arbeam_src)
+                                model = loaded_models[model_source][cluster]
+                                print>> log(1), "  using {}{} for model {} direction {}".format(model_source,
+                                                  "" if not cluster else
+                                                        ("()" if cluster == 'die' else "({})".format(cluster)),
+                                                  imod, idir)
 
-                ndirs = tigger_src._nclus
-                model_shape = np.array([ndirs, 1, expected_nrows, self.nchan, self.ncorr])
+                            # finally, add model in at correct slot
+                            movis[idir, imod, ...] += model
 
-                data.addSharedArray('movis', model_shape, self.handler.ctype)
+            del loaded_models
+            # if data was massaged for Montblanc shape, back out of that
+            if expected_nrows is not None:
+                self.unprep_for_montblanc(nrows)
 
-                column_snk = ColumnSinkProvider(self, data, sort_ind)
-
-                snks.append(column_snk)
-
-                for direction in xrange(ndirs):
-                    print>>log(2), "simulating visbilities in direction {}.".format(direction)
-                    simulate(srcs, snks, self.handler.mb_opts)
-                    tigger_src.update_target()
-                    column_snk._dir += 1
-
-                self.unprep_data(data, nrows)
-
-                data['movis'] = data['movis'][:,:,row_identifiers,:,:]
-
-            elif self.handler.model_column:
-                print>>log, "no LSM specified, reading {} only".format(self.handler.model_column)
-                model_shape = [1,1] + list(data['obvis'].shape)
-                data.addSharedArray('movis', model_shape, self.handler.ctype)
-
-            else:
-                raise RuntimeError("neither --model-lsm nor --model-column set")
-
-            if self.handler.model_column:
-
-                data['movis'][0,0,...] += self.handler.fetch(self.handler.model_column, 
-                                                             self.first_row,
-                                                             nrows).astype(self.handler.ctype)
-
-                print>> log(2), "  read " + self.handler.model_column
-
-            if self.handler.weight_column:
-                weight = self.handler.fetch(self.handler.weight_column, self.first_row, nrows)
-                # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
-                if self.handler.weight_column == "WEIGHT":
-                    data['weigh'] = weight[:, np.newaxis, :].repeat(self.handler.nfreq, 1)
-                else:
-                    data['weigh'] = weight
-                print>> log(2), "  read weights from column {}".format(self.handler.weight_column)
+            # read weight columns
+            if self.handler.has_weights:
+                weights = data.addSharedArray('weigh', [ len(self.handler.models) ] + list(obvis.shape), self.handler.ftype)
+                wcol_cache = {}
+                for i, (_, weight_col) in enumerate(self.handler.models):
+                    if weight_col not in wcol_cache:
+                        print>> log(1), "  reading weights from {}".format(weight_col)
+                        wcol = self.handler.fetch(weight_col, self.first_row, nrows)
+                        # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
+                        if weight_col == "WEIGHT":
+                            wcol_cache[weight_col] = wcol[:, np.newaxis, :].repeat(self.handler.nfreq, 1)
+                        else:
+                            wcol_cache[weight_col] = wcol[:, self.handler._channel_slice, :]
+                    weights[i, ...] = wcol_cache[weight_col]
+                del wcol_cache
 
         data.addSharedArray('covis', data['obvis'].shape, self.handler.ctype)
 
@@ -372,13 +433,35 @@ class Tile(object):
         flagcol = flagrow = None
 
         if self.handler._apply_flags or self.handler._auto_fill_bitflag:
-            flagcol = self.handler.fetch("FLAG", self.first_row, nrows)
+            flagcol = self.handler.fetchslice("FLAG", self.first_row, nrows)
             flagrow = self.handler.fetch("FLAG_ROW", self.first_row, nrows)
             print>> log(2), "  read FLAG/FLAG_ROW"
 
         if self.handler._apply_flags:
             flag_arr[flagcol] = FL.PRIOR
             flag_arr[flagrow, :, :] = FL.PRIOR
+
+        # if an active row subset is specified, flag non-active rows as priors. Start as all flagged,
+        # the clear the flags
+        if self.handler.active_row_numbers is not None:
+            rows = self.handler.active_row_numbers - self.first_row
+            rows = rows[(rows>=0)&(rows<nrows)]
+            inactive = np.ones(nrows, bool)
+            inactive[rows] = False
+        else:
+            inactive = np.zeros(nrows, bool)
+        num_inactive = inactive.sum()
+        if num_inactive:
+            print>> log(0), "  applying a solvable subset deselects {} rows".format(num_inactive)
+        # apply baseline selection
+        if self.handler.min_baseline or self.handler.max_baseline:
+            uv2 = (uvw[:,0:2]**2).sum(1)
+            inactive[uv2 < self.handler.min_baseline**2] = True
+            if self.handler.max_baseline:
+                inactive[uv2 > self.handler.max_baseline**2] = True
+            print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(inactive.sum() - num_inactive)
+
+        flag_arr[inactive] |= FL.SKIPSOL
 
         # Form up bitflag array, if needed.
         if self.handler._apply_bitflags or self.handler._save_bitflag or self.handler._auto_fill_bitflag:
@@ -390,7 +473,7 @@ class Tile(object):
                 # occurrence so we may as well deal with it. In this case, if auto-fill is set, 
                 # fill BITFLAG from FLAG/FLAG_ROW.
                 try:
-                    self.bflagcol = self.handler.fetch("BITFLAG", self.first_row, nrows)
+                    self.bflagcol = self.handler.fetchslice("BITFLAG", self.first_row, nrows)
                     print>> log(2), "  read BITFLAG/BITFLAG_ROW"
                     read_bitflags = True
                 except Exception:
@@ -420,14 +503,10 @@ class Tile(object):
 
         return data
 
-    def prep_data(self, data):
+    def prep_for_montblanc(self):
         """
         Manipulates data to be consistent with Montblanc's requirements. Mainly adds elements 
         which are missing from the measurement set.
-
-        Args:
-            data (:obj:`~cubical.tools.shared_dict.SharedDict`):
-                Shared dictionary containing data from the measurement set.
 
         Returns:
             tuple:
@@ -469,7 +548,7 @@ class Tile(object):
         if nrows == expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
             print>> log, "  {} rows consistent with {} timeslots and {} baselines" \
-                                                                "across {} bands".format(*logstr)
+                                                                " across {} bands".format(*logstr)
             
             sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
 
@@ -501,7 +580,7 @@ class Tile(object):
             missing_t = np.array(missing_t)
             missing_ddids = np.array(missing_ddids)
 
-            data['uvwco'] = np.concatenate((data['uvwco'], missing_uvw))
+            self.uvwco = np.concatenate((self.uvwco, missing_uvw))
             self.antea = np.concatenate((self.antea, missing_antea))
             self.anteb = np.concatenate((self.anteb, missing_anteb))
             self.time_col = np.concatenate((self.time_col, missing_t))
@@ -524,22 +603,20 @@ class Tile(object):
 
         return expected_nrows, sorted_ind, row_identifiers
 
-    def unprep_data(self, data, nrows):
+    def unprep_for_montblanc(self, nrows):
         """
-        Reverts the changes made by prepdata. Makes data consistent with the measurement set.
+        Reverts the changes made by prep_for_montblanc. Makes data consistent with the measurement set.
 
         Args:
-            data (:obj:`~cubical.tools.shared_dict.SharedDict`):
-                Shared dictionary containing data from the measurement set.
             nrows (int):
-                Number of rows which were present in the measurement set prior to prep_data.
+                Number of rows which were present in the measurement set prior to prep_for_montblanc.
         """
-
-        data['uvwco'] = data['uvwco'][:nrows,...]
+        self.uvwco = self.uvwco[:nrows,...]
         self.antea = self.antea[:nrows]
         self.anteb = self.anteb[:nrows]
         self.time_col = self.time_col[:nrows]
         self.ddid_col = self.ddid_col[:nrows]
+
 
     def get_chunk_cubes(self, key):
         """
@@ -554,7 +631,7 @@ class Tile(object):
                 The data, model, flags and weights cubes for the given chunk key. 
                 Shapes are as follows:
             
-                - data (np.ndarray):    [n_mod, n_tim, n_fre, n_ant, n_ant, 2, 2]
+                - data (np.ndarray):    [n_tim, n_fre, n_ant, n_ant, 2, 2]
                 - model (np.ndarray):   [n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, 2, 2]
                 - flags (np.ndarray):   [n_tim, n_fre, n_ant, n_ant]
                 - weights (np.ndarray): [n_mod, n_tim, n_fre, n_ant, n_ant] or None for no weighting
@@ -574,7 +651,7 @@ class Tile(object):
 
         flags = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice, FL.dtype, FL.MISSING)
         flags = np.bitwise_or.reduce(flags, axis=-1) if self.ncorr==4 else np.bitwise_or.reduce(flags[...,::3], axis=-1)
-        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=6)
+        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=5)
         obs_arr = obs_arr.reshape(list(obs_arr.shape[:-1]) + [2, 2])
         if 'movis' in data:
             mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=7)
@@ -585,7 +662,7 @@ class Tile(object):
             mod_arr = None
 
         # flag invalid data
-        flags[(~np.isfinite(obs_arr[0, ])).any(axis=(-2, -1))] |= FL.INVALID
+        flags[(~np.isfinite(obs_arr)).any(axis=(-2, -1))] |= FL.INVALID
         flagged = flags != 0
 
         if 'weigh' in data:
@@ -596,10 +673,10 @@ class Tile(object):
         else:
             wgt_arr = None
 
-        # zero flagged entries in data and model
-        obs_arr[0, flagged, :, :] = 0
-        if mod_arr is not None:
-            mod_arr[0, 0, flagged, :, :] = 0
+        # # zero flagged entries in data and model. NB: this is now done in the solver instead
+        # obs_arr[flagged, :, :] = 0
+        # if mod_arr is not None:
+        #     mod_arr[0, 0, flagged, :, :] = 0
 
         return obs_arr, mod_arr, flags, wgt_arr
 
@@ -678,20 +755,20 @@ class Tile(object):
             print>> log, "saving {} for MS rows {}~{}".format(self.handler.output_column, self.first_row, self.last_row)
             if self.handler._add_column(self.handler.output_column):
                 self.handler.reopen()
-            self.handler.data.putcol(self.handler.output_column, data['covis'], self.first_row, nrows)
+            self.handler.putslice(self.handler.output_column, data['covis'], self.first_row, nrows)
 
         if self.handler._save_bitflag and data['updated'][1]:
             print>> log, "saving flags for MS rows {}~{}".format(self.first_row, self.last_row)
             # clear bitflag column first
             self.bflagcol &= ~self.handler._save_bitflag
             # add bitflag to points where data wasn't flagged for prior reasons
-            self.bflagcol[(data['flags']&~FL.PRIOR) != 0] |= self.handler._save_bitflag
-            self.handler.data.putcol("BITFLAG", self.bflagcol, self.first_row, nrows)
+            self.bflagcol[data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0] |= self.handler._save_bitflag
+            self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
             print>> log, "  updated BITFLAG column"
             self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
             self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
             flag_col = self.bflagcol != 0
-            self.handler.data.putcol("FLAG", flag_col, self.first_row, nrows)
+            self.handler.putslice("FLAG", flag_col, self.first_row, nrows)
             print>> log, "  updated FLAG column ({:.2%} visibilities flagged)".format(
                 flag_col.sum() / float(flag_col.size))
             flag_row = flag_col.all(axis=(-1, -2))
@@ -852,9 +929,10 @@ class Tile(object):
 class DataHandler:
     """ Main data handler. Interfaces with the measurement set. """
 
-    def __init__(self, ms_name, data_column, sm_name, model_column, output_column=None,
-                 taql=None, fid=None, ddid=None, flagopts={}, double_precision=False, ddes=False, 
-                 weight_column=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
+    def __init__(self, ms_name, data_column, models, output_column=None,
+                 taql=None, fid=None, ddid=None, channels=None, flagopts={}, double_precision=False,
+                 weights=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
+                 active_subset=None, min_baseline=0, max_baseline=0, use_ddes=True,
                  mb_opts=None):
         """
         Initialises a DataHandler object.
@@ -900,15 +978,7 @@ class DataHandler:
                 If selection from MS returns no rows.
         """
 
-        if montblanc is None and sm_name:
-            print>>log, ModColor.Str("Error importing Montblanc: ")
-            for line in traceback.format_exception(*montblanc_import_error):
-                print>>log, "  "+ModColor.Str(line)
-            print>>log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
-            raise RuntimeError("Error importing Montblanc")
-
         self.ms_name = ms_name
-        self.sm_name = sm_name
         self.mb_opts = mb_opts
         self.beam_pattern = beam_pattern
         self.beam_l_axis = beam_l_axis
@@ -920,6 +990,7 @@ class DataHandler:
 
         print>>log, ModColor.Str("reading MS %s"%self.ms_name, col="green")
 
+
         _anttab = pt.table(self.ms_name + "::ANTENNA", ack=False)
         _fldtab = pt.table(self.ms_name + "::FIELD", ack=False)
         _spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW", ack=False)
@@ -929,15 +1000,12 @@ class DataHandler:
 
         self.ctype = np.complex128 if double_precision else np.complex64
         self.ftype = np.float64 if double_precision else np.float32
-        self.nfreq = _spwtab.getcol("NUM_CHAN")[0]
         self.ncorr = _poltab.getcol("NUM_CORR")[0]
         self.nants = _anttab.nrows()
 
-        self._nchans = _spwtab.getcol("NUM_CHAN")
-        self._rfreqs = _spwtab.getcol("REF_FREQUENCY")
-        self._chanfr = _spwtab.getcol("CHAN_FREQ")
-        self._antpos = _anttab.getcol("POSITION")
-        self._phadir = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
+        self.antpos   = _anttab.getcol("POSITION")
+        self.antnames = _anttab.getcol("NAME")
+        self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
         self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
         
         if np.any([pol in self._poltype for pol in ['L','l','R','r']]):
@@ -947,26 +1015,74 @@ class DataHandler:
             self._poltype = "linear"
             self.feeds = "xy"
         else:
-            print>>log,"  unsupported feed type. Terminating."
-            sys.exit()
+            raise TypeError("unsupported POLARIZATION_TYPE {}. Terminating.".format(self._poltype))
 
         # print some info on MS layout
         print>>log,"  detected {} ({}) feeds".format(self._poltype, self.feeds)
         print>>log,"  fields are "+", ".join(["{}{}: {}".format('*' if i==fid else "",i,name) for i, name in enumerate(_fldtab.getcol("NAME"))])
-        self._spw_chanfreqs = _spwtab.getcol("CHAN_FREQ")  # nspw x nfreq array of frequencies
-        print>>log,"  {} spectral windows of {} channels each ".format(*self._spw_chanfreqs.shape)
+
+        # get list of channel frequencies (this may have varying sizes)
+        self._spw_chanfreqs = [ _spwtab.getcell("CHAN_FREQ", i) for i in xrange(_spwtab.nrows()) ]
+        nchan = len(self._spw_chanfreqs[0])
+        print>>log,"  MS contains {} spectral windows of {} channels each".format(len(self._spw_chanfreqs), nchan)
 
         # figure out DDID range
-        self._ddids = _parse_range(ddid, _ddesctab.nrows())
+        self._num_total_ddids = _ddesctab.nrows()
+        self._ddids = _parse_range(ddid, self._num_total_ddids)
+        if not self._ddids:
+            raise ValueError("'ddid' did not select any valid DDIDs".format(ddid))
+
+        # figure out channel slices per DDID
+        self._channel_slice = _parse_slice(channels)
+
+        # apply the slices to each spw
+        self._ddid_spw = _ddesctab.getcol("SPECTRAL_WINDOW_ID")
+        ddid_chanfreqs = [ self._spw_chanfreqs[d] for d in xrange(self._num_total_ddids) ]
+        self._nchan_orig = len(ddid_chanfreqs[self._ddids[0]])
+        if not all([len(ddid_chanfreqs[d]) == self._nchan_orig for d in self._ddids]):
+            raise ValueError("Selected DDIDs do not have a uniform number of channels. This is not currently supported.")
+        # get slice through first DDID, this will give us the number of selected channels per DDID
+        freqs0 = ddid_chanfreqs[self._ddids[0]][self._channel_slice]
+        self.nfreq = len(freqs0)
+        # form up array of per-DDID frequencies
+        self._ddid_chanfreqs = np.zeros((self._num_total_ddids, self.nfreq), float)
+        # fill in slices for selected DDIDs (non-selected ones remain unfilled)
+        for d in self._ddids:
+            freqs = ddid_chanfreqs[d][self._channel_slice]
+            if len(freqs) != self.nfreq:
+                raise ValueError("Selected DDIDs do not have a uniform number of channels. This is not currently supported.")
+            self._ddid_chanfreqs[d, :] = freqs
+        # make flat array of all frequencies
+        self.all_freqs = self._ddid_chanfreqs[self._ddids,:].ravel()
+        # make index of DDID -> ordinal number within selection
+        self._ddid_index = { d: num for num,d in enumerate(self._ddids) }
+
+        # form up blc/trc arguments for getcolslice() and putcolslice()
+        if self._channel_slice != slice(None):
+            print>>log,"  applying a channel selection of {}".format(channels)
+            chan0 = self._channel_slice.start if self._channel_slice.start is not None else 0
+            chan1 = self._channel_slice.stop - 1 if self._channel_slice.stop is not None else -1
+            self._ms_blc = (chan0, 0)
+            self._ms_trc = (chan1, self.ncorr - 1)
 
         # use TaQL to select subset
         self.taql = self.build_taql(taql, fid, self._ddids)
 
         if self.taql:
-            print>> log, "  applying TAQL query: %s" % self.taql
             self.data = self.ms.query(self.taql)
+            print>> log, "  applying TAQL query '%s' (%d/%d rows selected)" % (self.taql,
+                                                                             self.data.nrows(), self.ms.nrows())
         else:
             self.data = self.ms
+
+        if active_subset:
+            subset = self.data.query(active_subset)
+            self.active_row_numbers = np.array(subset.rownumbers(self.data))
+            print>> log, "  applying TAQL query '%s' for solvable subset (%d/%d rows)" % (active_subset,
+                                                            subset.nrows(), self.data.nrows())
+        else:
+            self.active_row_numbers = None
+        self.min_baseline, self.max_baseline = min_baseline, max_baseline
 
         self.nrows = self.data.nrows()
 
@@ -979,25 +1095,16 @@ class DataHandler:
         self.uniq_times = np.unique(self.time_col)
         self.ntime = len(self.uniq_times)
 
-        self._ddid_spw = _ddesctab.getcol("SPECTRAL_WINDOW_ID")
-        # select frequencies corresponding to DDID range
-        self._ddid_chanfreqs = np.array([self._spw_chanfreqs[self._ddid_spw[ddid]] for ddid in self._ddids ])
 
-        self.all_freqs = self._ddid_chanfreqs.ravel()
-
-        print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels, %d corrs" % (self.nants,
-                    self.nrows, len(self._ddids), _ddesctab.nrows(), self.ntime, self.nfreq, self.ncorr)
+        print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels per DDID, %d corrs" % (self.nants,
+                    self.nrows, len(self._ddids), self._num_total_ddids, self.ntime, self.nfreq, self.ncorr)
         print>>log,"  DDID central frequencies are at {} GHz".format(
-                    " ".join(["%.2f"%(self._ddid_chanfreqs[i][self.nfreq/2]*1e-9) for i in range(len(self._ddids))]))
+                    " ".join(["%.2f"%(self._ddid_chanfreqs[d][self.nfreq/2]*1e-9) for d in self._ddids]))
         self.nddid = len(self._ddids)
 
 
         self.data_column = data_column
-        self.model_column = model_column
-        self.weight_column = weight_column
         self.output_column = output_column
-        self.simulate = bool(self.sm_name)
-        self.use_ddes = ddes
 
         # figure out flagging situation
         if "BITFLAG" in self.ms.colnames():
@@ -1069,6 +1176,85 @@ class DataHandler:
 
         self.gain_dict = {}
 
+        # now parse the model composition
+
+        # ensure we have as many weights as models
+        self.has_weights = weights is not None
+        if weights is None:
+            weights = [None] * len(models)
+        elif len(weights) == 1:
+            weights = weights*len(models)
+        elif len(weights) != len(models):
+            raise ValueError,"need as many sets of weights as there are models"
+
+        self.models = []
+        self.model_directions = set() # keeps track of directions in Tigger models
+        for imodel, (model, weight_col) in enumerate(zip(models, weights)):
+            # list of per-direction models
+            dirmodels = {}
+            self.models.append((dirmodels, weight_col))
+            for idir, dirmodel in enumerate(model.split(":")):
+                if not dirmodel:
+                    continue
+                idirtag = " dir{}".format(idir if use_ddes else 0)
+                for component in dirmodel.split("+"):
+                    if component.startswith("./") or component not in self.ms.colnames():
+                        # check if LSM ends with @tag specification
+                        if "@" in component:
+                            component, tag = component.rsplit("@",1)
+                        else:
+                            tag = None
+                        if os.path.exists(component):
+                            if montblanc is None:
+                                print>> log, ModColor.Str("Error importing Montblanc: ")
+                                for line in traceback.format_exception(*montblanc_import_error):
+                                    print>> log, "  " + ModColor.Str(line)
+                                print>> log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
+                                raise RuntimeError("Error importing Montblanc")
+
+                            component = TiggerSourceProvider(component, self.phadir, dde_tag=use_ddes and tag)
+                            for key in component._cluster_keys:
+                                dirname = idirtag if key == 'die' else key
+                                dirmodels.setdefault(dirname, []).append((component, key))
+                        else:
+                            raise ValueError,"model component {} is neither a valid LSM nor an MS column".format(component)
+                    else:
+                        dirmodels.setdefault(idirtag, []).append((component, None))
+            self.model_directions.update(dirmodels.iterkeys())
+        # Now, each model is a dict of dirmodels, keyed by direction name (unnamed directions are _dir0, _dir1, etc.)
+        # Get all possible direction names
+        self.model_directions = sorted(self.model_directions)
+
+        # print out the results
+        print>>log(0),ModColor.Str("Using {} model(s) for {} directions(s){}".format(
+                                        len(self.models),
+                                        len(self.model_directions),
+                                        " (DDEs explicitly disabled)" if not use_ddes else""),
+                                   col="green")
+        for imod, (dirmodels, weight_col) in enumerate(self.models):
+            print>>log(1),"  model {} (weight {}):".format(imod, weight_col)
+            for idir, dirname in enumerate(self.model_directions):
+                if dirname in dirmodels:
+                    comps = []
+                    for comp, tag in dirmodels[dirname]:
+                        if not tag or tag == 'die':
+                            comps.append("{}".format(comp))
+                        else:
+                            comps.append("{}({})".format(tag, comp))
+                    print>>log(1),"    direction {}: {}".format(idir, " + ".join(comps))
+                else:
+                    print>>log(1),"    direction {}: empty".format(idir)
+
+        self.use_ddes = len(self.model_directions) > 1
+
+        if montblanc is not None:
+            mblogger = logging.getLogger("montblanc")
+            mblogger.propagate = False
+            # NB: this assume that the first handler of the Montblanc logger is the console logger
+            mblogger.handlers[0].setLevel(getattr(logging, mb_opts["verbosity"]))
+
+
+
     def build_taql(self, taql=None, fid=None, ddid=None):
         """
         Generate a combined TAQL query using possible options.
@@ -1118,6 +1304,60 @@ class DataHandler:
         """
 
         return self.data.getcol(*args, **kwargs)
+
+    def fetchslice(self, column, startrow, nrows):
+        """
+        Convenience function similar to fetch(), but assumes a column of NFREQxNCORR shape,
+        and calls pyrap.tables.table.getcolslice() if there's a channel slice to be applied,
+        else just uses getcol().
+        
+        Args:
+            startrow (int):
+                Starting row to read.
+            nrows (int):
+                Number of rows to read.
+
+        Returns:
+            np.ndarray:
+                Result of getcolslice()
+        """
+        if self._channel_slice == slice(None):
+            return self.data.getcol(column, startrow, nrows)
+        return self.data.getcolslice(column, self._ms_blc, self._ms_trc, [], startrow, nrows)
+
+    def putslice(self, column, value, startrow, nrows):
+        """
+        The opposite of fetchslice(). Assumes a column of NFREQxNCORR shape,
+        and calls pyrap.tables.table.putcolslice() if there's a channel slice to be applied,
+        else just uses putcol().
+        If column is variable-shaped and the cell at startrow is not initialized, attempts to
+        initialize an entire section of the column before writing the slice.
+
+        Args:
+            startrow (int):
+                Starting row to write.
+            nrows (int):
+                Number of rows to write.
+
+        Returns:
+            np.ndarray:
+                Result of putcolslice()
+        """
+        # if no slicing, just use putcol to put the whole thing. This always works,
+        # unless the MS is screwed up
+        if self._channel_slice == slice(None):
+            return self.data.putcol(column, value, startrow, nrows)
+        # A variable-shape column may be uninitialized, in which case putcolslice will not work.
+        # But we try it first anyway, especially if the first row of the block looks initialized
+        if self.data.iscelldefined(column, startrow):
+            try:
+                return self.data.putcolslice(column, value, self._ms_blc, self._ms_trc, [], startrow, nrows)
+            except Exception, exc:
+                pass
+        print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
+        value0 = np.zeros((nrows, self._nchan_orig, value.shape[2]), value.dtype)
+        value0[:, self._channel_slice, :] = value
+        return self.data.putcol(column, value0, startrow, nrows)
 
     def define_chunk(self, tdim=1, fdim=1, chunk_by=None, chunk_by_jump=0, min_chunks_per_tile=4):
         """
@@ -1209,13 +1449,16 @@ class DataHandler:
 
         chunklist = []
 
+        self._actual_ddids = []
         for ddid in self._ddids:
             ddid_rowmask = self.ddid_col==ddid
-
-            for tchunk in range(len(timechunks)-1):
-                rows = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
-                if rows.size:
-                    chunklist.append(RowChunk(ddid, tchunk, rows))
+            if ddid_rowmask.any():
+                self._actual_ddids.append(ddid)
+                for tchunk in range(len(timechunks)-1):
+                    rows = np.where(ddid_rowmask & timechunk_mask[tchunk])[0]
+                    if rows.size:
+                        chunklist.append(RowChunk(ddid, tchunk, rows))
+        self.nddid_actual = len(self._actual_ddids)
 
         print>>log,"  generated {} row chunks based on time and DDID".format(len(chunklist))
 
@@ -1436,8 +1679,8 @@ class DataHandler:
         bflag_col = self.fetch("BITFLAG")
         # raise specified bitflag
         print>> log, "  updating BITFLAG column flagbit %d"%self._save_bitflag
-        bflag_col &= ~self._save_bitflag         # clear the flagbit first
-        bflag_col[flags] |= self._save_bitflag   # now set it where flagged
+        bflag_col[:, self._channel_slice, :] &= ~self._save_bitflag         # clear the flagbit first
+        bflag_col[:, self._channel_slice, :][flags] |= self._save_bitflag
         self.data.putcol("BITFLAG", bflag_col)
         print>>log, "  updating BITFLAG_ROW column"
         self.data.putcol("BITFLAG_ROW", np.bitwise_and.reduce(bflag_col, axis=(-1,-2)))

@@ -21,13 +21,15 @@ def test():
 #     return Dico
 
 
-def parse_as_python(string, words_are_strings=False):
+def parse_as_python(string, allow_builtins=False, allow_types=False):
     """Tries to interpret string as a Python object. Returns value, or string itself if unsuccessful.
     Names of built-in functions are _not_ interpreted as functions!
     """
     try:
         value = eval(string, {}, {})
-        if type(value) is type(all):  # do not interpret built-in function names
+        if type(value) is type(all) and not allow_builtins:  # do not interpret built-in function names
+            return string
+        if type(value) is type(int) and not allow_types:  # do not interpret built-in function names
             return string
         return value
     except:
@@ -92,7 +94,7 @@ def parse_config_string(string, name='config', extended=True, type=None):
             if attrs['type'] == 'string':
                 attrs['type'] = str
             # type had better be a callable type object
-            type = parse_as_python(attrs['type'])
+            attrs['type'] = type = parse_as_python(attrs['type'], allow_types=True)
             if not callable(type):
                 raise ValueError("%s: invalid '#type:%s' attribute"%(name, attrs['type']))
 
@@ -150,7 +152,11 @@ class Parset():
                         if alias:
                             self.value_dict[secname][alias] = value
 
-    def read (self, filename):
+    def read (self, filename, default_parset=False):
+        """Reads parset from filename.
+        default_parset: if True, this is treated as the default parset, and things like templated
+        section names are expanded.
+        """
         self.filename = filename
         self.Config = config = ConfigParser.ConfigParser(dict_type=OrderedDict)
         config.optionxform = str

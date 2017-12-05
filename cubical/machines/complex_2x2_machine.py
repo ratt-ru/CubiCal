@@ -186,26 +186,6 @@ class Complex2x2Gains(PerIntervalGains):
 
         return corr_vis, flag_count
          
-    def apply_gains(self, model_arr):
-        """
-        Applies the gains to an array at full time-frequency resolution. 
-
-        Args:
-            model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
-                model visibilities.
-
-        Returns:
-            np.ndarray:
-                Array containing the result of GMG\ :sup:`H`.
-        """
-
-        gh = self.gains.transpose(0,1,2,3,5,4).conj()
-
-        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
-
-        return model_arr
-
     def restrict_solution(self):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying

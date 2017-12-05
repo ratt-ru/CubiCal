@@ -16,8 +16,8 @@ import pyrap.tables as pt
 import re
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("flagging")
 import cubical.plots as plots
+log = logger.getLogger("flagging")
 from collections import OrderedDict
 
 class FL(object):
@@ -34,6 +34,7 @@ class FL(object):
     GOOB     = dtype(1<<6)    # gain solution out of bounds
     BOOM     = dtype(1<<7)    # gain solution exploded (i.e. went to inf/nan)
     GNULL    = dtype(1<<8)    # gain solution gone to zero
+    SKIPSOL  = dtype(1<<9)    # omit this data point from the solver
 
     @staticmethod
     def categories():
@@ -71,7 +72,7 @@ class Flagsets (object):
                         self.bits[name] = bit
                     else:
                         print "Warning: unexpected type (%s) for %s keyword of BITFLAG column," \
-                                " ignoring"%(type(order),kw)
+                                " ignoring"%(type(bit),kw)
             # have we found any FLAGSET_ specs?
             if self.bits:
                 order = 'FLAGSETS' in kws and ms.getcolkeyword('BITFLAG','FLAGSETS')

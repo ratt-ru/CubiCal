@@ -18,7 +18,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
         """
-        Initialises a diagonal phase-only gain machine.
+        Initialises a diagonal phase-slope gain machine.
         
         Args:
             label (str):
@@ -101,7 +101,6 @@ class PhaseSlopeGains(ParameterisedGains):
              "offset": (masked_array(self.slope_params[...,1,(0,1),(0,1)]), self.interval_grid),
              "rate":   (masked_array(self.slope_params[...,0,(0,1),(0,1)]), self.interval_grid),
             })
-
         return solutions
 
     def import_solutions(self, soldict):
@@ -302,24 +301,6 @@ class PhaseSlopeGains(ParameterisedGains):
 
         return corr_vis, 0   # no flags raised here, since phase-only always invertible
 
-    def apply_gains(self):
-        """
-        Applies the gains to an array at full time-frequency resolution. 
-
-        Args:
-            model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
-                model visibilities.
-
-        Returns:
-            np.ndarray:
-                Array containing the result of GMG\ :sup:`H`.
-        """
-        
-        #TODO: Implement this function.
-
-        return
-
     def restrict_solution(self):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying
@@ -330,6 +311,8 @@ class PhaseSlopeGains(ParameterisedGains):
         
         if self.ref_ant is not None:
             self.slope_params -= self.slope_params[:,:,:,self.ref_ant,:,:,:][:,:,:,np.newaxis,:,:,:]
+        for idir in self.fix_directions:
+            self.slope_params[idir, ...] = 0
 
     def precompute_attributes(self, model_arr):
         """

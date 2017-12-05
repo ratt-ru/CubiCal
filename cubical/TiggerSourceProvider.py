@@ -18,25 +18,29 @@ import pyrap.tables as pt
 
 class TiggerSourceProvider(SourceProvider):
     """
-    Simulates sources provided by a Tigger sky model. 
+    A Montblanc-compatible source provider that returns source information from a Tigger sky model. 
     """
-
-    def __init__(self, tile):
-        """ 
-        Initialises this source provider. 
+    def __init__(self, lsm, phase_center, dde_tag='dE'):
+        """
+        Initialises this source provider.
 
         Args:
-            tile (:obj:`~cubical.data_handler.Tile`):
-                Tile object containing information about current data selection.
+            lsm (str):
+                Filename containing the sky model
+            phase_center (tuple):
+                Observation phase centre, as a RA, Dec tuple
+            dde_tag (str or None):
+                If set, sources are grouped into multiple directions using the specified tag.
+            
         """
 
-        self._tile = tile
-        self._handler = tile.handler
-        self._sm = Tigger.load(self._handler.sm_name)
-        self._phase_center = self._handler._phadir
-        self._use_ddes = self._handler.use_ddes
+        self.filename = lsm
+        self._sm = Tigger.load(lsm)
+        self._phase_center = phase_center
+        self._use_ddes = bool(dde_tag)
+        self._dde_tag = dde_tag
 
-        self._clusters = cluster_sources(self._sm, self._use_ddes)
+        self._clusters = cluster_sources(self._sm, dde_tag)
         self._cluster_keys = self._clusters.keys()
         self._nclus = len(self._cluster_keys)
 
@@ -48,21 +52,24 @@ class TiggerSourceProvider(SourceProvider):
         self._gau_sources = self._clusters[self._target_cluster]["gau"]
         self._ngsrc = len(self._gau_sources)
 
-    def update_target(self):
-        """ Updates current target - used for direction dependent simulation. """
+    def set_direction(self, idir):
+        """Sets current direction being simulated. 
+        
+        Args:
+            idir (int):
+                Direction number, from 0 to n_dir-1
+        """
 
-        if (self._target_key + 1)<self._nclus:
-            self._target_key += 1
-            self._target_cluster = self._cluster_keys[self._target_key]
-            self._pnt_sources = self._clusters[self._target_cluster]["pnt"]
-            self._npsrc = len(self._pnt_sources)
-            self._gau_sources = self._clusters[self._target_cluster]["gau"]
-            self._ngsrc = len(self._gau_sources)
+        self._target_key = idir
+        self._target_cluster = self._cluster_keys[self._target_key]
+        self._pnt_sources = self._clusters[self._target_cluster]["pnt"]
+        self._npsrc = len(self._pnt_sources)
+        self._gau_sources = self._clusters[self._target_cluster]["gau"]
+        self._ngsrc = len(self._gau_sources)
 
     def name(self):
-        """ Returns name of assosciated source provider. """
-
-        return "Tigger sky model source provider"
+        """ Returns name of assosciated source provider. This is just the filename, in this case."""
+        return self.filename
 
     def point_lm(self, context):
         """ Returns an lm coordinate array to Montblanc. """
@@ -215,16 +222,15 @@ class TiggerSourceProvider(SourceProvider):
         return [('npsrc', self._npsrc),
                 ('ngsrc', self._ngsrc)]
 
-def cluster_sources(sm, use_ddes):
+def cluster_sources(sm, dde_tag):
     """
-    Groups sources by shapes and tags specified in the sky model.
+    Groups sources by shape (point/gaussian) and, optionally, direction.
 
     Args:
         sm (:obj:`~Tigger.Models.SkyModel.SkyModel`):
             SkyModel object containing source information.
-        use_ddes (bool):
-            If True, take DDE and cluster tags into account. 
-            Required for DD simulation.
+        dde_tag (str or None):
+            If given, then also group by direction using the given tag.
 
     Returns:
         dict:
@@ -234,8 +240,8 @@ def cluster_sources(sm, use_ddes):
     ddes = {'True': [], 'False': []}
 
     for s in sm.sources:
-        if use_ddes:
-            ddes['True'].append(s) if (s.getTag('dE')==True) \
+        if dde_tag:
+            ddes['True'].append(s) if (s.getTag(dde_tag)==True) \
                 else ddes['False'].append(s)
         else:
             ddes['False'].append(s)

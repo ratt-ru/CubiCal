@@ -6,6 +6,8 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
+import cubical.kernels.cyfull_complex as cyfull
+
 from numpy.ma import masked_array
 
 class PerIntervalGains(MasterMachine):
@@ -87,7 +89,9 @@ class PerIntervalGains(MasterMachine):
         self.update_type = options["update-type"]
         self.ref_ant = options["ref-ant"]
         self.dd_term = options["dd-term"]
-        self.term_iters = options["term-iters"]
+        self.fix_directions = options["fix-dirs"] or []
+        if type(self.fix_directions) is int:
+            self.fix_directions = [self.fix_directions]
 
         # Construct the appropriate shape for the gains.
 
@@ -123,6 +127,26 @@ class PerIntervalGains(MasterMachine):
         self._gainres_to_fullres  = self.unpack_intervals
         # function used to unpack interval resolution to gain resolution
         self._interval_to_gainres = lambda array,time_ind=0: array
+
+
+    def apply_gains(self, model_arr):
+        """
+        Applies the gains to an array at full time-frequency resolution. 
+
+        Args:
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities.
+
+        Returns:
+            np.ndarray:
+                Array containing the result of GMG\ :sup:`H`.
+        """
+        gh = self.gains.transpose(0,1,2,3,5,4).conj()
+
+        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+
+        return model_arr
 
 
     @staticmethod
@@ -281,6 +305,8 @@ class PerIntervalGains(MasterMachine):
         elif self.update_type == "amp-diag":
             self.gains[...,(0,1),(1,0)] = 0
             np.abs(self.gains, out=self.gains)
+        for idir in self.fix_directions:
+            self.gains[idir, ...] = self.old_gains[idir, ...]
 
     def update_term(self):
         """ Updates the current iteration. """

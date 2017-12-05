@@ -8,6 +8,9 @@ import numpy as np
 import cubical.kernels.cyfull_complex as cyfull
 import cubical.kernels.cychain as cychain
 
+from cubical.tools import logger
+log = logger.getLogger("jones_chain")
+
 class JonesChain(MasterMachine):
     """
     This class implements a gain machine for an arbitrary chain of Jones matrices. Most of its
@@ -55,9 +58,15 @@ class JonesChain(MasterMachine):
                                     nmod, times, frequencies, term_opts))
 
         self.n_terms = len(self.jones_terms)
+        # make list of number of iterations per solvable term
+        # If not specified, just use the maxiter setting of each term
+        # note that this list is updated as we converge, so make a copy
+        self.term_iters = list(jones_options['sol']['term-iters']) or [term.maxiter for term in self.jones_terms if term.solvable]
+        self.solvable = bool(self.term_iters)
 
-        self.active_index = 0
-        self.last_active_index = 100 
+        # setup first solvable term in chain
+        self.active_index = -1
+        self._next_chain_term()
 
         cached_array_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, 
                               self.n_ant, self.n_ant, self.n_cor, self.n_cor]
@@ -285,7 +294,7 @@ class JonesChain(MasterMachine):
 
         return corr_vis, flag_count
 
-    def apply_gains(self):
+    def apply_gains(self, vis):
         """
         Applies the gains to an array at full time-frequency resolution. 
 
@@ -298,11 +307,11 @@ class JonesChain(MasterMachine):
             np.ndarray:
                 Array containing the result of GMG\ :sup:`H`.
         """
+        # simply go through the chain in reverse, applying each Jones term in turn
+        for term in self.jones_terms[::-1]:
+            term.apply_gains(vis)
+        return vis
 
-        # TODO: Implement this function.
-
-        return
-           
     def update_stats(self, flags, eqs_per_tf_slot):
         """
         This method computes various stats and totals based on the current state of the flags.
@@ -357,6 +366,19 @@ class JonesChain(MasterMachine):
         
         self.active_term.propagate_gflags(flags)
 
+    def _next_chain_term(self):
+        if not self.term_iters:
+            return False
+        while True:
+            self.active_index = (self.active_index + 1) % self.n_terms
+            if self.active_term.solvable:
+                self.active_term.iters = 0
+                self.active_term.maxiter = self.term_iters.pop(0)
+                print>> log(1), "activating term {}".format(self.active_term.jones_label)
+                return True
+            else:
+                print>> log(1), "skipping term {}: non-solvable".format(self.active_term.jones_label)
+
     def update_term(self):
         """
         Updates the iteration count on the relevant element of the Jones chain. It will also handle 
@@ -366,19 +388,9 @@ class JonesChain(MasterMachine):
 
         self.last_active_index = self.active_index
 
-        def next_term():
-            if self.active_term.has_converged:
-                self.active_index = (self.active_index + 1)%self.n_terms
-                next_term()
-                return False
-            else:
-                return True
-
-        check_iters = next_term()
-
-        if (self.iters%self.term_iters) == 0 and self.iters != 0 and check_iters:
-            self.active_index = (self.active_index + 1)%self.n_terms
-            next_term()
+        if self.active_term.has_converged:
+            print>>log(1),"term {} converged ({} iters)".format(self.active_term.jones_label, self.active_term.iters)
+            self._next_chain_term()
 
         self.iters += 1
 
@@ -484,7 +496,10 @@ class JonesChain(MasterMachine):
 
     @property
     def has_converged(self):
-        return np.all([term.has_converged for term in self.jones_terms])
+        # Chain has converged when term_iters is empty -- since we take off an element each time we converge a term
+        return not self.solvable or \
+               ( self.active_term.has_converged and not self.term_iters )
+        #return np.all([term.has_converged for term in self.jones_terms])
 
     @property
     def has_stalled(self):
@@ -502,17 +517,13 @@ class JonesChain(MasterMachine):
     def dd_term(self):
         return self.active_term.dd_term
 
-    @property
-    def term_iters(self):
-        return self.active_term.term_iters
-
     class Factory(MasterMachine.Factory):
         """
         Note that a ChainMachine Factory expects a list of jones options (one dict per Jones term), not a single dict.
         """
         def __init__(self, machine_cls, grid, double_precision, apply_only, global_options, jones_options):
             # manufacture dict of "Jones options" for the outer chain
-            opts = dict(label="chain", solvable=not apply_only, chain=jones_options)
+            opts = dict(label="chain", solvable=not apply_only, sol=global_options['sol'], chain=jones_options)
             self.chain_options = jones_options
             MasterMachine.Factory.__init__(self, machine_cls, grid, double_precision, apply_only,
                                            global_options, opts)
@@ -520,6 +531,6 @@ class JonesChain(MasterMachine):
         def init_solutions(self):
             for opts in self.chain_options:
                 label = opts["label"]
-                self._init_solutions(label, self._make_filename(opts["load-from"]),
-                                     self.solvable and opts["solvable"] and self._make_filename(opts["save-to"]),
+                self._init_solutions(label, self.make_filename(opts["load-from"], label),
+                                     self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
                                      Complex2x2Gains.exportable_solutions())
