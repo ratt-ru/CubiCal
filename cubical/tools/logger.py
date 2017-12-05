@@ -221,6 +221,7 @@ def init(app_name):
         logging.basicConfig(level=logging.DEBUG, fmt=_fmt, datefmt=_datefmt)
         _app_name = app_name
         _root_logger = logging.getLogger(app_name)
+        _root_logger.setLevel(logging.DEBUG)
         global log
         log = _loggers[''] = LoggerWrapper(_root_logger)
 
