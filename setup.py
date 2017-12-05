@@ -130,7 +130,7 @@ else:
                     'sharedarray', 
                     'matplotlib',
                     'scipy',
-                    'astro-tigger']
+                    'astro-tigger[venv]']
 
 setup(name='cubical',
       version='0.9.2',
