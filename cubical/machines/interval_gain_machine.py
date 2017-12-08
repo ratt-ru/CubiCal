@@ -6,6 +6,8 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
+import cubical.kernels.cyfull_complex as cyfull
+
 from numpy.ma import masked_array
 
 class PerIntervalGains(MasterMachine):
@@ -15,7 +17,24 @@ class PerIntervalGains(MasterMachine):
 
     def __init__(self, label, data_arr, ndir, nmod, times, frequencies, options):
         """
-        Given a model array, initializes various sizes relevant to the gain solutions.
+        Initialises a gain machine which supports solution intervals.
+        
+        Args:
+            label (str):
+                Label identifying the Jones term.
+            data_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities. 
+            ndir (int):
+                Number of directions.
+            nmod (nmod):
+                Number of models.
+            times (np.ndarray):
+                Times for the data being processed.
+            freqs (np.ndarray):
+                Frequencies for the data being processsed.
+            options (dict): 
+                Dictionary of options. 
         """
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies, options)
@@ -70,7 +89,9 @@ class PerIntervalGains(MasterMachine):
         self.update_type = options["update-type"]
         self.ref_ant = options["ref-ant"]
         self.dd_term = options["dd-term"]
-        self.term_iters = options["term-iters"]
+        self.fix_directions = options["fix-dirs"] or []
+        if type(self.fix_directions) is int:
+            self.fix_directions = [self.fix_directions]
 
         # Construct the appropriate shape for the gains.
 
@@ -89,8 +110,9 @@ class PerIntervalGains(MasterMachine):
         self.old_gains = self.gains.copy()
 
     def init_gains(self):
-        """Construct gain and flag arrays. Normally we have one gain/one flag per
-        interval, but subclasses may redefine this, if they deal in full-resolution gains.
+        """
+        Construct gain and flag arrays. Normally we have one gain/one flag per interval, but 
+        subclasses may redefine this, if they deal with full-resolution gains.
         """
         self.gain_grid = self.interval_grid
         self.gain_shape = [self.n_dir,self.n_timint,self.n_freint,self.n_ant,self.n_cor,self.n_cor]
@@ -107,22 +129,54 @@ class PerIntervalGains(MasterMachine):
         self._interval_to_gainres = lambda array,time_ind=0: array
 
 
+    def apply_gains(self, model_arr):
+        """
+        Applies the gains to an array at full time-frequency resolution. 
+
+        Args:
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities.
+
+        Returns:
+            np.ndarray:
+                Array containing the result of GMG\ :sup:`H`.
+        """
+        gh = self.gains.transpose(0,1,2,3,5,4).conj()
+
+        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+
+        return model_arr
+
+
     @staticmethod
     def exportable_solutions():
+        """ Returns a dictionary of exportable solutions for this machine type. """
+
         return { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
 
     def importable_solutions(self):
+        """ Returns a dictionary of importable solutions for this machine type. """
         return { "gain": self.interval_grid }
 
     def export_solutions(self):
-        """This method saves the solutions to a dict of {label: solutions,grids} items"""
-        # make a mask from gain flags by broadcasting the corr1/2 axes
+        """ Saves the solutions to a dict of {label: solutions,grids} items. """
+        
+        # Make a mask from gain flags by broadcasting the corr1/2 axes.
         mask = np.zeros_like(self.gains, bool)
         mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
+
         return { "gain".format(self.jones_label): (masked_array(self.gains, mask), self.gain_grid) }
 
     def import_solutions(self, soldict):
-        """This method loads solutions from a dict"""
+        """ 
+        Loads solutions from a dict. 
+        
+        Args:
+            soldict (dict):
+                Contains gains solutions which must be loaded.
+        """
+
         sol = soldict.get("gain")
         if sol is not None:
             self.gains[:] = sol.data
@@ -134,6 +188,12 @@ class PerIntervalGains(MasterMachine):
         This method computes various stats and totals based on the current state of the flags.
         These values are used for weighting the chi-squared and doing intelligent convergence
         testing.
+
+        Args:
+            flags_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags.
+            eqs_per_tf_slot (np.ndarray):
+                Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
         """
 
         # (n_timint, n_freint) array containing number of valid equations per each time/freq interval.
@@ -157,9 +217,8 @@ class PerIntervalGains(MasterMachine):
         self.gflags[:, self._interval_to_gainres(missing_intervals)] = FL.MISSING
 
     def flag_solutions(self):
-        """
-        This method will do basic flagging of the gain solutions.
-        """
+        """ Flags gain solutions based on certain criteria, e.g. out-of-bounds, null, etc. """
+    
         gain_mags = np.abs(self.gains)
 
         # Anything previously flagged for another reason will not be reflagged.
@@ -195,6 +254,15 @@ class PerIntervalGains(MasterMachine):
         self.n_flagged = (self.gflags&~FL.MISSING != 0).sum()
 
     def propagate_gflags(self, flags):
+        """
+        Propagates the flags raised by the gain machine back into the data. This is necessary as 
+        the gain flags may not have the same shape as the data.
+
+        Args:
+            flags (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
+        """
+
         # convert gain flags to full time/freq resolution
         nodir_flags = self._gainres_to_fullres(np.bitwise_or.reduce(self.gflags, axis=0))
 
@@ -202,6 +270,13 @@ class PerIntervalGains(MasterMachine):
         flags |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
 
     def update_conv_params(self, min_delta_g):
+        """
+        Updates the convergence parameters of the current time-frequency chunk. 
+
+        Args:
+            min_delta_g (float):
+                Threshold for the minimum change in the gains - convergence criterion.
+        """
         
         diff_g = np.square(np.abs(self.old_gains - self.gains))
         diff_g[self.flagged] = 0
@@ -217,6 +292,10 @@ class PerIntervalGains(MasterMachine):
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
 
     def restrict_solution(self):
+        """
+        Restricts the solutions by, for example, selecting a reference antenna or taking only the 
+        amplitude. 
+        """
 
         if self.update_type == "diag":
             self.gains[...,(0,1),(1,0)] = 0
@@ -226,34 +305,84 @@ class PerIntervalGains(MasterMachine):
         elif self.update_type == "amp-diag":
             self.gains[...,(0,1),(1,0)] = 0
             np.abs(self.gains, out=self.gains)
+        for idir in self.fix_directions:
+            self.gains[idir, ...] = self.old_gains[idir, ...]
 
     def update_term(self):
+        """ Updates the current iteration. """
 
         self.iters += 1
 
     def unpack_intervals(self, arr, tdim_ind=0):
-        """Helper method. Unpacks an array that has time/freq axes in terms of intervals into a shape
-        that has time/freq axes at full resolution. tdim_ind gives the position of the time axis"""
+        """
+        Helper method. Unpacks an array that has time/freq axes in terms of intervals into a shape
+        that has time/freq axes at full resolution.
+
+        Args:
+            arr (np.ndarray):
+                Array with adjacent time and frequency axes.
+            tdim_ind (int, optional):
+                Position of time axis in array axes. 
+
+        Returns:
+            np.ndarray:
+                Array at full resolution.
+        """
+
         return arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
 
     def interval_sum(self, arr, tdim_ind=0):
-        """Helper method. Sums an array with full resolution time/freq axes into time/freq intervals"""
+        """
+        Helper method. Sums an array with full resolution time/freq axes into time/freq intervals.
+
+        Args:
+            arr (np.ndarray):
+                Array with adjacent time and frequency axes.
+            tdim_ind (int, optional):
+                Position of time axis in array axes. 
+
+        Returns:
+            np.ndarray:
+                Array with interval resolution.
+        """
+
         return np.add.reduceat(np.add.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1)
 
     def interval_and(self, arr, tdim_ind=0):
-        """Helper method. Logical-ands an array with full resolution time/freq axes into time/freq intervals"""
-        return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1)
+        """
+        Helper method. Logical-ands an array with full resolution time/freq axes into time/freq 
+        intervals.
+
+        Args:
+            arr (np.ndarray):
+                Array with adjacent time and frequency axes.
+            tdim_ind (int, optional):
+                Position of time axis in array axes. 
+
+        Returns:
+            np.ndarray:
+                Array with interval resolution.
+        """
+
+        return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), 
+                                                                    self.f_bins, tdim_ind+1)
 
     @property
     def has_converged(self):
+        """ Returns convergence status. """
+
         return self.n_cnvgd/self.n_sols > self.min_quorum or self.iters >= self.maxiter
 
     @property
     def has_stalled(self):
+        """ Returns stalled status. """
+
         return self._has_stalled
 
     @has_stalled.setter
     def has_stalled(self, value):
+        """ Sets stalled status. """
+
         self._has_stalled = value
 
 

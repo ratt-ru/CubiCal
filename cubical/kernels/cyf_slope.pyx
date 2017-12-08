@@ -2,7 +2,34 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
-from cython.parallel import prange, parallel
+"""
+Cython kernels for the frequency slope (delay) gain machine. Functions require output arrays to be 
+provided. Common dimensions of arrays are:
+
++----------------+------+
+| Dimension      | Size |
++================+======+
+| Direction      |   d  |
++----------------+------+
+| Model          |   m  |
++----------------+------+
+| Time           |   t  |
++----------------+------+
+| Time Intervals |   ti |
++----------------+------+
+| Frequency      |   f  |
++----------------+------+
+| Freq Intervals |   fi |
++----------------+------+
+| Antenna        |   a  |
++----------------+------+
+| Block          |   b  |
++----------------+------+
+| Correlation    |   c  |
++----------------+------+
+
+"""
+
 import numpy as np
 cimport numpy as np
 import cython
@@ -23,11 +50,16 @@ cdef extern from "complex.h":
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 def cycompute_tmp_jhj(complex3264 [:,:,:,:,:,:,:,:] m,
-                      complex3264 [:,:,:,:,:,:,:] jhj):
-
+                      complex3264 [:,:,:,:,:,:,:] tmp_jhj):
     """
-    This reduces the dimension of in1 to match out1. This is achieved by a
-    summation of blocks of dimension (t_int, f_int).
+    Given the model array, computes an intermediary result required in the computation of the 
+    diagonal entries of J\ :sup:`H`\J. This is necessary as J\ :sup:`H`\J is blockwise diagonal.
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model array with dimensions (d, m, t, f, a, a, c, c).
+        tmp_jhj (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H`\J array with dimensions (d, m, t, f, a, c, c).
     """
 
     cdef int d, i, t, f, aa, ab = 0
@@ -46,10 +78,10 @@ def cycompute_tmp_jhj(complex3264 [:,:,:,:,:,:,:,:] m,
                     for aa in xrange(n_ant):
                         for ab in xrange(n_ant):
                             
-                            jhj[d,i,t,f,aa,0,0] = jhj[d,i,t,f,aa,0,0] + \
+                            tmp_jhj[d,i,t,f,aa,0,0] = tmp_jhj[d,i,t,f,aa,0,0] + \
                                                   m[d,i,t,f,aa,ab,0,0]*m[d,i,t,f,ab,aa,0,0] + \
                                                   m[d,i,t,f,aa,ab,0,1]*m[d,i,t,f,ab,aa,1,0]
-                            jhj[d,i,t,f,aa,1,1] = jhj[d,i,t,f,aa,1,1] + \
+                            tmp_jhj[d,i,t,f,aa,1,1] = tmp_jhj[d,i,t,f,aa,1,1] + \
                                                   m[d,i,t,f,aa,ab,1,0]*m[d,i,t,f,ab,aa,0,1] + \
                                                   m[d,i,t,f,aa,ab,1,1]*m[d,i,t,f,ab,aa,1,1]
 
@@ -62,10 +94,25 @@ def cycompute_jhj(float3264 [:,:,:,:,:,:,:] tmp_jhj,
                   float3264 [:] fs,
                   int t_int,
                   int f_int):
-
     """
-    This reduces the dimension of in1 to match out1. This is achieved by a
-    summation of blocks of dimension (t_int, f_int).
+    Given the intermediary J\ :sup:`H`\J and channel frequencies, computes the diagonal entries of 
+    J\ :sup:`H`\J. J\ :sup:`H`\J is computed over intervals. This is an approximation of the 
+    Hessian. In the phase-only frequency slope case, this approximation does not depend on the 
+    gains, therefore it does not vary with iteration. The addition of the block dimension is
+    required due to the block-wise diagonal nature of J\ :sup:`H`\J.
+
+    Args:
+        tmp_jhj (np.float32 or np.float64):
+            Typed memoryview of intermiadiary J\ :sup:`H`\J array with dimensions 
+            (d, m, t, f, a, c, c).
+        jhj (np.float32 or np.float64):
+            Typed memoryview of J\ :sup:`H`\J array with dimensions (d, ti, fi, a, b, c, c).
+        fs (np.float32 or np.float64):
+            Typed memoryview of channel frequencies with dimension (f).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.  
     """
 
     cdef int d, i, t, f, aa, ab = 0
@@ -110,6 +157,18 @@ def cycompute_jhj(float3264 [:,:,:,:,:,:,:] tmp_jhj,
 def cycompute_jhjinv(float3264 [:,:,:,:,:,:,:] jhj,
                      float3264 [:,:,:,:,:,:,:] jhjinv,
                      float eps):
+    """
+    Given J\ :sup:`H`\J (or an array with similar dimensions), computes its inverse.  
+
+    Args:
+        jhj (np.float32 or np.float64):
+            Typed memoryview of J\ :sup:`H`\J array with dimensions (d, ti, fi, a, b, c, c).
+        jhjinv (np.float32 or np.float64):
+            Typed memoryview of (J\ :sup:`H`\J)\ :sup:`-1` array with dimensions 
+            (d, ti, fi, a, b, c, c).
+        eps (float):
+            Threshold beneath which the denominator is regarded as too small for inversion.
+    """
 
     cdef int d, t, f, c, aa = 0
     cdef int n_dir, n_tim, n_fre, n_ant
@@ -153,10 +212,23 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
                  complex3264 [:,:,:,:,:,:,:,:] jh,
                  int t_int,
                  int f_int):
-
     """
-    This reduces the dimension of in1 to match out1. This is achieved by a
-    summation of blocks of dimension (t_int, f_int).
+    Given the model and gains, computes the non-zero elements of J\ :sup:`H`. J\ :sup:`H` has full 
+    time and frequency resolution - solution intervals are used to correctly associate the gains 
+    with the model. The result here contains the useful elements of J\ :sup:`H` but does not look 
+    like the analytic solution.   
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model array with dimensions (d, m, t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
+        jh (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H` array with dimensions (d, m, t, f, a, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.  
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -194,10 +266,24 @@ def cycompute_tmp_jhr(complex3264 [:,:,:,:,:,:] gh,
                       complex3264 [:,:,:,:,:,:] jhr,
                       int t_int,
                       int f_int):
-
     """
-    This reduces the dimension of in1 to match out1. This is achieved by a
-    summation of blocks of dimension (t_int, f_int).
+    Given the conjugate gains, J\ :sup:`H` and the residual (or observed data, in special cases), 
+    computes an intermediary result required for computing J\ :sup:`H`\R. This result is computed
+    over intervals and is required due to the structure of J\ :sup:`H`.
+
+    Args:
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
+        jh (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H` array with dimensions (d, m, t, f, a, a, c, c).
+        r (np.complex64 or np.complex128):
+            Typed memoryview of residual array with dimensions (m, t, f, a, a, c, c).
+        jhr (np.complex64 or np.complex128):
+            Typed memoryview of J\ :sup:`H`\R array with dimensions (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.  
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -234,10 +320,23 @@ def cycompute_jhr(float3264 [:,:,:,:,:,:] tmp_jhr,
                   float3264 [:] fs,
                   int t_int,
                   int f_int):
-
     """
-    This reduces the dimension of in1 to match out1. This is achieved by a
-    summation of blocks of dimension (t_int, f_int).
+    Given the intermediary J\ :sup:`H`\R and channel frequencies, computes J\ :sup:`H`\R. 
+    J\ :sup:`H`\R is computed over intervals. The addition of the block dimension is
+    required due to the structure of J\ :sup:`H`.
+
+    Args:
+        tmp_jhr (np.float32 or np.float64):
+            Typed memoryview of intermiadiary J\ :sup:`H`\J array with dimensions 
+            (d, ti, fi, a, c, c).
+        jhr (np.float32 or np.float64):
+            Typed memoryview of J\ :sup:`H`\J array with dimensions (d, ti, fi, a, b, c, c).
+        fs (np.float32 or np.float64):
+            Typed memoryview of channel frequencies with dimension (f).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.   
     """
 
     cdef int d, i, t, f, aa, ab, c, rr, rc = 0
@@ -267,7 +366,18 @@ def cycompute_update(float3264 [:,:,:,:,:,:,:] jhr,
                      float3264 [:,:,:,:,:,:,:] jhj,
                      float3264 [:,:,:,:,:,:,:] upd):
     """
-    NOTE: THIS RIGHT-MULTIPLIES THE ENTRIES OF IN1 BY THE ENTRIES OF IN2.
+    Given J\ :sup:`H`\R and (J\ :sup:`H`\J)\ :sup:`-1`, computes the gain update. The dimensions of
+    the input should already be consistent, making this operation simple. These arrays are real
+    valued.
+
+    Args:
+        jhr (np.float32 or np.float64):
+            Typed memoryview of J\ :sup:`H`\R array with dimensions (d, ti, fi, a, b, c, c).
+        jhjinv (np.float32 or np.float64):
+            Typed memoryview of (J\ :sup:`H`\J)\ :sup:`-1` array with dimensions 
+            (d, ti, fi, a, b, c, c).
+        upd (np.float32 or np.float64):
+            Typed memoryview of gain update array with dimensions (d, ti, fi, a, b, c, c).
     """
 
     cdef int d, t, f, aa, c = 0
@@ -300,10 +410,24 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
                        complex3264 [:,:,:,:,:,:,:] r,
                        int t_int,
                        int f_int):
-
     """
-    This reduces the dimension of in1 to match out1. This is achieved by a
-    summation of blocks of dimension (t_int, f_int).
+    Given the model, gains, and their conjugates, computes the residual. Residual has full time and
+    frequency resolution - solution intervals are used to correctly associate the gains with the 
+    model. 
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model array with dimensions (d, m, t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        r (np.complex64 or np.complex128):
+            Typed memoryview of residual array with dimensions (m, t, f, a, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
     """
 
     cdef int d, i, t, f, aa, ab, rr, rc = 0
@@ -345,10 +469,23 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
                         complex3264 [:,:,:,:,:,:] corr,
                         int t_int,
                         int f_int):
-
     """
-    This reduces the dimension of in1 to match out1. This is achieved by a
-    summation of blocks of dimension (t_int, f_int).
+    Given the observed visbilities, inverse gains, and their conjugates, computes the corrected 
+    visibilitites.  
+
+    Args:
+        o (np.complex64 or np.complex128):
+            Typed memoryview of observed visibility array with dimensions (t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of inverse gain array with dimensions (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of inverse conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        corr (np.complex64 or np.complex128):
+            Typed memoryview of corrected data array with dimensions (t, f, a, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.  
     """
 
     cdef int d, t, f, aa, ab, rr, rc = 0
@@ -388,10 +525,20 @@ def cyconstruct_gains(float3264 [:,:,:,:,:,:,:] param,
                       float3264 [:] fs,
                       int t_int,
                       int f_int):
-
     """
-    This reduces the dimension of in1 to match out1. This is achieved by a
-    summation of blocks of dimension (t_int, f_int).
+    Given the real-valued parameters of the gains, computes the complex gains. 
+
+    Args:
+        param (np.float32 or np.float64):
+            Typed memoryview of parameter array with dimensions (d, ti, fi, a, b, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of inverse gain array with dimensions (d, ti, fi, a, c, c).
+        fs (np.float32 or np.float64):
+            Typed memoryview of channel frequencies with dimension (f).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.  
     """
 
     cdef int d, t, f, aa, rr, rc, c = 0

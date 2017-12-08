@@ -23,117 +23,136 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
-from setuptools import setup
+import sys
+import logging
+
+from setuptools import setup, find_packages
 from setuptools.extension import Extension
-from Cython.Build import cythonize
-import Cython.Compiler.Options as CCO
-from setuptools.command.install import install
-import numpy as np          
+from setuptools.command.build_ext import build_ext
 
-CCO.buffer_max_dims = 9
+logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+log = logging.getLogger()
 
-class custom_install(install):
-    def run(self):
-        os.system("python setup.py build_ext --inplace -f")
-        install.run(self)
+# Try get location of numpy headers. Compilation requires these headers. 
 
-extensions = [Extension(
+try:
+    import numpy as np
+except ImportError:
+    include_path = ''
+else:
+    include_path = np.get_include()
+
+# Use Cython if available.
+
+try:
+    from Cython.Build import cythonize
+    import Cython.Compiler.Options as CCO
+except ImportError:
+    cythonize = None
+
+cmpl_args = ['-fopenmp',
+             '-ffast-math', 
+             '-O2', 
+             '-march=native',  
+             '-mtune=native', 
+             '-ftree-vectorize']
+    
+link_args = ['-lgomp']
+
+if cythonize:
+
+    log.info("Cython is available. Cythonizing...")
+
+    CCO.buffer_max_dims = 9
+
+    extensions = \
+        [Extension(
             "cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
-            '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
-            extra_link_args=['-lgomp']
-           ),
-              Extension(
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
             "cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
-            '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
-            extra_link_args=['-lgomp']
-                       ),
-              Extension(
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
             "cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
-            '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
-            extra_link_args=['-lgomp']
-             ),
-              Extension(
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
             "cubical.kernels.cychain", ["cubical/kernels/cychain.pyx"],
-            include_dirs=[np.get_include()], extra_compile_args=['-fopenmp', 
-            '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
-            extra_link_args=['-lgomp']
-             ),
-              Extension(
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
             "cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.pyx"],
-            include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
-            '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
-            extra_link_args=['-lgomp']
-             ),
-              Extension(
+            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
+            extra_link_args=link_args),
+         Extension(
             "cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.pyx"],
-            include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
-            '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
-            extra_link_args=['-lgomp']
-             ),
-              Extension(
+            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
+            extra_link_args=link_args),
+         Extension(
             "cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.pyx"],
-            include_dirs=[np.get_include()], language="c++", extra_compile_args=['-fopenmp', 
-            '-ffast-math', '-O2', '-march=native',  '-mtune=native', '-ftree-vectorize'],
-            extra_link_args=['-lgomp']
-             )]
+            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
+            extra_link_args=link_args)]
+
+    extensions = cythonize(extensions, compiler_directives={'binding': True})
+
+else:
+
+    log.info("Cython unavailable. Using bundled .c and .cpp files.")
+
+    extensions = \
+        [Extension("cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.c"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.c"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.c"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cychain", ["cubical/kernels/cychain.c"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.cpp"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.cpp"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension("cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.cpp"], 
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args)]
+
+# Check for readthedocs environment variable.
+
+on_rtd = os.environ.get('READTHEDOCS') == 'True'
+
+if on_rtd:
+    requirements = ['numpy', 
+                    'cython', 
+                    'futures', 
+                    'matplotlib',
+                    'scipy']
+else:
+    requirements = ['numpy', 
+                    'futures', 
+                    'python-casacore>=2.1.2', 
+                    'sharedarray', 
+                    'matplotlib',
+                    'scipy',
+                    'astro-tigger[venv]']
 
 setup(name='cubical',
-      version='0.2.1',
+      version='0.9.2',
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/JSKenyon/phd-code',
-      download_url='https://github.com/JSKenyon/phd-code/archive/0.2.1.tar.gz',
       classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-        "Operating System :: Ubuntu 14.04",
+        "Operating System :: POSIX :: Linux",
         "Programming Language :: Python",
-        "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Astronomy"],
       author='Jonathan Kenyon',
       author_email='jonosken@gmail.com',
       license='GNU GPL v3',
-      cmdclass={'install': custom_install},  
-      packages=['cubical', 'cubical/tools', 'cubical/kernels', 'cubical/machines'],
-      setup_requires=['numpy', 'cython'],
-      install_requires=[  'numpy', 
-                          'cython', 
-                          'futures', 
-                          'python-casacore', 
-                          'sharedarray', 
-                          'matplotlib',
-                          'scipy'  ],
+      cmdclass={'build_ext': build_ext},
+      packages=['cubical', 'cubical.machines', 'cubical.tools', 'cubical.kernels', 'cubical.plots'],
+      install_requires=requirements,
       include_package_data=True,
-      package_data={'cubical'   :   [   'main.py',
-                                        'solver.py', 
-                                        'statistics.py',
-                                        'plots.py',
-                                        'flagging.py',
-                                        'MBTiggerSim.py', 
-                                        'data_handler.py',
-                                        'TiggerSourceProvider.py', 
-                                        'bin/gocubical'],
-                    'tools'     :   [   'cubical/tools/logger.py',
-                                        'cubical/tools/ModColor.py',
-                                        'cubical/tools/ClassPrint.py',
-                                        'cubical/tools/myoptparse.py',
-                                        'cubical/tools/parsets.py'],
-                    'kernels'   :   [   'cubical/kernels/cyfull_complex.pyx',
-                                        'cubical/kernels/cyphase_only.pyx',
-                                        'cubical/kernels/cyfull_W_complex.pyx',
-                                        'cubical/kernels/cychain.pyx'],
-                    'machines'  :   [   'cubical/machines/abstract_machine.py'
-                                        'cubical/machines/interval_gain_machine.py',
-                                        'cubical/machines/complex_2x2_machine.py',
-                                        'cubical/machines/phase_diag_machine.py',
-                                        'cubical/machines/jones_chain_machine.py',
-                                        'cubical/machines/slope_machine.py',
-                                        'cubical/machines/parameterised_machine.py' ] },
       zip_safe=False,
-      ext_modules = cythonize(extensions),
-      scripts=['cubical/bin/gocubical'],
+      ext_modules = extensions,
+      entry_points={'console_scripts': ['gocubical = cubical.main:main']},           
 )
+
 

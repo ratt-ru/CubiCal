@@ -8,9 +8,29 @@ import cubical.kernels.cyfull_complex as cyfull
 
 class Complex2x2Gains(PerIntervalGains):
     """
-    This class implements the full complex 2x2 gain machine
+    This class implements the full complex 2x2 gain machine.
     """
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+        """
+        Initialises a 2x2 complex gain machine.
+        
+        Args:
+            label (str):
+                Label identifying the Jones term.
+            data_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities. 
+            ndir (int):
+                Number of directions.
+            nmod (nmod):
+                Number of models.
+            chunk_ts (np.ndarray):
+                Times for the data being processed.
+            chunk_fs (np.ndarray):
+                Frequencies for the data being processsed.
+            options (dict): 
+                Dictionary of options. 
+        """
 
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
         
@@ -21,18 +41,23 @@ class Complex2x2Gains(PerIntervalGains):
 
     def compute_js(self, obser_arr, model_arr):
         """
-        This function computes the (J^H)R term of the GN/LM method for the
-        full-polarisation, phase-only case.
+        This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
+        method. 
 
         Args:
-            obser_arr (np.array): Array containing the observed visibilities.
-            model_arr (np.array): Array containing the model visibilities.
-            gains (np.array): Array containing the current gain estimates.
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
 
         Returns:
-            jhr (np.array): Array containing the result of computing (J^H)R.
-            jhjinv (np.array): Array containing the result of computing (J^H.J)^-1
-            flag_count:     Number of flagged (ill-conditioned) elements
+            3-element tuple
+                
+                - J\ :sup:`H`\R (np.ndarray)
+                - (J\ :sup:`H`\J)\ :sup:`-1` (np.ndarray)
+                - Count of flags raised (int)     
         """
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
@@ -66,18 +91,20 @@ class Complex2x2Gains(PerIntervalGains):
 
     def compute_update(self, model_arr, obser_arr):
         """
-        This function computes the update step of the GN/LM method. This is
-        equivalent to the complete (((J^H)J)^-1)(J^H)R.
+        This function computes the update step of the GN/LM method. This is equivalent to the 
+        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
 
         Args:
-            obser_arr (np.array): Array containing the observed visibilities.
-            model_arr (np.array): Array containing the model visibilities.
-            gains (np.array): Array containing the current gain estimates.
-            jhjinv (np.array): Array containing (J^H)J)^-1. (Invariant)
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.            
 
         Returns:
-            update (np.array): Array containing the result of computing
-                (((J^H)J)^-1)(J^H)R
+            int:
+                Count of flags raised.
         """
 
         jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
@@ -105,18 +132,19 @@ class Complex2x2Gains(PerIntervalGains):
         observed data, and the model data with the gains applied to it.
 
         Args:
-            resid_arr (np.array): Array which will receive residuals.
-                              Shape is n_dir, n_tim, n_fre, n_ant, a_ant, n_cor, n_cor
-            obser_arr (np.array): Array containing the observed visibilities.
-                              Same shape
-            model_arr (np.array): Array containing the model visibilities.
-                              Same shape
-            gains (np.array): Array containing the current gain estimates.
-                              Shape of n_dir, n_timint, n_freint, n_ant, n_cor, n_cor
-                              Where n_timint = ceil(n_tim/t_int), n_fre = ceil(n_fre/t_int)
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
+            resid_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the 
+                computed residuals should be placed.
 
         Returns:
-            residual (np.array): Array containing the result of computing D-GMG^H.
+            np.ndarray: 
+                Array containing the result of computing D - GMG\ :sup:`H`.
         """
 
         gains_h = self.gains.transpose(0,1,2,3,5,4).conj()
@@ -133,11 +161,16 @@ class Complex2x2Gains(PerIntervalGains):
         Applies the inverse of the gain estimates to the observed data matrix.
 
         Args:
-            obser_arr (np.array): Array of the observed visibilities.
-            gains (np.array): Array of the gain estimates.
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            corr_vis (np.ndarray or None, optional): 
+                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
+                into which the corrected visibilities should be placed.
 
         Returns:
-            inv_gdgh (np.array): Array containing (G^-1)D(G^-H).
+            np.ndarray: 
+                Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
         """
 
         g_inv = np.empty_like(self.gains)
@@ -153,20 +186,11 @@ class Complex2x2Gains(PerIntervalGains):
 
         return corr_vis, flag_count
          
-    def apply_gains(self, model_arr):
-        """
-        This method should be able to apply the gains to an array at full time-frequency
-        resolution. Should return the input array at full resolution after the application of the 
-        gains.
-        """
-
-        gh = self.gains.transpose(0,1,2,3,5,4).conj()
-
-        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
-
-        return model_arr
-
     def restrict_solution(self):
+        """
+        Restricts the solution by invoking the inherited restrict_soultion method and applying
+        any machine specific restrictions.
+        """
         
         PerIntervalGains.restrict_solution(self)
 
