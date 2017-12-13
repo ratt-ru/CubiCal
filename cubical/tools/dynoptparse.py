@@ -50,6 +50,7 @@ class DynamicOptionParser(object):
         self._groups[None] = None, self._current_group_opts
         # init
         self._init_from_defaults()
+        self._options = self._arguments = None
 
     def _make_parser(self, parser_class=optparse.OptionParser):
         parser = parser_class(**self._parser_kws)

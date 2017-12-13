@@ -138,19 +138,25 @@ class Parset():
         if filename:
             self.read(filename)
 
-    def update_values (self, other, newval=True):
-        """Updates this Parset with keys found in other parset. NB: does not update keys that are in other but
-        not self."""
-        for secname in self.value_dict.keys():
-            for name, value in other.value_dict.get(secname, {}).iteritems():
-                if name in self.value_dict[secname]:
-                    attrs = self.attr_dict[secname].get(name,{})
-                    if not attrs.get('cmdline_only'):
-                        self.value_dict[secname][name] = value
-                        # make sure aliases get copied under both names
-                        alias = attrs.get('alias') or attrs.get('alias_of')
-                        if alias:
-                            self.value_dict[secname][alias] = value
+    def update_values (self, other):
+        """Updates this Parset with keys found in other parset."""
+        for secname, secvalues in other.value_dict.iteritems():
+            if secname in self.value_dict:
+                for name, value in secvalues.iteritems():
+                    attrs = self.attr_dict[secname].get(name)
+                    if attrs is None:
+                        attrs = self.attr_dict[secname][name] = \
+                            other.attr_dict[secname].get(name, {})
+                    if attrs.get('cmdline_only'):
+                        continue
+                    self.value_dict[secname][name] = value
+                    # make sure aliases get copied under both names
+                    alias = attrs.get('alias') or attrs.get('alias_of')
+                    if alias:
+                        self.value_dict[secname][alias] = value
+            else:
+                self.value_dict[secname] = secvalues
+                self.attr_dict[secname] = other.attr_dict[secname]
 
     def read (self, filename, default_parset=False):
         """Reads parset from filename.
