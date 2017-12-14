@@ -250,7 +250,7 @@ class ComplexW2x2Gains(PerIntervalGains):
                 return root
             """
 
-            x = np.array(range(low, high), dtype="float")
+            x = np.array(range(low, high+1), dtype="float")
             y = f(x)
             dist = np.abs(y)
             root = x[np.argmin(dist)]
