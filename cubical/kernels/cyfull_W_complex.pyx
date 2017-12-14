@@ -2,7 +2,6 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
-from cython.parallel import prange, parallel
 import numpy as np
 cimport numpy as np
 import cython
@@ -480,6 +479,7 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
                             m[d,i,t,f,aa,ab,1,1] = \
                                 gmtmp3*gh[gd,rr,rc,ab,0,1] + \
                                 gmtmp4*gh[gd,rr,rc,ab,1,1]
+<<<<<<< HEAD
 
 
 
@@ -488,3 +488,5 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
 
 #denom = r00*(c00*r00.conjugate() + c10*r10.conjugate() + c20*r01.conjugate() + c30*r11.conjugate()) + r01*(c02*r00.conjugate() + c12*r10.conjugate() + #c22*r01.conjugate() + c32*r11.conjugate()) + r10*(c01*r00.conjugate() + c11*r10.conjugate() + c21*r01.conjugate() + c31*r11.conjugate()) + r11*(c
 #03*r00.conjugate() + c13*r10.conjugate() + c23*r01.conjugate() + c33*r11.conjugate())
+=======
+>>>>>>> 62555719455825c4d125dfca2517a147044aeaf6

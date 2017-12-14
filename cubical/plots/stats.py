@@ -2,30 +2,23 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+"""
+Creates summary plots using the solver stats.
+"""
+
 import matplotlib
 matplotlib.use("Agg")
+from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
 import numpy as np
 from cubical.tools import logger
 log = logger.getLogger("plots")
 
-# these control the layout of saved plots
-DPI = 150.  # resolution: determines size of text relative to plots
-ZOOM = 10  # image zoom. Roughly determines size of "pixels" when rendering images
+from cubical.plots import DPI, ZOOM
 
-
-def make_summary_plots(st, GD, basename):
-    """
-
-    Args:
-        st:         statistics.SolverStats object
-        GD:         dict of global options
-    Returns:
-
-    """
-    import pylab
-
+def make_stats_plots(st, GD, basename):
     def save_figure(name, width, height):
+        import pylab
         pylab.gcf().set_size_inches(min(width, 10000 / DPI), min(height, 10000 / DPI))
         filename = "{}.{}.png".format(basename, name)
         pylab.savefig(filename, dpi=DPI)
@@ -33,6 +26,8 @@ def make_summary_plots(st, GD, basename):
         if GD["out"]["plots-show"]:
             pylab.show()
         pylab.figure()
+
+    import pylab
 
     # plot noise per time/channel
     pylab.subplot(121)

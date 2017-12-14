@@ -2,20 +2,30 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+"""
+Handles parameter databases which can contain solutions and other relevant values. 
+"""
+
 import cPickle, os, os.path
 import numpy as np
 from numpy.ma import masked_array
 import traceback
 from cubical.tools import logger, ModColor
 log = logger.getLogger("param_db", verbose=1)
-import scipy.interpolate
+import scipy.interpolate, scipy.spatial
 import itertools
 import time
 from collections import OrderedDict, Iterator
 
+
 class _Record(object):
-    """Helper class: a record is initialized from a dict, and has attributes corresponding to the dict keys"""
+    """
+    Helper class: a record is initialized from a dict, and has attributes corresponding to the 
+    dict keys.
+    """
+
     def __init__(self, **kw):
+
         for key, value in kw.iteritems():
             setattr(self, key, value)
 
@@ -27,7 +37,7 @@ class Parameter(object):
     A parameter has two types of axes: continuous and interpolatable (e.g. time, frequency), 
     and discrete (e.g. antenna, direction, correlation). Internally, a parameter is stored as 
     a set of masked arrays (e.g. 2D time/frequency arrays), one such "slice" per each discrete 
-    point (e.g. per each antenna, direction, correlation, etc.) 
+    point (e.g. per each antenna, direction, correlation, etc.)
     
     Each such slice may be accessed directly with get_slice() (e.g. get_slice(ant=N,corr1=0,corr2=1)) 
     The returned array is a reference to the underlying slice, and may be modified. Note that each
@@ -39,17 +49,27 @@ class Parameter(object):
 
     def __init__(self, name, dtype, axes, interpolation_axes=[], empty=0, metadata=None, grid={}):
         """
+        Initialises a Parameter object.
+
         Args:
-            name:           name, e.g. "G"
-            dtype:          numpy dtype
-            axes:           list of axis names
-            interpolation_axes: list of axes over which interpolation will be supported (1 or 2 axes)
-            empty:          empty value for undefined parameters, usually 0
-            metadata:       optional parameter metadata
-            grid:           optional dict of grid coordinates, {axis: coordinates}, if known.
-                            Any particular axis can also be populated by add_chunk() later.
+            name (str):
+                Name of object, e.g. "G".
+            dtype (type):
+                A numpy data type.
+            axes (list):
+                Axis names (str).
+            interpolation_axes (list, optional): 
+                Axes over which interpolation will be supported (1 or 2 axes).
+            empty (various, optional):
+                Empty value for undefined parameters, usually 0.
+            metadata (str or None, optional):
+                Parameter metadata.
+            grid (dict, optional):
+                Dict of grid coordinates, {axis: coordinates}, if known.
+                Any particular axis can also be populated by add_chunk() later.
         """
-        assert (len(interpolation_axes) in [1, 2])
+        interpolation_axes = interpolation_axes or []
+        assert (len(interpolation_axes) in [0, 1, 2])
         print>> log(1), "defining parameter '{}' over {}".format(name, ",".join(axes))
 
         self.name, self.dtype, self.axis_labels = name, dtype, axes
@@ -58,14 +78,14 @@ class Parameter(object):
         self.axis_index = {label: i for i, label in enumerate(axes)}
         # convenience member: makes axis numbers available as e.g. "self.ax.time"
         self.ax = _Record(**self.axis_index)
-        # list of axis numbers for flags
+        # list of axis numbers which can be interpolated over (e.g. time/freq)
         self.interpolation_axes = [self.axis_index[axis] for axis in interpolation_axes]
         # list of grid values for each axis, or None if not yet defined
         self.grid = [grid.get(axis) for axis in axes]
         # shape
         self.shape = [0 if g is None else len(g) for g in self.grid]
-        # list of sets of grid values, maintained during prorotype->skeleton state
-        self._grid_set = [set(grid.get(axis, [])) for axis in axes]
+        # list of sets of grid values actually defined, maintained during prototype->skeleton state
+        self._grid_set = [set() for axis in axes]
         # becomes true if parameter is populated
         # A prototype is initially unpopulated; once _update_shape has been called
         # at least once, it becomes populated
@@ -115,24 +135,39 @@ class Parameter(object):
         # "consolidated" mode. In this mode, it's simply a pickle of all fully-populated parameters.
 
     def _update_shape(self, shape, grid):
-        """Internal method, called repeatedly during the prototype -> skeleton phase, as the 
+        """
+        Called repeatedly during the prototype -> skeleton phase, as the 
         solver generates solutions for subsets of the overall parameter space.
         Updates shape of each axis based on the supplied shape and grid. Grid is a dict of 
         {axis: coordinates}, and need only be supplied for shapes that are a partial 
-        slice along an axis"""
+        slice along an axis.
+
+        Args:
+            shape ():
+
+            grid ():
+
+        Raises:
+            ValueError:
+                If grid of axis is inconsistent with previous definition.
+            ValueError:
+                If axis length is inconsistent with previously defined length.
+
+        """
+
         self._populated = True
 
         for i, axis in enumerate(self.axis_labels):
             # if a grid along an axis is supplied, it is potentially a slice
             if axis in grid:
                 assert(len(grid[axis]) == shape[i])
-                # if axis grid was predefined by define_param, then supplied grid must be a subset
-                if self.grid[i] is not None:
+                # build up grid as we go along
+                self._grid_set[i].update(grid[axis])
+                # if full axis grid was predefined by define_param, and it's not
+                # an interpolatable one, then supplied grid must be a subset
+                if axis not in self.interpolation_axes and self.grid[i] is not None:
                     if set(grid[axis]) - self._grid_set[i]:
                         raise ValueError("grid of axis {} does not match previous definition".format(axis))
-                # else build up grid as we go along
-                else:
-                    self._grid_set[i].update(grid[axis])
             # else it's a full axis -- check that shape conforms.
             elif not self.shape[i]:
                 self.shape[i] = shape[i]
@@ -141,22 +176,28 @@ class Parameter(object):
                     axis, shape[i], self.shape[i])
 
     def _finalize_shape(self):
-        """Internal method. Finalizes shapes and axes based on accumulated _update_shape() calls.
-        This turns the object into a fully fledged skeleton."""
+        """
+        Finalizes shapes and axes based on accumulated _update_shape() calls.
+        This turns the object into a fully fledged skeleton.
+
+        Returns:
+            bool:
+                True if successful.
+        """
+        
         if not self._populated:
             return False
 
         self.grid_index = []
         for iaxis, (axis, grid) in enumerate(zip(self.axis_labels, self.grid)):
-            # if grid wasn't set by define_param, go and reprocess it based on the accumulated set
-            if grid is None:
-                # if slices were accumulated, set grid from union of all slices' grids
-                if self._grid_set[iaxis]:
-                    self.grid[iaxis] = grid = np.array(sorted(self._grid_set[iaxis]))
-                    self.shape[iaxis] = len(grid)
-                # else no slices: simply set default grid based on accumulated shape
-                else:
-                    self.grid[iaxis] = grid = np.arange(self.shape[iaxis])
+            # if an actual grid was accumulated via update_shape, and either (a) axis
+            # is interpolatable, or (b) no grid was predefined, then we use the accumulated grid
+            if self._grid_set[iaxis] and (iaxis in self.interpolation_axes or grid is None):
+                self.grid[iaxis] = grid = np.array(sorted(self._grid_set[iaxis]))
+                self.shape[iaxis] = len(grid)
+            # else use predefined grid, or 0...n-1 if not predefined
+            elif grid is None:
+                self.grid[iaxis] = grid = np.arange(self.shape[iaxis])
             # build grid index
             self.grid_index.append({x: i for i, x in enumerate(grid)})
         # build interpolation grids normalized to [0,1]
@@ -174,18 +215,44 @@ class Parameter(object):
         return True
 
     def _to_norm(self, iaxis, g):
-        """Internal method: converts grid of given axis to normalized grid"""
+        """ 
+        Converts grid of given axis to normalized grid. 
+    
+        Args:
+            iaxis ():
+                
+            g ():
+
+        Returns:
+
+        """
+        
         gmin, gmax = self._gminmax[iaxis]
+        
         return (g-gmin)/gmax
 
     def _from_norm(self, iaxis, g):
-        """Internal method: converts grid of given axis to unnormalized grid"""
+        """ Converts grid of given axis to unnormalized grid. 
+
+        Args:
+            iaxis ():
+                
+            g ():
+
+        Returns:
+            
+        """
+
         gmin, gmax = self._gminmax[iaxis]
+
         return (g*gmax) + gmin
 
     def _init_arrays(self):
-        """Internal method. Initializes internal arrays based on skeleton information. This begins
-        the skeleton -> populated transition."""
+        """
+        Initializes internal arrays based on skeleton information. This begins the skeleton -> 
+        populated transition.
+        """
+        
         # initialize arrays -- all flagged initially, unflagged as slices are pasted in
         self._full_array = masked_array(np.full(self.shape, self.empty, self.dtype),
                                             np.ones(self.shape, bool),
@@ -194,8 +261,15 @@ class Parameter(object):
         print>> log(0), "  loading {}, shape {}".format(self.name, 'x'.join(map(str, self.shape)))
 
     def _paste_slice(self, item):
-        """Internal method. "Pastes" a subset of values into the internal arrays. Called repeatedly
-        during the skeleton -> populated transition."""
+        """
+        "Pastes" a subset of values into the internal arrays. Called repeatedly during the skeleton 
+        -> populated transition.
+
+        Args:
+            item ():
+
+        """
+
         # form up slice operator to "paste" slice into array
         array_slice = []
         for iaxis, axis in enumerate(self.axis_labels):
@@ -207,8 +281,11 @@ class Parameter(object):
         self._full_array[np.ix_(*array_slice)] = item.array
 
     def _finalize_arrays(self):
-        """Internal method. Finalizes internal arrays by breaking them into slices. This completes
-        the skeleton -> populated transition."""
+        """
+        Finalizes internal arrays by breaking them into slices. This completes the skeleton -> 
+        populated transition.
+        """
+        
         interpol_axes = self.interpolation_axes  # list of axis numbers over which we interpolate
         interpol_shape = []  # shape of interpolatable slice
         slicer_axes = []  # list of axis numbers over which we slice
@@ -229,7 +306,7 @@ class Parameter(object):
         print>> log(2), "decomposing {} into slices".format(self.name)
         # loop over all not-interpolatable slices (e.g. direction, antenna, correlation)
         for slicer in itertools.product(*slicers):
-            array_slicer = [slice(None) if sl is None else sl for sl in slicer]
+            array_slicer = tuple([slice(None) if sl is None else sl for sl in slicer])
             array = self._full_array[array_slicer]
             flags = array.mask
             interpol_grid = list(interpol_grid0)
@@ -262,7 +339,8 @@ class Parameter(object):
         self._full_array = None
 
     def _get_slicer(self, **axes):
-        """Internal method. Builds up an index tuple corresponding to keyword arguments that specify a slice"""
+        """  Builds up an index tuple corresponding to keyword arguments that specify a slice. """
+        
         slicer = []
         for iaxis, (axis, n) in enumerate(zip(self.axis_labels, self.shape)):
             if axis in axes:
@@ -275,47 +353,59 @@ class Parameter(object):
                 slicer.append(0)
             else:
                 raise TypeError("axis {} not specified".format(axis))
+
         return tuple(slicer)
 
     def get_slice(self, **axes):
         """
         Returns array and grids associated with given slice, as given by keyword arguments.
-        Note that a single index must be specified for all discrete axes with a size of greater than 1.
-        Array may be None, to indicate no solutions for the given slice
+        Note that a single index must be specified for all discrete axes with a size of greater 
+        than 1. Array may be None, to indicate no solutions for the given slice.
         """
+
         array, grids = self._array_slices[self._get_slicer(**axes)]
+
         return array, [self._from_norm(self.interpolation_axes[i], g) for i, g in enumerate(grids)]
 
     def is_slice_valid(self, **axes):
         """
-        Returns True is there are valid solutions for a given slice, as given by keyword arguments.
-        Note that a single index must be specified for all discrete axes with a size of greater than 1.
+        Returns True if there are valid solutions for a given slice, as given by keyword arguments.
+        Note that a single index must be specified for all discrete axes with a size of greater 
+        than 1.
         """
+
         array, _ = self._array_slices[self._get_slicer(**axes)]
+
         return array is not None
 
     def get_cube(self):
         """
-        Returns full cube of solutions (dimensions of all axes), interpolated onto the superset of all slice grids.
+        Returns full cube of solutions (dimensions of all axes), interpolated onto the superset of 
+        all slice grids.
         """
-        return self.reinterpolate(grid={self.axis_labels[iaxis]: self.grid[iaxis] for iaxis in self.interpolation_axes})
+
+        return self.reinterpolate(grid={self.axis_labels[iaxis]: self.grid[iaxis] for iaxis in 
+                                                                        self.interpolation_axes})
 
     def reinterpolate(self, **grid):
         """
         Interpolates named parameter onto the specified grid.
 
         Args:
-            grid: dict of axes to be returned. For interpolatable axes, grid should be a vector of coordinates
-            (the superset of all slice coordinates will be used if an axis is not supplied). Discrete axes may
-            be specified as a single index, or a vector of indices, or a slice object. If any axis is missing,
-            the full axis is returned.
+            grid (dict): 
+                Axes to be returned. For interpolatable axes, grid should be a vector of coordinates
+                (the superset of all slice coordinates will be used if an axis is not supplied). 
+                Discrete axes may be specified as a single index, or a vector of indices, or a 
+                slice object. If any axis is missing, the full axis is returned.
 
         Returns:
-            Masked array of interpolated values. Mask will indicate values that could not be interpolated.
-            
-            Shape of masked array will correspond to the order axes defined by the parameter, omitting the axes
-            in **grid for which only a single index has been specified
+            :obj:`~numpy.ma.core.MaskedArray`:
+                Masked array of interpolated values. Mask will indicate values that could not be 
+                interpolated. Shape of masked array will correspond to the order axes defined by 
+                the parameter, omitting the axes in \*\*grid for which only a single index has been
+                specified.
         """
+
         # make output grid and output array
         # ok this is hugely complicated so as to cover all cases, so let's document carefully
         output_shape = []            # shape of output array (before output_reduction is applied)
@@ -407,28 +497,46 @@ class Parameter(object):
                     print>> log(2), "  slice {} preparing {}D interpolator for {}".format(slicer,
                                         len(segment_grid),
                                         ",".join(["{}:{}".format(*seg) for seg in input_grid_segment]))
-                    # make a meshgrid of all points
+                    # arav: linear array of all values, adata: all unflagged values
                     arav = array[array_segment_slice].ravel()
+                    adata = arav.data[~arav.mask] if arav.mask is not np.ma.nomask else arav.data
+                    # edge case: no valid data. Make fake interpolator
+                    if not len(adata):
+                        interpolator = lambda coords: np.full(coords.shape[:-1], np.nan, adata.dtype)
                     # for ndim=0, just return the 0,0 element of array
-                    if not len(segment_grid):
-                        interpolator = lambda coords:array[tuple(input_slice_reduction)]
+                    elif not len(segment_grid):
+                        interpolator = lambda coords: array[tuple(input_slice_reduction)]
                     # for ndim=1, use interp1d...
                     elif len(segment_grid) == 1:
-                        if arav.mask is np.ma.nomask:
-                            interpolator = scipy.interpolate.interp1d(segment_grid[0], arav.data,
-                                                                      bounds_error=False, fill_value=np.nan)
-                        else:
-                            interpolator = scipy.interpolate.interp1d(segment_grid[0][~arav.mask], arav.data[~arav.mask],
-                                                                      bounds_error=False, fill_value=np.nan)
+                        agrid = segment_grid[0]
+                        if arav.mask is not np.ma.nomask:
+                            agrid = agrid[~arav.mask]
+                        # handle edge case of 1 valid point, since interp1d() falls over on this
+                        if len(adata) == 1:
+                            adata = np.array([adata[0], adata[0]])
+                            agrid = np.array([agrid[0]-1e-6, agrid[0]+1e-6])
+                        # make normal interpolator
+                        interpolator = scipy.interpolate.interp1d(agrid, adata, bounds_error=False, fill_value=np.nan)
                     # ...because LinearNDInterpolator works for ndim>1 only
                     else:
-                        meshgrids = np.array([g.ravel() for g in np.meshgrid(*segment_grid, indexing='ij')]).T
-                        if arav.mask is np.ma.nomask:
-                            interpolator = scipy.interpolate.LinearNDInterpolator(meshgrids, arav.data, fill_value=np.nan)
-                        else:
-                            interpolator = scipy.interpolate.LinearNDInterpolator(meshgrids[~arav.mask, :],
-                                                                                  arav.data[~arav.mask], fill_value=np.nan)
-                        self._interpolators[slicer] = interpolator, input_grid_segment
+                        meshgrids = np.array([g.ravel() for g in np.meshgrid(*segment_grid, 
+                                                                                indexing='ij')]).T
+                        if arav.mask is not np.ma.nomask:
+                            meshgrids = meshgrids[~arav.mask, :]
+                        qhull_options = "Qbb Qc Qz Q12"
+                        # edge case of <4 valid points. Delaunay falls over, so artificially duplicate points,
+                        # and allow Qhull juggling with the QJ option
+                        if len(adata) < 4:
+                            adata = np.resize(adata, 4)
+                            meshgrids = np.resize(meshgrids, (4,2))
+                            qhull_options += " QJ"
+                        # edge case of all points along an axis being on the same line. Allow juggling then,
+                        # else Delaunay also falls over
+                        elif len(set(meshgrids[:,0]))<2 or len(set(meshgrids[:,1]))<2:
+                            qhull_options += " QJ"
+                        triang = scipy.spatial.Delaunay(meshgrids, qhull_options=qhull_options)
+                        interpolator = scipy.interpolate.LinearNDInterpolator(triang, adata, fill_value=np.nan)
+                    self._interpolators[slicer] = interpolator, input_grid_segment
                 # make a meshgrid of output and massage into correct shape for interpolator
                 coords = np.array([x.ravel() for x in np.meshgrid(*output_slice_grid, indexing='ij')])
                 result = interpolator(coords.T).reshape([len(x) for x in output_slice_grid])
@@ -437,33 +545,42 @@ class Parameter(object):
                 output_array[out_slicer] = result[input_slice_broadcast]
         # return array, throwing out unneeded axes
         output_array = output_array[output_reduction]
+
         return masked_array(output_array, np.isnan(output_array), fill_value=self.empty)
 
     def _scrub(self):
-        """Scrubs the object in preparation for saving to a file
-        (e.g. removes cache data etc.)
+        """ 
+        Scrubs the object in preparation for saving to a file (e.g. removes cache data etc.)
         """
+
         self._interpolators = {}
 
 class _ParmSegment(object):
-    """Internal object a subset of the solution space of a parameter"""
+    """ A subset of the solution space of a parameter. """
+
     def __init__(self, name, array, grid):
         self.name, self.array, self.grid = name, array, grid
 
 def create(filename, metadata={}, backup=True):
     """
-    Creates a new parameter database
+    Creates a new parameter database.
     
     Args:
-        filename: name of file to save DB to
-        metadata: optional dictionary of metadata
-        backup:   if True, and an old database with the same filename exists, makes a backup
+        filename (str): 
+            Name of file to save DB to.
+        metadata (dict, optional): 
+            Optional dictionary of metadata.
+        backup (bool, optional):
+            If True, and an old database with the same filename exists, make a backup.
 
     Returns:
-        PickledDatabase object
+        :obj:`~cubical.param_db.PickledDatabase`:
+            A resulting parameter database.
     """
+
     db = PickledDatabase()
     db._create(filename, metadata, backup)
+    
     return db
 
 def load(filename):
@@ -471,30 +588,40 @@ def load(filename):
     Loads a parameter database
 
     Args:
-        filename: name of file to load DB from
+        filename (str): 
+            Name of file to load DB from.
 
     Returns:
-        PickledDatabase object
+        :obj:`~cubical.param_db.PickledDatabase`:
+            A resulting parameter database.
     """
+
     db = PickledDatabase()
     db._load(filename)
+    
     return db
 
 class PickledDatabase(object):
     """
-    This class implements a simple parameter database saved to a pickle
+    This class implements a simple parameter database saved to a pickle.
     """
+
     def __init__(self):
         self._fobj = None
 
     def _create(self, filename, metadata={}, backup=True):
         """
-        Creates a parameter database given by the filename, opens it in "create" mode
+        Creates a parameter database given by the filename and opens it in "create" mode.
         
         Args:
-            filename: name of database
-            metadata: optional metadata to be stored in DB
+            filename (str): 
+                Name of database.
+            metadata (dict, optional): 
+                Optional metadata to be stored in DB.
+            backup (bool, optional):
+                If True, and an old database with the same filename exists, make a backup.
         """
+
         self.mode = "create"
         self.filename = filename
         self.do_backup = backup
@@ -511,23 +638,34 @@ class PickledDatabase(object):
         """
         Defines a parameter. Only valid in "create" mode.
         
-        Arguments passed to Description constructor as is
+        Args:
+            args (tuple):
+                Positional arguments.
+            kw (dict):
+                Keyword arguments.
         """
+
         assert(self.mode is "create")
         parm = Parameter(*args,**kw)
         self._parameters[parm.name] = parm
         # we don't write it to DB yet -- write it in add_chunk() rather
         # this makes it easier to deal with I/O workers (all IO is done by one process)
+        return parm
 
     def add_chunk(self, name, array, grid={}):
         """
-        Adds a slice of values for a parameter
-        
+        Adds a slice of values for a parameter.
+
         Args:
-            name:       parameter name e.g. "G"
-            array:      (masked) array
-            grid:       dict of grid coordinates for each sliced parameter axis 
+            name (str):
+                The parameter name e.g. "G".
+            array (:obj:`~numpy.ma.core.MaskedArray`):
+                The values which are to be added.
+            grid (dict, optional):
+                Grid coordinates for each sliced parameter axis. 
+
         """
+
         assert(self.mode is "create")
         parm = self._parameters.get(name)
         assert(parm is not None)
@@ -542,9 +680,8 @@ class PickledDatabase(object):
         cPickle.dump(item, self._fobj, 2)
 
     def close(self):
-        """
-        Closes the database
-        """
+        """ Closes the database. """
+
         if self._fobj:
             self._fobj.close()
             self._fobj = None
@@ -555,7 +692,8 @@ class PickledDatabase(object):
         self.mode = "closed"
 
     def _save_desc(self):
-        """Helper function. Writes accumulated parameter descriptions to filename.desc"""
+        """ Helper function. Writes accumulated parameter descriptions to filename.desc. """
+        
         for desc in self._parameters.itervalues():
             desc._finalize_shape()
         for key in self._parameters.keys():
@@ -565,6 +703,13 @@ class PickledDatabase(object):
         print>>log(0),"saved updated parameter skeletons to {}".format(self.filename+".skel")
 
     def _backup_and_rename (self, backup):
+        """
+        May create a backup and renames the temporary DB.
+
+        Args:
+            backup (bool):
+                If True, creates a backup, otherwise just renames.
+        """
         if os.path.exists(self.filename):
             if backup:
                 backup_filename = os.path.join(os.path.dirname(self.filename),
@@ -580,6 +725,15 @@ class PickledDatabase(object):
         print>>log(0),"wrote {} in {} mode".format(self.filename, self.metadata['mode'])
 
     def save(self, filename=None, backup=True):
+        """
+        Save the database.
+
+        Args:
+            filename (str, optional):
+                Name of output file.
+            backup (bool, optional):
+                If True, create a backup.
+        """
         assert(self.mode is "load")
         self.metadata['mode'] = self.MODE_CONSOLIDATED
         filename = filename or self.filename
@@ -612,8 +766,14 @@ class PickledDatabase(object):
 
     def _load(self, filename):
         """
-        Loads database from file. This will create arrays corresponding to the stored parameter shapes.
+        Loads database from file. This will create arrays corresponding to the stored parameter
+        shapes.
+
+        Args:
+            filename (str):
+                Name of file to load.
         """
+
         self.mode = "load"
         self.filename = filename
 
@@ -686,9 +846,8 @@ class PickledDatabase(object):
             parm._finalize_arrays()
 
     def names(self):
-        """
-        Returns names of all defined parameters
-        """
+        """ Returns names of all defined parameters. """
+        
         return self._parameters.keys()
 
     def __contains__(self, name):
@@ -699,8 +858,17 @@ class PickledDatabase(object):
 
     def get(self, name):
         """
-        Returns Parameter object associated with the named parameter
+        Gets Parameter object associated with the named parameter.
+
+        Args:
+            name (str):
+                Name of parameter.
+
+        Returns:
+            :obj:`~cubical.param_db.Parameter`:
+                The requested Parameter object.
         """
+
         return self._parameters[name]
 
 
