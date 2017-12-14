@@ -352,9 +352,8 @@ def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
                         r00, r01, r10, r11 = r[i,t,f,aa,ab,0,0], r[i,t,f,aa,ab,0,1], r[i,t,f,aa,ab,1,0], r[i,t,f,aa,ab,1,1]
-                        
-                        denom = r00*(c00*r00.conjugate() + c10*r10.conjugate() + c20*r01.conjugate() + c30*r11.conjugate()) + r01*(c02*r00.conjugate() + c12*r10.conjugate() + c22*r01.conjugate() + c32*r11.conjugate()) + r10*(c01*r00.conjugate() + c11*r10.conjugate() + c21*r01.conjugate() + c31*r11.conjugate()) + r11*(c03*r00.conjugate() + c13*r10.conjugate() + c23*r01.conjugate() + c33*r11.conjugate())
-
+                        denom = r00*r00.conjugate() + r01*r01.conjugate() + r10*r10.conjugate() + r11*r11.conjugate()
+                         
                         w[i,t,f,aa,ab,0] = (v+8)/(v + 2*denom)
 
 
@@ -481,3 +480,11 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
                             m[d,i,t,f,aa,ab,1,1] = \
                                 gmtmp3*gh[gd,rr,rc,ab,0,1] + \
                                 gmtmp4*gh[gd,rr,rc,ab,1,1]
+
+
+
+
+
+
+#denom = r00*(c00*r00.conjugate() + c10*r10.conjugate() + c20*r01.conjugate() + c30*r11.conjugate()) + r01*(c02*r00.conjugate() + c12*r10.conjugate() + #c22*r01.conjugate() + c32*r11.conjugate()) + r10*(c01*r00.conjugate() + c11*r10.conjugate() + c21*r01.conjugate() + c31*r11.conjugate()) + r11*(c
+#03*r00.conjugate() + c13*r10.conjugate() + c23*r01.conjugate() + c33*r11.conjugate())

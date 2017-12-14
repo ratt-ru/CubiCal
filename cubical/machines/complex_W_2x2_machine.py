@@ -7,7 +7,8 @@ import numpy as np
 import cubical.kernels.cyfull_W_complex as cyfull
 import cPickle
 from scipy import special
-
+import scipy.optimize as optimize
+import time
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -30,6 +31,11 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.v = 2.
 
+        self.weight_dict = {}
+        self.weight_dict["weights"] = {}
+        self.weight_dict["vvals"] = {}
+        self.label = label
+        
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J^H)WR term of the weighted GN/LM method for the
@@ -117,6 +123,18 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.weights, self.v = self.update_weights(residuals, covinv, self.weights, self.v)
 
+        self.weight_dict["weights"][self.iters] = self.weights
+        self.weight_dict["vvals"][self.iters] = self.v
+        
+
+        t0 = time.time()
+        f = open("./weights/"+ self.label + "_weights_dict_20r.cp", "wb")
+        cPickle.dump(self.weight_dict, f)
+        f.close()
+        t1 = time.time()
+
+        print "Pickle dumping took %f secs "%(t1-t0)
+
         self.restrict_solution()
 
         return flag_count
@@ -176,6 +194,11 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         covinv = np.linalg.pinv(cov)
 
+        #covinv = np.zeros((4,4))
+
+        print cov, "here is cov \n"
+        print covinv, "here its inverse"
+
         return np.array(covinv, dtype=self.dtype)
 
 
@@ -206,7 +229,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
             Returns:
                 root (float) : The root of f or minimum point    
-            """
+            
             root = None  # Initialization
             x = np.linspace(low, high, 100) #constraint the root to be between 2 and 30
             y = f(x)
@@ -225,6 +248,13 @@ class ComplexW2x2Gains(PerIntervalGains):
                 return root
             else:
                 return root
+            """
+
+            x = np.array(range(low, high), dtype="float")
+            y = f(x)
+            dist = np.abs(y)
+            root = x[np.argmin(dist)]
+            return root
 
         cyfull.cycompute_weights(r,covinv,w,v)
 
@@ -242,6 +272,11 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         v = _brute_solve_v(vfunc, 2, 30)
         
+        #print "Numerical v computation took %fsecs"%(t1-t0)
+        #rranges = (slice(2, 30, 0.5))
+        #resbrute = optimize.brute(vfunc, ranges=((2,30),), finish=optimize.fmin)
+        #v = optimize.brentq(vfunc, 2, 30) #resbrute[0]
+
         return w, v 
 
     def apply_inv_gains(self, obser_arr, corr_vis=None):
