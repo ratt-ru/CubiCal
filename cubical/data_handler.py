@@ -547,16 +547,16 @@ class Tile(object):
 
         if nrows == expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log, "  {} rows consistent with {} timeslots and {} baselines" \
+            print>> log(1), "  {} rows consistent with {} timeslots and {} baselines" \
                                                                 " across {} bands".format(*logstr)
             
             sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
 
         elif nrows < expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines" \
+            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines" \
                                                                 "across {} bands".format(*logstr)
-            print>> log, "  {} fewer rows than expected".format(expected_nrows - nrows)
+            print>> log(1), "  {} fewer rows than expected".format(expected_nrows - nrows)
 
             nmiss = expected_nrows - nrows
 
@@ -590,10 +590,10 @@ class Tile(object):
 
         elif nrows > expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines" \
+            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines" \
                                                                 "across {} bands".format(*logstr)
-            print>> log, "  {} more rows than expected".format(nrows - expected_nrows)
-            print>> log, "  assuming additional rows are auto-correlations - ignoring"
+            print>> log(1), "  {} more rows than expected".format(nrows - expected_nrows)
+            print>> log(1), "  assuming additional rows are auto-correlations - ignoring"
 
             sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))            
             sorted_ind = sorted_ind[np.where(self.antea!=self.anteb)]

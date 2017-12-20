@@ -14,7 +14,7 @@ _loggers = {}
 
 # global verbosity levels (used for loggers for which an explicit level is not set)
 _global_verbosity = 0
-_global_log_verbosity = 0
+_global_log_verbosity = None
 
 # this will be the handler for the log file
 _file_handler = None
@@ -56,16 +56,21 @@ class LoggerWrapper(object):
     def __init__(self, logger, verbose=None, log_verbose=None):
         self.logger = logger
         logger.propagate = False
-        self._verbose = verbose if verbose is not None else _global_verbosity
-        self._log_verbose = log_verbose if log_verbose is not None else _global_log_verbosity
+
+        # initialize handlers for console and logfile
+
         self.console_handler = logging.StreamHandler(sys.stderr)
         self.console_handler.setFormatter(_console_formatter)
-        self.console_handler.setLevel(logging.INFO - self._verbose)
 
-        self.logfile_handler = logging.handlers.MemoryHandler(1,
-            logging.INFO - (self._log_verbose if self._log_verbose is not None else self._verbose),
-            _file_handler or _null_handler)
+        self.logfile_handler = logging.handlers.MemoryHandler(1, logging.DEBUG, _file_handler or _null_handler)
         self.logfile_handler.setFormatter(_logfile_formatter)
+
+        # set verbosity levels
+        self._verbose = self._log_verbose = None
+        self.verbosity(verbose if verbose is not None else _global_verbosity)
+        self.log_verbosity(log_verbose if log_verbose is not None else _global_log_verbosity)
+
+        # other init
 
         self.logger.addHandler(self.console_handler)
         self.logger.addHandler(self.logfile_handler)
