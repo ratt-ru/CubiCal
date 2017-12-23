@@ -255,6 +255,15 @@ class MasterMachine(object):
 
         return NotImplementedError
 
+    @abstractproperty
+    def status_string(self):
+        """
+        This property must return a status string for the gain machine, e.g.
+            "G: 20 iters, conv 60.02%, g/fl 15.00%"
+        """
+        return NotImplementedError
+
+
     @staticmethod
     def exportable_solutions():
         """
@@ -389,7 +398,13 @@ class MasterMachine(object):
                 
             """
             try:
-                return filename.format(JONES=jones_label or self.jones_label, **self.global_options)
+                # substitute recursively, but up to a limit
+                for i in xrange(10):
+                    fname = filename.format(JONES=jones_label or self.jones_label, **self.global_options)
+                    if fname == filename:
+                        break
+                    filename = fname
+                return filename
             except Exception, exc:
                 print>> log,"{}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc())
                 print>>log,ModColor.Str("Error parsing filename '{}', see above".format(filename))
@@ -413,7 +428,7 @@ class MasterMachine(object):
             """
             # init solutions from database
             if load_from:
-                print>>log(0),ModColor.Str("{} solutions will be initialized from {}".format(label, load_from), col="green")
+                print>>log(0, "blue"), "{} solutions will be initialized from {}".format(label, load_from)
                 if "//" in load_from:
                     filename, prefix = load_from.rsplit("//", 1)
                 else:

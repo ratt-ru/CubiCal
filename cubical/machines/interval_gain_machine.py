@@ -92,6 +92,8 @@ class PerIntervalGains(MasterMachine):
         self.fix_directions = options["fix-dirs"] or []
         if type(self.fix_directions) is int:
             self.fix_directions = [self.fix_directions]
+        # True if gains are loaded from a DB
+        self._gains_loaded = False
 
         # Construct the appropriate shape for the gains.
 
@@ -148,6 +150,36 @@ class PerIntervalGains(MasterMachine):
 
         return model_arr
 
+    def apply_inv_gains(self, obser_arr, corr_vis=None):
+        """
+        Applies the inverse of the gain estimates to the observed data matrix.
+
+        Args:
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            corr_vis (np.ndarray or None, optional): 
+                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
+                into which the corrected visibilities should be placed.
+
+        Returns:
+            np.ndarray: 
+                Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
+        """
+
+        g_inv = np.empty_like(self.gains)
+
+        flag_count = cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps,
+                                             self.flagbit)  # Function can invert G.
+
+        gh_inv = g_inv.transpose(0, 1, 2, 3, 5, 4).conj()
+
+        if corr_vis is None:
+            corr_vis = np.empty_like(obser_arr)
+
+        cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
+
+        return corr_vis, flag_count
 
     @staticmethod
     def exportable_solutions():
@@ -182,6 +214,7 @@ class PerIntervalGains(MasterMachine):
             self.gains[:] = sol.data
             # collapse the corr1/2 axes
             self.gflags[sol.mask.any(axis=(-1,-2))] |= FL.MISSING
+            self._gains_loaded = True
 
     def update_stats(self, flags, eqs_per_tf_slot):
         """
@@ -372,6 +405,21 @@ class PerIntervalGains(MasterMachine):
         """ Returns convergence status. """
 
         return self.n_cnvgd/self.n_sols > self.min_quorum or self.iters >= self.maxiter
+
+    @property
+    def status_string(self):
+        """
+        This property must return a status string for the gain machine, e.g.
+            "G: 20 iters, conv 60.02%, g/fl 15.00%"
+        """
+        if self.solvable:
+            return "{}: {} iters, conv {:.2%}{}{}".format(
+                self.jones_label, self.iters,
+                self.n_cnvgd/self.n_sols,
+                ", g/fl {:.2 %}".format(self.n_flagged/self.gflags.size) if self.n_flagged else "",
+                ", d/fl {:.2%}".format(self.missing_gain_fraction) if self.missing_gain_fraction else "")
+        else:
+            return "{}: n/s{}".format(self.jones_label, ", loaded" if self._gains_loaded else "")
 
     @property
     def has_stalled(self):

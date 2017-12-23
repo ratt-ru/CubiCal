@@ -9,7 +9,10 @@ import cubical.kernels.cyfull_complex as cyfull
 import cubical.kernels.cychain as cychain
 
 from cubical.tools import logger
+import machine_types
 log = logger.getLogger("jones_chain")
+
+
 
 class JonesChain(MasterMachine):
     """
@@ -50,12 +53,18 @@ class JonesChain(MasterMachine):
         # and do the relevant fiddling between parameter updates. When combining DD terms with
         # DI terms, we need to be initialise the DI terms using only one direction - we do this with 
         # slicing rather than summation as it is slightly faster. 
+        from cubical.main import UserInputError
 
         self.jones_terms = []
         for term_opts in jones_options['chain']:
-            self.jones_terms.append(Complex2x2Gains(term_opts["label"], data_arr, 
-                                    ndir if term_opts["dd-term"] else 1,
-                                    nmod, times, frequencies, term_opts))
+            jones_class = machine_types.get_machine_class(term_opts['type'])
+            if jones_class is None:
+                raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
+            if jones_class is not Complex2x2Gains and term_opts['solvable']:
+                raise UserInputError("only complex-2x2 terms can be made solvable in a Jones chain")
+            self.jones_terms.append(jones_class(term_opts["label"], data_arr,
+                                        ndir if term_opts["dd-term"] else 1,
+                                        nmod, times, frequencies, term_opts))
 
         self.n_terms = len(self.jones_terms)
         # make list of number of iterations per solvable term
@@ -493,6 +502,10 @@ class JonesChain(MasterMachine):
     @property
     def min_quorum(self):
         return self.active_term.min_quorum
+
+    @property
+    def status_string(self):
+        return "; ".join([term.status_string for term in self.jones_terms])
 
     @property
     def has_converged(self):
