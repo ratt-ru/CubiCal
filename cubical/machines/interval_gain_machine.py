@@ -416,7 +416,7 @@ class PerIntervalGains(MasterMachine):
             return "{}: {} iters, conv {:.2%}{}{}".format(
                 self.jones_label, self.iters,
                 self.n_cnvgd/self.n_sols,
-                ", g/fl {:.2 %}".format(self.n_flagged/self.gflags.size) if self.n_flagged else "",
+                ", g/fl {:.2%}".format(self.n_flagged/self.gflags.size) if self.n_flagged else "",
                 ", d/fl {:.2%}".format(self.missing_gain_fraction) if self.missing_gain_fraction else "")
         else:
             return "{}: n/s{}".format(self.jones_label, ", loaded" if self._gains_loaded else "")
