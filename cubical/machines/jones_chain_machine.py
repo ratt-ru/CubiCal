@@ -75,7 +75,7 @@ class JonesChain(MasterMachine):
             self.term_iters = [term.maxiter for term in self.jones_terms if term.solvable]
         elif type(term_iters) is int:
             self.term_iters = [term_iters]
-        elif isinstance(term_iters, (list, tuple))
+        elif isinstance(term_iters, (list, tuple)):
             self.term_iters = list(term_iters)
         else:
             raise UserInputError("invalid term-iters={} setting".format(term_iters))
