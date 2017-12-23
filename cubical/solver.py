@@ -209,7 +209,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         logvars = (label, mean_chi, gm.num_valid_intervals, gm.n_tf_ints, mineqs, maxeqs, anteqs, 
                    gm.n_ant, float(stats.chunk.init_noise), fstats)
 
-        print>> log, ("{} Initial chi2 = {:.4}, {}/{} valid intervals (min {}/max {} eqs per int),"
+        print>> log, ("{} initial chi2 {:.4}, {}/{} valid intervals (min {}/max {} eqs per int),"
                       " {}/{} valid antennas, noise {:.3}, flags: {}").format(*logvars)
 
     n_gflags = (gm.gflags&~FL.MISSING != 0).sum()
@@ -311,12 +311,10 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                logvars = (label, gm.iters, mean_chi, delta_chi, gm.max_update, gm.n_cnvgd/gm.n_sols,
-                           n_stall/n_tf_slots, n_gflags/float(gm.gflags.size),
-                           gm.missing_gain_fraction)
-
-                print>> log, ("{} iter {} chi2 {:.4} delta {:.4}, max gain update {:.4}, "
-                              "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2}%").format(*logvars)
+                print>> log(1), ("{} {} chi2 {:.4}, delta {:.4}, max gain update {:.4}, "
+                                 "stall {:.2%}").format(label, gm.status_string,
+                                    mean_chi, delta_chi, gm.max_update,
+                                    n_stall / n_tf_slots)
 
     # num_valid_intervals will go to 0 if all solution intervals were flagged. If this is not the 
     # case, generate residuals etc.
@@ -339,43 +337,21 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         stats.chunk.chi2 = mean_chi
 
-        if isinstance(gm, jones_chain_machine.JonesChain):
-            termstring = ""
-            for term in gm.jones_terms:
-                termstring += "{}: {} iters, conv {:.2%} ".format(term.jones_label, term.iters,
-                                                                  term.n_cnvgd/term.n_sols)
-        else:
-            termstring = "{} iters, conv {:.2%}".format(gm.iters, gm.n_cnvgd/gm.n_sols) 
-
-        logvars = (label, termstring, n_stall/n_tf_slots, n_gflags/float(gm.gflags.size), 
-                   gm.missing_gain_fraction, float(stats.chunk.init_chi2), mean_chi)
-
-        message = ("{}: {}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2%}, "
-                    "chi2 {:.4} -> {:.4}").format(*logvars)
+        message = "{} {}, stall {:.2%}, chi2 {:.4} -> {:.4}".format(label, gm.status_string,
+                    n_stall / n_tf_slots, float(stats.chunk.init_chi2), mean_chi)
 
         if sol_opts['last-rites']:
 
-            logvars = (float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
+            message = "{} ({:.4}), noise {:.3} -> {:.3}".format(message,
+                            float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
 
-            message += " ({:.4}), noise {:.3} -> {:.3}".format(*logvars)
-        
         print>> log, message
 
     # If everything has been flagged, no valid solutions are generated. 
 
     else:
         
-        if isinstance(gm, jones_chain_machine.JonesChain):
-            termstring = ""
-            for term in gm.jones_terms:
-                termstring += "{}: {} iters, ".format(term.jones_label, term.iters)
-        else:
-            termstring = "{} iters, ".format(gm.iters) 
-        
-        logvars = (label, termstring, n_gflags / float(gm.gflags.size), gm.missing_gain_fraction)
-
-        print>>log, ModColor.Str("{} completely flagged after {} iters:"
-                                 " g/fl {:.2%}, d/fl {:.2%}").format(*logvars)
+        print>>log, ModColor.Str("{} {}: completely flagged", label, gm.status_string)
 
         stats.chunk.chi2 = 0
         resid_arr = obser_arr

@@ -35,10 +35,7 @@ import cubical
 import cubical.data_handler as data_handler
 from cubical.data_handler import DataHandler, Tile
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
-from cubical.machines import complex_2x2_machine
-from cubical.machines import complex_W_2x2_machine
-from cubical.machines import phase_diag_machine
-from cubical.machines import slope_machine
+from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine
 from cubical.machines import ifr_gain_machine
 
@@ -181,6 +178,7 @@ def main(debugging=False):
                               GD["data"]["column"], 
                               GD["model"]["list"].split(","),
                               output_column=GD["out"]["column"],
+                              reinit_output_column=GD["out"]["reinit-column"],
                               taql=GD["sel"]["taql"],
                               fid=GD["sel"]["field"], 
                               ddid=GD["sel"]["ddid"],
@@ -217,13 +215,7 @@ def main(debugging=False):
         if len(jones_opts) == 1:
             jones_opts = jones_opts[0]
             # create a gain machine factory
-            JONES_TYPES = {'complex-2x2': complex_2x2_machine.Complex2x2Gains,
-                           'phase-diag': phase_diag_machine.PhaseDiagGains,
-                           'robust-2x2': complex_W_2x2_machine.ComplexW2x2Gains,
-                           'f-slope': slope_machine.PhaseSlopeGains,
-                           't-slope': slope_machine.PhaseSlopeGains,
-                           'tf-plane': slope_machine.PhaseSlopeGains}
-            jones_class = JONES_TYPES.get(jones_opts['type'])
+            jones_class = machine_types.get_machine_class(jones_opts['type'])
             if jones_class is None:
                 raise UserInputError("unknown Jones type '{}'".format(jones_opts['type']))
         else:

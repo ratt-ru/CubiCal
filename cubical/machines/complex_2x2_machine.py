@@ -156,36 +156,6 @@ class Complex2x2Gains(PerIntervalGains):
         return resid_arr
 
 
-    def apply_inv_gains(self, obser_arr, corr_vis=None):
-        """
-        Applies the inverse of the gain estimates to the observed data matrix.
-
-        Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-            corr_vis (np.ndarray or None, optional): 
-                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
-                into which the corrected visibilities should be placed.
-
-        Returns:
-            np.ndarray: 
-                Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
-        """
-
-        g_inv = np.empty_like(self.gains)
-
-        flag_count = cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps, self.flagbit) # Function can invert G.
-
-        gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
-
-        if corr_vis is None:
-            corr_vis = np.empty_like(obser_arr)
-
-        cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
-
-        return corr_vis, flag_count
-         
     def restrict_solution(self):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying
