@@ -930,6 +930,7 @@ class DataHandler:
     """ Main data handler. Interfaces with the measurement set. """
 
     def __init__(self, ms_name, data_column, models, output_column=None,
+                 reinit_output_column=False,
                  taql=None, fid=None, ddid=None, channels=None, flagopts={}, double_precision=False,
                  weights=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
                  active_subset=None, min_baseline=0, max_baseline=0, use_ddes=True,
@@ -1105,6 +1106,11 @@ class DataHandler:
 
         self.data_column = data_column
         self.output_column = output_column
+        if reinit_output_column and output_column and output_column in self.ms.colnames():
+            print>>log(0),"reinitializing output column {}".format(output_column)
+            self.ms.removecols([output_column])
+            self._add_column(output_column)
+            self.reopen()
 
         # figure out flagging situation
         if "BITFLAG" in self.ms.colnames():

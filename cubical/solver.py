@@ -209,7 +209,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         logvars = (label, mean_chi, gm.num_valid_intervals, gm.n_tf_ints, mineqs, maxeqs, anteqs, 
                    gm.n_ant, float(stats.chunk.init_noise), fstats)
 
-        print>> log, ("{} Initial chi2 = {:.4}, {}/{} valid intervals (min {}/max {} eqs per int),"
+        print>> log, ("{} initial chi2 {:.4}, {}/{} valid intervals (min {}/max {} eqs per int),"
                       " {}/{} valid antennas, noise {:.3}, flags: {}").format(*logvars)
 
     n_gflags = (gm.gflags&~FL.MISSING != 0).sum()
@@ -311,12 +311,10 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                logvars = (label, gm.iters, mean_chi, delta_chi, gm.max_update, gm.n_cnvgd/gm.n_sols,
-                           n_stall/n_tf_slots, n_gflags/float(gm.gflags.size),
-                           gm.missing_gain_fraction)
-
-                print>> log, ("{} iter {} chi2 {:.4} delta {:.4}, max gain update {:.4}, "
-                              "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2}%").format(*logvars)
+                print>> log(1), ("{} {} chi2 {:.4}, delta {:.4}, max gain update {:.4}, "
+                                 "stall {:.2%}").format(label, gm.status_string,
+                                    mean_chi, delta_chi, gm.max_update,
+                                    n_stall / n_tf_slots)
 
     # num_valid_intervals will go to 0 if all solution intervals were flagged. If this is not the 
     # case, generate residuals etc.
@@ -339,9 +337,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         stats.chunk.chi2 = mean_chi
 
-        message = "{}, stall {:.2%}, chi2 {:.4} -> {:.4}".format(gm.status_string,
-
-                    float(stats.chunk.init_chi2), mean_chi)
+        message = "{} {}, stall {:.2%}, chi2 {:.4} -> {:.4}".format(label, gm.status_string,
+                    n_stall / n_tf_slots, float(stats.chunk.init_chi2), mean_chi)
 
         if sol_opts['last-rites']:
 
@@ -354,7 +351,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     else:
         
-        print>>log, ModColor.Str("{}: completely flagged", gm.status_string)
+        print>>log, ModColor.Str("{} {}: completely flagged", label, gm.status_string)
 
         stats.chunk.chi2 = 0
         resid_arr = obser_arr

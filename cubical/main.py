@@ -178,6 +178,7 @@ def main(debugging=False):
                               GD["data"]["column"], 
                               GD["model"]["list"].split(","),
                               output_column=GD["out"]["column"],
+                              reinit_output_column=GD["out"]["reinit-column"],
                               taql=GD["sel"]["taql"],
                               fid=GD["sel"]["field"], 
                               ddid=GD["sel"]["ddid"],
