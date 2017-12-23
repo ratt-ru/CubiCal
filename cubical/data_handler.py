@@ -32,7 +32,7 @@ except:
 
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("data_handler", 1)
+log = logger.getLogger("data_handler")
 
 def _parse_slice(arg, what="slice"):
     """
@@ -1238,7 +1238,7 @@ class DataHandler:
                                         " (DDEs explicitly disabled)" if not use_ddes else""),
                                    col="green")
         for imod, (dirmodels, weight_col) in enumerate(self.models):
-            print>>log(1),"  model {} (weight {}):".format(imod, weight_col)
+            print>>log(0),"  model {} (weight {}):".format(imod, weight_col)
             for idir, dirname in enumerate(self.model_directions):
                 if dirname in dirmodels:
                     comps = []
@@ -1247,9 +1247,9 @@ class DataHandler:
                             comps.append("{}".format(comp))
                         else:
                             comps.append("{}({})".format(tag, comp))
-                    print>>log(1),"    direction {}: {}".format(idir, " + ".join(comps))
+                    print>>log(0),"    direction {}: {}".format(idir, " + ".join(comps))
                 else:
-                    print>>log(1),"    direction {}: empty".format(idir)
+                    print>>log(0),"    direction {}: empty".format(idir)
 
         self.use_ddes = len(self.model_directions) > 1
 
