@@ -48,24 +48,22 @@ class PerIntervalGains(MasterMachine):
         self.f_int = options["freq-int"] or self.n_fre
         self.eps = 1e-6
 
-        # timestamp of start of each interval
-        t0, f0 = times[0::self.t_int], frequencies[0::self.f_int]
-        t1, f1 = t0.copy(), f0.copy()
-        # timestamp of end of each interval -- need to take care if not evenly divisible
-        t1[:-1] = times[self.t_int-1:-1:self.t_int]
-        f1[:-1] = frequencies[self.f_int-1:-1:self.f_int]
-        t1[-1], f1[-1] = times[-1], frequencies[-1]
+        # split grids into intervals, and find the centre of gravity of ech
+        timebins = np.split(times, range(self.t_int, len(times), self.t_int))
+        freqbins = np.split(frequencies, range(self.f_int, len(frequencies), self.f_int))
+        timegrid = [x.mean() for x in timebins]
+        freqgrid = [x.mean() for x in freqbins]
 
         # interval_grid determines the per-interval grid poins
-        self.interval_grid = dict(time=(t0+t1)/2, freq=(f0+f1)/2)
+        self.interval_grid = dict(time=timegrid, freq=freqgrid)
         # data_grid determines the full resolution grid
         self.data_grid = dict(time=times, freq=frequencies)
 
         # n_tim and n_fre are the time and frequency dimensions of the data arrays.
         # n_timint and n_freint are the time and frequnecy dimensions of the gains.
 
-        self.n_timint = int(np.ceil(float(self.n_tim) / self.t_int))
-        self.n_freint = int(np.ceil(float(self.n_fre) / self.f_int))
+        self.n_timint = len(timegrid)
+        self.n_freint = len(freqgrid)
         self.n_tf_ints = self.n_timint * self.n_freint
 
         # Initialise attributes used for computing values over intervals.
