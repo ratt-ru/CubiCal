@@ -378,7 +378,7 @@ def main(debugging=False):
 
         if not apply_only:
             # now summarize the stats
-            print>> log, "computing summary statistinddidcs"
+            print>> log, "computing summary statistics"
             st = SolverStats(stats_dict)
             filename = basename + ".stats.pickle"
             st.save(filename)

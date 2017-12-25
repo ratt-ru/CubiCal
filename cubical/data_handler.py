@@ -554,7 +554,7 @@ class Tile(object):
 
         elif nrows < expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines" \
+            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines " \
                                                                 "across {} bands".format(*logstr)
             print>> log(1), "  {} fewer rows than expected".format(expected_nrows - nrows)
 
