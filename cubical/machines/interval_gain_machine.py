@@ -48,29 +48,29 @@ class PerIntervalGains(MasterMachine):
         self.f_int = options["freq-int"] or self.n_fre
         self.eps = 1e-6
 
-        # split grids into intervals, and find the centre of gravity of ech
-        timebins = np.split(times, range(self.t_int, len(times), self.t_int))
-        freqbins = np.split(frequencies, range(self.f_int, len(frequencies), self.f_int))
-        timegrid = [x.mean() for x in timebins]
-        freqgrid = [x.mean() for x in freqbins]
+        # Initialise attributes used for computing values over intervals.
+        # n_tim and n_fre are the time and frequency dimensions of the data arrays.
+        # n_timint and n_freint are the time and frequnecy dimensions of the gains.
+
+        self.t_bins = range(0, self.n_tim, self.t_int)
+        self.f_bins = range(0, self.n_fre, self.f_int)
+
+        self.n_timint = len(self.t_bins)
+        self.n_freint = len(self.f_bins)
+        self.n_tf_ints = self.n_timint * self.n_freint
+
+        # split grids into intervals, and find the centre of gravity of each
+        timebins = np.split(times, self.t_bins[1:])
+        freqbins = np.split(frequencies, self.f_bins[1:])
+        timegrid = np.array([float(x.mean()) for x in timebins])
+        freqgrid = np.array([float(x.mean()) for x in freqbins])
 
         # interval_grid determines the per-interval grid poins
         self.interval_grid = dict(time=timegrid, freq=freqgrid)
         # data_grid determines the full resolution grid
         self.data_grid = dict(time=times, freq=frequencies)
 
-        # n_tim and n_fre are the time and frequency dimensions of the data arrays.
-        # n_timint and n_freint are the time and frequnecy dimensions of the gains.
-
-        self.n_timint = len(timegrid)
-        self.n_freint = len(freqgrid)
-        self.n_tf_ints = self.n_timint * self.n_freint
-
-        # Initialise attributes used for computing values over intervals.
-
-        self.t_bins = range(0, self.n_tim, self.t_int)
-        self.f_bins = range(0, self.n_fre, self.f_int)
-
+        # compute index from each data point to interval number
         t_ind = np.arange(self.n_tim)//self.t_int
         f_ind = np.arange(self.n_fre)//self.f_int
 
