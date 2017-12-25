@@ -994,10 +994,11 @@ class DataHandler:
 
         self.fid = fid if fid is not None else 0
 
-        self.ms = pt.table(self.ms_name, readonly=False, ack=False)
-
         print>>log, ModColor.Str("reading MS %s"%self.ms_name, col="green")
 
+        self.ms = pt.table(self.ms_name, readonly=False, ack=False)
+        print>>log, "  sorting MS by TIME column"
+        self.ms = self.ms.sort("TIME")
 
         _anttab = pt.table(self.ms_name + "::ANTENNA", ack=False)
         _fldtab = pt.table(self.ms_name + "::FIELD", ack=False)
@@ -1675,7 +1676,7 @@ class DataHandler:
         """ Reopens the MS. Unfortunately, this is needed when new columns are added. """
 
         self.close()
-        self.ms = self.data = pt.table(self.ms_name, readonly=False, ack=False)
+        self.ms = self.data = pt.table(self.ms_name, readonly=False, ack=False).sort("TIME")
         if self.taql:
             self.data = self.ms.query(self.taql)
 
