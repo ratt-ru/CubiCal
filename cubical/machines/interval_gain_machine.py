@@ -51,8 +51,8 @@ class PerIntervalGains(MasterMachine):
         # split grids into intervals, and find the centre of gravity of ech
         timebins = np.split(times, range(self.t_int, len(times), self.t_int))
         freqbins = np.split(frequencies, range(self.f_int, len(frequencies), self.f_int))
-        timegrid = [x.mean() for x in timebins]
-        freqgrid = [x.mean() for x in freqbins]
+        timegrid = np.array([float(x.mean()) for x in timebins])
+        freqgrid = np.array([float(x.mean()) for x in freqbins])
 
         # interval_grid determines the per-interval grid poins
         self.interval_grid = dict(time=timegrid, freq=freqgrid)
