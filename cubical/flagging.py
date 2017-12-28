@@ -55,7 +55,7 @@ class Flagsets (object):
                 A table object belonging to the measurement set.
         """
 
-        self.msname = ms.name()
+        self.ms = ms
         if not 'BITFLAG' in ms.colnames():
             self.order = None
             self.bits = {}
@@ -157,10 +157,9 @@ class Flagsets (object):
             if bit not in self.bits.values():
                 self.order.append(name)
                 self.bits[name] = bit
-                ms = pt.table(self.msname,readonly=False,ack=False)
-                ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order))
-                ms._putkeyword('BITFLAG','FLAGSET_%s'%name,-1,False,bit)
-                ms.flush()
+                self.ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order))
+                self.ms._putkeyword('BITFLAG','FLAGSET_%s'%name,-1,False,bit)
+                self.ms.flush()
                 return bit
         # no free bit found, bummer
         raise ValueError,"Too many flagsets in MS, cannot create another one"
@@ -190,16 +189,15 @@ class Flagsets (object):
         if not removing:
             return
         # remove items, form up mask of bitflags to be cleared
-        ms = pt.table(self.msname,readonly=False, ack=False)
         mask = 0
         for name,bit in removing:
             mask |= bit
             del self.bits[name]
             del self.order[self.order.index(name)]
-            ms.removecolkeyword('BITFLAG','FLAGSET_%s'%name)
+            self.ms.removecolkeyword('BITFLAG','FLAGSET_%s'%name)
         # write new list of bitflags
-        ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order))
-        ms.flush()
+        self.ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order))
+        self.ms.flush()
 
         return mask
 
