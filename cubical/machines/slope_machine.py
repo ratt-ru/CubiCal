@@ -11,6 +11,18 @@ import cubical.kernels.cytf_plane
 import cubical.kernels.cyf_slope   
 import cubical.kernels.cyt_slope
 
+def _normalize(x, dtype):
+    """
+    Helper function: normalizes array to [0,1] interval.
+    """
+    if len(x) > 1:
+        return ((x - x[0]) / (x[-1] - x[0])).astype(dtype)
+    elif len(x) == 1:
+        return np.zeros(1, dtype)
+    else:
+        return x
+
+
 class PhaseSlopeGains(ParameterisedGains):
     """
     This class implements the diagonal phase-only parameterised slope gain machine.
@@ -46,8 +58,9 @@ class PhaseSlopeGains(ParameterisedGains):
         self.param_shape = [self.n_dir, self.n_timint, self.n_freint, 
                             self.n_ant, self.n_param, self.n_cor, self.n_cor]
         self.slope_params = np.zeros(self.param_shape, dtype=self.ftype)
-        self.chunk_ts = ((chunk_ts - chunk_ts[0])/(chunk_ts[-1] - chunk_ts[0])).astype(self.ftype)
-        self.chunk_fs = ((chunk_fs - chunk_fs[0])/(chunk_fs[-1] - chunk_fs[0])).astype(self.ftype)
+
+        self.chunk_ts = _normalize(chunk_ts, self.ftype)
+        self.chunk_fs = _normalize(chunk_fs, self.ftype)
 
         if self.slope_type == "tf-plane":
             self.cyslope = cubical.kernels.cytf_plane

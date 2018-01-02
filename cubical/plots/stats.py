@@ -7,7 +7,6 @@ Creates summary plots using the solver stats.
 """
 
 import matplotlib
-matplotlib.use("Agg")
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
 import numpy as np
