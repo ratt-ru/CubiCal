@@ -22,7 +22,12 @@ import sys
 import re
 import numpy as np
 from time import time
-from collections import OrderedDict
+
+# This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
+# even if one is only trying to save figures to .png.
+import matplotlib
+if not os.environ.get("DISPLAY"):
+    matplotlib.use("Agg")
 
 import concurrent.futures as cf
 

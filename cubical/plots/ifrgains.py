@@ -1,7 +1,5 @@
 import math,cmath
 import matplotlib
-matplotlib.use("Agg")
-
 import numpy as np
 from cubical.tools import logger
 log = logger.getLogger("plots")
@@ -252,7 +250,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
                 if ll.count() > 1:
                     a1, a2 = np.ma.flatnotmasked_edges(ll)
                     line, = pylab.plot(ll + i * offset, '-')
-                    pylab.text(a2, ll[a2] + i * offset, "%s:%s" % (qant, feeds[1]), horizontalalignment='right',
+                    pylab.text(a2, ll[a2] + i * offset, "%s:%s" % (qant, feeds[3]), horizontalalignment='right',
                                verticalalignment='center', size=8,
                                color=line.get_color())
             pylab.title("antenna %s" % pant)
