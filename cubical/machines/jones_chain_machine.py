@@ -96,15 +96,19 @@ class JonesChain(MasterMachine):
 
     def import_solutions(self, soldict):
         """
-        Loads solutions from a dict. 
-        
-        Args:
-            soldict (dict):
-                Contains gains solutions which must be loaded.
+        Loads solutions from a dict. This should not be called -- _load_solutions()
+        below should rather call import_solutions() on all the chain terms.
         """
+        raise RuntimeError("This method cannot be called on a Jones chain. This is a bug.")
 
+    def _load_solutions(self, init_sols):
+        """
+        Helper method invoked by Factory.create_machine() to import existing solutions into machine.
+        
+        In the case of a chain, we invoke this method on every member.
+        """
         for term in self.jones_terms:
-            term.import_solutions(soldict)
+            term._load_solutions(init_sols)
 
     def compute_js(self, obser_arr, model_arr):
         """
