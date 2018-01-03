@@ -213,6 +213,7 @@ class PerIntervalGains(MasterMachine):
             # collapse the corr1/2 axes
             self.gflags[sol.mask.any(axis=(-1,-2))] |= FL.MISSING
             self._gains_loaded = True
+            self.restrict_solution()
 
     def update_stats(self, flags, eqs_per_tf_slot):
         """
@@ -332,7 +333,11 @@ class PerIntervalGains(MasterMachine):
             self.gains[...,(0,1),(1,0)] = 0
         elif self.update_type == "phase-diag":
             self.gains[...,(0,1),(1,0)] = 0
-            self.gains[...,(0,1),(0,1)] = self.gains[...,(0,1),(0,1)]/np.abs(self.gains[...,(0,1),(0,1)])
+            gdiag = self.gains[...,(0,1),(0,1)]
+            gnull = gdiag==0
+            with np.errstate(invalid='ignore'):
+                gdiag /= abs(gdiag)
+            gdiag[gnull] = 0
         elif self.update_type == "amp-diag":
             self.gains[...,(0,1),(1,0)] = 0
             np.abs(self.gains, out=self.gains)

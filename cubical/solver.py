@@ -351,7 +351,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     else:
         
-        print>>log, ModColor.Str("{} {}: completely flagged", label, gm.status_string)
+        print>>log(0, "red"), "{} {}: completely flagged".format(label, gm.status_string)
 
         stats.chunk.chi2 = 0
         resid_arr = obser_arr
