@@ -1676,7 +1676,21 @@ class DataHandler:
         """
         
         print>>log,"Writing out new flags"
-        bflag_col = self.fetch("BITFLAG")
+        try:
+            bflag_col = self.fetch("BITFLAG")
+        except Exception:
+            if not self._auto_fill_bitflag:
+                print>> log, ModColor.Str(traceback.format_exc().strip())
+                print>> log, ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set.")
+                raise
+            print>> log(0,"red"), "Error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
+            print>> log(0,"red"), "However, it really should have been filled above, so this may be a bug."
+            print>> log(0,"red"), "Please save your logfile and contact the developers."
+            for line in traceback.format_exc().strip().split("\n"):
+                print>> log, "    " + line
+            flag_col = self.fetch("FLAG")
+            bflag_col = np.zeros(flag_col.shape, np.int32)
+            bflag_col[flag_col] = self._auto_fill_bitflag
         # raise specified bitflag
         print>> log, "  updating BITFLAG column flagbit %d"%self._save_bitflag
         bflag_col[:, self._channel_slice, :] &= ~self._save_bitflag         # clear the flagbit first
