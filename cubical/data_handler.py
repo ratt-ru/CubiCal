@@ -32,7 +32,7 @@ except:
 
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("data_handler", 1)
+log = logger.getLogger("data_handler")
 
 def _parse_slice(arg, what="slice"):
     """
@@ -311,6 +311,7 @@ class Tile(object):
         # Thus, we create an array for the flags.
         
         data['updated'] = np.array([False, False])
+        self._auto_filled_bitflag = False
 
         print>>log,"reading tile for MS rows {}~{}".format(self.first_row, self.last_row)
         
@@ -491,9 +492,8 @@ class Tile(object):
                 if self.handler._auto_fill_bitflag:
                     self.bflagcol[flagcol] = self.handler._auto_fill_bitflag
                     self.bflagrow[flagrow] = self.handler._auto_fill_bitflag
-                    # mark flags as updated: they will be saved below
-                    data['updated'][1] = True
-                    print>> log, "  auto-filled BITFLAG/BITFLAG_ROW of shape %s"%str(self.bflagcol.shape)
+                    print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s"%str(self.bflagcol.shape)
+                    self._auto_filled_bitflag = True
             if self.handler._apply_bitflags:
                 flag_arr[(self.bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
                 flag_arr[(self.bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
@@ -547,16 +547,16 @@ class Tile(object):
 
         if nrows == expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log, "  {} rows consistent with {} timeslots and {} baselines" \
+            print>> log(1), "  {} rows consistent with {} timeslots and {} baselines" \
                                                                 " across {} bands".format(*logstr)
             
             sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
 
         elif nrows < expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines" \
+            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines" \
                                                                 "across {} bands".format(*logstr)
-            print>> log, "  {} fewer rows than expected".format(expected_nrows - nrows)
+            print>> log(1), "  {} fewer rows than expected".format(expected_nrows - nrows)
 
             nmiss = expected_nrows - nrows
 
@@ -590,10 +590,10 @@ class Tile(object):
 
         elif nrows > expected_nrows:
             logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log, "  {} rows inconsistent with {} timeslots and {} baselines" \
+            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines" \
                                                                 "across {} bands".format(*logstr)
-            print>> log, "  {} more rows than expected".format(nrows - expected_nrows)
-            print>> log, "  assuming additional rows are auto-correlations - ignoring"
+            print>> log(1), "  {} more rows than expected".format(nrows - expected_nrows)
+            print>> log(1), "  assuming additional rows are auto-correlations - ignoring"
 
             sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))            
             sorted_ind = sorted_ind[np.where(self.antea!=self.anteb)]
@@ -757,6 +757,8 @@ class Tile(object):
                 self.handler.reopen()
             self.handler.putslice(self.handler.output_column, data['covis'], self.first_row, nrows)
 
+        # write flags if (a) auto-filling BITFLAG column and/or (b) solver has generated flags, and we're saving cubical flags
+        
         if self.handler._save_bitflag and data['updated'][1]:
             print>> log, "saving flags for MS rows {}~{}".format(self.first_row, self.last_row)
             # clear bitflag column first
@@ -775,6 +777,11 @@ class Tile(object):
             self.handler.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)
             print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(
                 flag_row.sum() / float(flag_row.size))
+        elif self._auto_filled_bitflag:
+            self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
+            print>> log, "  auto-filled BITFLAG column"
+            self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
+            self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
 
         if unlock:
             self.handler.unlock()
