@@ -320,7 +320,29 @@ class MasterMachine(object):
 
         return machine_cls.Factory(machine_cls, *args, **kw)
 
-
+    def _load_solutions(self, init_sols):
+        """
+        Helper method invoked by Factory.create_machine() to import existing solutions into machine.
+        Looks for solutions corresponding to this machine's jones_label in init_sols, and
+        invokes import_solutions() as appropriate.
+        
+        Args:
+            init_sols: dict of initial solutions, given as {jones_label:(database, prefix)}
+        """
+        sols = {}
+        # collect importable solutions from DB, interpolate
+        for label, grids in self.importable_solutions().iteritems():
+            db, prefix = init_sols.get(self.jones_label, (None, None))
+            name = "{}:{}".format(prefix, label)
+            if db is not None:
+                if name in db:
+                    print>>log,"initializing {} using {} from {}".format(self.jones_label, name, db.filename)
+                    sols[label] = db[name].reinterpolate(**grids)
+                else:
+                    print>>log,"not initializing {}: {} not in {}".format(self.jones_label, name, db.filename)
+        # if anything at all was loaded from DB, import
+        if sols:
+            self.import_solutions(sols)
 
     class Factory(object):
         """
@@ -556,18 +578,6 @@ class MasterMachine(object):
                 An instance of a gain machine
             """
             gm = self.machine_class(self.jones_label, data_arr, n_dir, n_mod, times, freqs, self.jones_options)
-            sols = {}
-            # collect importable solutions from DB, interpolate
-            for label, grids in gm.importable_solutions().iteritems():
-                db, prefix = self._init_sols.get(self.jones_label, (None, None))
-                name = "{}:{}".format(prefix, label)
-                if db is not None:
-                    if name in db:
-                        print>>log,"initializing {} using {} from {}".format(self.jones_label, name, db.filename)
-                        sols[label] = db[name].reinterpolate(**grids)
-                    else:
-                        print>>log,"not initializing {}: {} not in {}".format(self.jones_label, name, db.filename)
-            # if anything at all was loaded from DB, import
-            if sols:
-                gm.import_solutions(sols)
+            gm._load_solutions(self._init_sols)
             return gm
+
