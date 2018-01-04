@@ -21,7 +21,7 @@ class JonesChain(MasterMachine):
     underlying complex 2x2 machines.
     """
 
-    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, jones_options):
+    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, jones_options):
         """
         Initialises a chain of complex 2x2 gain machines.
         
@@ -43,7 +43,8 @@ class JonesChain(MasterMachine):
                 Dictionary of options pertaining to the chain. 
         """
         
-        MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies, jones_options)
+        MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
+                               chunk_label, jones_options)
 
         self.n_dir, self.n_mod = ndir, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
@@ -64,7 +65,7 @@ class JonesChain(MasterMachine):
                 raise UserInputError("only complex-2x2 terms can be made solvable in a Jones chain")
             self.jones_terms.append(jones_class(term_opts["label"], data_arr,
                                         ndir if term_opts["dd-term"] else 1,
-                                        nmod, times, frequencies, term_opts))
+                                        nmod, times, frequencies, chunk_label, term_opts))
 
         self.n_terms = len(self.jones_terms)
         # make list of number of iterations per solvable term
@@ -557,6 +558,9 @@ class JonesChain(MasterMachine):
         def init_solutions(self):
             for opts in self.chain_options:
                 label = opts["label"]
-                self._init_solutions(label, self.make_filename(opts["load-from"], label),
+                self._init_solutions(label,
+                                     self.make_filename(opts["xfer-from"]) or
+                                     self.make_filename(opts["load-from"]),
+                                     bool(opts["xfer-from"]),
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
                                      Complex2x2Gains.exportable_solutions())

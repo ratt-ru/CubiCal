@@ -28,7 +28,7 @@ class PhaseSlopeGains(ParameterisedGains):
     This class implements the diagonal phase-only parameterised slope gain machine.
     """
 
-    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a diagonal phase-slope gain machine.
         
@@ -50,7 +50,8 @@ class PhaseSlopeGains(ParameterisedGains):
                 Dictionary of options. 
         """
         
-        ParameterisedGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
+        ParameterisedGains.__init__(self, label, data_arr, ndir, nmod,
+                                    chunk_ts, chunk_fs, chunk_label, options)
 
         self.slope_type = options["type"]
         self.n_param = 3 if self.slope_type == "tf-plane" else 2

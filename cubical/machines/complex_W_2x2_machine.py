@@ -14,9 +14,11 @@ class ComplexW2x2Gains(PerIntervalGains):
     This class implements the weighted full complex 2x2 gain machine
     """
     
-    def __init__(self, label, model_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+    def __init__(self, label, model_arr, ndir, nmod,
+                 chunk_ts, chunk_fs, chunk_label, options):
         
-        PerIntervalGains.__init__(self, label, model_arr, ndir, nmod, chunk_ts, chunk_fs, options)
+        PerIntervalGains.__init__(self, label, model_arr, ndir, nmod, chunk_ts, chunk_fs,
+                                  chunk_label, options)
         
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         

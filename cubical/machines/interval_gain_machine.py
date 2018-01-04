@@ -15,7 +15,7 @@ class PerIntervalGains(MasterMachine):
     This is a base class for all gain solution machines that use solutions intervals.
     """
 
-    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, options):
+    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, options):
         """
         Initialises a gain machine which supports solution intervals.
         
@@ -37,7 +37,8 @@ class PerIntervalGains(MasterMachine):
                 Dictionary of options. 
         """
 
-        MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies, options)
+        MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
+                               chunk_label, options)
 
         self.n_dir, self.n_mod = ndir, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape

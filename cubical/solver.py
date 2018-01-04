@@ -10,9 +10,8 @@ import traceback
 from cubical.tools import logger, ModColor
 from cubical.data_handler import Tile
 from cubical.flagging import FL
-from cubical.machines import jones_chain_machine
 from cubical.statistics import SolverStats
-from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
+from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
 log = logger.getLogger("solver")
 #log.verbosity(2)
@@ -763,7 +762,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         n_dir, n_mod = model_arr.shape[0:2] if model_arr is not None else (1,1)
 
         # create GainMachine
-        vdm.gm = gm_factory.create_machine(vdm.weighted_obser, n_dir, n_mod, chunk_ts, chunk_fs)
+        vdm.gm = gm_factory.create_machine(vdm.weighted_obser, n_dir, n_mod, chunk_ts, chunk_fs, label)
 
         # Invoke solver method
 

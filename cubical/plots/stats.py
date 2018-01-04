@@ -6,9 +6,6 @@
 Creates summary plots using the solver stats.
 """
 
-import matplotlib
-from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
-
 import numpy as np
 from cubical.tools import logger
 log = logger.getLogger("plots")

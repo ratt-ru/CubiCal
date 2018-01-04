@@ -175,8 +175,11 @@ def make_ifrgain_plots(ig, ms, GD, basename):
     width, height = 8, 6  # size per sublot
 
     # loop over diag and offdiag elements
+    components = [ (0, 0, 1, 1, "diag") ]
+    if GD["bbc"]["compute-2x2"]:
+        components.append((0, 1, 1, 0, "offdiag"))
 
-    for i1,j1,i2,j2,label in (0,0,1,1,"diag"),(0,1,1,0,"offdiag"):
+    for i1,j1,i2,j2,label in components:
         # this is a 3x2 plot
         NR, NC = 3, 2
         # collect a list of valid RR/LL and RL/LR pairs (i.e. ones not all unity)

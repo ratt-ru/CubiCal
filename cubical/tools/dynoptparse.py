@@ -16,9 +16,6 @@ import logger
 log = logger.getLogger("dynoptparse")
 
 
-import pdb
-BREAK = pdb.set_trace
-
 #global Parset
 #Parset=parsets.Parset("/media/tasse/data/DDFacet/Parset/DefaultParset.cfg")
 #D=Parset.DicoPars 

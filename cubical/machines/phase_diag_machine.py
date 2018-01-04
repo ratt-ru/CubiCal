@@ -10,7 +10,7 @@ class PhaseDiagGains(PerIntervalGains):
     """
     This class implements the diagonal phase-only gain machine.
     """
-    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a diagonal phase-only gain machine.
         
@@ -32,7 +32,8 @@ class PhaseDiagGains(PerIntervalGains):
                 Dictionary of options. 
         """
         
-        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
+                                  chunk_ts, chunk_fs, chunk_label, options)
 
         self.phases = np.zeros(self.gain_shape, dtype=self.ftype)
 

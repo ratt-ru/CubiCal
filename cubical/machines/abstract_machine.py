@@ -23,7 +23,7 @@ class MasterMachine(object):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, label, data_arr, ndir, nmod, times, freqs, options):
+    def __init__(self, label, data_arr, ndir, nmod, times, freqs, chunk_label, options):
         """
         The init method of the overall abstract machine should know about the times and frequencies 
         associated with its gains.
@@ -42,11 +42,14 @@ class MasterMachine(object):
                 Times for the data being processed.
             freqs (np.ndarray):
                 Frequencies for the data being processsed.
+            chunk_label (str):
+                Label of the data chunk being processed, for messages
             options (dict): 
                 Dictionary of options. 
         """
 
         self.jones_label = label
+        self.chunk_label = chunk_label
         self.times = times
         self.freqs = freqs
         self.options = options
@@ -332,14 +335,28 @@ class MasterMachine(object):
         sols = {}
         # collect importable solutions from DB, interpolate
         for label, grids in self.importable_solutions().iteritems():
-            db, prefix = init_sols.get(self.jones_label, (None, None))
+            db, prefix, interpolate = init_sols.get(self.jones_label, (None, None, False))
             name = "{}:{}".format(prefix, label)
             if db is not None:
                 if name in db:
-                    print>>log,"initializing {} using {} from {}".format(self.jones_label, name, db.filename)
-                    sols[label] = db[name].reinterpolate(**grids)
+                    if interpolate:
+                        print>>log,"{}: interpolating {} using {} from {}".format(
+                            self.chunk_label, self.jones_label, name, db.filename)
+                        sols[label] = sol = db[name].reinterpolate(**grids)
+                    else:
+                        if not db[name].match_grids(**grids):
+                            raise ValueError("{} does not define {} on the correct grid. Consider using "+
+                                             "-xfer-from rather than -load-from".format(name, db.filename))
+                        print>> log, "{}: looking up {} using {} from {}".format(
+                            self.chunk_label, self.jones_label, name, db.filename)
+                        sols[label] = sol = db[name].lookup(**grids)
+                    if sol.count() != sol.size:
+                        print>>log, "{}: {:.2%} valid {} slots populated".format(
+                            self.chunk_label, sol.count()/float(sol.size), self.jones_label)
+                    db[name].release_cache()
                 else:
-                    print>>log,"not initializing {}: {} not in {}".format(self.jones_label, name, db.filename)
+                    print>>log,"{}: not initializing {}: {} not in {}".format(
+                        self.chunk_label, self.jones_label, name, db.filename)
         # if anything at all was loaded from DB, import
         if sols:
             self.import_solutions(sols)
@@ -397,7 +414,10 @@ class MasterMachine(object):
             Default behaviour uses the _init_solutions() implementation below.
             Note that this is reimplemented in JonesChain to collect solution info from chain.
             """
-            self._init_solutions(self.jones_label, self.make_filename(self.jones_options["load-from"]),
+            self._init_solutions(self.jones_label,
+                                 self.make_filename(self.jones_options["xfer-from"]) or
+                                 self.make_filename(self.jones_options["load-from"]),
+                                 bool(self.jones_options["xfer-from"]),
                                  self.solvable and self.make_filename(self.jones_options["save-to"]),
                                  self.machine_class.exportable_solutions())
 
@@ -419,6 +439,8 @@ class MasterMachine(object):
                     Expanded filename
                 
             """
+            if not filename:
+                return None
             try:
                 # substitute recursively, but up to a limit
                 for i in xrange(10):
@@ -432,7 +454,7 @@ class MasterMachine(object):
                 print>>log,ModColor.Str("Error parsing filename '{}', see above".format(filename))
                 raise ValueError(filename)
 
-        def _init_solutions(self, label, load_from, save_to, exportables):
+        def _init_solutions(self, label, load_from, interpolate, save_to, exportables):
             """
             Internal helper implementation for init_solutions(): this initializes a pair of solution databases.
             
@@ -441,6 +463,8 @@ class MasterMachine(object):
                     the Jones matrix label
                 load_from (str):
                     filename of solution DB to load from. Can be empty or None.
+                interpolate (bool):
+                    True if solutions are allowed to be interpolated.
                 save_to (str):
                     filename of solution DB to save to. Can be empty or None.
                 exportables (dict):
@@ -455,7 +479,7 @@ class MasterMachine(object):
                     filename, prefix = load_from.rsplit("//", 1)
                 else:
                     filename, prefix = load_from, label
-                self._init_sols[label] = param_db.load(filename), prefix
+                self._init_sols[label] = param_db.load(filename), prefix, interpolate
             # create database to save to
             if save_to:
                 # define parameters in DB
@@ -557,7 +581,7 @@ class MasterMachine(object):
             """
             Closes all solution databases and releases various caches.
             """
-            for db, prefix in self._init_sols.values():
+            for db, prefix, _ in self._init_sols.values():
                 db.close()
             for db in self._save_sols_byname.values():
                 db.close()
@@ -565,7 +589,7 @@ class MasterMachine(object):
             self._save_sols = {}
             self._save_sols_byname = {}
 
-        def create_machine(self, data_arr, n_dir, n_mod, times, freqs):
+        def create_machine(self, data_arr, n_dir, n_mod, times, freqs, chunk_label):
             """
             Creates a gain machine, given a model, and a time and frequency subset of the global solution space.
 
@@ -577,7 +601,8 @@ class MasterMachine(object):
             Returns:
                 An instance of a gain machine
             """
-            gm = self.machine_class(self.jones_label, data_arr, n_dir, n_mod, times, freqs, self.jones_options)
+            gm = self.machine_class(self.jones_label, data_arr, n_dir, n_mod, times, freqs,
+                                    chunk_label, self.jones_options)
             gm._load_solutions(self._init_sols)
             return gm
 
