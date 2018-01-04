@@ -21,13 +21,14 @@ class IfrGainMachine(object):
     calculations.
     """
 
-    def __init__(self, gmfactory, ifrgain_opts):
+    def __init__(self, gmfactory, ifrgain_opts, compute=True):
         """
         Initializes the IFR-based gains machinery.
         
         Args:
             gmfactory:      a GainMachine Factory is used to manage the solution databases
             ifrgain_opts:   dict of options
+            compute:	    if False, gains are not computed even if options ask them to
         """
         self.gmfactory = gmfactory
         load_from = ifrgain_opts['load-from']
@@ -64,7 +65,7 @@ class IfrGainMachine(object):
                     else:
                         self._ifrgain[..., (0, 1), (1, 0)] = 1
                         print>>log(0),"  using parallel-hand BBCs only"
-        if save_to:
+        if save_to and compute:
             # setup axes for IFR-based bains
             axes = ["freq", "ant1", "ant2", "corr1", "corr2"]
             # define the ifrgain parameter

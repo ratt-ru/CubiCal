@@ -309,7 +309,10 @@ class Parameter(object):
             array_slicer = tuple([slice(None) if sl is None else sl for sl in slicer])
             array = self._full_array[array_slicer]
             flags = array.mask
+            # this is a list, per axis, of which subset of the full axis grid the slice is associated with.
+            # slice(None) is the full grid (i.e. nothing masked in the array)
             interpol_grid = list(interpol_grid0)
+            interpol_grid_subset = [slice(None) for _ in interpol_axes]
             if flags is not np.ma.nomask:
                 # now, for every axis in the slice, cut out fully flagged points
                 allaxis = set(xrange(array.ndim))
@@ -330,12 +333,14 @@ class Parameter(object):
                                                                                     self.axis_labels[interpol_axes[iaxis]])
                         # make corresponding slice
                         array_slice = [slice(None)] * array.ndim
-                        array_slice[iaxis] = ~allflag
-                        # apply it to array, flags and grids
+                        # also set subset to the mask of the valid points
+                        subset = ~allflag
+                        array_slice[iaxis] = interpol_grid_subset[iaxis] = subset
+                        interpol_grid[iaxis] = interpol_grid0[iaxis][subset]
+                        # apply it to array, flags
                         array = array[tuple(array_slice)]
-                        interpol_grid[iaxis] = interpol_grid[iaxis][~allflag]
             # store resulting slice
-            self._array_slices[tuple(slicer)] = array, interpol_grid
+            self._array_slices[tuple(slicer)] = array, interpol_grid, interpol_grid_subset
         self._full_array = None
 
     def _get_slicer(self, **axes):
@@ -363,7 +368,7 @@ class Parameter(object):
         than 1. Array may be None, to indicate no solutions for the given slice.
         """
 
-        array, grids = self._array_slices[self._get_slicer(**axes)]
+        array, grids, _ = self._array_slices[self._get_slicer(**axes)]
 
         return array, [self._from_norm(self.interpolation_axes[i], g) for i, g in enumerate(grids)]
 
@@ -374,7 +379,7 @@ class Parameter(object):
         than 1.
         """
 
-        array, _ = self._array_slices[self._get_slicer(**axes)]
+        array, _, _ = self._array_slices[self._get_slicer(**axes)]
 
         return array is not None
 
@@ -435,6 +440,7 @@ class Parameter(object):
                     i0, i1 = np.searchsorted(g0, [g[0], g[-1]])
                     # this slice of the full grid incorporates the requested interpolation points
                     i0, i1 = max(0, i0 - 1), min(len(g0), i1 + 1)
+                    # edge case 
                 else:
                     i0, i1 = 0, len(g0)
                 output_shape.append(len(g))
@@ -473,7 +479,7 @@ class Parameter(object):
 
         # now loop over all slices
         for slicer, out_slicer in zip(itertools.product(*input_slicers), itertools.product(*output_slicers)):
-            array, slice_grid = self._array_slices[slicer]
+            array, slice_grid, slice_grid_subset = self._array_slices[slicer]
             if array is None:
                 print>> log(2), "  slice {} fully flagged".format(slicer)
             else:
@@ -484,14 +490,35 @@ class Parameter(object):
                         [i0 <= j0 and i1 >= j1 for (i0, i1), (j0, j1) in zip(input_grid_segment0, input_grid_segment)]):
                     # segment_grid: coordinates corresponding to segment being interpolated over
                     # array_segment_slice: index object to extract segment from array. Note that this
-                    #  may also reduce dimensions, if size=1 interpolatable axes are present
+                    #     may also reduce dimensions, if size=1 interpolatable axes are present
                     segment_grid = []
                     array_segment_slice = []
                     # build up the two objects above
-                    for sg, (i0, i1), isr in zip(slice_grid, input_grid_segment, input_slice_reduction):
+                    for iaxis, sg, sgss, (i0, i1), isr in zip(self.interpolation_axes, slice_grid, slice_grid_subset, 
+                                                          input_grid_segment, input_slice_reduction):
                         if isr is not 0:
-                            segment_grid.append(sg[i0:i1])
-                            array_segment_slice.append(slice(i0, i1))
+                            g0 = self._norm_grid[iaxis]
+                            # if axis of current slice spans the full grid, (subset is not an array,
+                            # therefore it's slice(None) by construction), just use i0:i1 slice
+                            if type(sgss) is not np.ndarray:
+                                array_segment_slice.append(slice(i0, i1))
+                                segment_grid.append(g0[i0:i1])
+                            # else axis of current slice is a subset: extract i0:i1 slice from subset
+                            else:
+                                # this maps from full-grid index to slice index (i.e. if slice misses rows)
+                                idx = sgss.cumsum() - 1  
+                                # now get the actual slice indices corresponding to the i0:i1 segment
+                                idx = idx[i0:i1][sgss[i0:i1]]
+                                j0, j1 = idx[0], idx[-1]+1
+                                # expand by 1 to keep Delaunay from crying
+                                if j1-j0 < 2:
+                                    if j0>0:
+                                        j0 -= 1
+                                    elif j1<len(sg):
+                                        j1 += 1  
+                                # the first and last of these is the segment to be extracted from this slice
+                                array_segment_slice.append(slice(j0, j1))
+                                segment_grid.append(sg[j0:j1])
                         else:
                             array_segment_slice.append(0)
                     print>> log(2), "  slice {} preparing {}D interpolator for {}".format(slicer,
@@ -545,8 +572,10 @@ class Parameter(object):
                 output_array[out_slicer] = result[input_slice_broadcast]
         # return array, throwing out unneeded axes
         output_array = output_array[output_reduction]
-
-        return masked_array(output_array, np.isnan(output_array), fill_value=self.empty)
+        # also, mask missing values from the interpolator with the fill value
+        missing = np.isnan(output_array)
+        output_array[missing] = self.empty
+        return masked_array(output_array, missing, fill_value=self.empty)
 
     def _scrub(self):
         """ 

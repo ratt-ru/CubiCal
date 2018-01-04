@@ -264,8 +264,10 @@ def main(debugging=False):
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
-        # create IFR-based gain machine
-        solver.ifrgain_machine = ifr_gain_machine.IfrGainMachine(solver.gm_factory, GD["bbc"])
+                                                       
+        # create IFR-based gain machine. Only compute gains if we're loading a model
+        # (i.e. not in load-apply mode)
+        solver.ifrgain_machine = ifr_gain_machine.IfrGainMachine(solver.gm_factory, GD["bbc"], compute=load_model)
         
         # set up chunking
         chunk_by = GD["data"]["chunk-by"]
