@@ -313,7 +313,7 @@ class Tile(object):
         data['updated'] = np.array([False, False])
         self._auto_filled_bitflag = False
 
-        print>>log,"reading tile for MS rows {}~{}".format(self.first_row, self.last_row)
+        print>>log,"reading MS rows {}~{}".format(self.first_row, self.last_row)
         
         nrows = self.last_row - self.first_row + 1
         

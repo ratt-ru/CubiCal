@@ -441,6 +441,8 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
     try:
         if save is not None:
             tile = Tile.tile_list[save]
+            itile = range(len(Tile.tile_list))[save]
+            print>>log(0, "blue"),"saving tile {}/{}".format(itile, len(Tile.tile_list))
             tile.save(unlock=finalize)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
@@ -450,6 +452,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
                 solver.gm_factory.close()
             tile.release()
         if load is not None:
+            print>>log(0, "blue"),"loading tile {}/{}".format(load, len(Tile.tile_list))
             Tile.tile_list[load].load(load_model=load_model)
         return True
     except Exception, exc:
