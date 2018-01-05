@@ -442,7 +442,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
         if save is not None:
             tile = Tile.tile_list[save]
             itile = range(len(Tile.tile_list))[save]
-            print>>log(0, "blue"),"saving tile #{}/{}".format(itile+1, len(Tile.tile_list))
+            print>>log(0, "blue"),"saving tile #{}".format(itile+1)
             tile.save(unlock=finalize)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
