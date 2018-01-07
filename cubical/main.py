@@ -19,7 +19,7 @@ import os
 import os.path
 import traceback
 import sys
-import re
+import warnings
 import numpy as np
 from time import time
 
@@ -48,7 +48,6 @@ from cubical.machines import ifr_gain_machine
 log = logger.getLogger("main")
 
 import cubical.solver as solver
-import cubical.plots as plots
 import cubical.flagging as flagging
 
 from cubical.statistics import SolverStats
@@ -100,6 +99,7 @@ def main(debugging=False):
             default_parset = parsets.Parset("%s/DefaultParset.cfg" % os.path.dirname(__file__))
 
             def parse_command_line():
+                import cubical
                 parser = dynoptparse.DynamicOptionParser(usage='Usage: %prog [parset file] <options>',
                     description="""Questions, bug reports, suggestions: https://github.com/ratt-ru/CubiCal""",
                     version='%prog version {}'.format(cubical.VERSION),
@@ -403,7 +403,15 @@ def main(debugging=False):
 
             # make plots
             if GD["out"]["plots"]:
+                import cubical.plots as plots
                 plots.make_summary_plots(st, ms, GD, basename)
+
+        # make BBC plots
+        if solver.ifrgain_machine and solver.ifrgain_machine.is_computing():
+            import cubical.plots.ifrgains
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", np.ComplexWarning)
+                cubical.plots.ifrgains.make_ifrgain_plots(solver.ifrgain_machine.reload(), ms, GD, basename)
 
         ms.close()
 
