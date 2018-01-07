@@ -345,7 +345,7 @@ class MasterMachine(object):
                         sols[label] = sol = db[name].reinterpolate(**grids)
                     else:
                         if not db[name].match_grids(**grids):
-                            raise ValueError("{} does not define {} on the correct grid. Consider using "+
+                            raise ValueError("{} does not define {} on the correct grid. Consider using "
                                              "-xfer-from rather than -load-from".format(name, db.filename))
                         print>> log, "{}: looking up {} using {} from {}".format(
                             self.chunk_label, self.jones_label, name, db.filename)
