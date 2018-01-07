@@ -309,7 +309,7 @@ def main(debugging=False):
                         processed = True
                         stats_dict[tile.get_chunk_indices(key)] = \
                             solver.run_solver(solver_type, itile, key, solver_opts)
-                if processed:
+                if processed and single_chunk:
                     tile.save()
                     for sd in tile.iterate_solution_chunks():
                         solver.gm_factory.save_solutions(sd)
@@ -391,15 +391,16 @@ def main(debugging=False):
             st.save(filename)
             print>> log, "saved summary statistics to %s" % filename
 
-            # flag based on summary stats
-            flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid_actual)
+            if GD["flags"]["post-sol"]:
+                # flag based on summary stats
+                flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid_actual)
 
-            if flag3 is not None:
-                st.apply_flagcube(flag3)
-                if GD["flags"]["save"] and flag3.any() and not GD["data"]["single-chunk"]:
-                    print>>log,"regenerating output flags based on post-solution flagging"
-                    flagcol = ms.flag3_to_col(flag3)
-                    ms.save_flags(flagcol)
+                if flag3 is not None:
+                    st.apply_flagcube(flag3)
+                    if GD["flags"]["save"] and flag3.any() and not GD["data"]["single-chunk"]:
+                        print>>log,"regenerating output flags based on post-solution flagging"
+                        flagcol = ms.flag3_to_col(flag3)
+                        ms.save_flags(flagcol)
 
             # make plots
             if GD["out"]["plots"]:

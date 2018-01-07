@@ -1413,9 +1413,17 @@ class DataHandler:
         # list of unique times
         self.uniq_times = np.unique(self.time_col)
         # timeslot index (per row, each element gives index of timeslot)
-        self.times = np.empty_like(self.time_col, dtype=np.int32)
-        for i, t in enumerate(self.uniq_times):
-            self.times[self.time_col == t] = i
+
+        ## slow version
+        # self.times = np.empty_like(self.time_col, dtype=np.int32)
+        # for i, t in enumerate(self.uniq_times):
+        #     self.times[self.time_col == t] = i
+
+        ## fast version
+        # map timestamps to timeslot numbers
+        rmap = {t: i for i, t in enumerate(self.uniq_times)}
+        # apply this map to the time column to construct a timestamp column
+        self.times = np.fromiter(map(rmap.__getitem__, self.time_col), int)
         print>> log, "  built timeslot index ({} unique timestamps)".format(len(self.uniq_times))
 
         self.chunk_tdim = tdim
@@ -1552,18 +1560,9 @@ class DataHandler:
             np.ndarray:
                 Boolean array with same shape as self.obvis.
         """
-
-        ntime, nddid, nchan = flag3.shape
-
         flagout = np.zeros(self._datashape, bool)
 
-        for ddid in xrange(nddid):
-            ddid_rows = self.ddid_col == ddid
-            for ts in xrange(ntime):
-                # find all rows associated with this DDID and timeslot
-                rows = ddid_rows & (self.times == ts)
-                if rows.any():
-                    flagout[rows, :, :] = flag3[ts, ddid, :, np.newaxis]
+        flagout[:] = flag3[self.times, self.ddid_col, :, np.newaxis]
 
         return flagout
 
@@ -1693,7 +1692,7 @@ class DataHandler:
         bflag_col = self.fetch("BITFLAG")
         # raise specified bitflag
         print>> log, "  updating BITFLAG column flagbit %d"%self._save_bitflag
-        bflag_col[:, self._channel_slice, :] &= ~self._save_bitflag         # clear the flagbit first
+        #bflag_col[:, self._channel_slice, :] &= ~self._save_bitflag         # clear the flagbit first
         bflag_col[:, self._channel_slice, :][flags] |= self._save_bitflag
         self.data.putcol("BITFLAG", bflag_col)
         print>>log, "  updating BITFLAG_ROW column"
