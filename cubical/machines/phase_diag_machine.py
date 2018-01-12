@@ -183,7 +183,7 @@ class PhaseDiagGains(PerIntervalGains):
             self.phases[idir, ...] = 0
 
 
-    def precompute_attributes(self, model_arr):
+    def precompute_attributes(self, model_arr, flags_arr, noise):
         """
         Precompute (J\ :sup:`H`\J)\ :sup:`-1`, which does not vary with iteration.
 
@@ -192,6 +192,7 @@ class PhaseDiagGains(PerIntervalGains):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
                 model visibilities.
         """
+        PerIntervalGains.precompute_attributes(self, model_arr, flags_arr, noise)
 
         self.jhjinv = np.zeros_like(self.gains)
 

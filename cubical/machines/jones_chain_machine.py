@@ -92,6 +92,13 @@ class JonesChain(MasterMachine):
         self.cached_model_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
         self.cached_resid_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
 
+
+    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
+        """Precomputes various stats before starting a solution"""
+        MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
+        for term in self.jones_terms:
+            term.precompute_attributes(model_arr, flags_arr, inv_var_chan)
+
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
 
@@ -335,24 +342,6 @@ class JonesChain(MasterMachine):
             term.apply_gains(vis)
         return vis
 
-    def update_stats(self, flags, eqs_per_tf_slot):
-        """
-        This method computes various stats and totals based on the current state of the flags.
-        These values are used for weighting the chi-squared and doing intelligent convergence
-        testing.
-
-        Args:
-            flags_arr (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags.
-            eqs_per_tf_slot (np.ndarray):
-                Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
-        """
-
-        if hasattr(self.active_term, 'num_valid_intervals'):
-            self.active_term.update_stats(flags, eqs_per_tf_slot)
-        else:
-            [term.update_stats(flags, eqs_per_tf_slot) for term in self.jones_terms]
-   
     def update_conv_params(self, min_delta_g):
         """
         Updates the convergence parameters of the current time-frequency chunk. 
@@ -374,8 +363,10 @@ class JonesChain(MasterMachine):
 
     def flag_solutions(self):
         """ Flags gain solutions based on certain criteria, e.g. out-of-bounds, null, etc. """
-
         self.active_term.flag_solutions()
+
+    def num_gain_flags(self, mask=None):
+        self.active_term.num_gain_flags()
 
     def propagate_gflags(self, flags):
         """
@@ -386,7 +377,6 @@ class JonesChain(MasterMachine):
             flags (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
         """
-        
         self.active_term.propagate_gflags(flags)
 
     def _next_chain_term(self):
@@ -402,7 +392,7 @@ class JonesChain(MasterMachine):
             else:
                 print>> log(1), "skipping term {}: non-solvable".format(self.active_term.jones_label)
 
-    def update_term(self):
+    def next_iteration(self):
         """
         Updates the iteration count on the relevant element of the Jones chain. It will also handle 
         updating the active Jones term. Ultimately, this should handle any complicated 
@@ -415,111 +405,66 @@ class JonesChain(MasterMachine):
             print>>log(1),"term {} converged ({} iters)".format(self.active_term.jones_label, self.active_term.iters)
             self._next_chain_term()
 
-        self.iters += 1
+        self.active_term.next_iteration()
+
+        return MasterMachine.next_iteration(self)
+
+    def compute_chisq(self, resid_arr, inv_var_chan):
+        """Computes chi-square using the active chain term"""
+        return self.active_term.compute_chisq(resid_arr, inv_var_chan)
 
     @property
-    def gains(self):
-        return self.active_term.gains
-
-    @gains.setter
-    def gains(self, value):
-        self.active_term.gains = value
+    def num_valid_solutions(self):
+        """Gives corresponding property of the active chain term"""
+        return self.active_term.num_valid_solutions
 
     @property
-    def gflags(self):
-        return self.active_term.gflags
-
-    @property
-    def n_cnvgd(self):
-        return self.active_term.n_cnvgd
-
-    @property
-    def n_sols(self):
-        return self.active_term.n_sols
-
-    @property
-    def eqs_per_interval(self):
-        return self.active_term.eqs_per_interval
-
-    @property
-    def valid_intervals(self):
-        return self.active_term.valid_intervals
-
-    @property
-    def n_tf_ints(self):
-        return self.active_term.n_tf_ints
-
-    @property
-    def max_update(self):
-        return self.active_term.max_update
-
-    @property
-    def n_flagged(self):
-        return self.active_term.n_flagged
-
-    @property
-    def num_valid_intervals(self):
-        return self.active_term.num_valid_intervals
-
-    @property
-    def missing_gain_fraction(self):
-        return self.active_term.missing_gain_fraction
-
-    @property
-    def old_gains(self):
-        return self.active_term.old_gains
-
-    @old_gains.setter
-    def old_gains(self, value):
-        self.active_term.old_gains = value
-
-    @property
-    def dtype(self):
-        return self.active_term.dtype
-
-    @property
-    def ftype(self):
-        return self.active_term.ftype
+    def num_converged_solutions(self):
+        """Gives corresponding property of the active chain term"""
+        return self.active_term.num_converged_solutions
 
     @property
     def active_term(self):
         return self.jones_terms[self.active_index]
 
     @property
-    def t_int(self):
-        return self.active_term.t_int
-
-    @property
-    def f_int(self):
-        return self.active_term.f_int
-
-    @property
-    def eps(self):
-        return self.active_term.eps
-
-    @property
-    def flagbit(self):
-        return self.active_term.flagbit
+    def dd_term(self):
+        """Gives corresponding property of the active chain term"""
+        return self.active_term.dd_term
 
     @property
     def iters(self):
+        """Gives corresponding property of the active chain term"""
         return self.active_term.iters
 
     @iters.setter
     def iters(self, value):
+        """Sets corresponding property of the active chain term"""
         self.active_term.iters = value
 
     @property
     def maxiter(self):
+        """Gives corresponding property of the active chain term"""
         return self.active_term.maxiter
 
-    @property
-    def min_quorum(self):
-        return self.active_term.min_quorum
+    @maxiter.setter
+    def maxiter(self, value):
+        """Sets corresponding property of the active chain term"""
+        self.active_term.maxiter = value
 
     @property
-    def status_string(self):
-        return "; ".join([term.status_string for term in self.jones_terms])
+    def conditioning_status_string(self):
+        return "; ".join([term.conditioning_status_string for term in self.jones_terms])
+
+    @property
+    def current_convergence_status_string(self):
+        """Current status is reported from the active term"""
+        return self.active_term.current_convergence_status_string
+
+    @property
+    def final_convergence_status_string(self):
+        """Final status is reported from all terms"""
+        return "; ".join([term.final_convergence_status_string for term in self.jones_terms])
 
     @property
     def has_converged(self):
@@ -536,13 +481,6 @@ class JonesChain(MasterMachine):
     def has_stalled(self, value):
         self.active_term.has_stalled = value
 
-    @property
-    def update_type(self):
-        return self.active_term.update_type
-
-    @property
-    def dd_term(self):
-        return self.active_term.dd_term
 
     class Factory(MasterMachine.Factory):
         """

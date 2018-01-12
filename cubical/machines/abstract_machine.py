@@ -23,13 +23,30 @@ class MasterMachine(object):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, label, data_arr, ndir, nmod, times, freqs, chunk_label, options):
+    def __init__(self, jones_label, data_arr, ndir, nmod, times, freqs, chunk_label, options):
         """
-        The init method of the overall abstract machine should know about the times and frequencies 
-        associated with its gains.
+        Initializes a gain machine.
+        
+        All supplied arguments are copied to attributes of the same name. In addition, the following
+        attributes or properties are populated. These may be considered part of the official machine interface.
+            
+            - solvable:
+                from options['solvable'], default False
+            - dd_term:
+                from options['dd-term'], default False
+            - n_dir, n_mod, n_tim, n_fre, n_ant, n_cor:
+                problem dimensions
+            - dtype:
+                complex dtype of data/model (complex64 or complex128)
+            - ftype:
+                corresponding float dtype (float32 or float64)
+            - iters:
+                iteration counter, reset to 0.
+            - maxiters:
+                from options['max-iters'], default 0
         
         Args:
-            label (str):
+            jones_label (str):
                 Label identifying the Jones term.
             data_arr (np.ndarray): 
                 Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
@@ -48,12 +65,48 @@ class MasterMachine(object):
                 Dictionary of options. 
         """
 
-        self.jones_label = label
+        self.jones_label = jones_label
         self.chunk_label = chunk_label
         self.times = times
         self.freqs = freqs
         self.options = options
-        self.solvable = options['solvable']
+
+        self.solvable = options.get('solvable')
+        self._dd_term = options.get('dd-term')
+        self._maxiter = options.get('max-iter', 0)
+
+        self.n_dir, self.n_mod = ndir, nmod
+        _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
+
+        self.dtype = data_arr.dtype
+        self.ftype = data_arr.real.dtype
+
+        self._iters = 0
+
+    @property
+    def dd_term (self):
+        """This property is true if the machine represents a direction-dependent"""
+        return self._dd_term
+
+    @property
+    def maxiter (self):
+        """This property gives the max number of iterations"""
+        return self._maxiter
+
+    @maxiter.setter
+    def maxiter (self, value):
+        """Sets max number of iterations"""
+        self._maxiter = value
+
+    @property
+    def iters (self):
+        """This property gives the current iteration counter."""
+        return self._iters
+
+    @iters.setter
+    def iters(self, value):
+        """Sets current iteration counter"""
+        self._iters = value
 
     @abstractmethod
     def compute_js(self):
@@ -109,7 +162,7 @@ class MasterMachine(object):
     @abstractmethod
     def apply_inv_gains(self, obser_arr, corr_vis=None):
         """
-        This method should be able to apply the inverse of the gains assosciated with the gain
+        This method should be able to apply the inverse of the gains associated with the gain
         machines to an array at full time-frequency resolution. Should populate an input array with
         the result or return a new array. Function signature must be consistent with the one defined
         here.
@@ -134,43 +187,123 @@ class MasterMachine(object):
     @abstractmethod			
     def apply_gains(self, model_arr):
         """
-        This method should be able to apply the gains to an array at full time-frequency
-        resolution. Should return the input array at full resolution after the application of the 
-        gains. Function signature must be consistent with the one defined here.
-
-        Args:
-            model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
-                model visibilities.
-
-        Returns:
-            np.ndarray:
-                Resulting array after applying the gains.
-        """
-
-        return NotImplementedError
-
-    @abstractmethod				
-    def update_stats(self, flags_arr, eqs_per_tf_slot):
-        """
-        This method should compute a variety of useful parameters regarding the conditioning and 
-        degrees of freedom of the current time-frequency chunk. Specifically, it must populate:
-        
-            - self.eqs_per_interval
-            - self.valid_intervals
-            - self.num_valid_intervals
-            - self.missing_gain_fraction
-        
+        This method should be able to apply the gains associated with the gain
+        to an array at full time-frequency resolution. 
         Function signature must be consistent with the one defined here.
 
         Args:
-            flags_arr (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags.
-            eqs_per_tf_slot (np.ndarray):
-                Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model visibilities.
         """
 
         return NotImplementedError
+
+    @property
+    def num_valid_solutions(self):
+        """
+        This property gives the total number of valid solutions defined by the machine, however that is
+        counted (e.g. can be solution intervals)
+        """
+        return 0
+
+    @property
+    def num_converged_solutions(self):
+        """
+        This property gives the number of currently converged solutions defined by the machine
+        """
+        return 0
+
+    def _update_equation_counts (self, unflagged):
+        """
+        Internal method used by precompute_attributes() and propagate_gflags() to set up equation 
+        counters and chi-sq normalization factors. Sets up the following attributes:
+        
+            - eqs_per_tf_slot (np.ndarray):
+                Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
+            - eqs_per_antenna (np.ndarray)
+                Shape (n_ant, ) array containing a count of equations per antenna.
+
+        Also sets up corresponding chi-sq normalization factors.
+
+        Args:
+            unflagged (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) bool array indicating valid (not flagged) slots
+        """
+        # (n_ant) vector containing the number of valid equations per antenna.
+        # Factor of two is necessary as we have the conjugate of each equation too.
+
+        self.eqs_per_antenna = 2 * np.sum(unflagged, axis=(0, 1, 2)) * self.n_mod
+
+        # (n_tim, n_fre) array containing number of valid equations for each time/freq slot.
+
+        self.eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2)) * self.n_mod * self.n_cor * self.n_cor * 2
+
+        with np.errstate(invalid='ignore'):
+            self._chisq_tf_norm_factor = 1./self.eqs_per_tf_slot
+
+        toteq = np.sum(self.eqs_per_tf_slot)
+        self._chisq_norm_factor = 1./toteq if toteq else 0
+
+    def compute_chisq(self, resid_arr, inv_var_chan):
+        """
+        Computes chi-squared statistics based on given residuals.
+        Args:
+            resid_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing residuals.
+            inv_var_chan (np.ndarray)
+                Shape (nfreq,) array of 1/sigma^2 per channel
+
+        Returns:
+            3-tuple consisting of
+            
+             - chisq (np.ndarray):
+                (n_tim, n_fre, n_ant) array of chi-squared per antenna and time/frequency slot
+             - chisq_per_tf_slot  (np.ndarray):
+                (n_tim, n_fre) array of chi-squared per time/frequency slot
+             - chisq_tot (float):
+                overall chi-squared value for the entire chunk
+        """
+
+        # Chi-squared is computed by summation over antennas, correlations and intervals. Sum over
+        # time intervals, antennas and correlations first. Normalize by per-channel variance and
+        # finally sum over frequency intervals.
+
+        # TODO: Some residuals blow up and cause np.square() to overflow -- need to flag these.
+
+        # Sum chi-square over correlations, models, and one antenna axis. Result has shape
+        # (n_tim, n_fre, n_ant). We avoid using np.abs by taking a view of the underlying memory.
+        # This is substantially faster.
+
+        chisq = np.sum(np.square(resid_arr.view(dtype=resid_arr.real.dtype)), axis=(0, 4, 5, 6))
+
+        # Normalize this by the per-channel variance.
+
+        chisq *= inv_var_chan[np.newaxis, :, np.newaxis]
+
+        # Collapse chisq to chi-squared per time-frequency slot and overall chi-squared
+
+        chisq_per_tf_slot = np.sum(chisq, axis=-1) * self._chisq_tf_norm_factor
+
+        chisq_tot = np.sum(chisq) * self._chisq_norm_factor
+
+        return chisq, chisq_per_tf_slot, chisq_tot
+
+    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
+        """
+        This method is called before starting a solution. The base version computes a variety of useful 
+        parameters regarding the conditioning and degrees of freedom of the current time-frequency chunk. 
+        Subclasses can redefine this to precompute other useful stuff (i.e. things that do not vary with 
+        iteration).
+
+        Args:
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model visibilities.
+            flags_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing integer flags
+            inv_var_chan (np.ndarray)
+                Shape (nfreq,) array of 1/sigma^2 per channel
+        """         
+        self._update_equation_counts(flags_arr!=0)
 
     @abstractmethod				
     def update_conv_params(self, min_delta_g):
@@ -201,35 +334,49 @@ class MasterMachine(object):
 
         Function signature must be consistent with the one defined here.
         """
+        return NotImplementedError
 
+    @abstractmethod
+    def num_gain_flags(self, mask=None):
+        """
+        This method returns the number of gains flagged, and the total number of gains.
+        
+        Args:
+            mask (int):
+                Flag mask to apply. If None, ~FL.MISSING is expected to be used
+
+        Returns:
+            Tuple of two values
+                - number of flagged gains
+                - total number of gains
+
+        """
         return NotImplementedError
 
     @abstractmethod
     def propagate_gflags(self, flags):
         """
         This method should propagate the flags raised by the gain machine back into the data.
-        This is necessary as the gain flags may not have the same shape as the data. Function 
-        signature must be consistent with the one defined here.
+        Also updates equation counts etc. This is necessary as the gain flags may not have the 
+        same shape as the data. Function signature must be consistent with the one defined here.
 
         Args:
             flags (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing data flags. 
         """
 
         return NotImplementedError
 
-    @abstractmethod
-    def update_term(self):
+    def next_iteration(self):
         """
-        This method should update the current iteration as well as handling any more complicated
-        behaviour required for multiple Jones terms. It must update:
-
-            - self.iters
-
-        Function signature must be consistent with the one defined here.
+        This method should update the current iteration counter, as well as handling any more complicated
+        behaviour required for multiple Jones terms. Default version just bumps the iteration counter.
+        
+        Returns:
+            Value of iteration counter
         """
-
-        return NotImplementedError
+        self._iters += 1
+        return self.iters
 
     @abstractmethod
     def restrict_solution(self):
@@ -241,30 +388,47 @@ class MasterMachine(object):
 
         return NotImplementedError
 
-    def precompute_attributes(self, *args, **kwargs):
-        """
-        This method is not required to have a working gain machine. However, it is included in the
-        base class for compatibility with solvers which require it. It can be used to do compute
-        elements of the problem which do not vary with iteration, thus providing a speed-up.
-        """
-
-        return
-
     @abstractproperty
     def has_converged(self):
         """
         This property must return the convergence status of the gain machine. 
         """
-
         return NotImplementedError
 
     @abstractproperty
-    def status_string(self):
+    def has_stalled(self):
         """
-        This property must return a status string for the gain machine, e.g.
-            "G: 20 iters, conv 60.02%, g/fl 15.00%"
+        This property must return the convergence stall status of the gain machine. Note that it
+        may be assigned to in the solver.
         """
         return NotImplementedError
+
+    @abstractproperty
+    def conditioning_status_string(self):
+        """
+        This property must return a conditioning status string for the gain machine, e.g.
+        
+        """
+        return NotImplementedError
+
+    @abstractproperty
+    def current_convergence_status_string(self):
+        """
+        This property must return a convergence status string for the gain machine, e.g.
+            "G: 20 iters, conv 60.02%, g/fl 15.00%, max update 1e-3"
+        This is called while iterating.
+        """
+        return NotImplementedError
+
+    @property
+    def final_convergence_status_string(self):
+        """
+        This property must return a convergence status string for the gain machine, e.g.
+            "G: 20 iters, conv 60.02%, g/fl 15.00%, max update 1e-3"
+        This is called once the solution is finished, so it may report a slightly different
+        status. Default version uses the current status.
+        """
+        return self.current_convergence_status_string
 
 
     @staticmethod

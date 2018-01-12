@@ -309,17 +309,17 @@ def main(debugging=False):
                         processed = True
                         stats_dict[tile.get_chunk_indices(key)] = \
                             solver.run_solver(solver_type, itile, key, solver_opts)
-                if processed and single_chunk:
+                if processed:
                     tile.save()
                     for sd in tile.iterate_solution_chunks():
                         solver.gm_factory.save_solutions(sd)
                         solver.ifrgain_machine.accumulate(sd)
-                    print>>log(0),ModColor.Str("single-chunk {} was processed in this tile. Will now finish".format(single_chunk))
                 else:
                     print>>log(0),"  single-chunk {} not in this tile, skipping it.".format(single_chunk)
                 tile.release()
                 # break out after single chunk is processed
                 if processed and single_chunk:
+                    print>>log(0),ModColor.Str("single-chunk {} was processed in this tile. Will now finish".format(single_chunk))
                     break
             solver.ifrgain_machine.save()
             solver.gm_factory.close()
@@ -333,7 +333,7 @@ def main(debugging=False):
                 io_futures = {}
                 # schedule I/O job to load tile 0
                 io_futures[0] = io_executor.submit(_io_handler, load=0, save=None)
-                # all I/O will be done by the io_executor, so we need to close the MS in the main process
+                # all I/O will be done by the io"single chunk_executor, so we need to close the MS in the main process
                 # and reopen it afterwards
                 ms.close()
                 for itile, tile in enumerate(Tile.tile_list):
@@ -344,9 +344,8 @@ def main(debugging=False):
                         raise RuntimeError("I/O job on tile #{} failed".format(itile+1))
                     del io_futures[itile]
 
-                    # immediately schedule I/O job to save previous/load next tile
-                    print>>log(0),"scheduling I/O on tile #{}".format(itile+2)
 
+                    # immediately schedule I/O job to save previous/load next tile
                     load_next = itile+1 if itile < len(Tile.tile_list)-1 else None
                     save_prev = itile-1 if itile else None
                     io_futures[itile+1] = io_executor.submit(_io_handler, load=load_next,
