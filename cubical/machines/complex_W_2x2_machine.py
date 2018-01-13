@@ -95,21 +95,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             update (np.array): Array containing the result of computing
                 (((J^H)WJ)^-1)(J^H)WR
         """
-
-        
-        jhwr, jhwjinv, flag_count = self.compute_js(obser_arr, model_arr)
-
-        update = np.empty_like(jhwr)
-
-        cyfull.cycompute_update(jhwr, jhwjinv, update)
-
-        if model_arr.shape[0]>1 or self.n_dir>1:
-			update = self.gains + update
-
-        if self.iters % 2 == 0 or self.n_dir>1 :
-            self.gains = 0.5*(self.gains + update)
-        else:
-            self.gains = update
+        flag_count = PerIntervalGains.compute_update(model_arr, obser_arr)
         
         #Computing the weights
         resid_arr = np.empty_like(obser_arr)

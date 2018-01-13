@@ -220,27 +220,12 @@ class PhaseSlopeGains(ParameterisedGains):
         elif self.slope_type=="t-slope":
             self.cyslope.cycompute_jhr(tmp_jhr, jhr, self.chunk_ts, self.t_int, self.f_int)
 
-        return jhr
+        return jhr, self.jhjinv, 0
 
-    def compute_update(self, model_arr, obser_arr):
-        """
-        This function computes the update step of the GN/LM method. This is equivalent to the 
-        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
-
-        Args:
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-        """
-
-        jhr = self.compute_js(obser_arr, model_arr)
-
+    def implement_update(self, jhr, jhjinv):
         update = np.zeros_like(jhr)
 
-        self.cyslope.cycompute_update(jhr, self.jhjinv, update)
+        self.cyslope.cycompute_update(jhr, jhjinv, update)
 
         if self.iters%2 == 0:
             self.slope_params += 0.5*update
@@ -328,7 +313,7 @@ class PhaseSlopeGains(ParameterisedGains):
         for idir in self.fix_directions:
             self.slope_params[idir, ...] = 0
 
-    def precompute_attributes(self, model_arr, flags_arr, noise):
+    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
         """
         Precompute (J\ :sup:`H`\J)\ :sup:`-1`, which does not vary with iteration.
 

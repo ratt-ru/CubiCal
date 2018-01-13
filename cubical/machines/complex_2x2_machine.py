@@ -90,41 +90,20 @@ class Complex2x2Gains(PerIntervalGains):
 
         return jhr, jhjinv, flag_count
 
-    def compute_update(self, model_arr, obser_arr):
-        """
-        This function computes the update step of the GN/LM method. This is equivalent to the 
-        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
-
-        Args:
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.            
-
-        Returns:
-            int:
-                Count of flags raised.
-        """
-
-        jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
-
+    def implement_update(self, jhr, jhjinv):
         update = np.empty_like(jhr)
 
         cyfull.cycompute_update(jhr, jhjinv, update)
 
-        if model_arr.shape[0]>1:
+        if self.dd_term and self.n_dir > 1:
             update = self.gains + update
 
-        if self.iters % 2 == 0 or self.n_dir>1 :
+        if self.iters % 2 == 0 or self.n_dir > 1:
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
-        
-        self.restrict_solution()
 
-        return flag_count
+        self.restrict_solution()
 
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):

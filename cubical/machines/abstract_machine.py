@@ -109,23 +109,49 @@ class MasterMachine(object):
         self._iters = value
 
     @abstractmethod
-    def compute_js(self):
+    def compute_js(self, obser_arr, model_arr):
         """
         This method is expected to compute (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R. 
-        In practice, this method can be very flexible, as it is only used in the compute_update 
-        method and need only be consistent with that usage. Should support the use of both the true 
-        residual and the observed data. 
+        
+        Args:
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.            
+
+        
+        Returns:
+            3-element tuple
+                
+                - J\ :sup:`H`\R (np.ndarray)
+                - (J\ :sup:`H`\J)\ :sup:`-1` (np.ndarray)
+                - Count of flags raised (int)     
         """
 
         return NotImplementedError
 
     @abstractmethod
+    def implement_update(self, jhr, jhjinv):
+        """
+        Internal method implementing a parameter update. The standard compute_update() implementation 
+        calls compute_js() and _implement_update() at each iteration step.
+        
+        Args:
+            jhr (np.ndarray):
+                J\ :sup:`H`\R term
+            jhjinv (np.ndarray):
+                (J\ :sup:`H`\J)\ :sup:`-1` term
+        """
+        return NotImplementedError
+
     def compute_update(self, model_arr, obser_arr):
         """
-        This method is expected to compute the parameter update. As such, it must fetch or compute 
-        the terms of the update in order to update the gains. Should call the compute_js but is 
-        very flexible, provided it ultimately updates the gains. Function signature consistent with
-        the one defined here.
+        This method is expected to compute the parameter update. 
+        
+        The standard implementation simply calls compute_js() and implement_update(), but subclasses are free to 
+        override.
 
         Args:
             model_arr (np.ndarray): 
@@ -135,8 +161,11 @@ class MasterMachine(object):
                 Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
                 visibilities. 
         """
+        jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
-        return NotImplementedError
+        self.implement_update(jhr, jhjinv)
+
+        return flag_count
 
     @abstractmethod
     def compute_residual(self, obser_arr, model_arr, resid_arr):
@@ -213,7 +242,7 @@ class MasterMachine(object):
         """
         return 0
 
-    def _update_equation_counts (self, unflagged):
+    def _update_equation_counts(self, unflagged):
         """
         Internal method used by precompute_attributes() and propagate_gflags() to set up equation 
         counters and chi-sq normalization factors. Sets up the following attributes:
@@ -238,8 +267,9 @@ class MasterMachine(object):
 
         self.eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2)) * self.n_mod * self.n_cor * self.n_cor * 2
 
-        with np.errstate(invalid='ignore'):
+        with np.errstate(invalid='ignore', divide='ignore'):
             self._chisq_tf_norm_factor = 1./self.eqs_per_tf_slot
+        self._chisq_tf_norm_factor[self.eqs_per_tf_slot==0] = 0
 
         toteq = np.sum(self.eqs_per_tf_slot)
         self._chisq_norm_factor = 1./toteq if toteq else 0
@@ -302,8 +332,13 @@ class MasterMachine(object):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing integer flags
             inv_var_chan (np.ndarray)
                 Shape (nfreq,) array of 1/sigma^2 per channel
-        """         
-        self._update_equation_counts(flags_arr!=0)
+                
+        Returns:
+            bool np.ndarray, shape (n_tim, n_fre, n_ant, n_ant), indicating the inverse of flags
+        """
+        unflagged = flags_arr==0
+        self._update_equation_counts(unflagged)
+        return unflagged
 
     @abstractmethod				
     def update_conv_params(self, min_delta_g):

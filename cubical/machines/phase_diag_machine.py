@@ -80,27 +80,12 @@ class PhaseDiagGains(PerIntervalGains):
 
         cyphase.cycompute_jhr(gh, jh, r, jhr, self.t_int, self.f_int)
 
-        return jhr.imag
+        return jhr.imag, self.jhjinv, 0
 
-    def compute_update(self, model_arr, obser_arr):
-        """
-        This function computes the update step of the GN/LM method. This is equivalent to the 
-        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
-
-        Args:
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-        """
-
-        jhr = self.compute_js(obser_arr, model_arr)
-
+    def implement_update(self, jhr, jhjinv):
         update = np.zeros_like(jhr)
 
-        cyphase.cycompute_update(jhr, self.jhjinv, update)
+        cyphase.cycompute_update(jhr, jhjinv, update)
 
         if self.iters%2 == 0:
             self.phases += 0.5*update

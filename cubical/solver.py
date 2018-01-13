@@ -152,7 +152,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # The following provides conditioning information when verbose is set to > 0.
     if log.verbosity() > 0:
 
-        print>> log, "{} initial chi2 {:.4}; {}; noise {:.3}, flags: {}".format(
+        print>> log, "{} chi^2_0 {:.4}; {}; noise {:.3}, flags: {}".format(
                         label, mean_chi, gm.conditioning_status_string,
                         float(stats.chunk.init_noise), get_flagging_stats())
 
@@ -263,7 +263,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         stats.chunk.chi2 = mean_chi
 
-        message = "{} {}, stall {:.2%}, chi2 {:.4} -> {:.4}".format(label,
+        message = "{} {}, stall {:.2%}, chi^2 {:.4} -> {:.4}".format(label,
                     gm.final_convergence_status_string,
                     frac_stall, float(stats.chunk.init_chi2), mean_chi)
 

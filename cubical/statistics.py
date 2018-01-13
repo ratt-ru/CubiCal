@@ -106,7 +106,7 @@ class SolverStats (object):
         if n_fre == 1:
             return 1., np.ones((n_fre, n_ant), np.float32), np.ones(n_ant, np.float32), np.ones(n_fre, np.float32)
 
-        deltaflags = (flags!=0)
+        deltaflags = flags!=0
         deltaflags[:, 1:, ...] = deltaflags[:, 1:, ...] | deltaflags[:, :-1, ...]
         deltaflags[:, 0 , ...] = deltaflags[:,   1, ...]
 
@@ -154,10 +154,15 @@ class SolverStats (object):
         # Compute the variance overall, and per antenna, and per channel.
 
         with np.errstate(divide='ignore', invalid='ignore'):  # ignore division by 0
-            noise_est = math.sqrt(deltavis2_chan_ant.sum() / deltanum_chan_ant.sum())
+            inv_var = deltanum_chan_ant.sum() / deltavis2_chan_ant.sum()
+            noise_est = math.sqrt(1/inv_var)
             inv_var_antchan =  deltavis2_chan_ant / deltanum_chan_ant
             inv_var_ant  = deltanum_chan_ant.sum(axis=0) / deltavis2_chan_ant.sum(axis=0)
             inv_var_chan = deltanum_chan_ant.sum(axis=1) / deltavis2_chan_ant.sum(axis=1)
+
+        # Isolated but valid channels may end up with no noise estimate at all. Fill one in from noise_est
+        validchans = (flags==0).sum(axis=(0,2,3)) != 0
+        inv_var_chan[validchans&~np.isfinite(inv_var_chan)] = inv_var
 
         # Antennas/channels with no data end up with NaNs here, so replace them with 0.
         

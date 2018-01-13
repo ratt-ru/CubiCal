@@ -159,7 +159,7 @@ class JonesChain(MasterMachine):
                 - Count of flags raised (int)     
         """     
 
-        n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.gains.shape
+        n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.active_term.gains.shape
 
         if self.last_active_index!=self.active_index or self.iters==1:
         
@@ -202,58 +202,20 @@ class JonesChain(MasterMachine):
         
         jhrint = np.zeros(jhrint_shape, dtype=jhr.dtype)
 
-        cychain.cysum_jhr_intervals(jhr, jhrint, self.t_int, self.f_int)
+        cychain.cysum_jhr_intervals(jhr, jhrint, self.active_term.t_int, self.active_term.f_int)
 
         jhj = np.zeros(jhrint_shape, dtype=obser_arr.dtype)
 
-        cyfull.cycompute_jhj(self.jh, jhj, self.t_int, self.f_int)
+        cyfull.cycompute_jhj(self.jh, jhj, self.active_term.t_int, self.active_term.f_int)
 
         jhjinv = np.empty(jhrint_shape, dtype=obser_arr.dtype)
 
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, self.flagbit)
+        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.active_term.gflags, self.active_term.eps, self.active_term.flagbit)
 
         return jhrint, jhjinv, flag_count
 
-    def compute_update(self, model_arr, obser_arr):
-        """
-        This function computes the update step of the GN/LM method. This is equivalent to the 
-        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
-
-        Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-
-        Returns:
-            int:
-                Count of flags raised.
-        """
-
-        # if not(self.dd_term) and model_arr.shape[0]>1:
-        #     jhr, jhjinv, flag_count = self.compute_js(obser_arr, np.sum(model_arr, axis=0, keepdims=True))
-        # else:
-        #     jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
-
-        jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
-
-        update = np.empty_like(jhr)
-
-        cyfull.cycompute_update(jhr, jhjinv, update)
-
-        if self.dd_term and model_arr.shape[0]>1:
-            update = self.gains + update
-
-        if self.iters % 2 == 0 or self.dd_term:
-            self.gains = 0.5*(self.gains + update)
-        else:
-            self.gains = update
-
-        self.restrict_solution()
-
-        return flag_count
+    def implement_update(self, jhr, jhjinv):
+        return self.active_term.implement_update(jhr, jhjinv)
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
@@ -350,23 +312,21 @@ class JonesChain(MasterMachine):
             min_delta_g (float):
                 Threshold for the minimum change in the gains - convergence criterion.
         """
-
-        self.active_term.update_conv_params(min_delta_g)
+        return self.active_term.update_conv_params(min_delta_g)
 
     def restrict_solution(self):
         """
         Restricts the solutions by, for example, selecting a reference antenna or taking only the 
         amplitude. 
         """
-
-        self.active_term.restrict_solution()
+        return self.active_term.restrict_solution()
 
     def flag_solutions(self):
         """ Flags gain solutions based on certain criteria, e.g. out-of-bounds, null, etc. """
-        self.active_term.flag_solutions()
+        return self.active_term.flag_solutions()
 
     def num_gain_flags(self, mask=None):
-        self.active_term.num_gain_flags()
+        return self.active_term.num_gain_flags(mask)
 
     def propagate_gflags(self, flags):
         """
@@ -377,7 +337,7 @@ class JonesChain(MasterMachine):
             flags (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
         """
-        self.active_term.propagate_gflags(flags)
+        return self.active_term.propagate_gflags(flags)
 
     def _next_chain_term(self):
         if not self.term_iters:
@@ -454,7 +414,8 @@ class JonesChain(MasterMachine):
 
     @property
     def conditioning_status_string(self):
-        return "; ".join([term.conditioning_status_string for term in self.jones_terms])
+        return "; ".join(["{}: {}".format(term.jones_label, term.conditioning_status_string)
+                          for term in self.jones_terms])
 
     @property
     def current_convergence_status_string(self):
@@ -464,7 +425,8 @@ class JonesChain(MasterMachine):
     @property
     def final_convergence_status_string(self):
         """Final status is reported from all terms"""
-        return "; ".join([term.final_convergence_status_string for term in self.jones_terms])
+        return "; ".join(["{}: {}".format(term.jones_label, term.final_convergence_status_string)
+                          for term in self.jones_terms])
 
     @property
     def has_converged(self):

@@ -210,7 +210,7 @@ class PerIntervalGains(MasterMachine):
 
     def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
         """Precomputes various stats before starting a solution"""
-        MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
+        unflagged = MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
 
         # Pre-flag gain solution intervals that are completely flagged in the input data
         # (i.e. MISSING|PRIOR). This has shape (n_timint, n_freint, n_ant).
@@ -222,6 +222,34 @@ class PerIntervalGains(MasterMachine):
         # convert the intervals array to gain shape, and apply flags
         self.gflags[:, self._interval_to_gainres(missing_intervals)] = FL.MISSING
 
+        # number of data points per time/frequency/antenna
+        numeq_tfa = unflagged.sum(axis=-1)
+
+        # compute error estimates per direction, antenna, and interval
+        with np.errstate(invalid='ignore', divide='ignore'):
+            sigmasq = 1/inv_var_chan                        # squared noise per channel. Could be infinite if no data
+            # collapse direction axis, if not directional
+            if not self.dd_term:
+                model_arr = model_arr.sum(0)
+                model_arr = model_arr.reshape([1]+list(model_arr.shape))
+            # mean |model|^2 per direction+TFA
+            modelsq = (model_arr*np.conj(model_arr)).real.sum(axis=(1,-1,-2,-3)) / \
+                      (self.n_mod*self.n_cor*self.n_cor*numeq_tfa)
+            # inverse SNR^2 per direction+TFA
+            inv_snr2 = sigmasq[np.newaxis, np.newaxis, :, np.newaxis] / modelsq
+            inv_snr2[:, numeq_tfa==0] = 0
+            # take the mean SNR^-2 over each interval
+            # numeq_tfa becomes number of points per interval, antenna
+            numeq_tfa = self.interval_sum(numeq_tfa)
+            inv_snr2_int = self.interval_sum(inv_snr2,1) / numeq_tfa[np.newaxis,...]
+            inv_snr2_int[:, numeq_tfa==0] = 0
+            # convert that into a gain error per direction,interval,antenna
+            self.gain_error = np.sqrt(inv_snr2_int /
+                                      (self.eqs_per_interval - self.num_unknowns)[np.newaxis, :, :, np.newaxis])
+
+        self.gain_error[:, ~self.valid_intervals, :] = 0
+        if self.fix_directions:
+            self.gain_error[self.fix_directions, : , : ,:] = 0
 
     def _update_equation_counts(self, unflagged):
         """Sets up equation counters based on flagging information. Overrides base version to compute
@@ -230,13 +258,27 @@ class PerIntervalGains(MasterMachine):
 
         self.eqs_per_interval = self.interval_sum(self.eqs_per_tf_slot)
 
+        ndir = self.n_dir - len(self.fix_directions) if self.dd_term else 1
+        self.num_unknowns = self.dof_per_antenna*self.n_ant*ndir
+
         # The following determines the number of valid (unflagged) time/frequency slots and the number
         # of valid solution intervals.
 
-        self.valid_intervals = self.eqs_per_interval>0
+        self.valid_intervals = self.eqs_per_interval > self.num_unknowns
         self.num_valid_intervals = self.valid_intervals.sum()
         self.n_sols = self.num_valid_intervals * self.n_dir
 
+        if self.num_valid_intervals:
+            # Adjust chi-sq normalisation based on DoF count: MasterMachine computes chi-sq normalization
+            # as 1/N_eq, we want to compute it as the reduced chi-square statistic, 1/(N_eq-N_dof)
+            # This results in a per-interval correction factor
+
+            with np.errstate(invalid='ignore', divide='ignore'):
+                corrfact = self.eqs_per_interval.astype(float)/(self.eqs_per_interval - self.num_unknowns)
+            corrfact[~self.valid_intervals] = 0
+
+            self._chisq_tf_norm_factor *= self.unpack_intervals(corrfact)
+            self._chisq_norm_factor *= corrfact.sum() / self.num_valid_intervals
 
 
     def next_iteration(self):
@@ -252,11 +294,12 @@ class PerIntervalGains(MasterMachine):
         
         flagged = self.gflags != 0
 
-        # Check for inf/nan solutions. One bad correlation will trigger flagging for all corrlations.
+        # Check for inf/nan solutions. One bad correlation will trigger flagging for all correlations.
 
         boom = (~np.isfinite(self.gains)).any(axis=(-1,-2))
         self.gflags[boom&~flagged] |= FL.BOOM
         flagged |= boom
+        gain_mags[boom] = 0
 
         # Check for gain solutions for which diagonal terms have gone to 0.
 
@@ -282,7 +325,7 @@ class PerIntervalGains(MasterMachine):
 
         # for DD-terms, reset flagged gains to unity
         if self.dd_term:
-            self.gains[self.gflags] = np.eye(2)
+            self.gains[self.gflags!=0] = np.eye(2)
 
     def num_gain_flags(self, mask=None):
         return (self.gflags&(mask or ~FL.MISSING) != 0).sum(), self.gflags.size
@@ -306,8 +349,20 @@ class PerIntervalGains(MasterMachine):
         flags |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING 
         flags |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
 
-        self.update_equation_counts(flags != 0)
+        self._update_equation_counts(flags==0)
 
+    @property
+    def dof_per_antenna(self):
+        """This property returns the number of real degrees of freedom per antenna, per solution interval"""
+        if self.update_type == "diag":
+            dofs = 4
+        elif self.update_type == "phase-diag":
+            dofs = 2
+        elif self.update_type == "amp-diag":
+            dofs = 2
+        else:
+            dofs = 8
+        return dofs
 
     @property
     def num_valid_solutions(self):
@@ -426,8 +481,9 @@ class PerIntervalGains(MasterMachine):
         mineqs = self.eqs_per_interval[self.valid_intervals].min()
         maxeqs = self.eqs_per_interval.max()
         anteqs = (self.eqs_per_antenna!=0).sum()
-        return "{}/{} valid intervals ({}-{} eqs per int), {}/{} valid antennas".format(
-            self.num_valid_intervals, self.n_tf_ints, mineqs, maxeqs, anteqs, self.n_ant)
+        return "{}{}/{} ints ({}-{} EPI), {}/{} ants, Gemax {:.3}".format(
+            "{} dirs, ".format(self.n_dir) if self.dd_term else "",
+            self.num_valid_intervals, self.n_tf_ints, mineqs, maxeqs, anteqs, self.n_ant, self.gain_error.max())
 
 
     @property
