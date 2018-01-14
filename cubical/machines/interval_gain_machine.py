@@ -55,6 +55,9 @@ class PerIntervalGains(MasterMachine):
         self.n_freint = len(self.f_bins)
         self.n_tf_ints = self.n_timint * self.n_freint
 
+        # Total number of independent gain problems to be solved
+        self.n_sols = self.n_valid_sols = self.n_dir * self.n_tf_ints
+
         # split grids into intervals, and find the centre of gravity of each
         timebins = np.split(times, self.t_bins[1:])
         freqbins = np.split(frequencies, self.f_bins[1:])
@@ -112,8 +115,6 @@ class PerIntervalGains(MasterMachine):
         self.gains[:] = np.eye(self.n_cor)
         self.flag_shape = self.gain_shape[:-2]
         self.gflags = np.zeros(self.flag_shape,FL.dtype)
-        # Total number of independent gain problems to be solved
-        self.n_sols = self.n_valid_sols = self.n_dir * self.n_tim * self.n_fre
 
         # function used to unpack the gains or flags into full time/freq resolution
         self._gainres_to_fullres  = self.unpack_intervals
