@@ -228,12 +228,12 @@ class MasterMachine(object):
         return NotImplementedError
 
     @property
-    def num_valid_solutions(self):
+    def has_valid_solutions(self):
         """
-        This property gives the total number of valid solutions defined by the machine, however that is
-        counted (e.g. can be solution intervals)
+        This property returns True if the gain machine has any valid solutions defined. (The opposite would be
+        true if e.g. they were all flagged).
         """
-        return 0
+        return False
 
     @property
     def num_converged_solutions(self):

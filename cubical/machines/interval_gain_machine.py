@@ -96,6 +96,7 @@ class PerIntervalGains(MasterMachine):
         self.gains = None
 
         # Construct flag array and populate flagging attributes.
+        self.max_gain_error = options["max-prior-error"]
 
         self.clip_lower = options["clip-low"]
         self.clip_upper = options["clip-high"]
@@ -252,9 +253,29 @@ class PerIntervalGains(MasterMachine):
         # reset to 0 for fixed directions
         if self.dd_term:
             self.gain_error[self.fix_directions,...] = 0
-        # get error estimate model
-        model = np.sqrt(self.interval_sum(modelsq,1))
-        self.model_error = model*self.gain_error*(2+self.gain_error)
+
+        # flag gains on max error
+        bad_gain_intervals = self.gain_error>self.max_gain_error    # dir,time,freq,ant
+        if bad_gain_intervals.any():
+            # (n_dir,) array showing how many were flagged per direction
+            self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
+            # raised corresponding gain flags
+            self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] = FL.LOWSNR
+            self.gain_error[bad_gain_intervals] = 0
+            # flag intervals where all directions are bad, and propagate that out into flags
+            bad_intervals = bad_gain_intervals.all(axis=0)
+            if bad_intervals.any():
+                bad_slots = self.unpack_intervals(bad_intervals)
+                flags_arr[bad_slots,...] |= FL.LOWSNR
+                unflagged[bad_slots,...] = False
+                self._update_equation_counts(unflagged)
+        else:
+            self._n_flagged_on_max_error = None
+
+        return unflagged
+        # # get error estimate model
+        # model = np.sqrt(self.interval_sum(modelsq,1))
+        # self.model_error = model*self.gain_error*(2+self.gain_error)
 
     def _update_equation_counts(self, unflagged):
         """Sets up equation counters based on flagging information. Overrides base version to compute
@@ -346,7 +367,7 @@ class PerIntervalGains(MasterMachine):
         """
 
         # convert gain flags to full time/freq resolution
-        nodir_flags = self._gainres_to_fullres(np.bitwise_or.reduce(self.gflags, axis=0))
+        nodir_flags = self._gainres_to_fullres(np.bitwise_and.reduce(self.gflags, axis=0))
 
         # We remove the FL.MISSING bit when propagating as this bit is pre-set for data flagged
         # as PRIOR|MISSING. This prevents every PRIOR but not MISSING flag from becoming MISSING.
@@ -370,8 +391,8 @@ class PerIntervalGains(MasterMachine):
         return dofs
 
     @property
-    def num_valid_solutions(self):
-        return self.n_valid_sols
+    def has_valid_solutions(self):
+        return bool(self.n_valid_sols)
 
     @property
     def num_converged_solutions(self):
@@ -483,14 +504,17 @@ class PerIntervalGains(MasterMachine):
     @property
     def conditioning_status_string(self):
         """Returns conditioning status string"""
-        mineqs = self.eqs_per_interval[self.valid_intervals].min()
+        mineqs = self.eqs_per_interval[self.valid_intervals].min() if self.num_valid_intervals else 0
         maxeqs = self.eqs_per_interval.max()
         anteqs = (self.eqs_per_antenna!=0).sum()
-        return "{}{}/{} ints ({}-{} EPI), {}/{} ants, MGE {}, MME {}".format(
+        return "{}{}/{} ints{}, {}/{} ants, MGE {}{}".format(
             "{} dirs, ".format(self.n_dir) if self.dd_term else "",
-            self.num_valid_intervals, self.n_tf_ints, mineqs, maxeqs, anteqs, self.n_ant,
+            self.num_valid_intervals, self.n_tf_ints,
+            " ({}-{} EPI)".format(mineqs, maxeqs) if self.num_valid_intervals else "",
+            anteqs, self.n_ant,
             " ".join(["{:.3}".format(self.gain_error[idir,:].max()) for idir in xrange(self.n_dir) ]),
-            " ".join(["{:.3}".format(self.model_error[idir,:].max()) for idir in xrange(self.n_dir) ])
+            ", NFME {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
+                if self._n_flagged_on_max_error is not None else ""
             )
 
 

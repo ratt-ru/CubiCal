@@ -112,13 +112,17 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     
     update_stats(flags_arr, ('initchi2', 'chi2'))
 
+    # get initial number of gain flags (that aren't due to missing data)
+    n_gflags, _ = gm.num_gain_flags()
+
     # In the event that there are no solutions with valid data, this will log some of the
     # flag information and break out of the function.
 
-    if gm.num_valid_solutions == 0:
+    if not gm.has_valid_solutions:
+        stats.chunk.num_sol_flagged = n_gflags
 
-        print>> log, ModColor.Str("{} is completely flagged: {}".format(label, get_flagging_stats()))
-
+        print>> log, ModColor.Str("{} no solutions: {}; flags {}".format(label,
+                        gm.conditioning_status_string, get_flagging_stats()))
         return (obser_arr if compute_residuals else None), stats
 
     # Initialize a residual array.
@@ -155,9 +159,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         print>> log, "{} chi^2_0 {:.4}; {}; noise {:.3}, flags: {}".format(
                         label, mean_chi, gm.conditioning_status_string,
                         float(stats.chunk.init_noise), get_flagging_stats())
-
-    # get initial number of gain flags (that aren't due to missing data)
-    n_gflags, _ = gm.num_gain_flags()
 
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
@@ -204,7 +205,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
             # Break out of the solver loop if we find ourselves with no valid solution intervals.
             
-            if gm.num_valid_solutions == 0:
+            if not gm.has_valid_solutions:
                 break
 
         have_residuals = False
@@ -238,14 +239,14 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                print>> log(1), ("{} {} chi2 {:.4}, delta {:.4}, stall {:.2%}").format(
+                print>> log(2), ("{} {} chi2 {:.4}, delta {:.4}, stall {:.2%}").format(
                                     label, gm.current_convergence_status_string,
                                     mean_chi, delta_chi, frac_stall)
 
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
     
-    if gm.num_valid_solutions:
+    if gm.has_valid_solutions:
 
         # Do we need to recompute the final residuals?
         if (sol_opts['last-rites'] or compute_residuals) and not have_residuals:

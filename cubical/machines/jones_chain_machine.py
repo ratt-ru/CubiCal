@@ -373,9 +373,9 @@ class JonesChain(MasterMachine):
         return self.active_term.compute_chisq(resid_arr, inv_var_chan)
 
     @property
-    def num_valid_solutions(self):
+    def has_valid_solutions(self):
         """Gives corresponding property of the active chain term"""
-        return self.active_term.num_valid_solutions
+        return all([term.has_valid_solutions for term in self.jones_terms])
 
     @property
     def num_converged_solutions(self):

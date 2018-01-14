@@ -32,7 +32,8 @@ class FL(object):
     GOOB     = dtype(1<<6)    # gain solution out of bounds
     BOOM     = dtype(1<<7)    # gain solution exploded (i.e. went to inf/nan)
     GNULL    = dtype(1<<8)    # gain solution gone to zero
-    SKIPSOL  = dtype(1<<9)    # omit this data point from the solver
+    LOWSNR   = dtype(1<<9)    # SNR too low for gain solution
+    SKIPSOL  = dtype(1<<15)   # omit this data point from the solver
 
     @staticmethod
     def categories():

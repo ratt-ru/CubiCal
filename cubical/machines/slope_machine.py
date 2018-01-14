@@ -332,7 +332,7 @@ class PhaseSlopeGains(ParameterisedGains):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
                 model visibilities.
         """
-        ParameterisedGains.precompute_attributes(self, model_arr, flags_arr, noise)
+        ParameterisedGains.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
 
         tmp_jhj_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, self.n_ant, 2, 2] 
 
