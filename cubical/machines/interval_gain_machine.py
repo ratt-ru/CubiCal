@@ -46,7 +46,7 @@ class PerIntervalGains(MasterMachine):
 
         # Initialise attributes used for computing values over intervals.
         # n_tim and n_fre are the time and frequency dimensions of the data arrays.
-        # n_timint and n_freint are the time and frequnecy dimensions of the gains.
+        # n_timint and n_freint are the time and frequency dimensions of the gains.
 
         self.t_bins = range(0, self.n_tim, self.t_int)
         self.f_bins = range(0, self.n_fre, self.f_int)
@@ -108,13 +108,12 @@ class PerIntervalGains(MasterMachine):
         subclasses may redefine this, if they deal with full-resolution gains.
         """
         self.gain_grid = self.interval_grid
-        self.gain_shape = [self.n_dir,self.n_timint,self.n_freint,self.n_ant,self.n_cor,self.n_cor]
         self.gains = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:] = np.eye(self.n_cor)
         self.flag_shape = self.gain_shape[:-2]
         self.gflags = np.zeros(self.flag_shape,FL.dtype)
         # Total number of independent gain problems to be solved
-        self.n_sols = self.n_dir * self.n_tim * self.n_fre
+        self.n_sols = self.n_valid_sols = self.n_dir * self.n_tim * self.n_fre
 
         # function used to unpack the gains or flags into full time/freq resolution
         self._gainres_to_fullres  = self.unpack_intervals
@@ -235,6 +234,7 @@ class PerIntervalGains(MasterMachine):
             # mean |model|^2 per direction+TFA
             modelsq = (model_arr*np.conj(model_arr)).real.sum(axis=(1,-1,-2,-3)) / \
                       (self.n_mod*self.n_cor*self.n_cor*numeq_tfa)
+            modelsq[:, numeq_tfa==0] = 0
             # inverse SNR^2 per direction+TFA
             inv_snr2 = sigmasq[np.newaxis, np.newaxis, :, np.newaxis] / modelsq
             inv_snr2[:, numeq_tfa==0] = 0
@@ -248,8 +248,12 @@ class PerIntervalGains(MasterMachine):
                                       (self.eqs_per_interval - self.num_unknowns)[np.newaxis, :, :, np.newaxis])
 
         self.gain_error[:, ~self.valid_intervals, :] = 0
-        if self.fix_directions:
-            self.gain_error[self.fix_directions, : , : ,:] = 0
+        # reset to 0 for fixed directions
+        if self.dd_term:
+            self.gain_error[self.fix_directions,...] = 0
+        # get error estimate model
+        model = np.sqrt(self.interval_sum(modelsq,1))
+        self.model_error = model*self.gain_error*(2+self.gain_error)
 
     def _update_equation_counts(self, unflagged):
         """Sets up equation counters based on flagging information. Overrides base version to compute
@@ -266,7 +270,7 @@ class PerIntervalGains(MasterMachine):
 
         self.valid_intervals = self.eqs_per_interval > self.num_unknowns
         self.num_valid_intervals = self.valid_intervals.sum()
-        self.n_sols = self.num_valid_intervals * self.n_dir
+        self.n_valid_sols = self.num_valid_intervals * self.n_dir
 
         if self.num_valid_intervals:
             # Adjust chi-sq normalisation based on DoF count: MasterMachine computes chi-sq normalization
@@ -366,7 +370,7 @@ class PerIntervalGains(MasterMachine):
 
     @property
     def num_valid_solutions(self):
-        return self.n_sols
+        return self.n_valid_sols
 
     @property
     def num_converged_solutions(self):
@@ -481,9 +485,12 @@ class PerIntervalGains(MasterMachine):
         mineqs = self.eqs_per_interval[self.valid_intervals].min()
         maxeqs = self.eqs_per_interval.max()
         anteqs = (self.eqs_per_antenna!=0).sum()
-        return "{}{}/{} ints ({}-{} EPI), {}/{} ants, Gemax {:.3}".format(
+        return "{}{}/{} ints ({}-{} EPI), {}/{} ants, MGE {}, MME {}".format(
             "{} dirs, ".format(self.n_dir) if self.dd_term else "",
-            self.num_valid_intervals, self.n_tf_ints, mineqs, maxeqs, anteqs, self.n_ant, self.gain_error.max())
+            self.num_valid_intervals, self.n_tf_ints, mineqs, maxeqs, anteqs, self.n_ant,
+            " ".join(["{:.3}".format(self.gain_error[idir,:].max()) for idir in xrange(self.n_dir) ]),
+            " ".join(["{:.3}".format(self.model_error[idir,:].max()) for idir in xrange(self.n_dir) ])
+            )
 
 
     @property

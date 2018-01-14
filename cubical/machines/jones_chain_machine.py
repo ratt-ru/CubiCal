@@ -64,8 +64,7 @@ class JonesChain(MasterMachine):
             if jones_class is not Complex2x2Gains and term_opts['solvable']:
                 raise UserInputError("only complex-2x2 terms can be made solvable in a Jones chain")
             self.jones_terms.append(jones_class(term_opts["label"], data_arr,
-                                        ndir if term_opts["dd-term"] else 1,
-                                        nmod, times, frequencies, chunk_label, term_opts))
+                                        ndir, nmod, times, frequencies, chunk_label, term_opts))
 
         self.n_terms = len(self.jones_terms)
         # make list of number of iterations per solvable term

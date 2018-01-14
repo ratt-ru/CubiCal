@@ -75,7 +75,7 @@ class MasterMachine(object):
         self._dd_term = options.get('dd-term')
         self._maxiter = options.get('max-iter', 0)
 
-        self.n_dir, self.n_mod = ndir, nmod
+        self.n_dir, self.n_mod = ndir if self._dd_term else 1, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
 
         self.dtype = data_arr.dtype

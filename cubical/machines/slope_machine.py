@@ -222,6 +222,16 @@ class PhaseSlopeGains(ParameterisedGains):
 
         return jhr, self.jhjinv, 0
 
+    @property
+    def dof_per_antenna(self):
+        """This property returns the number of real degrees of freedom per antenna, per solution interval"""
+        if self.slope_type=="tf-plane":
+            return 6
+        elif self.slope_type=="f-slope":
+            return 4
+        elif self.slope_type=="t-slope":
+            return 4
+
     def implement_update(self, jhr, jhjinv):
         update = np.zeros_like(jhr)
 

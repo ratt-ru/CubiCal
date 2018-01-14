@@ -82,6 +82,12 @@ class PhaseDiagGains(PerIntervalGains):
 
         return jhr.imag, self.jhjinv, 0
 
+
+    @property
+    def dof_per_antenna(self):
+        """This property returns the number of real degrees of freedom per antenna, per solution interval"""
+        return 2
+
     def implement_update(self, jhr, jhjinv):
         update = np.zeros_like(jhr)
 

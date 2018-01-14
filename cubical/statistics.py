@@ -235,7 +235,8 @@ class SolverStats (object):
 
         # Make 2D array of per-chunk values.
 
-        self.chunk = np.rec.array([[stats[time, chan].chunk for chan in chans] for time in times])
+        self.chunk = np.rec.array([[stats[time, chan].chunk for chan in chans] for time in times],
+                                  dtype=stats[times[0], chans[0]].chunk.dtype)
 
     def apply_flagcube(self, flag3):
         """
