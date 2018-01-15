@@ -31,7 +31,6 @@ class Complex2x2Gains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
-
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
         

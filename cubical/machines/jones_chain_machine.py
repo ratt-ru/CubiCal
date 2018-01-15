@@ -168,7 +168,7 @@ class JonesChain(MasterMachine):
                 term = self.jones_terms[ind]
                 term.apply_gains(self.cached_model_arr)
 
-            if not self.dd_term and self.n_dir>1:
+            if not self.active_term.dd_term and self.n_dir>1:
                 self.cached_model_arr = np.sum(self.cached_model_arr, axis=0, keepdims=True)
 
             self.jh = np.empty_like(self.cached_model_arr)
@@ -179,7 +179,7 @@ class JonesChain(MasterMachine):
             term = self.jones_terms[ind]
             cychain.cycompute_jh(self.jh, term.gains, term.t_int, term.f_int)
             
-        jhr_shape = [n_dir if self.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
+        jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
 
         jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
 
@@ -389,7 +389,7 @@ class JonesChain(MasterMachine):
     @property
     def dd_term(self):
         """Gives corresponding property of the active chain term"""
-        return self.active_term.dd_term
+        return any([ term.dd_term for term in self.jones_terms ])
 
     @property
     def iters(self):

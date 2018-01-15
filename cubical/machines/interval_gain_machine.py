@@ -237,8 +237,7 @@ class PerIntervalGains(MasterMachine):
             sigmasq = 1/inv_var_chan                        # squared noise per channel. Could be infinite if no data
             # collapse direction axis, if not directional
             if not self.dd_term:
-                model_arr = model_arr.sum(0)
-                model_arr = model_arr.reshape([1]+list(model_arr.shape))
+                model_arr = model_arr.sum(axis=0, keepdims=True)
             # mean |model|^2 per direction+TFA
             modelsq = (model_arr*np.conj(model_arr)).real.sum(axis=(1,-1,-2,-3)) / \
                       (self.n_mod*self.n_cor*self.n_cor*numeq_tfa)

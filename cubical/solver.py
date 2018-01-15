@@ -76,7 +76,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     stats.chunk.init_noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
                                                         stats.estimate_noise(obser_arr, flags_arr)
-    
+
+    # if we have directions in the model, but the gain machine is non-DD, collapse them
+    if not gm.dd_term and model_arr.shape[0] > 1:
+        model_arr = model_arr.sum(axis=0, keepdims=True)
+
     # This works out the conditioning of the solution, sets up various chi-sq normalization
     # factors etc, and does any other precomputation required by the current gain machine.
 
