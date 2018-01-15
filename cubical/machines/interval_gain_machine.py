@@ -106,6 +106,12 @@ class PerIntervalGains(MasterMachine):
         self.init_gains()
         self.old_gains = self.gains.copy()
 
+        # Gain error estimates. Populated by subclasses, if available
+        # Should be array of same shape as the gains
+        self.prior_gain_error = None
+        self.posterior_gain_error = None
+
+
     def init_gains(self):
         """
         Construct gain and flag arrays. Normally we have one gain/one flag per interval, but 
@@ -246,22 +252,22 @@ class PerIntervalGains(MasterMachine):
             inv_snr2_int = self.interval_sum(inv_snr2,1) / numeq_tfa[np.newaxis,...]
             inv_snr2_int[:, numeq_tfa==0] = 0
             # convert that into a gain error per direction,interval,antenna
-            self.gain_error = np.sqrt(inv_snr2_int /
+            self.prior_gain_error = np.sqrt(inv_snr2_int /
                                       (self.eqs_per_interval - self.num_unknowns)[np.newaxis, :, :, np.newaxis])
 
-        self.gain_error[:, ~self.valid_intervals, :] = 0
+        self.prior_gain_error[:, ~self.valid_intervals, :] = 0
         # reset to 0 for fixed directions
         if self.dd_term:
-            self.gain_error[self.fix_directions,...] = 0
+            self.prior_gain_error[self.fix_directions, ...] = 0
 
         # flag gains on max error
-        bad_gain_intervals = self.gain_error>self.max_gain_error    # dir,time,freq,ant
+        bad_gain_intervals = self.prior_gain_error > self.max_gain_error    # dir,time,freq,ant
         if bad_gain_intervals.any():
             # (n_dir,) array showing how many were flagged per direction
             self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
             # raised corresponding gain flags
             self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] = FL.LOWSNR
-            self.gain_error[bad_gain_intervals] = 0
+            self.prior_gain_error[bad_gain_intervals] = 0
             # flag intervals where all directions are bad, and propagate that out into flags
             bad_intervals = bad_gain_intervals.all(axis=0)
             if bad_intervals.any():
@@ -512,7 +518,7 @@ class PerIntervalGains(MasterMachine):
             self.num_valid_intervals, self.n_tf_ints,
             " ({}-{} EPI)".format(mineqs, maxeqs) if self.num_valid_intervals else "",
             anteqs, self.n_ant,
-            " ".join(["{:.3}".format(self.gain_error[idir,:].max()) for idir in xrange(self.n_dir) ]),
+            " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]),
             ", NFME {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
                 if self._n_flagged_on_max_error is not None else ""
             )
@@ -525,13 +531,37 @@ class PerIntervalGains(MasterMachine):
             "G: 20 iters, conv 60.02%, g/fl 15.00%"
         """
         if self.solvable:
+            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.n_cnvgd/self.n_sols)
             nfl, ntot = self.num_gain_flags()
-            return "{}: {} iters, conv {:.2%}{}{}, max update {:.4}".format(
-                self.jones_label, self.iters,
-                self.n_cnvgd/self.n_sols,
-                ", g/fl {:.2%}".format(nfl/float(ntot)) if nfl else "",
-                ", d/fl {:.2%}".format(self.missing_gain_fraction) if self.missing_gain_fraction else "",
-                self.max_update)
+            if nfl:
+                string += ", g/fl {:.2%}".format(nfl/float(ntot))
+            if self.missing_gain_fraction:
+                string += ", d/fl {:.2%}".format(self.missing_gain_fraction)
+            string += ", max update {:.4}".format(self.max_update)
+            if self.posterior_gain_error is not None:
+                string += ", PGE " + " ".join(["{:.3}".format(self.posterior_gain_error[idir, :].max())
+                                               for idir in xrange(self.n_dir)])
+            return string
+        else:
+            return "{}: n/s{}".format(self.jones_label, ", loaded" if self._gains_loaded else "")
+
+    @property
+    def final_convergence_status_string(self):
+        """
+        This property must return a status string for the gain machine, e.g.
+            "G: 20 iters, conv 60.02%, g/fl 15.00%"
+        """
+        if self.solvable:
+            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.n_cnvgd/self.n_sols)
+            nfl, ntot = self.num_gain_flags()
+            if nfl:
+                string += ", g/fl {:.2%}".format(nfl/float(ntot))
+            if self.missing_gain_fraction:
+                string += ", d/fl {:.2%}".format(self.missing_gain_fraction)
+            if self.posterior_gain_error is not None:
+                string += ", PGE " + " ".join(["{:.3}".format(self.posterior_gain_error[idir, :].max())
+                                               for idir in xrange(self.n_dir)])
+            return string
         else:
             return "{}: n/s{}".format(self.jones_label, ", loaded" if self._gains_loaded else "")
 

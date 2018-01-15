@@ -93,6 +93,9 @@ class Complex2x2Gains(PerIntervalGains):
     def implement_update(self, jhr, jhjinv):
         update = np.empty_like(jhr)
 
+        # variance of gain is diagonal of jhjinv
+        self.posterior_gain_error = np.sqrt(jhjinv[...,(0,1),(0,1)].real)
+
         cyfull.cycompute_update(jhr, jhjinv, update)
 
         if self.dd_term and self.n_dir > 1:
