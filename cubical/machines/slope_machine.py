@@ -233,6 +233,13 @@ class PhaseSlopeGains(ParameterisedGains):
             return 4
 
     def implement_update(self, jhr, jhjinv):
+
+        # variance of slope parms is diagonal of jhjinv
+        var_slope = jhjinv[..., (0, 1), (0, 1)].real
+        self.posterior_slope_error = np.sqrt(var_slope)
+        # variance of gain is sum of slope parameter variances
+        self.posterior_gain_error = np.sqrt(var_slope.sum(axis=-1))
+
         update = np.zeros_like(jhr)
 
         self.cyslope.cycompute_update(jhr, jhjinv, update)
