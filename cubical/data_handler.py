@@ -538,9 +538,9 @@ class Tile(object):
                           (-0.5*self.antea**2 + (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
 
 
-        # make full list of row indices in Montblanc-compliant order (antenna1-major)
+        # make full list of row indices in Montblanc-compliant order (ddid-time-ant1-ant2)
         full_index = [(p,q,t,d) for d in self.ddids for t in uniq_times
-                            for q in xrange(self.nants) for p in xrange(self.nants)
+                            for p in xrange(self.nants) for q in xrange(self.nants)
                             if p < q]
 
         expected_nrows = len(full_index)
@@ -574,8 +574,9 @@ class Tile(object):
             # extend row index
             current_row_index.update({idx:(row + nrows) for row, idx in  enumerate(missing)})
 
+        # lookup each index in Montblanc order, convert it to a row number
         sorted_ind = np.array([current_row_index[idx] for idx in full_index])
-        import pdb; pdb.set_trace()
+
         return expected_nrows, sorted_ind, row_identifiers
 
     def unprep_for_montblanc(self, nrows):
