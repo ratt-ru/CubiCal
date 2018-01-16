@@ -521,10 +521,10 @@ class Tile(object):
         # First step - check the number of rows.
 
         n_bl = (self.nants*(self.nants - 1))/2
-        ntime = len(np.unique(self.time_col))
+        uniq_times = np.unique(self.times)
+        ntime = len(uniq_times)
 
         nrows = self.last_row - self.first_row + 1
-        expected_nrows = n_bl*ntime*len(self.ddids)
 
         # The row identifiers determine which rows in the SORTED/ALL ROWS are required for the data
         # that is present in the MS. Essentially, they allow for the selection of an array of a size
@@ -532,75 +532,50 @@ class Tile(object):
         # is the offset by time, and the last turns antea and anteb into a unique offset per 
         # baseline.
 
-        ddid_ind = self.ddid_col.copy()
+        ddid_ind = np.array([self.handler._ddid_index[ddid] for ddid in self.ddid_col])
 
-        for ind, ddid in enumerate(self.ddids):
-            ddid_ind[ddid_ind==ddid] = ind
-
-        row_identifiers = ddid_ind*n_bl*ntime + (self.times - np.min(self.times))*n_bl + \
+        row_identifiers = ddid_ind*n_bl*ntime + (self.times - self.times[0])*n_bl + \
                           (-0.5*self.antea**2 + (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
 
-        # Based on the number of rows versus the expected number of rows, we determine whether rows
-        # must be added or removed. If rows must be removed, we assume they are all 
-        # auto-correlations and raise an error if removing them still yields and inconsistent 
-        # number of rows.
 
-        if nrows == expected_nrows:
-            logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log(1), "  {} rows consistent with {} timeslots and {} baselines" \
-                                                                " across {} bands".format(*logstr)
-            
-            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
+        # make full list of row indices in Montblanc-compliant order (antenna1-major)
+        full_index = [(p,q,t,d) for d in self.ddids for t in uniq_times
+                            for q in xrange(self.nants) for p in xrange(self.nants)
+                            if p < q]
 
-        elif nrows < expected_nrows:
-            logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines " \
-                                                                "across {} bands".format(*logstr)
-            print>> log(1), "  {} fewer rows than expected".format(expected_nrows - nrows)
+        expected_nrows = len(full_index)
 
-            nmiss = expected_nrows - nrows
+        # and corresponding full set of indices
+        full_row_set = set(full_index)
 
-            baselines = [(a,b) for a in xrange(self.nants) for b in xrange(self.nants) if b>a]
+        print>> log(1), "  {} rows ({} expected for {} timeslots, {} baselines and {} DDIDs)".format(
+                        nrows, expected_nrows, ntime, n_bl, len(self.ddids))
 
-            missing_bl = []
-            missing_t = []
-            missing_ddids = []
+        # make mapping from existing indices -> row numbers, omitting autocorrelations
+        current_row_index = { (p,q,t,d): row for row, (p,q,t,d) in enumerate(zip(
+                                    self.antea, self.anteb, self.times, self.ddid_col)) if p!=q }
 
-            for ddid in self.ddids:
-                for t in np.unique(self.time_col):
-                    t_sel = np.where((self.time_col==t)&(self.ddid_col==ddid))
-                
-                    missing_bl.extend(set(baselines) - set(zip(self.antea[t_sel], self.anteb[t_sel])))
-                    missing_t.extend([t]*(n_bl - t_sel[0].size))
-                    missing_ddids.extend([ddid]*(n_bl - t_sel[0].size))
+        # do we need to add fake rows for missing data?
+        missing = full_row_set.difference(current_row_index.iterkeys())
+        nmiss = len(missing)
 
-            missing_uvw = [[0,0,0]]*nmiss 
-            missing_antea = np.array([bl[0] for bl in missing_bl])
-            missing_anteb = np.array([bl[1] for bl in missing_bl])
-            missing_t = np.array(missing_t)
-            missing_ddids = np.array(missing_ddids)
+        if nmiss:
+            print>> log(1), "  {} rows will be padded in for Montblanc".format(nmiss)
+            # pad up columns
+            self.uvwco = np.concatenate((self.uvwco, [[0, 0, 0]] * nmiss))
+            self.antea = np.concatenate((self.antea,
+                                         np.array([p for _, (p, q, t, d) in enumerate(missing)])))
+            self.anteb = np.concatenate((self.anteb,
+                                         np.array([q for _, (p, q, t, d) in enumerate(missing)])))
+            self.time_col = np.concatenate((self.time_col,
+                                         np.array([t for _, (p, q, t, d) in enumerate(missing)])))
+            self.ddid_col = np.concatenate((self.ddid_col,
+                                         np.array([d for _, (p, q, t, d) in enumerate(missing)])))
+            # extend row index
+            current_row_index.update({idx:(row + nrows) for row, idx in  enumerate(missing)})
 
-            self.uvwco = np.concatenate((self.uvwco, missing_uvw))
-            self.antea = np.concatenate((self.antea, missing_antea))
-            self.anteb = np.concatenate((self.anteb, missing_anteb))
-            self.time_col = np.concatenate((self.time_col, missing_t))
-            self.ddid_col = np.concatenate((self.ddid_col, missing_ddids))
-
-            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
-
-        elif nrows > expected_nrows:
-            logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines" \
-                                                                "across {} bands".format(*logstr)
-            print>> log(1), "  {} more rows than expected".format(nrows - expected_nrows)
-            print>> log(1), "  assuming additional rows are auto-correlations - ignoring"
-
-            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))            
-            sorted_ind = sorted_ind[np.where(self.antea!=self.anteb)]
-
-            if np.shape(sorted_ind) != expected_nrows:
-                raise ValueError("Number of rows inconsistent after removing auto-correlations.")
-
+        sorted_ind = np.array([current_row_index[idx] for idx in full_index])
+        import pdb; pdb.set_trace()
         return expected_nrows, sorted_ind, row_identifiers
 
     def unprep_for_montblanc(self, nrows):
