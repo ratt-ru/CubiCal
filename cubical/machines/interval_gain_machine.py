@@ -354,9 +354,9 @@ class PerIntervalGains(MasterMachine):
         self.flagged = flagged
         self.n_flagged = (self.gflags&~FL.MISSING != 0).sum()
 
-        # for DD-terms, reset flagged gains to unity
-        if self.dd_term:
-            self.gains[self.gflags!=0] = np.eye(2)
+        # reset flagged gains to their previous values
+        flagged = self.gflags!=0
+        self.gains[flagged] = self.old_gains[flagged]
 
     def num_gain_flags(self, mask=None):
         return (self.gflags&(mask or ~FL.MISSING) != 0).sum(), self.gflags.size
@@ -371,16 +371,17 @@ class PerIntervalGains(MasterMachine):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
         """
 
-        # convert gain flags to full time/freq resolution
-        nodir_flags = self._gainres_to_fullres(np.bitwise_and.reduce(self.gflags, axis=0))
+        if self.propagates_flags:
+            # convert gain flags to full time/freq resolution, and add directions together
+            nodir_flags = self._gainres_to_fullres(np.bitwise_or.reduce(self.gflags, axis=0))
 
-        # We remove the FL.MISSING bit when propagating as this bit is pre-set for data flagged
-        # as PRIOR|MISSING. This prevents every PRIOR but not MISSING flag from becoming MISSING.
+            # We remove the FL.MISSING bit when propagating as this bit is pre-set for data flagged
+            # as PRIOR|MISSING. This prevents every PRIOR but not MISSING flag from becoming MISSING.
 
-        flags |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING 
-        flags |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
+            flags |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING
+            flags |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
 
-        self._update_equation_counts(flags==0)
+            self._update_equation_counts(flags==0)
 
     @property
     def dof_per_antenna(self):
@@ -512,15 +513,18 @@ class PerIntervalGains(MasterMachine):
         mineqs = self.eqs_per_interval[self.valid_intervals].min() if self.num_valid_intervals else 0
         maxeqs = self.eqs_per_interval.max()
         anteqs = (self.eqs_per_antenna!=0).sum()
-        return "{}{}/{} ints{}, {}/{} ants, MGE {}{}".format(
-            "{} dirs, ".format(self.n_dir) if self.dd_term else "",
-            self.num_valid_intervals, self.n_tf_ints,
-            " ({}-{} EPI)".format(mineqs, maxeqs) if self.num_valid_intervals else "",
-            anteqs, self.n_ant,
-            " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]),
-            ", NFME {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
-                if self._n_flagged_on_max_error is not None else ""
-            )
+        string = "{}: {}/{} ints".format(self.jones_label,
+                                            self.num_valid_intervals, self.n_tf_ints)
+        if self.num_valid_intervals:
+            string += " ({}-{} EPI)".format(mineqs, maxeqs)
+            if self.dd_term:
+                string += ", {} dirs".format(self.n_dir)
+            string += "{}/{} ants, MGE {}".format(anteqs, self.n_ant,
+                " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]))
+            if self._n_flagged_on_max_error is not None:
+                string += ", NFME {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
+
+        return string
 
 
     @property

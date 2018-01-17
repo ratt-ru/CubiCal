@@ -75,6 +75,8 @@ class MasterMachine(object):
         self._dd_term = options.get('dd-term')
         self._maxiter = options.get('max-iter', 0)
 
+        self._prop_flags = options.get('prop-flags', 'default')
+
         self.n_dir, self.n_mod = ndir if self._dd_term else 1, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
 
@@ -84,9 +86,14 @@ class MasterMachine(object):
         self._iters = 0
 
     @property
-    def dd_term (self):
+    def dd_term(self):
         """This property is true if the machine represents a direction-dependent"""
         return self._dd_term
+
+    @property
+    def propagates_flags(self):
+        return self._prop_flags == "always" or \
+               (self._prop_flags == "default" and not self.dd_term)
 
     @property
     def maxiter (self):

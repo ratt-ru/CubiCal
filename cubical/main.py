@@ -26,8 +26,6 @@ from time import time
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
 # even if one is only trying to save figures to .png.
 import matplotlib
-if not os.environ.get("DISPLAY"):
-    matplotlib.use("Agg")
 
 import concurrent.futures as cf
 
@@ -162,6 +160,20 @@ def main(debugging=False):
 
         if not debugging:
             print>>log, "started " + " ".join(sys.argv)
+
+        # disable matplotlib's tk backend if we're not going to be showing plots
+        if GD['out']['plots-show']:
+            import pylab
+            try:
+                pylab.figure()
+            except Exception, exc:
+                import traceback
+                print>>log, ModColor.Str("Error initializing matplotlib: {}({})\n {}".format(type(exc).__name__,
+                                                                                       exc, traceback.format_exc()))
+                raise UserInputError("matplotlib can't connect to X11. Suggest disabling --out-plots-show.")
+        else:
+            matplotlib.use("Agg")
+
         # print current options
         parser.print_config(dest=log)
 
@@ -419,12 +431,15 @@ def main(debugging=False):
 
     except Exception, exc:
         import traceback
-        print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__, 
+        if type(exc) is UserInputError:
+            print>> log, ModColor.Str(exc)
+        else:
+            print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__,
                                                                     exc, traceback.format_exc()))
-        if enable_pdb and not type(exc) is UserInputError:
-            from cubical.tools import pdb
-            exc, value, tb = sys.exc_info()
-            pdb.post_mortem(tb)
+            if enable_pdb and not type(exc) is UserInputError:
+                from cubical.tools import pdb
+                exc, value, tb = sys.exc_info()
+                pdb.post_mortem(tb)
         sys.exit(2 if type(exc) is UserInputError else 1)
 
 def _io_handler(save=None, load=None, load_model=True, finalize=False):

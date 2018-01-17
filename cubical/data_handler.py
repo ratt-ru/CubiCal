@@ -1681,4 +1681,5 @@ class DataHandler:
         print>> log, "  updating FLAG_ROW column ({:.2%} rows flagged)".format(
                                                                 flag_row.sum()/float(flag_row.size))
         self.data.putcol("FLAG_ROW", flag_row)
+        self.data.flush()
 

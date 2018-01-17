@@ -1,5 +1,4 @@
 import math,cmath
-import matplotlib
 import numpy as np
 from cubical.tools import logger
 log = logger.getLogger("plots")

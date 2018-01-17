@@ -8,9 +8,7 @@ Handles the flagging of data.
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does, 
 # even if one is only trying to save figures to .png.
-import matplotlib
 import numpy as np
-import pyrap.tables as pt
 import re
 
 from cubical.tools import logger, ModColor
