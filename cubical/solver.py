@@ -664,9 +664,10 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         RuntimeError:
             If gain factory has not been initialised.
     """
+    import cubical.main
+    cubical.main._init_worker()
 
     label = None
-    
     try:
         tile = Tile.tile_list[itile]
         label = chunk_key

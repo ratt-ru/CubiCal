@@ -15,18 +15,19 @@ Main code body. Handles options, invokes solvers and manages multiprocessing.
 ##
 
 import cPickle
-import os
-import os.path
+import os, os.path
 import traceback
 import sys
 import warnings
 import numpy as np
+import re
 from time import time
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
 # even if one is only trying to save figures to .png.
 import matplotlib
 
+import multiprocessing
 import concurrent.futures as cf
 
 from cubical.tools import logger
@@ -160,6 +161,32 @@ def main(debugging=False):
 
         if not debugging:
             print>>log, "started " + " ".join(sys.argv)
+
+        single_chunk = GD["data"]["single-chunk"]
+
+        # figure out CPU affinities
+        ncpu = GD["dist"]["ncpu"] if not single_chunk else 0
+        affinities = main_affinity = None
+
+        if ncpu:
+            affinity = GD["dist"]["affinity"]
+            if not affinity:
+                affinities = None
+            elif type(affinity) is int:
+                affinities = range(0, ncpu*affinity, affinity)
+            else:
+                affinities = affinity
+                if type(affinities) is not list or not all([type(x) is int for x in affinities]):
+                    raise UserInputError("invalid --dist-affinity setting '{}'".format(affinity))
+                if len(affinities) != ncpu:
+                    raise UserInputError("--dist-ncpu is {}, while --dist-affinity specifies {} numbers".format(
+                                         ncpu, len(affinities)))
+            main_affinity = GD["dist"]["main-affinity"]
+            if main_affinity is not None:
+                if main_affinity == "auto":
+                    main_affinity = affinities[0]
+                if type(main_affinity) is not int:
+                    raise UserInputError("invalid --dist-main-affinity setting '{}'".format(main_affinity))
 
         # disable matplotlib's tk backend if we're not going to be showing plots
         if GD['out']['plots-show']:
@@ -296,15 +323,8 @@ def main(debugging=False):
 
         t0 = time()
 
-        # Debugging mode: run serially if processes is not set, or if a single chunk is specified.
-        # Normal mode: use futures to run in parallel. TODO: Figure out if we can used shared memory to
-        # improve performance.
-        ncpu = GD["dist"]["ncpu"]
-
         # this accumulates SolverStats objects from each chunk, for summarizing later
         stats_dict = {}
-
-        single_chunk = GD["data"]["single-chunk"]
 
         # target function has the following signature/behaviour
         # inputs: itile:       number of tile (in ms.tile_list)
@@ -337,6 +357,25 @@ def main(debugging=False):
             solver.gm_factory.close()
 
         else:
+
+            # Setup properties dict for _init_workers()
+            # This is a hack, which relies on the multiprocessing module to retain its naming convention
+            # for subprocesses. If this convention changes in the future, _init_worker() below will
+            # not be able to find subprocess properties, and will give warnings.
+            global _worker_process_properties
+            _worker_process_properties["MainProcess"] = "", main_affinity
+
+            # create entries for subprocesses
+            for icpu in xrange(ncpu):
+                name = "Process-{}".format(icpu+1)
+                label = "io" if not icpu else "x%02d"%icpu
+
+                _worker_process_properties[name] = label, (affinities[icpu] if affinities else None)
+
+            if main_affinity is not None:
+                print>>log(1),"setting main process ({}) CPU affinity to {}".format(os.getpid(), main_affinity)
+                os.system("taskset -pc {} {} >/dev/null".format(main_affinity, os.getpid()))
+
             with cf.ProcessPoolExecutor(max_workers=ncpu-1) as executor, \
                  cf.ProcessPoolExecutor(max_workers=1) as io_executor:
 
@@ -442,6 +481,27 @@ def main(debugging=False):
                 pdb.post_mortem(tb)
         sys.exit(2 if type(exc) is UserInputError else 1)
 
+
+_worker_initialized = None
+_worker_process_properties = {}
+
+def _init_worker():
+    """Called inside every worker process to initialize its properties"""
+    global _worker_initialized
+    if not _worker_initialized:
+        _worker_initialized = True
+        name = multiprocessing.current_process().name
+        if name not in _worker_process_properties:
+            print>> log("red"), "WARNING: unrecognized worker process name '{}'. " \
+                                "Please inform the developers.".format(name)
+            return
+        label, affinity = _worker_process_properties[name]
+        logger.set_subprocess_label(label)
+        if affinity is not None:
+            print>>log(1),"setting worker process ({}) CPU affinity to {}".format(os.getpid(), affinity)
+            os.system("taskset -pc {} {} >/dev/null".format(affinity, os.getpid()))
+
+
 def _io_handler(save=None, load=None, load_model=True, finalize=False):
     """
     Handles disk reads and writes for the multiprocessing case.
@@ -460,7 +520,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
         bool:
             True if load/save was successful.
     """
-    
+    _init_worker()
     try:
         if save is not None:
             tile = Tile.tile_list[save]

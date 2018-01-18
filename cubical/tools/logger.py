@@ -163,6 +163,31 @@ def enableMemoryLogging(enable=True):
     global _log_memory
     _log_memory = enable
 
+_subprocess_label = None
+
+def set_subprocess_label(label):
+    """
+    Sets the subprocess label explicitly
+    """
+    global _subprocess_label
+    _subprocess_label = label
+
+
+def get_subprocess_label():
+    """
+    Returns the subprocess ID. For the main process, this is empty. For subprocesses
+    (started by multiprocessing), this is "Pn" by default, where n is the process number.
+    """
+    global _subprocess_label
+    if _subprocess_label is None:
+        name = multiprocessing.current_process().name
+        if name == "MainProcess":
+            _subprocess_label = ""
+        else:
+            _subprocess_label = name.replace("Process-", "P")
+    return _subprocess_label
+
+
 class LogFilter(logging.Filter):
     """LogFilter augments the event by a few new attributes used by our formatter"""
     def filter(self, event):
@@ -186,9 +211,8 @@ class LogFilter(logging.Filter):
         else:
             setattr(event, "memory", "")
         # subprocess info
-        subprocess_id = multiprocessing.current_process().name
-        if subprocess_id != "MainProcess":
-            subprocess_id = subprocess_id.replace("Process-", "P")
+        subprocess_id = get_subprocess_label()
+        if subprocess_id:
             setattr(event, "subprocess", ModColor.Str("[%s] "%subprocess_id, col="blue"))
             setattr(event, 'separator', '')
         else:
