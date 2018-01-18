@@ -86,7 +86,7 @@ def main(debugging=False):
     """
 
     # this will be set below if a custom parset is specified on the command line
-    parset_file = None
+    custom_parset_file = None
     # "GD" is a global defaults dict, containing options set up from parset + command line
     global GD, enable_pdb
 
@@ -97,34 +97,38 @@ def main(debugging=False):
         else:
             default_parset = parsets.Parset("%s/DefaultParset.cfg" % os.path.dirname(__file__))
 
-            def parse_command_line():
-                import cubical
-                parser = dynoptparse.DynamicOptionParser(usage='Usage: %prog [parset file] <options>',
+            # if first argument is a filename, treat it as a parset
+
+            if len(sys.argv) > 1 and not sys.argv[1][0].startswith('-'):
+                custom_parset_file = sys.argv[1]
+                print>> log, "reading defaults from {}".format(custom_parset_file)
+                try:
+                    parset = parsets.Parset(custom_parset_file)
+                except:
+                    import traceback
+                    traceback.print_exc()
+                    raise UserInputError("'{}' must be a valid parset file. Use -h for help.".format(custom_parset_file))
+                if not parset.success:
+                    raise UserInputError("'{}' must be a valid parset file. Use -h for help.".format(custom_parset_file))
+                # update default parameters with values from parset
+                default_parset.update_values(parset)
+
+            import cubical
+            parser = dynoptparse.DynamicOptionParser(usage='Usage: %prog [parset file] <options>',
                     description="""Questions, bug reports, suggestions: https://github.com/ratt-ru/CubiCal""",
                     version='%prog version {}'.format(cubical.VERSION),
                     defaults=default_parset.value_dict,
                     attributes=default_parset.attr_dict)
-                parser.read_input()
-                return parser
 
-            parser = parse_command_line()
+            # now read the full input from command line
+            # "GD" is a global defaults dict, containing options set up from parset + command line
+            GD = parser.read_input()
 
-            positional_args = parser.get_arguments()
-            # if a single argument is given, treat it as a parset and see if we can read it
-            if len(positional_args) == 1:
-                parset_file = positional_args[0]
-                parset = parsets.Parset(parset_file)
-                if not parset.success:
-                    raise UserInputError("{} must be a valid parset file. Use -h for help.".format(parset_file))
-                # update default parameters with values from parset
-                default_parset.update_values(parset, newval=False)
-                # re-read command-line options, since defaults will have been updated by the parset
-                parser = parse_command_line()
-            elif len(positional_args):
-                raise UserInputError("{} must be a valid parset file. Use -h for help.".format(parset_file))
+            # if a single argument is given, it should have been the parset
+            if len(parser.get_arguments()) != (1 if custom_parset_file else 0):
+                raise UserInputError("Unexpected number of arguments. Use -h for help.")
 
             # "GD" is a global defaults dict, containing options set up from parset + command line
-            GD = parser.get_config()
             cPickle.dump(GD, open("cubical.last", "w"))
 
             # get basename for all output files
@@ -140,8 +144,8 @@ def main(debugging=False):
             # save parset with all settings. We refuse to clobber a parset with itself
             # (so e.g. "gocubical test.parset --Section-Option foo" does not overwrite test.parset)
             save_parset = basename + ".parset"
-            if parset_file and os.path.exists(parset_file) and os.path.exists(save_parset) and \
-                    os.path.samefile(save_parset, parset_file):
+            if custom_parset_file and os.path.exists(custom_parset_file) and os.path.exists(save_parset) and \
+                    os.path.samefile(save_parset, custom_parset_file):
                 basename = "~" + basename
                 save_parset = basename + ".parset"
                 print>> log, ModColor.Str(
@@ -369,12 +373,19 @@ def main(debugging=False):
             for icpu in xrange(ncpu):
                 name = "Process-{}".format(icpu+1)
                 label = "io" if not icpu else "x%02d"%icpu
-
-                _worker_process_properties[name] = label, (affinities[icpu] if affinities else None)
+                # if Montblanc is in use, do not touch affinity of I/O thread: tensorflow doesn't like it
+                if affinities and (icpu or not ms.use_montblanc):
+                    aff = affinities[icpu]
+                else:
+                    aff = None
+                _worker_process_properties[name] = label, aff
 
             if main_affinity is not None:
-                print>>log(1),"setting main process ({}) CPU affinity to {}".format(os.getpid(), main_affinity)
-                os.system("taskset -pc {} {} >/dev/null".format(main_affinity, os.getpid()))
+                if ms.use_montblanc:
+                    print>>log(1),"Montblanc in use: ignoring affinity setting of main and I/O process"
+                else:
+                    print>>log(1),"setting main process ({}) CPU affinity to {}".format(os.getpid(), main_affinity)
+                    os.system("taskset -pc {} {} >/dev/null".format(main_affinity, os.getpid()))
 
             with cf.ProcessPoolExecutor(max_workers=ncpu-1) as executor, \
                  cf.ProcessPoolExecutor(max_workers=1) as io_executor:

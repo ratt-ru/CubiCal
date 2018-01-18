@@ -17,6 +17,9 @@ nobold='\033[0m'
 Separator="================================%s=================================="
 silent=0
 
+_color_dict = dict(red=FAIL, green=OKGREEN, yellow=WARNING, blue=OKBLUE,
+                   white="")
+
 def disableColors():
     global silent
     silent = 1
@@ -24,18 +27,10 @@ def disableColors():
 def Str(strin0,col="red",Bold=True):
     if silent==1: return strin0
     strin=str(strin0)
-    if col=="red":
-        ss=FAIL
-    if col=="green":
-        ss=OKGREEN
-    elif col=="yellow":
-        ss=WARNING
-    elif col=="blue":
-        ss=OKBLUE
-    elif col=="green":
-        ss=OKGREEN
-    elif col=="white":
-        ss=""
+
+    ss = _color_dict.get(col)
+    if ss is None:
+        raise ValueError,"unknown color '{}'".format(col)
 
     ss="%s%s%s"%(ss,strin,ENDC)
     if Bold: ss="%s%s%s"%(bold,ss,nobold)
