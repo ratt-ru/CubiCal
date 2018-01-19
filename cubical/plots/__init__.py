@@ -20,13 +20,6 @@ def make_summary_plots(st, ms, GD, basename):
     Returns:
 
     """
-    from cubical import solver
-
-    if solver.ifrgain_machine and solver.ifrgain_machine.is_computing():
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", np.ComplexWarning)
-            ifrgains.make_ifrgain_plots(solver.ifrgain_machine.reload(), ms, GD, basename)
-
     stats.make_stats_plots(st, GD, basename)
 
 

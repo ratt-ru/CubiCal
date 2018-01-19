@@ -313,7 +313,7 @@ class Tile(object):
         data['updated'] = np.array([False, False])
         self._auto_filled_bitflag = False
 
-        print>>log,"reading tile for MS rows {}~{}".format(self.first_row, self.last_row)
+        print>>log,"reading MS rows {}~{}".format(self.first_row, self.last_row)
         
         nrows = self.last_row - self.first_row + 1
         
@@ -521,10 +521,10 @@ class Tile(object):
         # First step - check the number of rows.
 
         n_bl = (self.nants*(self.nants - 1))/2
-        ntime = len(np.unique(self.time_col))
+        uniq_times = np.unique(self.times)
+        ntime = len(uniq_times)
 
         nrows = self.last_row - self.first_row + 1
-        expected_nrows = n_bl*ntime*len(self.ddids)
 
         # The row identifiers determine which rows in the SORTED/ALL ROWS are required for the data
         # that is present in the MS. Essentially, they allow for the selection of an array of a size
@@ -532,74 +532,50 @@ class Tile(object):
         # is the offset by time, and the last turns antea and anteb into a unique offset per 
         # baseline.
 
-        ddid_ind = self.ddid_col.copy()
+        ddid_ind = np.array([self.handler._ddid_index[ddid] for ddid in self.ddid_col])
 
-        for ind, ddid in enumerate(self.ddids):
-            ddid_ind[ddid_ind==ddid] = ind
-
-        row_identifiers = ddid_ind*n_bl*ntime + (self.times - np.min(self.times))*n_bl + \
+        row_identifiers = ddid_ind*n_bl*ntime + (self.times - self.times[0])*n_bl + \
                           (-0.5*self.antea**2 + (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
 
-        # Based on the number of rows versus the expected number of rows, we determine whether rows
-        # must be added or removed. If rows must be removed, we assume they are all 
-        # auto-correlations and raise an error if removing them still yields and inconsistent 
-        # number of rows.
 
-        if nrows == expected_nrows:
-            logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log(1), "  {} rows consistent with {} timeslots and {} baselines" \
-                                                                " across {} bands".format(*logstr)
-            
-            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
+        # make full list of row indices in Montblanc-compliant order (ddid-time-ant1-ant2)
+        full_index = [(p,q,t,d) for d in self.ddids for t in uniq_times
+                            for p in xrange(self.nants) for q in xrange(self.nants)
+                            if p < q]
 
-        elif nrows < expected_nrows:
-            logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines" \
-                                                                "across {} bands".format(*logstr)
-            print>> log(1), "  {} fewer rows than expected".format(expected_nrows - nrows)
+        expected_nrows = len(full_index)
 
-            nmiss = expected_nrows - nrows
+        # and corresponding full set of indices
+        full_row_set = set(full_index)
 
-            baselines = [(a,b) for a in xrange(self.nants) for b in xrange(self.nants) if b>a]
+        print>> log(1), "  {} rows ({} expected for {} timeslots, {} baselines and {} DDIDs)".format(
+                        nrows, expected_nrows, ntime, n_bl, len(self.ddids))
 
-            missing_bl = []
-            missing_t = []
-            missing_ddids = []
+        # make mapping from existing indices -> row numbers, omitting autocorrelations
+        current_row_index = { (p,q,t,d): row for row, (p,q,t,d) in enumerate(zip(
+                                    self.antea, self.anteb, self.times, self.ddid_col)) if p!=q }
 
-            for ddid in self.ddids:
-                for t in np.unique(self.time_col):
-                    t_sel = np.where((self.time_col==t)&(self.ddid_col==ddid))
-                
-                    missing_bl.extend(set(baselines) - set(zip(self.antea[t_sel], self.anteb[t_sel])))
-                    missing_t.extend([t]*(n_bl - t_sel[0].size))
-                    missing_ddids.extend([ddid]*(n_bl - t_sel[0].size))
+        # do we need to add fake rows for missing data?
+        missing = full_row_set.difference(current_row_index.iterkeys())
+        nmiss = len(missing)
 
-            missing_uvw = [[0,0,0]]*nmiss 
-            missing_antea = np.array([bl[0] for bl in missing_bl])
-            missing_anteb = np.array([bl[1] for bl in missing_bl])
-            missing_t = np.array(missing_t)
-            missing_ddids = np.array(missing_ddids)
+        if nmiss:
+            print>> log(1), "  {} rows will be padded in for Montblanc".format(nmiss)
+            # pad up columns
+            self.uvwco = np.concatenate((self.uvwco, [[0, 0, 0]] * nmiss))
+            self.antea = np.concatenate((self.antea,
+                                         np.array([p for _, (p, q, t, d) in enumerate(missing)])))
+            self.anteb = np.concatenate((self.anteb,
+                                         np.array([q for _, (p, q, t, d) in enumerate(missing)])))
+            self.time_col = np.concatenate((self.time_col,
+                                         np.array([t for _, (p, q, t, d) in enumerate(missing)])))
+            self.ddid_col = np.concatenate((self.ddid_col,
+                                         np.array([d for _, (p, q, t, d) in enumerate(missing)])))
+            # extend row index
+            current_row_index.update({idx:(row + nrows) for row, idx in  enumerate(missing)})
 
-            self.uvwco = np.concatenate((self.uvwco, missing_uvw))
-            self.antea = np.concatenate((self.antea, missing_antea))
-            self.anteb = np.concatenate((self.anteb, missing_anteb))
-            self.time_col = np.concatenate((self.time_col, missing_t))
-            self.ddid_col = np.concatenate((self.ddid_col, missing_ddids))
-
-            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))
-
-        elif nrows > expected_nrows:
-            logstr = (nrows, ntime, n_bl, len(self.ddids))
-            print>> log(1), "  {} rows inconsistent with {} timeslots and {} baselines" \
-                                                                "across {} bands".format(*logstr)
-            print>> log(1), "  {} more rows than expected".format(nrows - expected_nrows)
-            print>> log(1), "  assuming additional rows are auto-correlations - ignoring"
-
-            sorted_ind = np.lexsort((self.anteb, self.antea, self.time_col, self.ddid_col))            
-            sorted_ind = sorted_ind[np.where(self.antea!=self.anteb)]
-
-            if np.shape(sorted_ind) != expected_nrows:
-                raise ValueError("Number of rows inconsistent after removing auto-correlations.")
+        # lookup each index in Montblanc order, convert it to a row number
+        sorted_ind = np.array([current_row_index[idx] for idx in full_index])
 
         return expected_nrows, sorted_ind, row_identifiers
 
@@ -937,6 +913,7 @@ class DataHandler:
     """ Main data handler. Interfaces with the measurement set. """
 
     def __init__(self, ms_name, data_column, models, output_column=None,
+                 reinit_output_column=False,
                  taql=None, fid=None, ddid=None, channels=None, flagopts={}, double_precision=False,
                  weights=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
                  active_subset=None, min_baseline=0, max_baseline=0, use_ddes=True,
@@ -993,10 +970,11 @@ class DataHandler:
 
         self.fid = fid if fid is not None else 0
 
-        self.ms = pt.table(self.ms_name, readonly=False, ack=False)
-
         print>>log, ModColor.Str("reading MS %s"%self.ms_name, col="green")
 
+        self.ms = pt.table(self.ms_name, readonly=False, ack=False)
+        print>>log, "  sorting MS by TIME column"
+        self.ms = self.ms.sort("TIME")
 
         _anttab = pt.table(self.ms_name + "::ANTENNA", ack=False)
         _fldtab = pt.table(self.ms_name + "::FIELD", ack=False)
@@ -1112,6 +1090,11 @@ class DataHandler:
 
         self.data_column = data_column
         self.output_column = output_column
+        if reinit_output_column and output_column and output_column in self.ms.colnames():
+            print>>log(0),"reinitializing output column {}".format(output_column)
+            self.ms.removecols([output_column])
+            self._add_column(output_column)
+            self.reopen()
 
         # figure out flagging situation
         if "BITFLAG" in self.ms.colnames():
@@ -1194,8 +1177,10 @@ class DataHandler:
         elif len(weights) != len(models):
             raise ValueError,"need as many sets of weights as there are models"
 
+        self.use_montblanc = False    # will be set to true if Montblanc is invoked
         self.models = []
         self.model_directions = set() # keeps track of directions in Tigger models
+
         for imodel, (model, weight_col) in enumerate(zip(models, weights)):
             # list of per-direction models
             dirmodels = {}
@@ -1218,7 +1203,7 @@ class DataHandler:
                                     print>> log, "  " + ModColor.Str(line)
                                 print>> log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
                                 raise RuntimeError("Error importing Montblanc")
-
+                            self.use_montblanc = True
                             component = TiggerSourceProvider(component, self.phadir, dde_tag=use_ddes and tag)
                             for key in component._cluster_keys:
                                 dirname = idirtag if key == 'die' else key
@@ -1239,7 +1224,7 @@ class DataHandler:
                                         " (DDEs explicitly disabled)" if not use_ddes else""),
                                    col="green")
         for imod, (dirmodels, weight_col) in enumerate(self.models):
-            print>>log(1),"  model {} (weight {}):".format(imod, weight_col)
+            print>>log(0),"  model {} (weight {}):".format(imod, weight_col)
             for idir, dirname in enumerate(self.model_directions):
                 if dirname in dirmodels:
                     comps = []
@@ -1248,9 +1233,9 @@ class DataHandler:
                             comps.append("{}".format(comp))
                         else:
                             comps.append("{}({})".format(tag, comp))
-                    print>>log(1),"    direction {}: {}".format(idir, " + ".join(comps))
+                    print>>log(0),"    direction {}: {}".format(idir, " + ".join(comps))
                 else:
-                    print>>log(1),"    direction {}: empty".format(idir)
+                    print>>log(0),"    direction {}: empty".format(idir)
 
         self.use_ddes = len(self.model_directions) > 1
 
@@ -1406,9 +1391,17 @@ class DataHandler:
         # list of unique times
         self.uniq_times = np.unique(self.time_col)
         # timeslot index (per row, each element gives index of timeslot)
-        self.times = np.empty_like(self.time_col, dtype=np.int32)
-        for i, t in enumerate(self.uniq_times):
-            self.times[self.time_col == t] = i
+
+        ## slow version
+        # self.times = np.empty_like(self.time_col, dtype=np.int32)
+        # for i, t in enumerate(self.uniq_times):
+        #     self.times[self.time_col == t] = i
+
+        ## fast version
+        # map timestamps to timeslot numbers
+        rmap = {t: i for i, t in enumerate(self.uniq_times)}
+        # apply this map to the time column to construct a timestamp column
+        self.times = np.fromiter(map(rmap.__getitem__, self.time_col), int)
         print>> log, "  built timeslot index ({} unique timestamps)".format(len(self.uniq_times))
 
         self.chunk_tdim = tdim
@@ -1545,18 +1538,9 @@ class DataHandler:
             np.ndarray:
                 Boolean array with same shape as self.obvis.
         """
-
-        ntime, nddid, nchan = flag3.shape
-
         flagout = np.zeros(self._datashape, bool)
 
-        for ddid in xrange(nddid):
-            ddid_rows = self.ddid_col == ddid
-            for ts in xrange(ntime):
-                # find all rows associated with this DDID and timeslot
-                rows = ddid_rows & (self.times == ts)
-                if rows.any():
-                    flagout[rows, :, :] = flag3[ts, ddid, :, np.newaxis]
+        flagout[:] = flag3[self.times, self.ddid_col, :, np.newaxis]
 
         return flagout
 
@@ -1669,7 +1653,7 @@ class DataHandler:
         """ Reopens the MS. Unfortunately, this is needed when new columns are added. """
 
         self.close()
-        self.ms = self.data = pt.table(self.ms_name, readonly=False, ack=False)
+        self.ms = self.data = pt.table(self.ms_name, readonly=False, ack=False).sort("TIME")
         if self.taql:
             self.data = self.ms.query(self.taql)
 
@@ -1700,7 +1684,7 @@ class DataHandler:
             bflag_col[flag_col] = self._auto_fill_bitflag
         # raise specified bitflag
         print>> log, "  updating BITFLAG column flagbit %d"%self._save_bitflag
-        bflag_col[:, self._channel_slice, :] &= ~self._save_bitflag         # clear the flagbit first
+        #bflag_col[:, self._channel_slice, :] &= ~self._save_bitflag         # clear the flagbit first
         bflag_col[:, self._channel_slice, :][flags] |= self._save_bitflag
         self.data.putcol("BITFLAG", bflag_col)
         print>>log, "  updating BITFLAG_ROW column"
@@ -1713,4 +1697,5 @@ class DataHandler:
         print>> log, "  updating FLAG_ROW column ({:.2%} rows flagged)".format(
                                                                 flag_row.sum()/float(flag_row.size))
         self.data.putcol("FLAG_ROW", flag_row)
+        self.data.flush()
 

@@ -10,7 +10,7 @@ class PhaseDiagGains(PerIntervalGains):
     """
     This class implements the diagonal phase-only gain machine.
     """
-    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a diagonal phase-only gain machine.
         
@@ -32,7 +32,8 @@ class PhaseDiagGains(PerIntervalGains):
                 Dictionary of options. 
         """
         
-        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
+                                  chunk_ts, chunk_fs, chunk_label, options)
 
         self.phases = np.zeros(self.gain_shape, dtype=self.ftype)
 
@@ -79,27 +80,18 @@ class PhaseDiagGains(PerIntervalGains):
 
         cyphase.cycompute_jhr(gh, jh, r, jhr, self.t_int, self.f_int)
 
-        return jhr.imag
+        return jhr.imag, self.jhjinv, 0
 
-    def compute_update(self, model_arr, obser_arr):
-        """
-        This function computes the update step of the GN/LM method. This is equivalent to the 
-        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
 
-        Args:
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-        """
+    @property
+    def dof_per_antenna(self):
+        """This property returns the number of real degrees of freedom per antenna, per solution interval"""
+        return 2
 
-        jhr = self.compute_js(obser_arr, model_arr)
-
+    def implement_update(self, jhr, jhjinv):
         update = np.zeros_like(jhr)
 
-        cyphase.cycompute_update(jhr, self.jhjinv, update)
+        cyphase.cycompute_update(jhr, jhjinv, update)
 
         if self.iters%2 == 0:
             self.phases += 0.5*update
@@ -182,7 +174,7 @@ class PhaseDiagGains(PerIntervalGains):
             self.phases[idir, ...] = 0
 
 
-    def precompute_attributes(self, model_arr):
+    def precompute_attributes(self, model_arr, flags_arr, noise):
         """
         Precompute (J\ :sup:`H`\J)\ :sup:`-1`, which does not vary with iteration.
 
@@ -191,6 +183,7 @@ class PhaseDiagGains(PerIntervalGains):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
                 model visibilities.
         """
+        PerIntervalGains.precompute_attributes(self, model_arr, flags_arr, noise)
 
         self.jhjinv = np.zeros_like(self.gains)
 

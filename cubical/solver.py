@@ -10,9 +10,8 @@ import traceback
 from cubical.tools import logger, ModColor
 from cubical.data_handler import Tile
 from cubical.flagging import FL
-from cubical.machines import jones_chain_machine
 from cubical.statistics import SolverStats
-from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
+from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
 log = logger.getLogger("solver")
 #log.verbosity(2)
@@ -66,67 +65,68 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     stats.chunk.label = label
 
     n_stall = 0
-    n_tf_slots = gm.n_tim * gm.n_fre
+    frac_stall = 0
+
+    # initialize iteration counter
+
+    num_iter = 0
 
     # Estimates the overall noise level and the inverse variance per channel and per antenna as
     # noise varies across the band. This is used to normalize chi^2.
 
     stats.chunk.init_noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
                                                         stats.estimate_noise(obser_arr, flags_arr)
-    
-    # Compute number of equations for the general case.
 
-    def compute_num_eqs(flags, statfields):
-        """
-        This function computes various stats and totals based on the current state of the flags.
-        These values are used for weighting the chi-squared and doing intelligent convergence
-        testing.
-        """
+    # if we have directions in the model, but the gain machine is non-DD, collapse them
+    if not gm.dd_term and model_arr.shape[0] > 1:
+        model_arr = model_arr.sum(axis=0, keepdims=True)
 
-        unflagged = (flags==0)
+    # This works out the conditioning of the solution, sets up various chi-sq normalization
+    # factors etc, and does any other precomputation required by the current gain machine.
 
-        # (n_ant) vector containing the number of valid equations per antenna.
-        # Factor of two is necessary as we have the conjugate of each equation too.
+    gm.precompute_attributes(model_arr, flags_arr, inv_var_chan)
 
-        eqs_per_antenna = 2 * np.sum(unflagged, axis=(0, 1, 2)) * gm.n_mod
-
-        # (n_tim, n_fre) array containing number of valid equations for each time/freq slot.
-        
-        eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2)) * gm.n_mod * gm.n_cor * gm.n_cor * 2
-
-        if statfields:
-
-            # Compute number of terms in each chi-square sum. Shape is (n_tim, n_fre, n_ant).
-            
-            nterms  = 2 * gm.n_cor * gm.n_cor * np.sum(unflagged, axis=3)
-            
-            # Update stats object accordingly.
-            
-            for field in statfields:
-                getattr(stats.chanant,  field+'n')[...] = np.sum(nterms, axis=0)
-                getattr(stats.timeant,  field+'n')[...] = np.sum(nterms, axis=1)
-                getattr(stats.timechan, field+'n')[...] = np.sum(nterms, axis=2)
-    
-        return eqs_per_antenna, eqs_per_tf_slot
-
-    eqs_per_antenna, eqs_per_tf_slot = compute_num_eqs(flags_arr, ('initchi2', 'chi2'))
-
-    gm.update_stats(flags_arr, eqs_per_tf_slot)
-
-    # In the event that there are no solution intervals with valid data, this will log some of the
-    # flag information and break out of the function.
-
-    if gm.num_valid_intervals == 0: 
-
-        fstats = ""
+    def get_flagging_stats():
+        """Returns a string describing per-flagset statistics"""
+        fstats = []
 
         for flag, mask in FL.categories().iteritems():
+            n_flag = ((flags_arr & mask) != 0).sum()
+            if n_flag:
+                fstats.append("{}:{}({:.2%}%)".format(flag, n_flag, n_flag/float(flags_arr.size)))
 
-            n_flag = np.sum((flags_arr & mask) != 0)
-            fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./flags_arr.size)) if n_flag else ""
+        return " ".join(fstats)
 
-        print>> log, ModColor.Str("{} is completely flagged: {}".format(label, fstats))
+    def update_stats(flags, statfields):
+        """
+        This function updates the solver stats object with a count of valid data points used for chi-sq 
+        calculations
+        """
+        unflagged = (flags==0)
+        # Compute number of terms in each chi-square sum. Shape is (n_tim, n_fre, n_ant).
 
+        nterms  = 2 * gm.n_cor * gm.n_cor * np.sum(unflagged, axis=3)
+
+        # Update stats object accordingly.
+
+        for field in statfields:
+            getattr(stats.chanant,  field+'n')[...] = np.sum(nterms, axis=0)
+            getattr(stats.timeant,  field+'n')[...] = np.sum(nterms, axis=1)
+            getattr(stats.timechan, field+'n')[...] = np.sum(nterms, axis=2)
+    
+    update_stats(flags_arr, ('initchi2', 'chi2'))
+
+    # get initial number of gain flags (that aren't due to missing data)
+    n_gflags, _ = gm.num_gain_flags()
+
+    # In the event that there are no solutions with valid data, this will log some of the
+    # flag information and break out of the function.
+
+    if not gm.has_valid_solutions:
+        stats.chunk.num_sol_flagged = n_gflags
+
+        print>> log, ModColor.Str("{} no solutions: {}; flags {}".format(label,
+                        gm.conditioning_status_string, get_flagging_stats()))
         return (obser_arr if compute_residuals else None), stats
 
     # Initialize a residual array.
@@ -142,43 +142,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     def compute_chisq(statfield=None):
         """
-        Computes chi-squared statistic based on current residuals.
-
-        Returns chisq_per_tf_slot, chisq_tot, where
-            chisq_per_tf_slot is normalized chi-suaredq per time-frequency slot, (n_tim, n_fre).
-            chisq_tot is a single chi-squared value for the entire chunk
-
-        If statfield is given, populates stats arrays with the appropriate sums.
+        Computes chi-squared statistic based on current residuals and noise estimates.
+        Populates the stats object with it.
         """
+        chisq, chisq_per_tf_slot, chisq_tot = gm.compute_chisq(resid_arr, inv_var_chan)
 
-        # Chi-squared is computed by summation over antennas, correlations and intervals. Sum over
-        # time intervals, antennas and correlations first. Normalize by per-channel variance and 
-        # finally sum over frequency intervals.
-
-        # TODO: Some residuals blow up and cause np.square() to overflow -- need to flag these.
-
-        # Sum chi-square over correlations, models, and one antenna axis. Result has shape
-        # (n_tim, n_fre, n_ant). We avoid using np.abs by taking a view of the underlying memory.
-        # This is substantially faster.
-
-        chisq = np.sum(np.square(resid_arr.view(dtype=resid_arr.real.dtype)), axis=(0,4,5,6))
-
-        # Normalize this by the per-channel variance.
-
-        chisq *= inv_var_chan[np.newaxis, :, np.newaxis]
-        
-        # Collapse chisq to chi-squared per time-frequency slot and overall chi-squared. norm_factor 
-        # is computed as 1/eqs_per_tf_slot.
-
-        norm_factor = np.zeros_like(eqs_per_tf_slot, dtype=resid_arr.real.dtype)
-        norm_factor[eqs_per_tf_slot>0] = 1./eqs_per_tf_slot[eqs_per_tf_slot>0]
-
-        chisq_per_tf_slot = np.sum(chisq, axis=-1) * norm_factor 
-
-        chisq_tot = np.sum(chisq) / np.sum(eqs_per_tf_slot)
-
-        # If stats are requested, collapse chisq into stat arrays.
-        
         if statfield:
             getattr(stats.chanant, statfield)[...]  = np.sum(chisq, axis=0)
             getattr(stats.timeant, statfield)[...]  = np.sum(chisq, axis=1)
@@ -189,41 +157,19 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     chi, mean_chi = compute_chisq(statfield='initchi2')
     stats.chunk.init_chi2 = mean_chi
 
-    # The following provides some debugging information when verbose is set to > 0.
-
+    # The following provides conditioning information when verbose is set to > 0.
     if log.verbosity() > 0:
 
-        mineqs = gm.eqs_per_interval[gm.valid_intervals].min()
-        maxeqs = gm.eqs_per_interval.max()
-        anteqs = np.sum(eqs_per_antenna!=0)
-
-        n_2x2vis = gm.n_tim * gm.n_fre * gm.n_ant * gm.n_ant
-
-        fstats = ""
-
-        for flag, mask in FL.categories().iteritems():
-
-            n_flag = np.sum((flags_arr & mask) != 0)/(gm.n_cor*gm.n_cor)
-            fstats += ("%s:%d(%.2f%%) " % (flag, n_flag, n_flag*100./n_2x2vis)) if n_flag else ""
-
-        logvars = (label, mean_chi, gm.num_valid_intervals, gm.n_tf_ints, mineqs, maxeqs, anteqs, 
-                   gm.n_ant, float(stats.chunk.init_noise), fstats)
-
-        print>> log, ("{} Initial chi2 = {:.4}, {}/{} valid intervals (min {}/max {} eqs per int),"
-                      " {}/{} valid antennas, noise {:.3}, flags: {}").format(*logvars)
-
-    n_gflags = (gm.gflags&~FL.MISSING != 0).sum()
-
-    # Do any precomputation required by the current gain machine.
-
-    gm.precompute_attributes(model_arr)
+        print>> log, "{} chi^2_0 {:.4}; {}; noise {:.3}, flags: {}".format(
+                        label, mean_chi, gm.conditioning_status_string,
+                        float(stats.chunk.init_noise), get_flagging_stats())
 
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
 
     while not(gm.has_converged) and not(gm.has_stalled):
 
-        gm.update_term()
+        num_iter = gm.next_iteration()
 
         # This is currently an awkward necessity - if we have a chain of jones terms, we need to 
         # make sure that the active term is correct and need to support some sort of decision making
@@ -239,31 +185,20 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         
         gm.flag_solutions()
 
-        if gm.dd_term:
-            gm.gains[np.where(gm.gflags==1)] = np.eye(2)
+        # If the number of flags had increased, these need to be propagated out to the data.
+        # We only do this for direction-independent gains though
 
-        # In the DD case, it may be necessary to set flagged gains to zero during the loop, but
-        # set all flagged terms to identity before applying them.
+        nfl, _ = gm.num_gain_flags()
 
-        # If the number of flags had increased, these need to be propagated out to the data. Note
-        # that gain flags are per-direction whereas data flags are per visibility. Currently,
-        # everything is flagged if any direction is flagged.
-
-        # We remove the FL.MISSING bit when propagating as this bit is pre-set for data flagged 
-        # as PRIOR|MISSING. This prevents every PRIOR but not MISSING flag from becoming MISSING.
-
-        if gm.n_flagged > n_gflags and not(gm.dd_term):
+        if nfl > n_gflags and not(gm.dd_term):
             
-            n_gflags = gm.n_flagged
+            n_gflags = nfl
 
             gm.propagate_gflags(flags_arr)
 
-            # Recompute various stats now that the flags raised by the gain machine have been 
-            # propagated into the flags_arr.
-            
-            eqs_per_antenna, eqs_per_tf_slot = compute_num_eqs(flags_arr, ('chi2',))
+            # Recompute various stats based on new flags
 
-            gm.update_stats(flags_arr, eqs_per_tf_slot)
+            update_stats(flags_arr, ('chi2',))
 
             # Re-zero the model and data at newly flagged points. TODO: is this needed?
             # TODO: should we perhaps just zero the model per flagged direction, and only flag the data?
@@ -274,7 +209,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
             # Break out of the solver loop if we find ourselves with no valid solution intervals.
             
-            if gm.num_valid_intervals == 0:
+            if not gm.has_valid_solutions:
                 break
 
         have_residuals = False
@@ -284,14 +219,10 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         
         gm.update_conv_params(min_delta_g)
 
-        # Update old gains for subsequent convergence tests.
-
-        gm.old_gains = gm.gains.copy()
-
         # Check residual behaviour after a number of iterations equal to chi_interval. This is
         # expensive, so we do it as infrequently as possible.
 
-        if (gm.iters % chi_interval) == 0:
+        if (num_iter % chi_interval) == 0:
 
             old_chi, old_mean_chi = chi, mean_chi
 
@@ -304,24 +235,22 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             # Check for stalled solutions - solutions for which the residual is no longer improving.
 
             n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
+            frac_stall = n_stall/chi.size
 
-            gm.has_stalled = (n_stall/n_tf_slots >= stall_quorum)
+            gm.has_stalled = (frac_stall >= stall_quorum)
 
             if log.verbosity() > 1:
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                logvars = (label, gm.iters, mean_chi, delta_chi, gm.max_update, gm.n_cnvgd/gm.n_sols,
-                           n_stall/n_tf_slots, n_gflags/float(gm.gflags.size),
-                           gm.missing_gain_fraction)
+                print>> log(2), ("{} {} chi2 {:.4}, delta {:.4}, stall {:.2%}").format(
+                                    label, gm.current_convergence_status_string,
+                                    mean_chi, delta_chi, frac_stall)
 
-                print>> log, ("{} iter {} chi2 {:.4} delta {:.4}, max gain update {:.4}, "
-                              "conv {:.2%}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2}%").format(*logvars)
-
-    # num_valid_intervals will go to 0 if all solution intervals were flagged. If this is not the 
+    # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
     
-    if gm.num_valid_intervals:
+    if gm.has_valid_solutions:
 
         # Do we need to recompute the final residuals?
         if (sol_opts['last-rites'] or compute_residuals) and not have_residuals:
@@ -339,49 +268,28 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         stats.chunk.chi2 = mean_chi
 
-        if isinstance(gm, jones_chain_machine.JonesChain):
-            termstring = ""
-            for term in gm.jones_terms:
-                termstring += "{}: {} iters, conv {:.2%} ".format(term.jones_label, term.iters,
-                                                                  term.n_cnvgd/term.n_sols)
-        else:
-            termstring = "{} iters, conv {:.2%}".format(gm.iters, gm.n_cnvgd/gm.n_sols) 
-
-        logvars = (label, termstring, n_stall/n_tf_slots, n_gflags/float(gm.gflags.size), 
-                   gm.missing_gain_fraction, float(stats.chunk.init_chi2), mean_chi)
-
-        message = ("{}: {}, stall {:.2%}, g/fl {:.2%}, d/fl {:.2%}, "
-                    "chi2 {:.4} -> {:.4}").format(*logvars)
+        message = "{} {}, stall {:.2%}, chi^2 {:.4} -> {:.4}".format(label,
+                    gm.final_convergence_status_string,
+                    frac_stall, float(stats.chunk.init_chi2), mean_chi)
 
         if sol_opts['last-rites']:
 
-            logvars = (float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
+            message = "{} ({:.4}), noise {:.3} -> {:.3}".format(message,
+                            float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
 
-            message += " ({:.4}), noise {:.3} -> {:.3}".format(*logvars)
-        
         print>> log, message
 
     # If everything has been flagged, no valid solutions are generated. 
 
     else:
         
-        if isinstance(gm, jones_chain_machine.JonesChain):
-            termstring = ""
-            for term in gm.jones_terms:
-                termstring += "{}: {} iters, ".format(term.jones_label, term.iters)
-        else:
-            termstring = "{} iters, ".format(gm.iters) 
-        
-        logvars = (label, termstring, n_gflags / float(gm.gflags.size), gm.missing_gain_fraction)
-
-        print>>log, ModColor.Str("{} completely flagged after {} iters:"
-                                 " g/fl {:.2%}, d/fl {:.2%}").format(*logvars)
+        print>>log(0, "red"), "{} {}: completely flagged".format(label, gm.final_convergence_status_string)
 
         stats.chunk.chi2 = 0
         resid_arr = obser_arr
 
-    stats.chunk.iters = gm.iters
-    stats.chunk.num_converged = gm.n_cnvgd
+    stats.chunk.iters = num_iter
+    stats.chunk.num_converged = gm.num_converged_solutions
     stats.chunk.num_stalled = n_stall
 
     # copy out flags, if we raised any
@@ -391,9 +299,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         fstats = ""
         for flagname, mask in FL.categories().iteritems():
             if mask != FL.MISSING:
-                n_flag = (gm.gflags&mask != 0).sum()
+                n_flag, n_tot = gm.num_gain_flags(mask)
                 if n_flag:
-                    fstats += "{}:{}({:.2%}) ".format(flagname, n_flag, n_flag/float(gm.gflags.size))
+                    fstats += "{}:{}({:.2%}) ".format(flagname, n_flag, n_flag/float(n_tot))
         print>> log, ModColor.Str("{} solver flags raised: {}".format(label, fstats))
 
     return (resid_arr if compute_residuals else None), stats
@@ -443,8 +351,7 @@ class _VisDataManager(object):
             if self.weight_arr is not None:
                 self._wobs_arr = self.obser_arr[np.newaxis,...] * self.weight_arr[..., np.newaxis, np.newaxis]
             else:
-                self._wobs_arr = np.empty_like(self.model_arr[0,...])
-                self._wobs_arr[np.newaxis, ...] = self.obser_arr
+                self._wobs_arr = self.obser_arr.copy().reshape([1]+list(self.obser_arr.shape))
                 # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
                 # as they will already get zero weight in data_handler
                 self._wobs_arr[:, self.flags_arr!=0, :, :] = 0
@@ -757,9 +664,10 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         RuntimeError:
             If gain factory has not been initialised.
     """
+    import cubical.main
+    cubical.main._init_worker()
 
     label = None
-    
     try:
         tile = Tile.tile_list[itile]
         label = chunk_key
@@ -788,7 +696,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         n_dir, n_mod = model_arr.shape[0:2] if model_arr is not None else (1,1)
 
         # create GainMachine
-        vdm.gm = gm_factory.create_machine(vdm.weighted_obser, n_dir, n_mod, chunk_ts, chunk_fs)
+        vdm.gm = gm_factory.create_machine(vdm.weighted_obser, n_dir, n_mod, chunk_ts, chunk_fs, label)
 
         # Invoke solver method
 
