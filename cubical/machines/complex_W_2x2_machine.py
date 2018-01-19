@@ -7,6 +7,7 @@ import numpy as np
 import cubical.kernels.cyfull_W_complex as cyfull
 import cPickle
 from scipy import special
+from cubical.flagging import FL
 
 
 class ComplexW2x2Gains(PerIntervalGains):
@@ -76,7 +77,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         jhwjinv = np.empty(jhwr_shape, dtype=obser_arr.dtype)
 
-        flag_count = cyfull.cycompute_jhwjinv(jhwj, jhwjinv, self.gflags, self.eps, self.flagbit)
+        flag_count = cyfull.cycompute_jhwjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhwr, jhwjinv, flag_count
 
@@ -246,7 +247,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         g_inv = np.empty_like(self.gains)
 
-        flag_count = cyfull.cycompute_jhwjinv(self.gains, g_inv, self.gflags, self.eps, self.flagbit) # Function can invert G.
+        flag_count = cyfull.cycompute_jhwjinv(self.gains, g_inv, self.gflags, self.eps, FL.ILLCOND) # Function can invert G.
 
         gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
 

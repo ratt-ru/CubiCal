@@ -5,6 +5,7 @@
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyphase_only as cyphase
+from cubical.flagging import FL
 
 class PhaseDiagGains(PerIntervalGains):
     """
@@ -189,7 +190,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         cyphase.cycompute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)
 
-        cyphase.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps, self.flagbit)
+        cyphase.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps, FL.ILLCOND)
 
         self.jhjinv = self.jhjinv.real
 

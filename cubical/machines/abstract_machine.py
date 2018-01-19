@@ -366,15 +366,22 @@ class MasterMachine(object):
         return NotImplementedError
 
     @abstractmethod
-    def flag_solutions(self):
+    def flag_solutions(self, flag_arr, final=False):
         """
-        This method should flag gains solutions based on certain criteria. It should update:
-
-            - self.gflags
-            - self.flagged
-            - self.n_flagged
-
-        Function signature must be consistent with the one defined here.
+        This method allows the machine to flag gains solutions. It iis called after each itration (final=False),
+        and then once again after convergence (final=True). 
+        
+        This method can propagate the flags raised by the gain machine back into the data flags.
+        
+        Args:
+            flag_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing data flags. 
+            final (bool): 
+                False while iterating, True after convergence.
+            
+        Returns:
+            True if any new flags have been propagated to the data
+        
         """
         return NotImplementedError
 
@@ -393,20 +400,6 @@ class MasterMachine(object):
                 - total number of gains
 
         """
-        return NotImplementedError
-
-    @abstractmethod
-    def propagate_gflags(self, flags):
-        """
-        This method should propagate the flags raised by the gain machine back into the data.
-        Also updates equation counts etc. This is necessary as the gain flags may not have the 
-        same shape as the data. Function signature must be consistent with the one defined here.
-
-        Args:
-            flags (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant) array containing data flags. 
-        """
-
         return NotImplementedError
 
     def next_iteration(self):

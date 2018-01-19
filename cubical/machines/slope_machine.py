@@ -238,7 +238,7 @@ class PhaseSlopeGains(ParameterisedGains):
         var_slope = jhjinv[..., (0, 1), (0, 1)].real
         self.posterior_slope_error = np.sqrt(var_slope)
         # variance of gain is sum of slope parameter variances
-        self.posterior_gain_error = np.sqrt(var_slope.sum(axis=-1))
+        self.posterior_gain_error = np.sqrt(var_slope.sum(axis=-2))
 
         update = np.zeros_like(jhr)
 

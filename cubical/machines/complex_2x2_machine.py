@@ -5,6 +5,8 @@
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyfull_complex as cyfull
+from cubical.flagging import FL
+
 
 class Complex2x2Gains(PerIntervalGains):
     """
@@ -85,7 +87,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         jhjinv = np.empty(jhr_shape, dtype=obser_arr.dtype)
 
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, self.flagbit)
+        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhr, jhjinv, flag_count
 
