@@ -304,15 +304,15 @@ class JonesChain(MasterMachine):
             term.apply_gains(vis)
         return vis
 
-    def update_conv_params(self, min_delta_g):
+    def check_convergence(self, min_delta_g):
         """
-        Updates the convergence parameters of the current time-frequency chunk. 
+        Updates the convergence info of the current time-frequency chunk. 
 
         Args:
             min_delta_g (float):
                 Threshold for the minimum change in the gains - convergence criterion.
         """
-        return self.active_term.update_conv_params(min_delta_g)
+        return self.active_term.check_convergence(min_delta_g)
 
     def restrict_solution(self):
         """

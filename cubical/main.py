@@ -262,6 +262,10 @@ def main(debugging=False):
 
         if len(jones_opts) == 1:
             jones_opts = jones_opts[0]
+            # for just one term, propagate --sol-term-iters, if set, into its max-iter setting
+            term_iters = solver_opts["term-iters"]
+            if term_iters:
+                jones_opts["max-iter"] = term_iters[0] if hasattr(term_iters,'__getitem__') else term_iters
             # create a gain machine factory
             jones_class = machine_types.get_machine_class(jones_opts['type'])
             if jones_class is None:

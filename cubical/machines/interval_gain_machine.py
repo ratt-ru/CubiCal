@@ -55,8 +55,8 @@ class PerIntervalGains(MasterMachine):
         self.n_freint = len(self.f_bins)
         self.n_tf_ints = self.n_timint * self.n_freint
 
-        # Total number of independent gain problems to be solved
-        self.n_sols = self.n_valid_sols = self.n_dir * self.n_tf_ints
+        # number of valid solutions
+        self.n_valid_sols = self.n_dir * self.n_tf_ints
 
         # split grids into intervals, and find the centre of gravity of each
         timebins = np.split(times, self.t_bins[1:])
@@ -79,7 +79,8 @@ class PerIntervalGains(MasterMachine):
         # of solutions which have converged.
 
         self._has_stalled = False
-        self.n_cnvgd = 0 
+        self.n_cnvgd = 0
+        self._frac_cnvgd = 0
         self.iters = 0
         self.min_quorum = options["conv-quorum"]
         self.update_type = options["update-type"]
@@ -423,7 +424,7 @@ class PerIntervalGains(MasterMachine):
     def num_converged_solutions(self):
         return self.n_cnvgd
 
-    def update_conv_params(self, min_delta_g):
+    def check_convergence(self, min_delta_g):
         """
         Updates the convergence parameters of the current time-frequency chunk. 
 
@@ -444,7 +445,8 @@ class PerIntervalGains(MasterMachine):
 
         self.max_update = np.sqrt(np.max(diff_g))
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
-        
+        self._frac_cnvgd = self.n_cnvgd / float(norm_diff_g.size)
+
     def restrict_solution(self):
         """
         Restricts the solutions by, for example, selecting a reference antenna or taking only the 
@@ -519,12 +521,14 @@ class PerIntervalGains(MasterMachine):
 
         return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), 
                                                                     self.f_bins, tdim_ind+1)
+    @property
+    def converged_fraction(self):
+        return self._frac_cnvgd
 
     @property
     def has_converged(self):
         """ Returns convergence status. """
-
-        return self.n_cnvgd/self.n_sols > self.min_quorum or self.iters >= self.maxiter
+        return self.converged_fraction >= self.min_quorum or self.iters >= self.maxiter
 
     @property
     def conditioning_status_string(self):
@@ -553,7 +557,7 @@ class PerIntervalGains(MasterMachine):
             "G: 20 iters, conv 60.02%, g/fl 15.00%"
         """
         if self.solvable:
-            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.n_cnvgd/self.n_sols)
+            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.converged_fraction)
             nfl, ntot = self.num_gain_flags()
             if nfl:
                 string += ", g/fl {:.2%}".format(nfl/float(ntot))
@@ -574,7 +578,7 @@ class PerIntervalGains(MasterMachine):
             "G: 20 iters, conv 60.02%, g/fl 15.00%"
         """
         if self.solvable:
-            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.n_cnvgd/self.n_sols)
+            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.converged_fraction)
             nfl, ntot = self.num_gain_flags()
             if nfl:
                 string += ", g/fl {:.2%}".format(nfl/float(ntot))

@@ -206,7 +206,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # Compute values used in convergence tests. This check implicitly marks flagged gains as 
         # converged.
         
-        gm.update_conv_params(min_delta_g)
+        gm.check_convergence(min_delta_g)
 
         # Check residual behaviour after a number of iterations equal to chi_interval. This is
         # expensive, so we do it as infrequently as possible.

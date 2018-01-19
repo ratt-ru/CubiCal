@@ -348,15 +348,9 @@ class MasterMachine(object):
         return unflagged
 
     @abstractmethod				
-    def update_conv_params(self, min_delta_g):
+    def check_convergence(self, min_delta_g):
         """
-        This method should update the convergence parameters of the current time-frequency chunk. 
-        It must update:
-
-            - self.max_update
-            - self.n_cnvgd
-
-        Function signature must be consistent with the one defined here.
+        This method should check the gain solutions for convergence.
 
         Args:
             min_delta_g (float):
