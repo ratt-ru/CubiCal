@@ -444,7 +444,7 @@ class PerIntervalGains(MasterMachine):
 
         self.max_update = np.sqrt(np.max(diff_g))
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
-
+        
     def restrict_solution(self):
         """
         Restricts the solutions by, for example, selecting a reference antenna or taking only the 
@@ -537,7 +537,7 @@ class PerIntervalGains(MasterMachine):
         if self.num_valid_intervals:
             string += " ({}-{} EPI)".format(mineqs, maxeqs)
             if self.dd_term:
-                string += ", {} dirs".format(self.n_dir)
+                string += " {} dirs".format(self.n_dir)
             string += " {}/{} ants, MGE {}".format(anteqs, self.n_ant,
                 " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]))
             if self._n_flagged_on_max_error is not None:
