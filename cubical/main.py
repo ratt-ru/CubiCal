@@ -494,7 +494,7 @@ def main(debugging=False):
 
 
 _worker_initialized = None
-_worker_process_properties = {}
+_worker_process_properties = { "MainProcess": ("", None) }
 
 def _init_worker():
     """Called inside every worker process to initialize its properties"""
@@ -503,7 +503,7 @@ def _init_worker():
         _worker_initialized = True
         name = multiprocessing.current_process().name
         if name not in _worker_process_properties:
-            print>> log("red"), "WARNING: unrecognized worker process name '{}'. " \
+            print>> log(0, "red"), "WARNING: unrecognized worker process name '{}'. " \
                                 "Please inform the developers.".format(name)
             return
         label, affinity = _worker_process_properties[name]
