@@ -66,6 +66,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     n_stall = 0
     frac_stall = 0
+    n_original_flags = (flags_arr&~(FL.PRIOR|FL.MISSING) != 0).sum()
 
     # initialize iteration counter
 
@@ -272,6 +273,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                     gm.final_convergence_status_string,
                     frac_stall, float(stats.chunk.init_chi2), mean_chi)
 
+
         if sol_opts['last-rites']:
 
             message = "{} ({:.4}), noise {:.3} -> {:.3}".format(message,
@@ -302,7 +304,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                 n_flag, n_tot = gm.num_gain_flags(mask)
                 if n_flag:
                     fstats += "{}:{}({:.2%}) ".format(flagname, n_flag, n_flag/float(n_tot))
-        print>> log, ModColor.Str("{} solver flags raised: {}".format(label, fstats))
+        n_new_flags = (flags_arr&~(FL.PRIOR | FL.MISSING) != 0).sum() - n_original_flags
+        print>> log, ModColor.Str("{} solver flags raised: {}-> {:.2%} data flags".format(
+            label, fstats, n_new_flags / float(flags_arr.size)))
 
     return (resid_arr if compute_residuals else None), stats
 
