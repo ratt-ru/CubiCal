@@ -740,14 +740,15 @@ class Tile(object):
             # clear bitflag column first
             self.bflagcol &= ~self.handler._save_bitflag
             # add bitflag to points where data wasn't flagged for prior reasons
-            self.bflagcol[data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0] |= self.handler._save_bitflag
+            newflags = data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0
+            self.bflagcol[newflags] |= self.handler._save_bitflag
             self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
-            print>> log, "  updated BITFLAG column"
+            print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged by solver)".format(newflags.sum()/float(newflags.size))
             self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
             self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
             flag_col = self.bflagcol != 0
             self.handler.putslice("FLAG", flag_col, self.first_row, nrows)
-            print>> log, "  updated FLAG column ({:.2%} visibilities flagged)".format(
+            print>> log, "  updated FLAG column ({:.2%} total visibilities flagged)".format(
                 flag_col.sum() / float(flag_col.size))
             flag_row = flag_col.all(axis=(-1, -2))
             self.handler.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)

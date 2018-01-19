@@ -266,7 +266,7 @@ class PerIntervalGains(MasterMachine):
             # (n_dir,) array showing how many were flagged per direction
             self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
             # raised corresponding gain flags
-            self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] |= FL.LOWSNR0
+            self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] |= FL.LOWSNR
             self.prior_gain_error[bad_gain_intervals] = 0
             # flag intervals where all directions are bad, and propagate that out into flags
             bad_intervals = bad_gain_intervals.all(axis=0)
