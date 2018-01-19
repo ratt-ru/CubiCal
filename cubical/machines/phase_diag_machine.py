@@ -90,6 +90,10 @@ class PhaseDiagGains(PerIntervalGains):
         return 2
 
     def implement_update(self, jhr, jhjinv):
+
+        # variance of gain is diagonal of jhjinv
+        self.posterior_gain_error = np.sqrt(jhjinv[...,(0,1),(0,1)].real)
+
         update = np.zeros_like(jhr)
 
         cyphase.cycompute_update(jhr, jhjinv, update)
