@@ -393,8 +393,7 @@ class PerIntervalGains(MasterMachine):
             flags_arr |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING
             flags_arr |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
 
-            if not final:
-                self._update_equation_counts(flags_arr==0)
+            self._update_equation_counts(flags_arr==0)
 
             return True
         return False

@@ -242,7 +242,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     if gm.has_valid_solutions:
         # Final round of flagging
         flagged = gm.flag_solutions(flags_arr, True)
-
+        
+    # check this again, because final round of flagging could have killed us
+    if gm.has_valid_solutions:
         # Do we need to recompute the final residuals?
         if (sol_opts['last-rites'] or compute_residuals) and (not have_residuals or flagged):
             gm.compute_residual(obser_arr, model_arr, resid_arr)
