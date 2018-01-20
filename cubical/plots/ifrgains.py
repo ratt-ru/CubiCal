@@ -183,6 +183,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         NR, NC = 3, 2
         # collect a list of valid RR/LL and RL/LR pairs (i.e. ones not all unity)
         valid_igs = []
+        ifr_pairs = {}
         for p in xrange(nant):
             for q in xrange(p, nant):
                 ifrname = "%s-%s" % (ms.antnames[p], ms.antnames[q])
@@ -190,6 +191,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
                 ll = ig[:, p, q, i2, j2]
                 if not _is_unity(rr, ll):
                     valid_igs.append((ifrname, rr, ll))
+                    ifr_pairs[ifrname] = ms.antnames[p], ms.antnames[q]
         if not valid_igs:
             continue
         FEEDS = (ms.feeds[i1]+ms.feeds[j1]).upper(), (ms.feeds[i2]+ms.feeds[j2]).upper()
@@ -207,7 +209,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         igpa0 = {}
         igpa0_means = []
         for pq, rr, ll in valid_igs:
-            p,q = pq.split("-")
+            p,q = ifr_pairs[pq]
             rr0 = np.ma.masked_array(abs(rr - 1).data, rr.mask)
             ll0 = np.ma.masked_array(abs(ll - 1).data, ll.mask)
             rr0.mask |= (rr0 == 0)
