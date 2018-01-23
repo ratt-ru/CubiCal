@@ -94,7 +94,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         for flag, mask in FL.categories().iteritems():
             n_flag = ((flags_arr & mask) != 0).sum()
             if n_flag:
-                fstats.append("{}:{}({:.2%}%)".format(flag, n_flag, n_flag/float(flags_arr.size)))
+                fstats.append("{}:{}({:.2%})".format(flag, n_flag, n_flag/float(flags_arr.size)))
 
         return " ".join(fstats)
 

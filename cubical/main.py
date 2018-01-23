@@ -94,6 +94,8 @@ def main(debugging=False):
         if debugging:
             print>> log, "initializing from cubical.last"
             GD = cPickle.load(open("cubical.last"))
+            basename = GD["out"]["name"]
+            parser = None
         else:
             default_parset = parsets.Parset("%s/DefaultParset.cfg" % os.path.dirname(__file__))
 
@@ -111,7 +113,7 @@ def main(debugging=False):
                 if not parset.success:
                     raise UserInputError("'{}' must be a valid parset file. Use -h for help.".format(custom_parset_file))
                 # update default parameters with values from parset
-                default_parset.update_values(parset)
+                default_parset.update_values(parset, other_filename=' in {}'.format(custom_parset_file))
 
             import cubical
             parser = dynoptparse.DynamicOptionParser(usage='Usage: %prog [parset file] <options>',
@@ -206,7 +208,8 @@ def main(debugging=False):
             matplotlib.use("Agg")
 
         # print current options
-        parser.print_config(dest=log)
+        if parser is not None:
+            parser.print_config(dest=log)
 
         double_precision = GD["sol"]["precision"] == 64
 
@@ -223,25 +226,22 @@ def main(debugging=False):
             raise UserInputError("--model-list must be specified")
 
         ms = DataHandler(GD["data"]["ms"],
-                              GD["data"]["column"], 
-                              GD["model"]["list"].split(","),
-                              output_column=GD["out"]["column"],
-                              reinit_output_column=GD["out"]["reinit-column"],
-                              taql=GD["sel"]["taql"],
-                              fid=GD["sel"]["field"], 
-                              ddid=GD["sel"]["ddid"],
-                              channels=GD["sel"]["chan"],
-                              flagopts=GD["flags"],
-                              double_precision=double_precision,
-                              weights=GD["weight"]["column"].split(","),
-                              beam_pattern=GD["model"]["beam-pattern"], 
-                              beam_l_axis=GD["model"]["beam-l-axis"], 
-                              beam_m_axis=GD["model"]["beam-m-axis"],
-                              active_subset=GD["sol"]["subset"],
-                              min_baseline=GD["sol"]["min-bl"],
-                              max_baseline=GD["sol"]["max-bl"],
-                              use_ddes=GD["model"]["ddes"],
-                              mb_opts=GD["montblanc"])
+                          GD["data"]["column"],
+                          output_column=GD["out"]["column"],
+                          output_model_column=GD["out"]["model-column"],
+                          reinit_output_column=GD["out"]["reinit-column"],
+                          taql=GD["sel"]["taql"],
+                          fid=GD["sel"]["field"],
+                          ddid=GD["sel"]["ddid"],
+                          channels=GD["sel"]["chan"],
+                          flagopts=GD["flags"],
+                          double_precision=double_precision,
+                          beam_pattern=GD["model"]["beam-pattern"],
+                          beam_l_axis=GD["model"]["beam-l-axis"],
+                          beam_m_axis=GD["model"]["beam-m-axis"],
+                          active_subset=GD["sol"]["subset"],
+                          min_baseline=GD["sol"]["min-bl"],
+                          max_baseline=GD["sol"]["max-bl"])
 
         data_handler.global_handler = ms
 
@@ -256,6 +256,8 @@ def main(debugging=False):
         if not len(jones_opts):
             raise UserInputError("No Jones terms are enabled")
         print>> log, ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green")
+
+        have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
@@ -273,39 +275,56 @@ def main(debugging=False):
         else:
             jones_class = jones_chain_machine.JonesChain
 
-        # set up subtraction options
-        solver_opts["subtract-model"] = smod = GD["out"]["subtract-model"]
-        if smod < 0 or smod >= len(ms.models):
-            raise UserInputError("--out-subtract-model {} out of range for {} model(s)".format(smod, len(ms.models)))
-        
-        # parse subtraction directions as a slice or list
-        subdirs = GD["out"]["subtract-dirs"]
-        if type(subdirs) is int:
-            subdirs = [subdirs]
-        if subdirs:
-            if type(subdirs) is str:
-                try:
-                    if ',' in subdirs:
-                        subdirs = map(int, subdirs.split(","))
-                    else:
-                        subdirs = eval("np.s_[{}]".format(subdirs))
-                except:
-                    raise UserInputError("invalid --out-subtract-model option '{}'".format(subdirs))
-            elif type(subdirs) is not list:
-                raise UserInputError("invalid --out-subtract-dirs option '{}'".format(subdirs))
-            # check ranges
-            if type(subdirs) is list:
-                out_of_range = [ d for d in subdirs if d < 0 or d >= len(ms.model_directions) ]
-                if out_of_range:
-                    raise UserInputError("--out-subtract-dirs {} out of range for {} model direction(s)".format(
-                            ",".join(map(str, out_of_range)), len(ms.model_directions)))
-            print>>log(0),"subtraction directions set to {}".format(subdirs)
-        else:
-            subdirs = slice(None)
-        solver_opts["subtract-dirs"] = subdirs
+        # init models
+        dde_mode = GD["model"]["ddes"]
+
+        if dde_mode == 'always' and not have_dd_jones:
+            raise UserInputError("we have '--model-ddes always', but no direction dependent Jones terms enabled")
+
+        ms.init_models(GD["model"]["list"].split(","),
+                       GD["weight"]["column"].split(","),
+                       mb_opts=GD["montblanc"],
+                       use_ddes=have_dd_jones and dde_mode != 'never')
+
+        if len(ms.model_directions) < 2 and have_dd_jones and dde_mode == 'auto':
+            raise UserInputError("--model-list does not specify directions. "
+                    "Have you forgotten a @dE tag perhaps? Rerun with '--model-ddes never' to proceed anyway.")
+
+        if load_model:
+            # set up subtraction options
+            solver_opts["subtract-model"] = smod = GD["out"]["subtract-model"]
+            if smod < 0 or smod >= len(ms.models):
+                raise UserInputError("--out-subtract-model {} out of range for {} model(s)".format(smod, len(ms.models)))
+
+            # parse subtraction directions as a slice or list
+            subdirs = GD["out"]["subtract-dirs"]
+            if type(subdirs) is int:
+                subdirs = [subdirs]
+            if subdirs:
+                if type(subdirs) is str:
+                    try:
+                        if ',' in subdirs:
+                            subdirs = map(int, subdirs.split(","))
+                        else:
+                            subdirs = eval("np.s_[{}]".format(subdirs))
+                    except:
+                        raise UserInputError("invalid --out-subtract-model option '{}'".format(subdirs))
+                elif type(subdirs) is not list:
+                    raise UserInputError("invalid --out-subtract-dirs option '{}'".format(subdirs))
+                # check ranges
+                if type(subdirs) is list:
+                    out_of_range = [ d for d in subdirs if d < 0 or d >= len(ms.model_directions) ]
+                    if out_of_range:
+                        raise UserInputError("--out-subtract-dirs {} out of range for {} model direction(s)".format(
+                                ",".join(map(str, out_of_range)), len(ms.model_directions)))
+                print>>log(0),"subtraction directions set to {}".format(subdirs)
+            else:
+                subdirs = slice(None)
+            solver_opts["subtract-dirs"] = subdirs
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
+
         grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,
                                                        apply_only=apply_only,

@@ -138,8 +138,9 @@ class Parset():
         if filename:
             self.read(filename)
 
-    def update_values (self, other):
-        """Updates this Parset with keys found in other parset."""
+    def update_values (self, other, other_filename=''):
+        """Updates this Parset with keys found in other parset.
+        other_filename is only needed for error messages."""
         for secname, secvalues in other.value_dict.iteritems():
             if secname in self.value_dict:
                 for name, value in secvalues.iteritems():
@@ -149,6 +150,19 @@ class Parset():
                             other.attr_dict[secname].get(name, {})
                     if attrs.get('cmdline_only'):
                         continue
+                    # check value for type and options conformance
+                    if 'type' in attrs:
+                        try:
+                            value = attrs['type'](value)
+                        except:
+                            raise TypeError("invalid [{}] {}={} setting{}".format(
+                                            secname, name, value, other_filename))
+                    if 'options' in attrs and value not in attrs['options']:
+                        if str(value) in attrs['options']:
+                            value = str(value)
+                        else:
+                            raise TypeError("invalid [{}] {}={} setting{}".format(
+                                            secname, name, value, other_filename))
                     self.value_dict[secname][name] = value
                     # make sure aliases get copied under both names
                     alias = attrs.get('alias') or attrs.get('alias_of')
