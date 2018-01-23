@@ -5,14 +5,13 @@
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyfull_W_complex as cyfull
-import cPickle
 from scipy import special
-import scipy.optimize as optimize
-import time
+from scipy.optimize import fsolve
+
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
-    This class implements the weighted full complex 2x2 gain machine
+    This class implements the weighted full complex 2x2 gain machine based on the Complex T-distribution
     """
     
     def __init__(self, label, model_arr, ndir, nmod, chunk_ts, chunk_fs, options):
@@ -28,13 +27,19 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
         
         self.weights = np.ones(self.weights_shape, dtype=self.dtype)
+        self.weights[:,:,:,(range(self.n_ant),range(self.n_ant)),0] = 0 #setting the initial weights for the autocorrelations 0
         
         self.v = 2.
-
         self.weight_dict = {}
         self.weight_dict["weights"] = {}
         self.weight_dict["vvals"] = {}
+        self.save_weights = options["save_weights"] if "save_weights" in options.keys() else False
+        
         self.label = label
+
+        self.cov_type = options["cov_type"] if "cov_type" in options.keys() else 1 #adding an option to compute residuals covariance or just assume 1 as in Robust-t paper
+
+        self.npol = options["npol"] if "npol" in options.keys() else 4 #testing if the number of polarizations really have huge effects
         
     def compute_js(self, obser_arr, model_arr):
         """
@@ -114,28 +119,25 @@ class ComplexW2x2Gains(PerIntervalGains):
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
+
+        self.restrict_solution()
         
         #Computing the weights
         resid_arr = np.empty_like(obser_arr)
+        
         residuals = self.compute_residual(obser_arr, model_arr, resid_arr)
 
         covinv = self.compute_covinv(residuals)
         
         self.weights, self.v = self.update_weights(residuals, covinv, self.weights, self.v)
 
-        self.weight_dict["weights"][self.iters] = self.weights
-        self.weight_dict["vvals"][self.iters] = self.v
+        if self.save_weights:
+            self.weight_dict["weights"][self.iters] = self.weights
+            
+            self.weight_dict["vvals"][self.iters] = self.v
+            
+            np.savez("./"+ self.label + "_weights_dict.npz", **self.weight_dict)
         
-
-        t0 = time.time()
-        f = open("./weights/"+ self.label + "_weights_dict_20r.cp", "wb")
-        cPickle.dump(self.weight_dict, f)
-        f.close()
-        t1 = time.time()
-
-        print "Pickle dumping took %f secs "%(t1-t0)
-
-        self.restrict_solution()
 
         return flag_count
 
@@ -173,7 +175,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         """
         This functions computes the 4x4 covariance matrix of the residuals visibilities, 
-        and it approximtes it inverse
+        and it approximtes it inverse. I self.cov_type is set to 1, the covariance maxtrix is 
+        assumed to be the Identity matrix as in the Robust-t paper.
 
         Args:
             residuals (np.array) : Array containing the residuals.
@@ -182,31 +185,36 @@ class ComplexW2x2Gains(PerIntervalGains):
         Returns:
             covinv (np.array) : Shape is ncor*n_cor x ncor*n_cor (4x4)
             Array containing the inverse covariance matrix
+
         """
 
-        N = self.n_tim*self.n_fre*self.n_ant*self.n_ant
+        if self.cov_type == 1:
+            
+            covinv = np.eye(4, dtype=self.dtype)
+        
+        else:
+            N = self.n_tim*self.n_fre*self.n_ant*self.n_ant
 
-        res_reshaped = np.reshape(residuals,(N, 4))
+            res_reshaped = np.reshape(residuals,(4, N))
 
-        w = np.reshape(self.weights, (N,1))
+            w = np.reshape(self.weights, (N))
 
-        cov = res_reshaped.T.conjugate().dot(w*res_reshaped)/N
+            std = np.cov(res_reshaped, aweights=w)[0,0] #just return the first element as diag
+            
+            covinv = (1/std)*np.eye(4, dtype=self.dtype)
 
-        covinv = np.linalg.pinv(cov)
+        if self.npol == 2:
+            
+            covinv[(1,2),(1,2)] = 0
 
-        #covinv = np.zeros((4,4))
-
-        print cov, "here is cov \n"
-        print covinv, "here its inverse"
-
-        return np.array(covinv, dtype=self.dtype)
+        return covinv
 
 
     def update_weights(self, r, covinv, w, v):
         
         """
             This computes the weights, given the latest residual visibilities and the v parameter.
-            w[i] = (v+8)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
+            w[i] = (v+2*npol)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
         
             Args:
                 r (np.array): Array of the residual visibilities.
@@ -218,65 +226,46 @@ class ComplexW2x2Gains(PerIntervalGains):
             Returns:
                 w (np.array) : new weights
                 v (float) : new value for v
-	   """
-        
+        """
+
         def  _brute_solve_v(f, low, high):
             """Finds a root for the function f constraint between low and high
             Args:
                 f (callable) : function
-                low (float): lower bound
-                high (float): upper bound
+                low (float): lower bound, 2.
+                high (float): upper bound, 30.
 
             Returns:
                 root (float) : The root of f or minimum point    
-            
-            root = None  # Initialization
-            x = np.linspace(low, high, 100) #constraint the root to be between 2 and 30
-            y = f(x)
-    
-            for i in range(len(x)-1):
-                if y[i]*y[i+1] < 0:
-                    root = x[i] - (x[i+1] - x[i])/(y[i+1] - y[i])*y[i]
-                    break  # Jump out of loop
-                elif y[i] == 0:       
-                    root = x[i]
-                    break  # Jump out of loop
-
-            if root is None:
-                dist = np.abs(y)
-                root = x[np.argmin(dist)]
-                return root
-            else:
-                return root
             """
 
-            x = np.array(range(low, high+1), dtype="float")
-            y = f(x)
-            dist = np.abs(y)
-            root = x[np.argmin(dist)]
+            root = fsolve(f, 2.)[0]
+            if root < low:
+                root = low
+            elif root > high:
+                root= high
+            else:
+                root = root
+            
             return root
 
-        cyfull.cycompute_weights(r,covinv,w,v)
+        cyfull.cycompute_weights(r,covinv,w,v,self.npol)
+        w[:,:,:,(range(self.n_ant),range(self.n_ant)),0] = 0  #setting the weights for the autocorrelations 0
 
         #---------normalising the weights to mean 1 --------------------------#
-
-        norm = np.average(np.real(w.flatten()))
-        w = w/norm              
+        w_real = np.real(w.flatten())
+        w_nzero = w_real[np.where(w_real!=0)[0]]  #removing the autocorrelatios zero weights
+        norm = np.average(w_nzero)
+        w = w/norm           
 
         #-----------computing the v parameter---------------------#
-       
-        wn = np.real(w.flatten())
+        wn = w_nzero/norm
         m = len(wn)
 
-        vfunc = lambda a: special.digamma(0.5*(a+8)) - np.log(0.5*(a+8)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
+        vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
 
         v = _brute_solve_v(vfunc, 2, 30)
-        
-        #print "Numerical v computation took %fsecs"%(t1-t0)
-        #rranges = (slice(2, 30, 0.5))
-        #resbrute = optimize.brute(vfunc, ranges=((2,30),), finish=optimize.fmin)
-        #v = optimize.brentq(vfunc, 2, 30) #resbrute[0]
-
+    
         return w, v 
 
     def apply_inv_gains(self, obser_arr, corr_vis=None):
@@ -303,6 +292,19 @@ class ComplexW2x2Gains(PerIntervalGains):
         cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 
         return corr_vis, flag_count
+
+    def apply_gains(self, model_arr):
+        """
+        This method should be able to apply the gains to an array at full time-frequency
+        resolution. Should return the input array at full resolution after the application of the 
+        gains.
+        """
+
+        gh = self.gains.transpose(0,1,2,3,5,4).conj()
+
+        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+
+        return model_arr
 
     def restrict_solution(self):
         
