@@ -237,32 +237,24 @@ def cluster_sources(sm, dde_tag):
             Dictionary of grouped sources.
     """
 
-    ddes = {'True': [], 'False': []}
-
-    for s in sm.sources:
-        if dde_tag:
-            ddes['True'].append(s) if (s.getTag(dde_tag)==True) \
-                else ddes['False'].append(s)
-        else:
-            ddes['False'].append(s)
-
     clus = {}
 
-    for s in ddes['True']:
-        try:
-            clus['{}'.format(s.getTag('cluster'))].append(s)
-        except:
-            clus['{}'.format(s.getTag('cluster'))] = [s]
+    # cluster sources by value of dde_tag, or if dde_tag is True but not a string,
+    # then by their 'cluster' attribute. Within a cluster, split into point sources
+    # and Gaussians
+    for src in sm.sources:
+        dde_cluster = "die"
+        if dde_tag:
+            tagvalue = src.getTag(dde_tag)
+            if tagvalue:
+                if type(tagvalue) is str:
+                    dde_cluster = tagvalue
+                else:
+                    dde_cluster = src.getTag('cluster')
 
-    clus["die"] = ddes['False']
+        group = 'pnt' if src.typecode=='pnt' else 'gau'
 
-    for i in clus.keys():
-        stype = {'pnt': [], 'gau': []}
-
-        for s in clus[i]:
-            stype['pnt'].append(s) if (s.typecode=='pnt') else stype['gau'].append(s)
-
-        clus[i] = stype
+        clus.setdefault(dde_cluster, dict(pnt=[], gau=[]))[group].append(src)
 
     return clus
 

@@ -27,9 +27,6 @@ class ParameterisedGains(PerIntervalGains):
         self.gains[:] = np.eye(self.n_cor)
         self.flag_shape = self.gain_shape[:-2]
         self.gflags = np.zeros(self.flag_shape,FL.dtype)
-        
-        # Total number of independent gain problems to be solved.
-        self.n_sols = float(self.n_dir * self.n_tim * self.n_fre)
 
         # Function used to unpack the gains or flags into full time/freq resolution.
         self._gainres_to_fullres  = lambda array,time_ind=0: array

@@ -10,7 +10,7 @@ class Complex2x2Gains(PerIntervalGains):
     """
     This class implements the full complex 2x2 gain machine.
     """
-    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a 2x2 complex gain machine.
         
@@ -31,8 +31,8 @@ class Complex2x2Gains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
-
-        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
+                                  chunk_ts, chunk_fs, chunk_label, options)
         
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:]  = np.eye(self.n_cor)
@@ -89,41 +89,23 @@ class Complex2x2Gains(PerIntervalGains):
 
         return jhr, jhjinv, flag_count
 
-    def compute_update(self, model_arr, obser_arr):
-        """
-        This function computes the update step of the GN/LM method. This is equivalent to the 
-        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
-
-        Args:
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.            
-
-        Returns:
-            int:
-                Count of flags raised.
-        """
-
-        jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
-
+    def implement_update(self, jhr, jhjinv):
         update = np.empty_like(jhr)
+
+        # variance of gain is diagonal of jhjinv
+        self.posterior_gain_error = np.sqrt(jhjinv[...,(0,1),(0,1)].real)
 
         cyfull.cycompute_update(jhr, jhjinv, update)
 
-        if model_arr.shape[0]>1:
+        if self.dd_term and self.n_dir > 1:
             update = self.gains + update
 
-        if self.iters % 2 == 0 or self.n_dir>1 :
+        if self.iters % 2 == 0 or self.n_dir > 1:
             self.gains = 0.5*(self.gains + update)
         else:
             self.gains = update
-        
-        self.restrict_solution()
 
-        return flag_count
+        self.restrict_solution()
 
 
     def compute_residual(self, obser_arr, model_arr, resid_arr):
@@ -156,36 +138,6 @@ class Complex2x2Gains(PerIntervalGains):
         return resid_arr
 
 
-    def apply_inv_gains(self, obser_arr, corr_vis=None):
-        """
-        Applies the inverse of the gain estimates to the observed data matrix.
-
-        Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-            corr_vis (np.ndarray or None, optional): 
-                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
-                into which the corrected visibilities should be placed.
-
-        Returns:
-            np.ndarray: 
-                Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
-        """
-
-        g_inv = np.empty_like(self.gains)
-
-        flag_count = cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps, self.flagbit) # Function can invert G.
-
-        gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
-
-        if corr_vis is None:
-            corr_vis = np.empty_like(obser_arr)
-
-        cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
-
-        return corr_vis, flag_count
-         
     def restrict_solution(self):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying

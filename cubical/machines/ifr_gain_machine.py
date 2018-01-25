@@ -4,7 +4,6 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 import numpy as np
 from numpy.ma import masked_array
-from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
 from cubical import param_db
 
@@ -21,13 +20,14 @@ class IfrGainMachine(object):
     calculations.
     """
 
-    def __init__(self, gmfactory, ifrgain_opts):
+    def __init__(self, gmfactory, ifrgain_opts, compute=True):
         """
         Initializes the IFR-based gains machinery.
         
         Args:
             gmfactory:      a GainMachine Factory is used to manage the solution databases
             ifrgain_opts:   dict of options
+            compute:	    if False, gains are not computed even if options ask them to
         """
         self.gmfactory = gmfactory
         load_from = ifrgain_opts['load-from']
@@ -64,8 +64,9 @@ class IfrGainMachine(object):
                     else:
                         self._ifrgain[..., (0, 1), (1, 0)] = 1
                         print>>log(0),"  using parallel-hand BBCs only"
-        if save_to:
-            # setup axes for IFR-based bains
+        if save_to and compute:
+            self._compute_2x2 = ifrgain_opts["compute-2x2"]
+            # setup axes for IFR-based gains
             axes = ["freq", "ant1", "ant2", "corr1", "corr2"]
             # define the ifrgain parameter
             self._save_filename = gmfactory.make_filename(save_to)
@@ -174,6 +175,10 @@ class IfrGainMachine(object):
         # multiply by previous IFR gain, if that was set. This will promote a frequency axis
         if self._ifrgain is not None:
             ifrgain *= self._ifrgain
+
+        # if not 2x2, then reset off-diagonals
+        if not self._compute_2x2:
+            ifrgain[...,0,1] = ifrgain[...,1,0] = 1
 
         self.gmfactory.get_solution_db("BBC").add_chunk("BBC", ifrgain, self._ifrgains_grid)
 

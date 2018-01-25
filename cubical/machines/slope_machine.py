@@ -11,12 +11,24 @@ import cubical.kernels.cytf_plane
 import cubical.kernels.cyf_slope   
 import cubical.kernels.cyt_slope
 
+def _normalize(x, dtype):
+    """
+    Helper function: normalizes array to [0,1] interval.
+    """
+    if len(x) > 1:
+        return ((x - x[0]) / (x[-1] - x[0])).astype(dtype)
+    elif len(x) == 1:
+        return np.zeros(1, dtype)
+    else:
+        return x
+
+
 class PhaseSlopeGains(ParameterisedGains):
     """
     This class implements the diagonal phase-only parameterised slope gain machine.
     """
 
-    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options):
+    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a diagonal phase-slope gain machine.
         
@@ -38,7 +50,8 @@ class PhaseSlopeGains(ParameterisedGains):
                 Dictionary of options. 
         """
         
-        ParameterisedGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, options)
+        ParameterisedGains.__init__(self, label, data_arr, ndir, nmod,
+                                    chunk_ts, chunk_fs, chunk_label, options)
 
         self.slope_type = options["type"]
         self.n_param = 3 if self.slope_type == "tf-plane" else 2
@@ -46,8 +59,9 @@ class PhaseSlopeGains(ParameterisedGains):
         self.param_shape = [self.n_dir, self.n_timint, self.n_freint, 
                             self.n_ant, self.n_param, self.n_cor, self.n_cor]
         self.slope_params = np.zeros(self.param_shape, dtype=self.ftype)
-        self.chunk_ts = ((chunk_ts - chunk_ts[0])/(chunk_ts[-1] - chunk_ts[0])).astype(self.ftype)
-        self.chunk_fs = ((chunk_fs - chunk_fs[0])/(chunk_fs[-1] - chunk_fs[0])).astype(self.ftype)
+
+        self.chunk_ts = _normalize(chunk_ts, self.ftype)
+        self.chunk_fs = _normalize(chunk_fs, self.ftype)
 
         if self.slope_type == "tf-plane":
             self.cyslope = cubical.kernels.cytf_plane
@@ -206,27 +220,29 @@ class PhaseSlopeGains(ParameterisedGains):
         elif self.slope_type=="t-slope":
             self.cyslope.cycompute_jhr(tmp_jhr, jhr, self.chunk_ts, self.t_int, self.f_int)
 
-        return jhr
+        return jhr, self.jhjinv, 0
 
-    def compute_update(self, model_arr, obser_arr):
-        """
-        This function computes the update step of the GN/LM method. This is equivalent to the 
-        complete (J\ :sup:`H`\J)\ :sup:`-1` J\ :sup:`H`\R.
+    @property
+    def dof_per_antenna(self):
+        """This property returns the number of real degrees of freedom per antenna, per solution interval"""
+        if self.slope_type=="tf-plane":
+            return 6
+        elif self.slope_type=="f-slope":
+            return 4
+        elif self.slope_type=="t-slope":
+            return 4
 
-        Args:
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-        """
+    def implement_update(self, jhr, jhjinv):
 
-        jhr = self.compute_js(obser_arr, model_arr)
+        # variance of slope parms is diagonal of jhjinv
+        var_slope = jhjinv[..., (0, 1), (0, 1)].real
+        self.posterior_slope_error = np.sqrt(var_slope)
+        # variance of gain is sum of slope parameter variances
+        self.posterior_gain_error = np.sqrt(var_slope.sum(axis=-1))
 
         update = np.zeros_like(jhr)
 
-        self.cyslope.cycompute_update(jhr, self.jhjinv, update)
+        self.cyslope.cycompute_update(jhr, jhjinv, update)
 
         if self.iters%2 == 0:
             self.slope_params += 0.5*update
@@ -314,7 +330,7 @@ class PhaseSlopeGains(ParameterisedGains):
         for idir in self.fix_directions:
             self.slope_params[idir, ...] = 0
 
-    def precompute_attributes(self, model_arr):
+    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
         """
         Precompute (J\ :sup:`H`\J)\ :sup:`-1`, which does not vary with iteration.
 
@@ -323,6 +339,7 @@ class PhaseSlopeGains(ParameterisedGains):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
                 model visibilities.
         """
+        ParameterisedGains.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
 
         tmp_jhj_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, self.n_ant, 2, 2] 
 

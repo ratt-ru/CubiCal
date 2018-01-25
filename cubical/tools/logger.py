@@ -14,7 +14,7 @@ _loggers = {}
 
 # global verbosity levels (used for loggers for which an explicit level is not set)
 _global_verbosity = 0
-_global_log_verbosity = 0
+_global_log_verbosity = None
 
 # this will be the handler for the log file
 _file_handler = None
@@ -56,16 +56,21 @@ class LoggerWrapper(object):
     def __init__(self, logger, verbose=None, log_verbose=None):
         self.logger = logger
         logger.propagate = False
-        self._verbose = verbose if verbose is not None else _global_verbosity
-        self._log_verbose = log_verbose if log_verbose is not None else _global_log_verbosity
+
+        # initialize handlers for console and logfile
+
         self.console_handler = logging.StreamHandler(sys.stderr)
         self.console_handler.setFormatter(_console_formatter)
-        self.console_handler.setLevel(logging.INFO - self._verbose)
 
-        self.logfile_handler = logging.handlers.MemoryHandler(1,
-            logging.INFO - (self._log_verbose if self._log_verbose is not None else self._verbose),
-            _file_handler or _null_handler)
+        self.logfile_handler = logging.handlers.MemoryHandler(1, logging.DEBUG, _file_handler or _null_handler)
         self.logfile_handler.setFormatter(_logfile_formatter)
+
+        # set verbosity levels
+        self._verbose = self._log_verbose = None
+        self.verbosity(verbose if verbose is not None else _global_verbosity)
+        self.log_verbosity(log_verbose if log_verbose is not None else _global_log_verbosity)
+
+        # other init
 
         self.logger.addHandler(self.console_handler)
         self.logger.addHandler(self.logfile_handler)
@@ -158,6 +163,31 @@ def enableMemoryLogging(enable=True):
     global _log_memory
     _log_memory = enable
 
+_subprocess_label = None
+
+def set_subprocess_label(label):
+    """
+    Sets the subprocess label explicitly
+    """
+    global _subprocess_label
+    _subprocess_label = label
+
+
+def get_subprocess_label():
+    """
+    Returns the subprocess ID. For the main process, this is empty. For subprocesses
+    (started by multiprocessing), this is "Pn" by default, where n is the process number.
+    """
+    global _subprocess_label
+    if _subprocess_label is None:
+        name = multiprocessing.current_process().name
+        if name == "MainProcess":
+            _subprocess_label = ""
+        else:
+            _subprocess_label = name.replace("Process-", "P")
+    return _subprocess_label
+
+
 class LogFilter(logging.Filter):
     """LogFilter augments the event by a few new attributes used by our formatter"""
     def filter(self, event):
@@ -181,9 +211,8 @@ class LogFilter(logging.Filter):
         else:
             setattr(event, "memory", "")
         # subprocess info
-        subprocess_id = multiprocessing.current_process().name
-        if subprocess_id != "MainProcess":
-            subprocess_id = subprocess_id.replace("Process-", "P")
+        subprocess_id = get_subprocess_label()
+        if subprocess_id:
             setattr(event, "subprocess", ModColor.Str("[%s] "%subprocess_id, col="blue"))
             setattr(event, 'separator', '')
         else:
