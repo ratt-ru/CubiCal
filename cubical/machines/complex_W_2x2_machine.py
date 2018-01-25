@@ -195,13 +195,20 @@ class ComplexW2x2Gains(PerIntervalGains):
         else:
             N = self.n_tim*self.n_fre*self.n_ant*self.n_ant
 
-            res_reshaped = np.reshape(residuals,(4, N))
+            res_reshaped = np.reshape(residuals[:,:,:,:,:,(0,1),(0,1)],(2, N))
 
             w = np.reshape(self.weights, (N))
 
-            std = np.cov(res_reshaped, aweights=w)[0,0] #just return the first element as diag
+            std = np.cov(res_reshaped, aweights=w) #[0,0] #just return the first element as diag
+            stdinv = np.linalg.pinv(std)
+
+            print "std and inverse", std , " ", stdinv
             
-            covinv = (1/std)*np.eye(4, dtype=self.dtype)
+            covinv = np.eye(4, dtype=self.dtype) #1/std)*
+            covinv[0,0] = stdinv[0,0]
+            covinv[0,3] = stdinv[0,1]
+            covinv[3,0] = stdinv[1,0] 
+            covinv[3,3] = stdinv[1,1]
 
         if self.npol == 2:
             
@@ -246,6 +253,8 @@ class ComplexW2x2Gains(PerIntervalGains):
                 root= high
             else:
                 root = root
+
+            print "v from fsolve", root
             
             return root
 
@@ -261,6 +270,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         #-----------computing the v parameter---------------------#
         wn = w_nzero/norm
         m = len(wn)
+
+        print (wn[np.where(wn<0)[0]])
 
         vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
 
