@@ -94,7 +94,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         for flag, mask in FL.categories().iteritems():
             n_flag = ((flags_arr & mask) != 0).sum()
             if n_flag:
-                fstats.append("{}:{}({:.2%}%)".format(flag, n_flag, n_flag/float(flags_arr.size)))
+                fstats.append("{}:{}({:.2%})".format(flag, n_flag, n_flag/float(flags_arr.size)))
 
         return " ".join(fstats)
 
@@ -117,14 +117,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     
     update_stats(flags_arr, ('initchi2', 'chi2'))
 
-    # get initial number of gain flags (that aren't due to missing data)
-    n_gflags, _ = gm.num_gain_flags()
-
     # In the event that there are no solutions with valid data, this will log some of the
     # flag information and break out of the function.
 
     if not gm.has_valid_solutions:
-        stats.chunk.num_sol_flagged = n_gflags
+        stats.chunk.num_sol_flagged, _ = gm.num_gain_flags()
 
         print>> log, ModColor.Str("{} no solutions: {}; flags {}".format(label,
                         gm.conditioning_status_string, get_flagging_stats()))
@@ -184,25 +181,16 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         gm.compute_update(model_arr, obser_arr)
         
-        gm.flag_solutions()
-
-        # If the number of flags had increased, these need to be propagated out to the data.
-        # We only do this for direction-independent gains though
-
-        nfl, _ = gm.num_gain_flags()
-
-        if nfl > n_gflags and not(gm.dd_term):
-            
-            n_gflags = nfl
-
-            gm.propagate_gflags(flags_arr)
-
-            # Recompute various stats based on new flags
+        # flag solutions. This returns True if any flags have been propagated out to the data.
+        if gm.flag_solutions(flags_arr, False):
 
             update_stats(flags_arr, ('chi2',))
 
-            # Re-zero the model and data at newly flagged points. TODO: is this needed?
+            # Re-zero the model and data at newly flagged points.
+            # TODO: is this needed?
             # TODO: should we perhaps just zero the model per flagged direction, and only flag the data?
+            # OMS: probably not: flag propagation is now handled inside the gain machine. If a flag is
+            # propagated out to the data, then that slot is gone gone gone and should be zeroe'd everywhere.
             
             new_flags = flags_arr&~(FL.MISSING|FL.PRIOR) !=0
             model_arr[:, :, new_flags, :, :] = 0
@@ -218,7 +206,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # Compute values used in convergence tests. This check implicitly marks flagged gains as 
         # converged.
         
-        gm.update_conv_params(min_delta_g)
+        gm.check_convergence(min_delta_g)
 
         # Check residual behaviour after a number of iterations equal to chi_interval. This is
         # expensive, so we do it as infrequently as possible.
@@ -252,9 +240,13 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # case, generate residuals etc.
     
     if gm.has_valid_solutions:
-
+        # Final round of flagging
+        flagged = gm.flag_solutions(flags_arr, True)
+        
+    # check this again, because final round of flagging could have killed us
+    if gm.has_valid_solutions:
         # Do we need to recompute the final residuals?
-        if (sol_opts['last-rites'] or compute_residuals) and not have_residuals:
+        if (sol_opts['last-rites'] or compute_residuals) and (not have_residuals or flagged):
             gm.compute_residual(obser_arr, model_arr, resid_arr)
             if sol_opts['last-rites']:
                 # Recompute chi-squared based on original noise statistics.
@@ -295,8 +287,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     stats.chunk.num_stalled = n_stall
 
     # copy out flags, if we raised any
-    stats.chunk.num_sol_flagged = n_gflags
-    if n_gflags:
+    stats.chunk.num_sol_flagged, _ = gm.num_gain_flags()
+    if stats.chunk.num_sol_flagged:
         # also for up message with flagging stats
         fstats = ""
         for flagname, mask in FL.categories().iteritems():

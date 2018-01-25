@@ -55,8 +55,8 @@ class PerIntervalGains(MasterMachine):
         self.n_freint = len(self.f_bins)
         self.n_tf_ints = self.n_timint * self.n_freint
 
-        # Total number of independent gain problems to be solved
-        self.n_sols = self.n_valid_sols = self.n_dir * self.n_tf_ints
+        # number of valid solutions
+        self.n_valid_sols = self.n_dir * self.n_tf_ints
 
         # split grids into intervals, and find the centre of gravity of each
         timebins = np.split(times, self.t_bins[1:])
@@ -79,7 +79,8 @@ class PerIntervalGains(MasterMachine):
         # of solutions which have converged.
 
         self._has_stalled = False
-        self.n_cnvgd = 0 
+        self.n_cnvgd = 0
+        self._frac_cnvgd = 0
         self.iters = 0
         self.min_quorum = options["conv-quorum"]
         self.update_type = options["update-type"]
@@ -97,11 +98,11 @@ class PerIntervalGains(MasterMachine):
 
         # Construct flag array and populate flagging attributes.
         self.max_gain_error = options["max-prior-error"]
+        self.max_post_error = options["max-post-error"]
 
         self.clip_lower = options["clip-low"]
         self.clip_upper = options["clip-high"]
         self.clip_after = options["clip-after"]
-        self.flagbit = FL.ILLCOND
 
         self.init_gains()
         self.old_gains = self.gains.copy()
@@ -121,7 +122,7 @@ class PerIntervalGains(MasterMachine):
         self.gains = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:] = np.eye(self.n_cor)
         self.flag_shape = self.gain_shape[:-2]
-        self.gflags = np.zeros(self.flag_shape,FL.dtype)
+        self.gflags = np.zeros(self.flag_shape, FL.dtype)
 
         # function used to unpack the gains or flags into full time/freq resolution
         self._gainres_to_fullres  = self.unpack_intervals
@@ -168,7 +169,7 @@ class PerIntervalGains(MasterMachine):
         g_inv = np.empty_like(self.gains)
 
         flag_count = cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps,
-                                             self.flagbit)  # Function can invert G.
+                                             FL.ILLCOND)  # Function can invert G.
 
         gh_inv = g_inv.transpose(0, 1, 2, 3, 5, 4).conj()
 
@@ -265,7 +266,7 @@ class PerIntervalGains(MasterMachine):
             # (n_dir,) array showing how many were flagged per direction
             self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
             # raised corresponding gain flags
-            self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] = FL.LOWSNR
+            self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] |= FL.LOWSNR
             self.prior_gain_error[bad_gain_intervals] = 0
             # flag intervals where all directions are bad, and propagate that out into flags
             bad_intervals = bad_gain_intervals.all(axis=0)
@@ -276,6 +277,10 @@ class PerIntervalGains(MasterMachine):
                 self._update_equation_counts(unflagged)
         else:
             self._n_flagged_on_max_error = None
+
+        self._n_flagged_on_max_posterior_error = None
+        self.flagged = self.gflags != 0
+        self.n_flagged = self.flagged.sum()
 
         return unflagged
         # # get error estimate model
@@ -316,72 +321,86 @@ class PerIntervalGains(MasterMachine):
         self.old_gains = self.gains.copy()
         return MasterMachine.next_iteration(self)
 
-    def flag_solutions(self):
+    def flag_solutions(self, flags_arr, final):
         """ Flags gain solutions based on certain criteria, e.g. out-of-bounds, null, etc. """
-    
-        gain_mags = np.abs(self.gains)
 
         # Anything previously flagged for another reason will not be reflagged.
-        
-        flagged = self.gflags != 0
 
-        # Check for inf/nan solutions. One bad correlation will trigger flagging for all correlations.
+        flagged = self.flagged
+        nfl0 = self.n_flagged
 
-        boom = (~np.isfinite(self.gains)).any(axis=(-1,-2))
-        self.gflags[boom&~flagged] |= FL.BOOM
-        flagged |= boom
-        gain_mags[boom] = 0
+        # while iterating, flag on OOB and such
+        if not final:
+            gain_mags = np.abs(self.gains)
 
-        # Check for gain solutions for which diagonal terms have gone to 0.
+            # Check for inf/nan solutions. One bad correlation will trigger flagging for all correlations.
 
-        gnull = (self.gains[..., 0, 0] == 0) | (self.gains[..., 1, 1] == 0)
-        self.gflags[gnull&~flagged] |= FL.GNULL
-        flagged |= gnull
+            boom = (~np.isfinite(self.gains)).any(axis=(-1,-2))
+            self.gflags[boom&~flagged] |= FL.BOOM
+            flagged |= boom
+            gain_mags[boom] = 0
 
-        # Check for gain solutions which are out of bounds (based on clip thresholds).
+            # Check for gain solutions for which diagonal terms have gone to 0.
 
-        if self.clip_after<self.iters and self.clip_upper or self.clip_lower:
-            goob = np.zeros(gain_mags.shape, bool)
-            if self.clip_upper:
-                goob = gain_mags.max(axis=(-1, -2)) > self.clip_upper
-            if self.clip_lower:
-                goob |= (gain_mags[...,0,0]<self.clip_lower) | (gain_mags[...,1,1,]<self.clip_lower)
-            self.gflags[goob&~flagged] |= FL.GOOB
-            flagged |= goob
+            gnull = (self.gains[..., 0, 0] == 0) | (self.gains[..., 1, 1] == 0)
+            self.gflags[gnull&~flagged] |= FL.GNULL
+            flagged |= gnull
+
+            # Check for gain solutions which are out of bounds (based on clip thresholds).
+
+            if self.clip_after<self.iters and self.clip_upper or self.clip_lower:
+                goob = np.zeros(gain_mags.shape, bool)
+                if self.clip_upper:
+                    goob = gain_mags.max(axis=(-1, -2)) > self.clip_upper
+                if self.clip_lower:
+                    goob |= (gain_mags[...,0,0]<self.clip_lower) | (gain_mags[...,1,1,]<self.clip_lower)
+                self.gflags[goob&~flagged] |= FL.GOOB
+                flagged |= goob
+
+        # else final flagging -- check the posterior error estimate
+        else:
+            # reset to 0 for fixed directions
+            if self.dd_term:
+                self.posterior_gain_error[self.fix_directions, ...] = 0
+            # flag gains on max error
+            # the last axis is correlation -- we flag if any correlation is flagged
+            bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=-1)  # dir,time,freq,ant
+            if bad_gain_intervals.any():
+                # (n_dir,) array showing how many were flagged per direction
+                self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1, 2, 3))
+                # raised corresponding gain flags
+                mask = self._interval_to_gainres(bad_gain_intervals, 1)
+                self.gflags[mask] |= FL.GVAR
+                flagged[mask] = True
+            else:
+                self._n_flagged_on_max_posterior_error = None
 
         # Count the gain flags, excluding those set a priori due to missing data.
 
         self.flagged = flagged
-        self.n_flagged = (self.gflags&~FL.MISSING != 0).sum()
+        self.n_flagged = flagged.sum()
 
         # reset flagged gains to their previous values
-        flagged = self.gflags!=0
         self.gains[flagged] = self.old_gains[flagged]
 
-    def num_gain_flags(self, mask=None):
-        return (self.gflags&(mask or ~FL.MISSING) != 0).sum(), self.gflags.size
-
-    def propagate_gflags(self, flags):
-        """
-        Propagates the flags raised by the gain machine back into the data. This is necessary as 
-        the gain flags may not have the same shape as the data. Also updates equation counts etc.
-
-        Args:
-            flags (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
-        """
-
-        if self.propagates_flags:
+        if self.n_flagged > nfl0 and self.propagates_flags:
             # convert gain flags to full time/freq resolution, and add directions together
             nodir_flags = self._gainres_to_fullres(np.bitwise_or.reduce(self.gflags, axis=0))
 
             # We remove the FL.MISSING bit when propagating as this bit is pre-set for data flagged
             # as PRIOR|MISSING. This prevents every PRIOR but not MISSING flag from becoming MISSING.
 
-            flags |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING
-            flags |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
+            flags_arr |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING
+            flags_arr |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
 
-            self._update_equation_counts(flags==0)
+            self._update_equation_counts(flags_arr==0)
+
+            return True
+        return False
+
+
+    def num_gain_flags(self, mask=None):
+        return (self.gflags&(mask or ~FL.MISSING) != 0).sum(), self.gflags.size
 
     @property
     def dof_per_antenna(self):
@@ -404,7 +423,7 @@ class PerIntervalGains(MasterMachine):
     def num_converged_solutions(self):
         return self.n_cnvgd
 
-    def update_conv_params(self, min_delta_g):
+    def check_convergence(self, min_delta_g):
         """
         Updates the convergence parameters of the current time-frequency chunk. 
 
@@ -425,6 +444,7 @@ class PerIntervalGains(MasterMachine):
 
         self.max_update = np.sqrt(np.max(diff_g))
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
+        self._frac_cnvgd = self.n_cnvgd / float(norm_diff_g.size)
 
     def restrict_solution(self):
         """
@@ -500,12 +520,14 @@ class PerIntervalGains(MasterMachine):
 
         return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), 
                                                                     self.f_bins, tdim_ind+1)
+    @property
+    def converged_fraction(self):
+        return self._frac_cnvgd
 
     @property
     def has_converged(self):
         """ Returns convergence status. """
-
-        return self.n_cnvgd/self.n_sols > self.min_quorum or self.iters >= self.maxiter
+        return self.converged_fraction >= self.min_quorum or self.iters >= self.maxiter
 
     @property
     def conditioning_status_string(self):
@@ -518,11 +540,11 @@ class PerIntervalGains(MasterMachine):
         if self.num_valid_intervals:
             string += " ({}-{} EPI)".format(mineqs, maxeqs)
             if self.dd_term:
-                string += ", {} dirs".format(self.n_dir)
-            string += "{}/{} ants, MGE {}".format(anteqs, self.n_ant,
+                string += " {} dirs".format(self.n_dir)
+            string += " {}/{} ants, MGE {}".format(anteqs, self.n_ant,
                 " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]))
             if self._n_flagged_on_max_error is not None:
-                string += ", NFME {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
+                string += ", NFMGE {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
 
         return string
 
@@ -534,7 +556,7 @@ class PerIntervalGains(MasterMachine):
             "G: 20 iters, conv 60.02%, g/fl 15.00%"
         """
         if self.solvable:
-            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.n_cnvgd/self.n_sols)
+            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.converged_fraction)
             nfl, ntot = self.num_gain_flags()
             if nfl:
                 string += ", g/fl {:.2%}".format(nfl/float(ntot))
@@ -555,7 +577,7 @@ class PerIntervalGains(MasterMachine):
             "G: 20 iters, conv 60.02%, g/fl 15.00%"
         """
         if self.solvable:
-            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.n_cnvgd/self.n_sols)
+            string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.converged_fraction)
             nfl, ntot = self.num_gain_flags()
             if nfl:
                 string += ", g/fl {:.2%}".format(nfl/float(ntot))
@@ -564,6 +586,8 @@ class PerIntervalGains(MasterMachine):
             if self.posterior_gain_error is not None:
                 string += ", PGE " + " ".join(["{:.3}".format(self.posterior_gain_error[idir, :].max())
                                                for idir in xrange(self.n_dir)])
+            if self._n_flagged_on_max_posterior_error is not None:
+                string += ", NFPGE {}".format(" ".join(map(str,self._n_flagged_on_max_posterior_error)))
             return string
         else:
             return "{}: n/s{}".format(self.jones_label, ", loaded" if self._gains_loaded else "")

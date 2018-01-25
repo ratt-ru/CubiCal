@@ -10,6 +10,7 @@ import cubical.kernels.cychain as cychain
 
 from cubical.tools import logger
 import machine_types
+from cubical.flagging import FL
 log = logger.getLogger("jones_chain")
 
 
@@ -194,7 +195,7 @@ class JonesChain(MasterMachine):
         for ind in xrange(0, self.active_index, 1):
             term = self.jones_terms[ind]
             g_inv = np.empty_like(term.gains)
-            cyfull.cycompute_jhjinv(term.gains, g_inv, term.gflags, term.eps, term.flagbit)
+            cyfull.cycompute_jhjinv(term.gains, g_inv, term.gflags, term.eps, FL.ILLCOND)
             cychain.cyapply_left_inv_jones(jhr, g_inv, term.t_int, term.f_int)
 
         jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
@@ -209,7 +210,7 @@ class JonesChain(MasterMachine):
 
         jhjinv = np.empty(jhrint_shape, dtype=obser_arr.dtype)
 
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.active_term.gflags, self.active_term.eps, self.active_term.flagbit)
+        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
 
         return jhrint, jhjinv, flag_count
 
@@ -303,15 +304,15 @@ class JonesChain(MasterMachine):
             term.apply_gains(vis)
         return vis
 
-    def update_conv_params(self, min_delta_g):
+    def check_convergence(self, min_delta_g):
         """
-        Updates the convergence parameters of the current time-frequency chunk. 
+        Updates the convergence info of the current time-frequency chunk. 
 
         Args:
             min_delta_g (float):
                 Threshold for the minimum change in the gains - convergence criterion.
         """
-        return self.active_term.update_conv_params(min_delta_g)
+        return self.active_term.check_convergence(min_delta_g)
 
     def restrict_solution(self):
         """
@@ -320,23 +321,16 @@ class JonesChain(MasterMachine):
         """
         return self.active_term.restrict_solution()
 
-    def flag_solutions(self):
-        """ Flags gain solutions based on certain criteria, e.g. out-of-bounds, null, etc. """
-        return self.active_term.flag_solutions()
+    def flag_solutions(self, flags_arr, final=False):
+        """ Flags gain solutions."""
+        # Per-iteration flagging done on the active term, final flagging is done on all terms.
+        if final:
+            return any([ term.flag_solutions(flags_arr, True) for term in self.jones_terms])
+        else:
+            return self.active_term.flag_solutions(flags_arr, False)
 
     def num_gain_flags(self, mask=None):
         return self.active_term.num_gain_flags(mask)
-
-    def propagate_gflags(self, flags):
-        """
-        Propagates the flags raised by the gain machine back into the data. This is necessary as 
-        the gain flags may not have the same shape as the data.
-
-        Args:
-            flags (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
-        """
-        return self.active_term.propagate_gflags(flags)
 
     def _next_chain_term(self):
         if not self.term_iters:

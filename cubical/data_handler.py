@@ -733,6 +733,18 @@ class Tile(object):
                 self.handler.reopen()
             self.handler.putslice(self.handler.output_column, data['covis'], self.first_row, nrows)
 
+        if self.handler.output_model_column and 'movis' in data:
+            print>> log, "saving {} for MS rows {}~{}".format(self.handler.output_model_column, self.first_row, self.last_row)
+            if self.handler._add_column(self.handler.output_model_column):
+                self.handler.reopen()
+            # take first mode, and sum over directions if needed
+            model = data['movis'][:,0]
+            if model.shape[0] == 1:
+                model = model.reshape(model.shape[1:])
+            else:
+                model = model.sum(axis=0)
+            self.handler.putslice(self.handler.output_model_column, model, self.first_row, nrows)
+
         # write flags if (a) auto-filling BITFLAG column and/or (b) solver has generated flags, and we're saving cubical flags
         
         if self.handler._save_bitflag and data['updated'][1]:
@@ -740,14 +752,15 @@ class Tile(object):
             # clear bitflag column first
             self.bflagcol &= ~self.handler._save_bitflag
             # add bitflag to points where data wasn't flagged for prior reasons
-            self.bflagcol[data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0] |= self.handler._save_bitflag
+            newflags = data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0
+            self.bflagcol[newflags] |= self.handler._save_bitflag
             self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
-            print>> log, "  updated BITFLAG column"
+            print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged by solver)".format(newflags.sum()/float(newflags.size))
             self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
             self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
             flag_col = self.bflagcol != 0
             self.handler.putslice("FLAG", flag_col, self.first_row, nrows)
-            print>> log, "  updated FLAG column ({:.2%} visibilities flagged)".format(
+            print>> log, "  updated FLAG column ({:.2%} total visibilities flagged)".format(
                 flag_col.sum() / float(flag_col.size))
             flag_row = flag_col.all(axis=(-1, -2))
             self.handler.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)
@@ -912,12 +925,11 @@ class Tile(object):
 class DataHandler:
     """ Main data handler. Interfaces with the measurement set. """
 
-    def __init__(self, ms_name, data_column, models, output_column=None,
+    def __init__(self, ms_name, data_column, output_column=None, output_model_column=None,
                  reinit_output_column=False,
                  taql=None, fid=None, ddid=None, channels=None, flagopts={}, double_precision=False,
-                 weights=None, beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
-                 active_subset=None, min_baseline=0, max_baseline=0, use_ddes=True,
-                 mb_opts=None):
+                 beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
+                 active_subset=None, min_baseline=0, max_baseline=0):
         """
         Initialises a DataHandler object.
 
@@ -932,6 +944,8 @@ class DataHandler:
                 Name of input model column.
             output_column (str or None, optional):
                 Name of output column if specified, else None.
+            output_column (str or None, optional):
+                Name of output model column if specified, else None.
             taql (str):
                 Additional TAQL query for data selection.
             fid (int or None, optional):
@@ -963,7 +977,6 @@ class DataHandler:
         """
 
         self.ms_name = ms_name
-        self.mb_opts = mb_opts
         self.beam_pattern = beam_pattern
         self.beam_l_axis = beam_l_axis
         self.beam_m_axis = beam_m_axis
@@ -1090,11 +1103,16 @@ class DataHandler:
 
         self.data_column = data_column
         self.output_column = output_column
-        if reinit_output_column and output_column and output_column in self.ms.colnames():
-            print>>log(0),"reinitializing output column {}".format(output_column)
-            self.ms.removecols([output_column])
-            self._add_column(output_column)
-            self.reopen()
+        self.output_model_column = output_model_column
+        if reinit_output_column:
+            reinit_columns = [col for col in [output_column, output_model_column]
+                               if col and col in self.ms.colnames()]
+            if reinit_columns:
+                print>>log(0),"reinitializing output column(s) {}".format(" ".join(reinit_columns))
+                self.ms.removecols(reinit_columns)
+                for col in reinit_columns:
+                    self._add_column(col)
+                self.reopen()
 
         # figure out flagging situation
         if "BITFLAG" in self.ms.colnames():
@@ -1168,6 +1186,9 @@ class DataHandler:
 
         # now parse the model composition
 
+    def init_models(self, models, weights, mb_opts={}, use_ddes=False):
+        """Parses the model list and initializes internal structures"""
+
         # ensure we have as many weights as models
         self.has_weights = weights is not None
         if weights is None:
@@ -1204,7 +1225,8 @@ class DataHandler:
                                 print>> log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
                                 raise RuntimeError("Error importing Montblanc")
                             self.use_montblanc = True
-                            component = TiggerSourceProvider(component, self.phadir, dde_tag=use_ddes and tag)
+                            component = TiggerSourceProvider(component, self.phadir,
+                                                dde_tag=use_ddes and tag)
                             for key in component._cluster_keys:
                                 dirname = idirtag if key == 'die' else key
                                 dirmodels.setdefault(dirname, []).append((component, key))
@@ -1240,6 +1262,7 @@ class DataHandler:
         self.use_ddes = len(self.model_directions) > 1
 
         if montblanc is not None:
+            self.mb_opts = mb_opts
             mblogger = logging.getLogger("montblanc")
             mblogger.propagate = False
             # NB: this assume that the first handler of the Montblanc logger is the console logger
@@ -1404,8 +1427,8 @@ class DataHandler:
         self.times = np.fromiter(map(rmap.__getitem__, self.time_col), int)
         print>> log, "  built timeslot index ({} unique timestamps)".format(len(self.uniq_times))
 
-        self.chunk_tdim = tdim
-        self.chunk_fdim = fdim
+        self.chunk_tdim = tdim or len(self.uniq_times)
+        self.chunk_fdim = fdim or self.nfreq
 
         # TODO: this assumes each DDID has the same number of channels. I don't know of cases where it is not true,
         # but, technically, this is not precluded by the MS standard. Need to handle this one day
