@@ -423,12 +423,11 @@ def main(debugging=False):
                 ms.close()
                 for itile, tile in enumerate(Tile.tile_list):
                     # wait for I/O job on current tile to finish
-                    print>>log(0),"waiting for I/O on tile #{}".format(itile+1)
+                    print>>log(0),"waiting for I/O on tile #{}/{}".format(itile+1, len(Tile.tile_list))
                     done, not_done = cf.wait([io_futures[itile]])
                     if not done or not io_futures[itile].result():
-                        raise RuntimeError("I/O job on tile #{} failed".format(itile+1))
+                        raise RuntimeError("I/O job on tile #{}/{} failed".format(itile+1, len(Tile.tile_list)))
                     del io_futures[itile]
-
 
                     # immediately schedule I/O job to save previous/load next tile
                     load_next = itile+1 if itile < len(Tile.tile_list)-1 else None
@@ -439,7 +438,7 @@ def main(debugging=False):
                     # submit solver jobs
                     solver_futures = {}
 
-                    print>>log(0),"submitting solver jobs for tile #{}".format(itile+1)
+                    print>>log(0),"submitting solver jobs for tile #{}/{}".format(itile+1, len(Tile.tile_list))
 
                     for key in tile.get_chunk_keys():
                         if not single_chunk or key == single_chunk:
@@ -454,18 +453,23 @@ def main(debugging=False):
                         stats_dict[tile.get_chunk_indices(key)] = stats
                         print>>log(3),"handled result of chunk {}".format(key)
 
-                    print>> log(0), "done with tile #{}".format(itile+1)
+                    print>> log(0), "done with tile #{}/{}".format(itile+1, len(Tile.tile_list))
 
                 # ok, at this stage we've iterated over all the tiles, but there's an outstanding
                 # I/O job saving the second-to-last tile (which was submitted with itile+1), and the last tile was
                 # never saved, so submit a job for that (also to close the MS), and wait
                 io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, finalize=True)
-                cf.wait(io_futures.values())
+                cf.wait([io_futures[-1]])
+                # get flagcounts from result of job
+                ms.update_flag_counts(io_futures[-1].result()['flagcounts'])
 
                 # and reopen the MS again
                 ms.reopen()
 
         print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
+
+        # print flagging stats
+        print>>log, ModColor.Str("Flagging stats: ",col="green") + " ".join(ms.get_flag_counts())
 
         if not apply_only:
             # now summarize the stats
@@ -556,10 +560,11 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
     """
     _init_worker()
     try:
+        result = {'success': True}
         if save is not None:
             tile = Tile.tile_list[save]
             itile = range(len(Tile.tile_list))[save]
-            print>>log(0, "blue"),"saving tile #{}".format(itile+1)
+            print>>log(0, "blue"),"saving tile #{}/{}".format(itile+1, len(Tile.tile_list))
             tile.save(unlock=finalize)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
@@ -567,11 +572,12 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
             if finalize:
                 solver.ifrgain_machine.save()
                 solver.gm_factory.close()
+                result['flagcounts'] = tile.handler.flagcounts
             tile.release()
         if load is not None:
             print>>log(0, "blue"),"loading tile #{}/{}".format(load+1, len(Tile.tile_list))
             Tile.tile_list[load].load(load_model=load_model)
-        return True
+        return result
     except Exception, exc:
         print>> log, ModColor.Str("I/O handler for load {} save {} failed with exception: {}".format(load, save, exc))
         print>> log, traceback.format_exc()
