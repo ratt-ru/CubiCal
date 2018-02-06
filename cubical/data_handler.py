@@ -523,6 +523,8 @@ class Tile(object):
         n_bl = (self.nants*(self.nants - 1))/2
         uniq_times = np.unique(self.times)
         ntime = len(uniq_times)
+        uniq_time_col = np.unique(self.time_col)
+        t_offset = uniq_times[0]
 
         nrows = self.last_row - self.first_row + 1
 
@@ -568,7 +570,7 @@ class Tile(object):
             self.anteb = np.concatenate((self.anteb,
                                          np.array([q for _, (p, q, t, d) in enumerate(missing)])))
             self.time_col = np.concatenate((self.time_col,
-                                         np.array([t for _, (p, q, t, d) in enumerate(missing)])))
+                                         np.array([uniq_time_col[t-t_offset] for _, (p, q, t, d) in enumerate(missing)])))
             self.ddid_col = np.concatenate((self.ddid_col,
                                          np.array([d for _, (p, q, t, d) in enumerate(missing)])))
             # extend row index
