@@ -138,6 +138,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     
     have_residuals = True
 
+    de = gm.jones_terms[1]
+
     def compute_chisq(statfield=None):
         """
         Computes chi-squared statistic based on current residuals and noise estimates.
@@ -201,6 +203,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             if not gm.has_valid_solutions:
                 break
 
+        # print>>log,"{} {} {}".format(de.gains[1,5,2,5], de.posterior_gain_error[1,5,2,5], de.posterior_gain_error[1].mean())
+        #
         have_residuals = False
 
         # Compute values used in convergence tests. This check implicitly marks flagged gains as 
