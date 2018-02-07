@@ -358,7 +358,7 @@ class PerIntervalGains(MasterMachine):
                 flagged |= goob
 
         # else final flagging -- check the posterior error estimate
-        else:
+        elif self.posterior_gain_error is not None:
             # reset to 0 for fixed directions
             if self.dd_term:
                 self.posterior_gain_error[self.fix_directions, ...] = 0

@@ -676,6 +676,8 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         # Get chunk data from tile.
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
+        
+#        import pdb; pdb.set_trace()
 
         chunk_ts, chunk_fs, _, freq_slice = tile.get_chunk_tfs(chunk_key)
 
@@ -697,6 +699,14 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         # Invoke solver method
 
         corr_vis, stats = solver(vdm, soldict, label, sol_opts)
+        
+        # Panic if amplitude has gone crazy
+        
+        if sol_opts['panic-amplitude']:
+            if corr_vis is not None:
+                unflagged = flags_arr==0
+                if unflagged.any() and abs(corr_vis[unflagged,:,:]).max() > sol_opts['panic-amplitude']:
+                    raise RuntimeError("excessive amplitude in chunk {}".format(label))
 
         # Copy results back into tile.
 
