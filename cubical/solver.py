@@ -638,7 +638,7 @@ SOLVERS = { 'so': solve_only,
             }
 
 
-def run_solver(solver_type, itile, chunk_key, sol_opts):
+def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
     """
     Initialises a gain machine and invokes the solver for the current chunk.
 
@@ -697,15 +697,18 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         vdm.gm = gm_factory.create_machine(vdm.weighted_obser, n_dir, n_mod, chunk_ts, chunk_fs, label)
 
         # Invoke solver method
+        if debug_opts['stop-before-solver']:
+            import pdb
+            pdb.set_trace()
 
         corr_vis, stats = solver(vdm, soldict, label, sol_opts)
         
         # Panic if amplitude has gone crazy
         
-        if sol_opts['panic-amplitude']:
+        if debug_opts['panic-amplitude']:
             if corr_vis is not None:
                 unflagged = flags_arr==0
-                if unflagged.any() and abs(corr_vis[unflagged,:,:]).max() > sol_opts['panic-amplitude']:
+                if unflagged.any() and abs(corr_vis[unflagged,:,:]).max() > debug_opts['panic-amplitude']:
                     raise RuntimeError("excessive amplitude in chunk {}".format(label))
 
         # Copy results back into tile.

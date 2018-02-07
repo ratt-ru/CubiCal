@@ -248,6 +248,7 @@ def main(debugging=False):
         # set up RIME
 
         solver_opts = GD["sol"]
+        debug_opts  = GD["debug"]
         sol_jones = solver_opts["jones"]
         if type(sol_jones) is str:
             sol_jones = set(sol_jones.split(','))
@@ -367,7 +368,7 @@ def main(debugging=False):
                     if not single_chunk or key == single_chunk:
                         processed = True
                         stats_dict[tile.get_chunk_indices(key)] = \
-                            solver.run_solver(solver_type, itile, key, solver_opts)
+                            solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
                 if processed:
                     tile.save()
                     for sd in tile.iterate_solution_chunks():
@@ -443,7 +444,7 @@ def main(debugging=False):
                     for key in tile.get_chunk_keys():
                         if not single_chunk or key == single_chunk:
                             solver_futures[executor.submit(solver.run_solver, solver_type,
-                                                           itile, key, solver_opts)] = key
+                                                           itile, key, solver_opts, debug_opts)] = key
                             print>> log(3), "submitted solver job for chunk {}".format(key)
 
                     # wait for solvers to finish
