@@ -424,10 +424,10 @@ def main(debugging=False):
                 ms.close()
                 for itile, tile in enumerate(Tile.tile_list):
                     # wait for I/O job on current tile to finish
-                    print>>log(0),"waiting for I/O on tile #{}/{}".format(itile+1, len(Tile.tile_list))
+                    print>>log(0),"waiting for I/O on {}".format(tile.label)
                     done, not_done = cf.wait([io_futures[itile]])
                     if not done or not io_futures[itile].result():
-                        raise RuntimeError("I/O job on tile #{}/{} failed".format(itile+1, len(Tile.tile_list)))
+                        raise RuntimeError("I/O job on {} failed".format(tile.label))
                     del io_futures[itile]
 
                     # immediately schedule I/O job to save previous/load next tile
@@ -439,7 +439,7 @@ def main(debugging=False):
                     # submit solver jobs
                     solver_futures = {}
 
-                    print>>log(0),"submitting solver jobs for tile #{}/{}".format(itile+1, len(Tile.tile_list))
+                    print>>log(0),"submitting solver jobs for {}".format(tile.label)
 
                     for key in tile.get_chunk_keys():
                         if not single_chunk or key == single_chunk:
@@ -454,7 +454,7 @@ def main(debugging=False):
                         stats_dict[tile.get_chunk_indices(key)] = stats
                         print>>log(3),"handled result of chunk {}".format(key)
 
-                    print>> log(0), "done with tile #{}/{}".format(itile+1, len(Tile.tile_list))
+                    print>> log(0), "finished processing {}".format(tile.label)
 
                 # ok, at this stage we've iterated over all the tiles, but there's an outstanding
                 # I/O job saving the second-to-last tile (which was submitted with itile+1), and the last tile was
@@ -565,7 +565,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
         if save is not None:
             tile = Tile.tile_list[save]
             itile = range(len(Tile.tile_list))[save]
-            print>>log(0, "blue"),"saving tile #{}/{}".format(itile+1, len(Tile.tile_list))
+            print>>log(0, "blue"),"saving {}".format(tile.label)
             tile.save(unlock=finalize)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
@@ -576,8 +576,10 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
                 result['flagcounts'] = tile.handler.flagcounts
             tile.release()
         if load is not None:
-            print>>log(0, "blue"),"loading tile #{}/{}".format(load+1, len(Tile.tile_list))
-            Tile.tile_list[load].load(load_model=load_model)
+            tile = Tile.tile_list[load]
+            print>>log(0, "blue"),"loading {}".format(tile.label)
+            tile.load(load_model=load_model)
+        print>> log(0, "blue"), "I/O job(s) complete"
         return result
     except Exception, exc:
         print>> log, ModColor.Str("I/O handler for load {} save {} failed with exception: {}".format(load, save, exc))

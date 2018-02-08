@@ -186,7 +186,7 @@ class PerIntervalGains(MasterMachine):
         """ Returns a dictionary of exportable solutions for this machine type. """
 
         return { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")),
-                 "gain.err": (1 + 0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
+                 "gain.err": (0., ("dir", "time", "freq", "ant", "corr1", "corr2")) }
 
     def importable_solutions(self):
         """ Returns a dictionary of importable solutions for this machine type. """

@@ -176,6 +176,7 @@ class Tile(object):
         self._rows_adjusted = False
         self._updated = False
         self.data = None
+        self.label = "tile"
 
     def append(self, chunk):
         """
@@ -203,7 +204,7 @@ class Tile(object):
         self.first_row = min(self.first_row, other.first_row)
         self.last_row = max(self.last_row, other.last_row)
 
-    def finalize(self):
+    def finalize(self, label=None):
         """
         Creates a list of chunks within the tile that can be iterated over and creates a list of
         chunk labels.
@@ -211,6 +212,8 @@ class Tile(object):
         This also adjusts the row indices of all row chunks so that they become relative to the 
         start of the tile.
         """
+        if label is not None:
+            self.label = label
 
         self._data_dict_name = "DATA:{}:{}".format(self.first_row, self.last_row)
 
@@ -313,7 +316,7 @@ class Tile(object):
         data['updated'] = np.array([False, False])
         self._auto_filled_bitflag = False
 
-        print>>log,"reading MS rows {}~{}".format(self.first_row, self.last_row)
+        print>>log(0,"blue"),"{}: reading MS rows {}~{}".format(self.label, self.first_row, self.last_row)
         
         nrows = self.last_row - self.first_row + 1
         
@@ -432,6 +435,7 @@ class Tile(object):
         # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them.
 
         flagcol = flagrow = None
+        self._flagcol_sum = 0
         self.handler.flagcounts["TOTAL"] += flag_arr.size
 
         if self.handler._apply_flags or self.handler._auto_fill_bitflag:
@@ -440,7 +444,8 @@ class Tile(object):
             flagcol[flagrow, :, :] = True
             print>> log(2), "  read FLAG/FLAG_ROW"
             # compute stats
-            self.handler.flagcounts["FLAG"] += flagcol.sum()
+            self._flagcol_sum = flagcol.sum()
+            self.handler.flagcounts["FLAG"] += self._flagcol_sum
 
             if self.handler._apply_flags:
                 flag_arr[flagcol] = FL.PRIOR
@@ -507,6 +512,11 @@ class Tile(object):
             if self.handler._apply_bitflags:
                 flag_arr[(self.bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
                 flag_arr[(self.bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
+
+            flagged = flag_arr!=0
+            nfl = flagged.sum()
+            self.handler.flagcounts["APPLY"] += nfl
+            print>> log, "  {:.2%} input visibilities flagged".format(nfl / float(flagged.size))
 
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
@@ -739,14 +749,15 @@ class Tile(object):
         """
         nrows = self.last_row - self.first_row + 1
         data = shared_dict.attach(self._data_dict_name)
+        print>> log(0,"blue"), "{}: saving MS rows {}~{}".format(self.label, self.first_row, self.last_row)
         if self.handler.output_column and data['updated'][0]:
-            print>> log, "saving {} for MS rows {}~{}".format(self.handler.output_column, self.first_row, self.last_row)
+            print>> log, "  writing {} column".format(self.handler.output_column)
             if self.handler._add_column(self.handler.output_column):
                 self.handler.reopen()
             self.handler.putslice(self.handler.output_column, data['covis'], self.first_row, nrows)
 
         if self.handler.output_model_column and 'movis' in data:
-            print>> log, "saving {} for MS rows {}~{}".format(self.handler.output_model_column, self.first_row, self.last_row)
+            print>> log, "  writing {} column".format(self.handler.output_model_column)
             if self.handler._add_column(self.handler.output_model_column):
                 self.handler.reopen()
             # take first mode, and sum over directions if needed
@@ -759,33 +770,38 @@ class Tile(object):
 
         # write flags if (a) auto-filling BITFLAG column and/or (b) solver has generated flags, and we're saving cubical flags
         
-        if self.handler._save_bitflag and data['updated'][1]:
-            print>> log, "saving flags for MS rows {}~{}".format(self.first_row, self.last_row)
-            # clear bitflag column first
-            self.bflagcol &= ~self.handler._save_bitflag
-            # add bitflag to points where data wasn't flagged for prior reasons
-            newflags = data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0
-            # add to stats
-            self.handler.flagcounts['NEW'] += newflags.sum()
-            self.bflagcol[newflags] |= self.handler._save_bitflag
-            self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
-            print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged by solver)".format(newflags.sum()/float(newflags.size))
-            self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
-            self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
-            flag_col = self.bflagcol != 0
-            self.handler.putslice("FLAG", flag_col, self.first_row, nrows)
-            self.handler.flagcounts['OUT'] += flag_col.sum()
-            print>> log, "  updated FLAG column ({:.2%} total visibilities flagged)".format(
-                flag_col.sum() / float(flag_col.size))
-            flag_row = flag_col.all(axis=(-1, -2))
-            self.handler.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)
-            print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(
-                flag_row.sum() / float(flag_row.size))
+        if self.handler._save_bitflag:
+            if data['updated'][1]:
+                # clear bitflag column first
+                self.bflagcol &= ~self.handler._save_bitflag
+                # add bitflag to points where data wasn't flagged for prior reasons
+                newflags = data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0
+                # add to stats
+                self.handler.flagcounts['NEW'] += newflags.sum()
+                self.bflagcol[newflags] |= self.handler._save_bitflag
+                self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
+                print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged by solver)".format(newflags.sum()/float(newflags.size))
+                self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
+                self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
+                flag_col = self.bflagcol != 0
+                self.handler.putslice("FLAG", flag_col, self.first_row, nrows)
+                totflags = flag_col.sum()
+                self.handler.flagcounts['OUT'] += totflags
+                print>> log, "  updated FLAG column ({:.2%} total visibilities flagged)".format(totflags / float(flag_col.size))
+                flag_row = flag_col.all(axis=(-1, -2))
+                self.handler.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)
+                print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(
+                    flag_row.sum() / float(flag_row.size))
+            else:
+                print>>log,"  no new flags generated"
+                self.handler.flagcounts['OUT'] += self._flagcol_sum
+
         elif self._auto_filled_bitflag:
             self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
             print>> log, "  auto-filled BITFLAG column"
             self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
             self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
+            self.handler.flagcounts['OUT'] += self._flagcol_sum
 
         if unlock:
             self.handler.unlock()
@@ -1225,6 +1241,7 @@ class DataHandler:
 
             self.bitflags = {}
 
+        self.flagcounts['APPLY'] = 0
         self.flagcounts['NEW'] = 0
         self.flagcounts['OUT'] = 0
 
@@ -1566,8 +1583,8 @@ class DataHandler:
                 coarser_tile_list[-1].merge(tile)
 
         Tile.tile_list = coarser_tile_list
-        for tile in Tile.tile_list:
-            tile.finalize()
+        for i, tile in enumerate(Tile.tile_list):
+            tile.finalize("tile #{}/{}".format(i+1, len(Tile.tile_list)))
 
         print>> log, "  coarsening this to {} tiles (min {} chunks per tile)".format(len(Tile.tile_list), min_chunks_per_tile)
 
