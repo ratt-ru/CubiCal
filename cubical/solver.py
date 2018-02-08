@@ -138,6 +138,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     
     have_residuals = True
 
+    de = gm.jones_terms[1]
+
     def compute_chisq(statfield=None):
         """
         Computes chi-squared statistic based on current residuals and noise estimates.
@@ -201,6 +203,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             if not gm.has_valid_solutions:
                 break
 
+        # print>>log,"{} {} {}".format(de.gains[1,5,2,5], de.posterior_gain_error[1,5,2,5], de.posterior_gain_error[1].mean())
+        #
         have_residuals = False
 
         # Compute values used in convergence tests. This check implicitly marks flagged gains as 
@@ -638,7 +642,7 @@ SOLVERS = { 'so': solve_only,
             }
 
 
-def run_solver(solver_type, itile, chunk_key, sol_opts):
+def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
     """
     Initialises a gain machine and invokes the solver for the current chunk.
 
@@ -676,6 +680,8 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         # Get chunk data from tile.
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
+        
+#        import pdb; pdb.set_trace()
 
         chunk_ts, chunk_fs, _, freq_slice = tile.get_chunk_tfs(chunk_key)
 
@@ -695,8 +701,19 @@ def run_solver(solver_type, itile, chunk_key, sol_opts):
         vdm.gm = gm_factory.create_machine(vdm.weighted_obser, n_dir, n_mod, chunk_ts, chunk_fs, label)
 
         # Invoke solver method
+        if debug_opts['stop-before-solver']:
+            import pdb
+            pdb.set_trace()
 
         corr_vis, stats = solver(vdm, soldict, label, sol_opts)
+        
+        # Panic if amplitude has gone crazy
+        
+        if debug_opts['panic-amplitude']:
+            if corr_vis is not None:
+                unflagged = flags_arr==0
+                if unflagged.any() and abs(corr_vis[unflagged,:,:]).max() > debug_opts['panic-amplitude']:
+                    raise RuntimeError("excessive amplitude in chunk {}".format(label))
 
         # Copy results back into tile.
 
