@@ -138,8 +138,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     
     have_residuals = True
 
-    de = gm.jones_terms[1]
-
     def compute_chisq(statfield=None):
         """
         Computes chi-squared statistic based on current residuals and noise estimates.

@@ -112,11 +112,12 @@ class PerIntervalGains(MasterMachine):
         self.prior_gain_error = None
         self.posterior_gain_error = None
 
-
     def init_gains(self):
         """
         Construct gain and flag arrays. Normally we have one gain/one flag per interval, but 
         subclasses may redefine this, if they deal with full-resolution gains.
+        
+        Sets the following attributes: gains, gflags, gerr
         """
         self.gain_grid = self.interval_grid
         self.gains = np.empty(self.gain_shape, dtype=self.dtype)
@@ -184,7 +185,8 @@ class PerIntervalGains(MasterMachine):
     def exportable_solutions():
         """ Returns a dictionary of exportable solutions for this machine type. """
 
-        return { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
+        return { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")),
+                 "gain.err": (1 + 0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
 
     def importable_solutions(self):
         """ Returns a dictionary of importable solutions for this machine type. """
@@ -197,7 +199,12 @@ class PerIntervalGains(MasterMachine):
         mask = np.zeros_like(self.gains, bool)
         mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
 
-        return { "gain".format(self.jones_label): (masked_array(self.gains, mask), self.gain_grid) }
+        sols = { "gain": (masked_array(self.gains, mask), self.gain_grid) }
+
+        if self.posterior_gain_error is not None:
+            sols["gain.err"] = (masked_array(self.posterior_gain_error, mask), self.gain_grid)
+
+        return sols
 
     def import_solutions(self, soldict):
         """ 
@@ -364,7 +371,7 @@ class PerIntervalGains(MasterMachine):
                 self.posterior_gain_error[self.fix_directions, ...] = 0
             # flag gains on max error
             # the last axis is correlation -- we flag if any correlation is flagged
-            bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=-1)  # dir,time,freq,ant
+            bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=(-1,-2))  # dir,time,freq,ant
 
             # mask high-variance gains that are not already otherwise flagged
             mask = self._interval_to_gainres(bad_gain_intervals, 1)&~flagged
@@ -477,6 +484,7 @@ class PerIntervalGains(MasterMachine):
             np.abs(self.gains, out=self.gains)
         for idir in self.fix_directions:
             self.gains[idir, ...] = self.old_gains[idir, ...]
+            self.posterior_gain_error[idir, ...] = 0
 
     def unpack_intervals(self, arr, tdim_ind=0):
         """
