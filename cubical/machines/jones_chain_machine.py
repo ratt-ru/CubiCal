@@ -106,8 +106,9 @@ class JonesChain(MasterMachine):
         soldict = {}
         # prefix jones label to solution name
         for term in self.jones_terms:
-            for label, sol in term.export_solutions().iteritems():
-                soldict["{}:{}".format(term.jones_label, label)] = sol
+            if term.solvable:
+                for label, sol in term.export_solutions().iteritems():
+                    soldict["{}:{}".format(term.jones_label, label)] = sol
         soldict['prefixed'] = True
 
         return soldict
@@ -408,8 +409,7 @@ class JonesChain(MasterMachine):
 
     @property
     def conditioning_status_string(self):
-        return "; ".join(["{}: {}".format(term.jones_label, term.conditioning_status_string)
-                          for term in self.jones_terms])
+        return "; ".join([term.conditioning_status_string for term in self.jones_terms])
 
     @property
     def current_convergence_status_string(self):
@@ -419,8 +419,7 @@ class JonesChain(MasterMachine):
     @property
     def final_convergence_status_string(self):
         """Final status is reported from all terms"""
-        return "; ".join(["{}: {}".format(term.jones_label, term.final_convergence_status_string)
-                          for term in self.jones_terms])
+        return "; ".join([term.final_convergence_status_string for term in self.jones_terms])
 
     @property
     def has_converged(self):

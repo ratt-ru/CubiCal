@@ -571,21 +571,24 @@ class PerIntervalGains(MasterMachine):
     @property
     def conditioning_status_string(self):
         """Returns conditioning status string"""
-        mineqs = self.eqs_per_interval[self.valid_intervals].min() if self.num_valid_intervals else 0
-        maxeqs = self.eqs_per_interval.max()
-        anteqs = (self.eqs_per_antenna!=0).sum()
-        string = "{}: {}/{} ints".format(self.jones_label,
-                                            self.num_valid_intervals, self.n_tf_ints)
-        if self.num_valid_intervals:
-            string += " ({}-{} EPI)".format(mineqs, maxeqs)
-            if self.dd_term:
-                string += " {} dirs".format(self.n_dir)
-            string += " {}/{} ants, MGE {}".format(anteqs, self.n_ant,
-                " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]))
-            if self._n_flagged_on_max_error is not None:
-                string += ", NFMGE {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
+        if self.solvable:
+            mineqs = self.eqs_per_interval[self.valid_intervals].min() if self.num_valid_intervals else 0
+            maxeqs = self.eqs_per_interval.max()
+            anteqs = (self.eqs_per_antenna!=0).sum()
+            string = "{}: {}/{} ints".format(self.jones_label,
+                                                self.num_valid_intervals, self.n_tf_ints)
+            if self.num_valid_intervals:
+                string += " ({}-{} EPI)".format(mineqs, maxeqs)
+                if self.dd_term:
+                    string += " {} dirs".format(self.n_dir)
+                string += " {}/{} ants, MGE {}".format(anteqs, self.n_ant,
+                    " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]))
+                if self._n_flagged_on_max_error is not None:
+                    string += ", NFMGE {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
 
-        return string
+            return string
+        else:
+            return "{}: n/s".format(self.jones_label)
 
 
     @property

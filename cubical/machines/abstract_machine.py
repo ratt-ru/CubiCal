@@ -527,7 +527,6 @@ class MasterMachine(object):
         """
         sols = {}
         # collect importable solutions from DB, interpolate
-        import pdb; pdb.set_trace()
         for label, grids in self.importable_solutions().iteritems():
             db, prefix, interpolate = init_sols.get(self.jones_label, (None, None, False))
             name = "{}:{}".format(prefix, label)
