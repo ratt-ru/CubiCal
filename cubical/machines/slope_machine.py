@@ -98,7 +98,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         # defines solutions we can import from
         # Note that complex gain (as a derived parameter) is exported, but not imported
-
+        import pdb; pdb.set_trace()
         return { label: self.interval_grid for label in self._labels.iterkeys() }
 
     def export_solutions(self):

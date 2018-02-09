@@ -91,11 +91,6 @@ class PerIntervalGains(MasterMachine):
         # True if gains are loaded from a DB
         self._gains_loaded = False
 
-        # Construct the appropriate shape for the gains.
-
-        self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
-        self.gains = None
-
         # Construct flag array and populate flagging attributes.
         self.max_gain_error = options["max-prior-error"]
         self.max_post_error = options["max-post-error"]
@@ -115,15 +110,40 @@ class PerIntervalGains(MasterMachine):
     def init_gains(self):
         """
         Construct gain and flag arrays. Normally we have one gain/one flag per interval, but 
-        subclasses may redefine this, if they deal with full-resolution gains.
+        subclasses may redefine this, if they deal with e.g. full-resolution gains.
         
-        Sets the following attributes: gains, gflags, gerr
+        Sets up the following attributes: 
+            gain_shape (list):
+                shape of the gains array, i.e. (n_dir, NT, NF, n_ant, n_cor, n_cor)
+                Default version has NT=n_timint, NF=n_freint, i.e. one gain per interval.
+                 
+            gain_grid (dict):
+                grid on which gains are defined, as a dict of {'time': times, 'freq': frequencies},
+                where times is a vector of NT points and frequencies is a vector of NF points.
+                
+            gains (np.ndarray):
+                gains array of the specified shape
+                
+            gflags (np.ndarray):
+                gain flags array of the same shape, minus the two correlation axes
+                
+            gain_intervals (list):
+                intervals on which gains are defined. Default version has [t_int, f_int].
+                
+            _gainres_to_fullres (callable):
+                function to go from an array of gain shape to full time/freq resolution
+                (default uses unpack_intervals)
+            
+            _interval_to_gainres (callable):
+                function to go from an array of interval shape to gain shape (default is identity)
         """
+        # Construct the appropriate shape for the gains.
+        self.gain_intervals = self.t_int, self.f_int
+        self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
         self.gain_grid = self.interval_grid
         self.gains = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:] = np.eye(self.n_cor)
-        self.flag_shape = self.gain_shape[:-2]
-        self.gflags = np.zeros(self.flag_shape, FL.dtype)
+        self.gflags = np.zeros(self.gain_shape[:-2], FL.dtype)
 
         # function used to unpack the gains or flags into full time/freq resolution
         self._gainres_to_fullres  = self.unpack_intervals

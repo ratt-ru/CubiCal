@@ -97,7 +97,8 @@ class JonesChain(MasterMachine):
         """Precomputes various stats before starting a solution"""
         MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
         for term in self.jones_terms:
-            term.precompute_attributes(model_arr, flags_arr, inv_var_chan)
+            if term.solvable:
+                term.precompute_attributes(model_arr, flags_arr, inv_var_chan)
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
@@ -178,7 +179,7 @@ class JonesChain(MasterMachine):
 
         for ind in xrange(self.active_index, -1, -1):
             term = self.jones_terms[ind]
-            cychain.cycompute_jh(self.jh, term.gains, term.t_int, term.f_int)
+            cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
             
         jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
 
@@ -196,17 +197,17 @@ class JonesChain(MasterMachine):
             term = self.jones_terms[ind]
             g_inv = np.empty_like(term.gains)
             cyfull.cycompute_jhjinv(term.gains, g_inv, term.gflags, term.eps, FL.ILLCOND)
-            cychain.cyapply_left_inv_jones(jhr, g_inv, term.t_int, term.f_int)
+            cychain.cyapply_left_inv_jones(jhr, g_inv, *term.gain_intervals)
 
         jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
         
         jhrint = np.zeros(jhrint_shape, dtype=jhr.dtype)
 
-        cychain.cysum_jhr_intervals(jhr, jhrint, self.active_term.t_int, self.active_term.f_int)
+        cychain.cysum_jhr_intervals(jhr, jhrint, *self.active_term.gain_intervals)
 
         jhj = np.zeros(jhrint_shape, dtype=obser_arr.dtype)
 
-        cyfull.cycompute_jhj(self.jh, jhj, self.active_term.t_int, self.active_term.f_int)
+        cyfull.cycompute_jhj(self.jh, jhj, *self.active_term.gain_intervals)
 
         jhjinv = np.empty(jhrint_shape, dtype=obser_arr.dtype)
 
@@ -325,7 +326,7 @@ class JonesChain(MasterMachine):
         """ Flags gain solutions."""
         # Per-iteration flagging done on the active term, final flagging is done on all terms.
         if final:
-            return any([ term.flag_solutions(flags_arr, True) for term in self.jones_terms])
+            return any([ term.flag_solutions(flags_arr, True) for term in self.jones_terms if term.solvable ])
         else:
             return self.active_term.flag_solutions(flags_arr, False)
 
@@ -369,7 +370,7 @@ class JonesChain(MasterMachine):
     @property
     def has_valid_solutions(self):
         """Gives corresponding property of the active chain term"""
-        return all([term.has_valid_solutions for term in self.jones_terms])
+        return all([term.has_valid_solutions for term in self.jones_terms if term.solvable])
 
     @property
     def num_converged_solutions(self):
