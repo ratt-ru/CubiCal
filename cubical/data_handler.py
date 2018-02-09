@@ -1179,6 +1179,7 @@ class DataHandler:
                     raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
                 print>> log, ModColor.Str("  Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
+                self.reopen()
             else:
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
                 print>> log, "  BITFLAG column found. Will auto-fill with '{}' ({}) from FLAG/FLAG_ROW if not filled".format(auto_init, self._auto_fill_bitflag)
