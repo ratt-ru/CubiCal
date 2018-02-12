@@ -3,7 +3,7 @@
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 import numpy as np
-from collections import Counter, OrderedDict
+from collections import OrderedDict
 import pyrap.tables as pt
 import cPickle
 import re
@@ -176,6 +176,7 @@ class Tile(object):
         self._rows_adjusted = False
         self._updated = False
         self.data = None
+        self.label = "tile"
 
     def append(self, chunk):
         """
@@ -203,7 +204,7 @@ class Tile(object):
         self.first_row = min(self.first_row, other.first_row)
         self.last_row = max(self.last_row, other.last_row)
 
-    def finalize(self):
+    def finalize(self, label=None):
         """
         Creates a list of chunks within the tile that can be iterated over and creates a list of
         chunk labels.
@@ -211,6 +212,8 @@ class Tile(object):
         This also adjusts the row indices of all row chunks so that they become relative to the 
         start of the tile.
         """
+        if label is not None:
+            self.label = label
 
         self._data_dict_name = "DATA:{}:{}".format(self.first_row, self.last_row)
 
@@ -313,7 +316,7 @@ class Tile(object):
         data['updated'] = np.array([False, False])
         self._auto_filled_bitflag = False
 
-        print>>log,"reading MS rows {}~{}".format(self.first_row, self.last_row)
+        print>>log(0,"blue"),"{}: reading MS rows {}~{}".format(self.label, self.first_row, self.last_row)
         
         nrows = self.last_row - self.first_row + 1
         
@@ -432,15 +435,20 @@ class Tile(object):
         # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them.
 
         flagcol = flagrow = None
+        self._flagcol_sum = 0
+        self.handler.flagcounts["TOTAL"] += flag_arr.size
 
         if self.handler._apply_flags or self.handler._auto_fill_bitflag:
             flagcol = self.handler.fetchslice("FLAG", self.first_row, nrows)
             flagrow = self.handler.fetch("FLAG_ROW", self.first_row, nrows)
+            flagcol[flagrow, :, :] = True
             print>> log(2), "  read FLAG/FLAG_ROW"
+            # compute stats
+            self._flagcol_sum = flagcol.sum()
+            self.handler.flagcounts["FLAG"] += self._flagcol_sum
 
-        if self.handler._apply_flags:
-            flag_arr[flagcol] = FL.PRIOR
-            flag_arr[flagrow, :, :] = FL.PRIOR
+            if self.handler._apply_flags:
+                flag_arr[flagcol] = FL.PRIOR
 
         # if an active row subset is specified, flag non-active rows as priors. Start as all flagged,
         # the clear the flags
@@ -494,9 +502,21 @@ class Tile(object):
                     self.bflagrow[flagrow] = self.handler._auto_fill_bitflag
                     print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s"%str(self.bflagcol.shape)
                     self._auto_filled_bitflag = True
+            # compute stats
+            for flagset, bitmask in self.handler.bitflags.iteritems():
+                flagged = self.bflagcol&bitmask != 0
+                flagged[self.bflagrow&bitmask != 0, :, :] = True
+                self.handler.flagcounts[flagset] += flagged.sum()
+
+            # apply
             if self.handler._apply_bitflags:
                 flag_arr[(self.bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
                 flag_arr[(self.bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
+
+            flagged = flag_arr!=0
+            nfl = flagged.sum()
+            self.handler.flagcounts["APPLY"] += nfl
+            print>> log, "  {:.2%} input visibilities flagged".format(nfl / float(flagged.size))
 
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
@@ -729,14 +749,15 @@ class Tile(object):
         """
         nrows = self.last_row - self.first_row + 1
         data = shared_dict.attach(self._data_dict_name)
+        print>> log(0,"blue"), "{}: saving MS rows {}~{}".format(self.label, self.first_row, self.last_row)
         if self.handler.output_column and data['updated'][0]:
-            print>> log, "saving {} for MS rows {}~{}".format(self.handler.output_column, self.first_row, self.last_row)
+            print>> log, "  writing {} column".format(self.handler.output_column)
             if self.handler._add_column(self.handler.output_column):
                 self.handler.reopen()
             self.handler.putslice(self.handler.output_column, data['covis'], self.first_row, nrows)
 
         if self.handler.output_model_column and 'movis' in data:
-            print>> log, "saving {} for MS rows {}~{}".format(self.handler.output_model_column, self.first_row, self.last_row)
+            print>> log, "  writing {} column".format(self.handler.output_model_column)
             if self.handler._add_column(self.handler.output_model_column):
                 self.handler.reopen()
             # take first mode, and sum over directions if needed
@@ -749,30 +770,38 @@ class Tile(object):
 
         # write flags if (a) auto-filling BITFLAG column and/or (b) solver has generated flags, and we're saving cubical flags
         
-        if self.handler._save_bitflag and data['updated'][1]:
-            print>> log, "saving flags for MS rows {}~{}".format(self.first_row, self.last_row)
-            # clear bitflag column first
-            self.bflagcol &= ~self.handler._save_bitflag
-            # add bitflag to points where data wasn't flagged for prior reasons
-            newflags = data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0
-            self.bflagcol[newflags] |= self.handler._save_bitflag
-            self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
-            print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged by solver)".format(newflags.sum()/float(newflags.size))
-            self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
-            self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
-            flag_col = self.bflagcol != 0
-            self.handler.putslice("FLAG", flag_col, self.first_row, nrows)
-            print>> log, "  updated FLAG column ({:.2%} total visibilities flagged)".format(
-                flag_col.sum() / float(flag_col.size))
-            flag_row = flag_col.all(axis=(-1, -2))
-            self.handler.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)
-            print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(
-                flag_row.sum() / float(flag_row.size))
+        if self.handler._save_bitflag:
+            if data['updated'][1]:
+                # clear bitflag column first
+                self.bflagcol &= ~self.handler._save_bitflag
+                # add bitflag to points where data wasn't flagged for prior reasons
+                newflags = data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0
+                # add to stats
+                self.handler.flagcounts['NEW'] += newflags.sum()
+                self.bflagcol[newflags] |= self.handler._save_bitflag
+                self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
+                print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged by solver)".format(newflags.sum()/float(newflags.size))
+                self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
+                self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
+                flag_col = self.bflagcol != 0
+                self.handler.putslice("FLAG", flag_col, self.first_row, nrows)
+                totflags = flag_col.sum()
+                self.handler.flagcounts['OUT'] += totflags
+                print>> log, "  updated FLAG column ({:.2%} total visibilities flagged)".format(totflags / float(flag_col.size))
+                flag_row = flag_col.all(axis=(-1, -2))
+                self.handler.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)
+                print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(
+                    flag_row.sum() / float(flag_row.size))
+            else:
+                print>>log,"  no new flags generated"
+                self.handler.flagcounts['OUT'] += self._flagcol_sum
+
         elif self._auto_filled_bitflag:
             self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
             print>> log, "  auto-filled BITFLAG column"
             self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
             self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
+            self.handler.flagcounts['OUT'] += self._flagcol_sum
 
         if unlock:
             self.handler.unlock()
@@ -1119,10 +1148,13 @@ class DataHandler:
         # figure out flagging situation
         if "BITFLAG" in self.ms.colnames():
             if flagopts["reinit-bitflags"]:
+                for kw in self.ms.colkeywordnames("BITFLAG"):
+                    self.ms.removecolkeyword("BITFLAG", kw)
                 self.ms.removecols("BITFLAG")
                 if "BITFLAG_ROW" in self.ms.colnames():
                     self.ms.removecols("BITFLAG_ROW")
                 print>> log, ModColor.Str("Removing BITFLAG column, since --flags-reinit-bitflags is set.")
+                self.reopen()
                 bitflags = None
             else:
                 bitflags = flagging.Flagsets(self.ms)
@@ -1138,41 +1170,65 @@ class DataHandler:
         # no BITFLAG. Should we auto-init it?
 
         if auto_init:
-            if not bitflags:
+            if bitflags is None:
                 self._add_column("BITFLAG", like_type='int')
                 if "BITFLAG_ROW" not in self.ms.colnames():
                     self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int')
-                self.reopen()
                 bitflags = flagging.Flagsets(self.ms)
+                if type(auto_init) is not str:
+                    raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
-                print>> log, ModColor.Str("Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
+                print>> log, ModColor.Str("  Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
+                self.reopen()
             else:
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
-                print>> log, "BITFLAG column found. Will auto-fill with '{}' ({}) from FLAG/FLAG_ROW if not filled".format(auto_init, self._auto_fill_bitflag)
+                print>> log, "  BITFLAG column found. Will auto-fill with '{}' ({}) from FLAG/FLAG_ROW if not filled".format(auto_init, self._auto_fill_bitflag)
 
         # OK, we have BITFLAG somehow -- use these
+
+        self.flagcounts = OrderedDict(TOTAL=0, FLAG=0)
 
         if bitflags:
             self._apply_flags = None
             self._apply_bitflags = 0
             if apply_flags:
-                # --flags-apply specified as a bitmask, or a string, or a list of strings
+                if type(apply_flags) is list:
+                    apply_flags = ",".join(apply_flags)
+                # --flags-apply specified as a bitmask, or a single string, or a single negated string, or a list of strings
                 if type(apply_flags) is int:
                     self._apply_bitflags = apply_flags
+                elif type(apply_flags) is not str:
+                    raise ValueError("Illegal --flags-apply setting -- string or bitmask values expected")
                 else:
-                    if type(apply_flags) is str:
+                    print>>log,"    BITFLAG column defines the following flagsets: {}".format(
+                        " ".join(['{}:{}'.format(name, bitflags.bits[name]) for name in bitflags.names()]))
+                    if apply_flags[0] == '-':
+                        flagset = apply_flags[1:]
+                        print>> log(0), "    Excluding flagset {}".format(flagset)
+                        if flagset not in bitflags.bits:
+                            print>>log(0,"red"),"    flagset '{}' not found -- ignoring".format(flagset)
+                        self._apply_bitflags = sum([bitmask for fset, bitmask in bitflags.bits.iteritems() if fset != flagset])
+                    else:
+                        print>> log(0), "    Applying flagset(s) {}".format(apply_flags)
                         apply_flags = apply_flags.split(",")
-                    for fset in apply_flags:
-                        self._apply_bitflags |= bitflags.flagmask(fset)
+                        for flagset in apply_flags:
+                            if flagset not in bitflags.bits:
+                                print>>log(0,"red"),"    flagset '{}' not found -- ignoring".format(flagset)
+                            else:
+                                self._apply_bitflags |= bitflags.bits[flagset]
             if self._apply_bitflags:
-                print>> log, ModColor.Str("Applying BITFLAG {} ({}) to input data".format(apply_flags, self._apply_bitflags), col="green")
+                print>> log(0, "blue"), "  Applying BITFLAG mask {} to input data".format(self._apply_bitflags)
             else:
-                print>> log, ModColor.Str("No flags will be read, since --flags-apply was not set.")
+                print>> log(0, "red"), "  No input flags will be applied!"
             if save_bitflag:
                 self._save_bitflag = bitflags.flagmask(save_bitflag, create=True)
-                print>> log, ModColor.Str("Will save new flags into BITFLAG '{}' ({}), and into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag), col="green")
+                print>> log(0, "blue"), "  Will save output flags into BITFLAG '{}' ({}), and into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
 
-        # else no BITFLAG -- fall back to using FLAG/FLAG_ROW if asked, but definitely can'tr save
+            for flagset in bitflags.names():
+                self.flagcounts[flagset] = 0
+            self.bitflags = bitflags.bits
+
+        # else no BITFLAG -- fall back to using FLAG/FLAG_ROW if asked, but definitely can't save
 
         else:
             if save_bitflag:
@@ -1183,6 +1239,12 @@ class DataHandler:
                 print>> log, ModColor.Str("No BITFLAG column in this MS. Using FLAG/FLAG_ROW.")
             else:
                 print>> log, ModColor.Str("No flags will be read, since --flags-apply was not set.")
+
+            self.bitflags = {}
+
+        self.flagcounts['APPLY'] = 0
+        self.flagcounts['NEW'] = 0
+        self.flagcounts['OUT'] = 0
 
         self.gain_dict = {}
 
@@ -1522,8 +1584,8 @@ class DataHandler:
                 coarser_tile_list[-1].merge(tile)
 
         Tile.tile_list = coarser_tile_list
-        for tile in Tile.tile_list:
-            tile.finalize()
+        for i, tile in enumerate(Tile.tile_list):
+            tile.finalize("tile #{}/{}".format(i+1, len(Tile.tile_list)))
 
         print>> log, "  coarsening this to {} tiles (min {} chunks per tile)".format(len(Tile.tile_list), min_chunks_per_tile)
 
@@ -1550,6 +1612,17 @@ class DataHandler:
             boundaries.update([self.times[i] for i in boundary_rows])
 
         return sorted(boundaries)
+
+    def update_flag_counts(self, counts):
+        self.flagcounts.update(counts)
+
+    def get_flag_counts(self):
+        total = float(self.flagcounts['TOTAL'])
+        result = []
+        for name, count in self.flagcounts.iteritems():
+            if name != 'TOTAL':
+                result.append("{}:{:.2%}".format(name, count/total))
+        return result
 
     def flag3_to_col(self, flag3):
         """

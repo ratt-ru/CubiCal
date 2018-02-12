@@ -10,7 +10,7 @@ import numpy as np
 from numpy.ma import masked_array
 from cubical.tools import logger
 
-log = logger.getLogger("param_db")
+log = logger.getLogger("param_db",2)
 import scipy.interpolate, scipy.spatial
 import itertools
 
@@ -373,9 +373,9 @@ class Parameter(object):
         than 1. Array may be None, to indicate no solutions for the given slice.
         """
 
-        array, grids, _ = self._array_slices[self._get_slicer(**axes)]
+        rec = self._array_slices[self._get_slicer(**axes)]
 
-        return array, [self._from_norm(self.interpolation_axes[i], g) for i, g in enumerate(grids)]
+        return rec.array, rec.grid
 
     def is_slice_valid(self, **axes):
         """
@@ -384,9 +384,9 @@ class Parameter(object):
         than 1.
         """
 
-        array, _, _ = self._array_slices[self._get_slicer(**axes)]
+        rec = self._array_slices[self._get_slicer(**axes)]
 
-        return array is not None
+        return rec.array is not None
 
     def get_cube(self):
         """

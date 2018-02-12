@@ -91,11 +91,6 @@ class PerIntervalGains(MasterMachine):
         # True if gains are loaded from a DB
         self._gains_loaded = False
 
-        # Construct the appropriate shape for the gains.
-
-        self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
-        self.gains = None
-
         # Construct flag array and populate flagging attributes.
         self.max_gain_error = options["max-prior-error"]
         self.max_post_error = options["max-post-error"]
@@ -112,17 +107,43 @@ class PerIntervalGains(MasterMachine):
         self.prior_gain_error = None
         self.posterior_gain_error = None
 
-
     def init_gains(self):
         """
         Construct gain and flag arrays. Normally we have one gain/one flag per interval, but 
-        subclasses may redefine this, if they deal with full-resolution gains.
+        subclasses may redefine this, if they deal with e.g. full-resolution gains.
+        
+        Sets up the following attributes: 
+            gain_shape (list):
+                shape of the gains array, i.e. (n_dir, NT, NF, n_ant, n_cor, n_cor)
+                Default version has NT=n_timint, NF=n_freint, i.e. one gain per interval.
+                 
+            gain_grid (dict):
+                grid on which gains are defined, as a dict of {'time': times, 'freq': frequencies},
+                where times is a vector of NT points and frequencies is a vector of NF points.
+                
+            gains (np.ndarray):
+                gains array of the specified shape
+                
+            gflags (np.ndarray):
+                gain flags array of the same shape, minus the two correlation axes
+                
+            gain_intervals (list):
+                intervals on which gains are defined. Default version has [t_int, f_int].
+                
+            _gainres_to_fullres (callable):
+                function to go from an array of gain shape to full time/freq resolution
+                (default uses unpack_intervals)
+            
+            _interval_to_gainres (callable):
+                function to go from an array of interval shape to gain shape (default is identity)
         """
+        # Construct the appropriate shape for the gains.
+        self.gain_intervals = self.t_int, self.f_int
+        self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
         self.gain_grid = self.interval_grid
         self.gains = np.empty(self.gain_shape, dtype=self.dtype)
         self.gains[:] = np.eye(self.n_cor)
-        self.flag_shape = self.gain_shape[:-2]
-        self.gflags = np.zeros(self.flag_shape, FL.dtype)
+        self.gflags = np.zeros(self.gain_shape[:-2], FL.dtype)
 
         # function used to unpack the gains or flags into full time/freq resolution
         self._gainres_to_fullres  = self.unpack_intervals
@@ -184,7 +205,8 @@ class PerIntervalGains(MasterMachine):
     def exportable_solutions():
         """ Returns a dictionary of exportable solutions for this machine type. """
 
-        return { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")) }
+        return { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")),
+                 "gain.err": (0., ("dir", "time", "freq", "ant", "corr1", "corr2")) }
 
     def importable_solutions(self):
         """ Returns a dictionary of importable solutions for this machine type. """
@@ -197,7 +219,12 @@ class PerIntervalGains(MasterMachine):
         mask = np.zeros_like(self.gains, bool)
         mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
 
-        return { "gain".format(self.jones_label): (masked_array(self.gains, mask), self.gain_grid) }
+        sols = { "gain": (masked_array(self.gains, mask), self.gain_grid) }
+
+        if self.posterior_gain_error is not None:
+            sols["gain.err"] = (masked_array(self.posterior_gain_error, mask), self.gain_grid)
+
+        return sols
 
     def import_solutions(self, soldict):
         """ 
@@ -358,30 +385,41 @@ class PerIntervalGains(MasterMachine):
                 flagged |= goob
 
         # else final flagging -- check the posterior error estimate
-        else:
+        if self.posterior_gain_error is not None:
             # reset to 0 for fixed directions
             if self.dd_term:
                 self.posterior_gain_error[self.fix_directions, ...] = 0
             # flag gains on max error
             # the last axis is correlation -- we flag if any correlation is flagged
-            bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=-1)  # dir,time,freq,ant
-            if bad_gain_intervals.any():
-                # (n_dir,) array showing how many were flagged per direction
-                self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1, 2, 3))
-                # raised corresponding gain flags
-                mask = self._interval_to_gainres(bad_gain_intervals, 1)
-                self.gflags[mask] |= FL.GVAR
-                flagged[mask] = True
-            else:
-                self._n_flagged_on_max_posterior_error = None
+            bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=(-1,-2))  # dir,time,freq,ant
+
+            # mask high-variance gains that are not already otherwise flagged
+            mask = self._interval_to_gainres(bad_gain_intervals, 1)&~flagged
+
+            # raise FL.GVAR flag on these gains (and clear on all others!)
+            self.gflags &= ~FL.GVAR
+            self.gflags[mask] |= FL.GVAR
+            flagged[mask] = True
+
+            self._n_flagged_on_max_posterior_error = mask.sum(axis=(1, 2, 3)) if mask.any() else None
+
+            # if bad_gain_intervals.any():
+            #     # (n_dir,) array showing how many were flagged per direction
+            #     self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1, 2, 3))
+            #     # raised corresponding gain flags
+            #     mask = self._interval_to_gainres(bad_gain_intervals, 1)
+            #     self.gflags[mask] |= FL.GVAR
+            #     flagged[mask] = True
+            # else:
+            #     self._n_flagged_on_max_posterior_error = None
 
         # Count the gain flags, excluding those set a priori due to missing data.
 
-        self.flagged = flagged
+        self.flagged = self.gflags != 0
         self.n_flagged = flagged.sum()
 
-        # reset flagged gains to their previous values
-        self.gains[flagged] = self.old_gains[flagged]
+        # keep flagged gains at their previous values
+        self.gains[self.flagged] = self.old_gains[self.flagged]
 
         if self.n_flagged > nfl0 and self.propagates_flags:
             # convert gain flags to full time/freq resolution, and add directions together
@@ -466,6 +504,7 @@ class PerIntervalGains(MasterMachine):
             np.abs(self.gains, out=self.gains)
         for idir in self.fix_directions:
             self.gains[idir, ...] = self.old_gains[idir, ...]
+            self.posterior_gain_error[idir, ...] = 0
 
     def unpack_intervals(self, arr, tdim_ind=0):
         """
@@ -532,21 +571,24 @@ class PerIntervalGains(MasterMachine):
     @property
     def conditioning_status_string(self):
         """Returns conditioning status string"""
-        mineqs = self.eqs_per_interval[self.valid_intervals].min() if self.num_valid_intervals else 0
-        maxeqs = self.eqs_per_interval.max()
-        anteqs = (self.eqs_per_antenna!=0).sum()
-        string = "{}: {}/{} ints".format(self.jones_label,
-                                            self.num_valid_intervals, self.n_tf_ints)
-        if self.num_valid_intervals:
-            string += " ({}-{} EPI)".format(mineqs, maxeqs)
-            if self.dd_term:
-                string += " {} dirs".format(self.n_dir)
-            string += " {}/{} ants, MGE {}".format(anteqs, self.n_ant,
-                " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]))
-            if self._n_flagged_on_max_error is not None:
-                string += ", NFMGE {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
+        if self.solvable:
+            mineqs = self.eqs_per_interval[self.valid_intervals].min() if self.num_valid_intervals else 0
+            maxeqs = self.eqs_per_interval.max()
+            anteqs = (self.eqs_per_antenna!=0).sum()
+            string = "{}: {}/{} ints".format(self.jones_label,
+                                                self.num_valid_intervals, self.n_tf_ints)
+            if self.num_valid_intervals:
+                string += " ({}-{} EPI)".format(mineqs, maxeqs)
+                if self.dd_term:
+                    string += " {} dirs".format(self.n_dir)
+                string += " {}/{} ants, MGE {}".format(anteqs, self.n_ant,
+                    " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]))
+                if self._n_flagged_on_max_error is not None:
+                    string += ", NFMGE {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
 
-        return string
+            return string
+        else:
+            return "{}: n/s".format(self.jones_label)
 
 
     @property

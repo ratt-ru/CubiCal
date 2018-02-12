@@ -5,7 +5,7 @@
 
 try:
     import ipdb as pdb
-except ImportError:
+except Exception:
     import pdb
 
 BREAK = pdb.set_trace

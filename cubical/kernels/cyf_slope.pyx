@@ -91,6 +91,7 @@ def cycompute_tmp_jhj(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.nonecheck(False)
 def cycompute_jhj(float3264 [:,:,:,:,:,:,:] tmp_jhj,
                   float3264 [:,:,:,:,:,:,:] jhj,
+                  float3264 [:] ts,
                   float3264 [:] fs,
                   int t_int,
                   int f_int):
@@ -317,6 +318,7 @@ def cycompute_tmp_jhr(complex3264 [:,:,:,:,:,:] gh,
 @cython.nonecheck(False)
 def cycompute_jhr(float3264 [:,:,:,:,:,:] tmp_jhr,
                   float3264 [:,:,:,:,:,:,:] jhr,
+                  float3264 [:] ts,
                   float3264 [:] fs,
                   int t_int,
                   int f_int):
@@ -522,6 +524,7 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
 @cython.nonecheck(False)
 def cyconstruct_gains(float3264 [:,:,:,:,:,:,:] param,
                       complex3264 [:,:,:,:,:,:] g,
+                      float3264 [:] ts,
                       float3264 [:] fs,
                       int t_int,
                       int f_int):
