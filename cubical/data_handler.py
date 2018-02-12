@@ -356,7 +356,7 @@ class Tile(object):
                                 # massage data into Montblanc-friendly shapes
                                 if expected_nrows is None:
                                     expected_nrows, sort_ind, row_identifiers = self.prep_for_montblanc()
-                                    measet_src = MSSourceProvider(self, self.uvwco, sort_ind)
+                                    measet_src = MSSourceProvider(self, self.uvwco, sort_ind, nrows)
                                     cached_ms_src = CachedSourceProvider(measet_src,
                                                                          cache_data_sources=["parallactic_angles"],
                                                                          clear_start=False, clear_stop=False)
