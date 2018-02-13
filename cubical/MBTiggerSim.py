@@ -26,7 +26,7 @@ class MSSourceProvider(SourceProvider):
     Handles interface between CubiCal tiles and Montblanc simulation.
     """
 
-    def __init__(self, tile, uvw, sort_ind):
+    def __init__(self, tile, uvw, sort_ind, nrows):
         """
         Initialises this source provider.
 
@@ -37,6 +37,8 @@ class MSSourceProvider(SourceProvider):
                 (n_row, 3) array of UVW coordinates.
             sort_ind (np.ndarray):
                 Indices which will produce sorted data. Montblanc expects data to be ordered in a specific way.
+            nrows (int):
+                Number of rows in the UNPADDED data. This is necessary for the revised uvw code.
 
         """
 
@@ -56,6 +58,7 @@ class MSSourceProvider(SourceProvider):
         self._ddids = tile.ddids
         self._nddid = len(tile.ddids)
         self._uvwco = uvw                  #  data['uvwco']
+        self._nrows = nrows
         self.sort_ind = sort_ind
 
     def name(self):
@@ -85,43 +88,26 @@ class MSSourceProvider(SourceProvider):
         # Figure out our extents in the time dimension and our global antenna and baseline sizes.
 
         (t_low, t_high) = context.dim_extents('ntime')
-        na, nbl = context.dim_global_size('na', 'nbl')
 
-        # We expect to handle all antenna at once.
+        # Figure out chunks in time (may be repetitious, but needed an easy fix).
 
-        if context.shape != (t_high - t_low, na, 3):
-            raise ValueError("Received an unexpected shape "
-                "{s} in (ntime,na,3) antenna reading code".format(s=context.shape))
+        _, counts = np.unique(self._times[:self._nrows], return_counts=True)
 
-        # Create per antenna UVW coordinates.
-        # u_01 = u_1 - u_0
-        # u_02 = u_2 - u_0
-        # ...
-        # u_0N = u_N - U_0
-        # where N = na - 1.
+        chunks = np.asarray(counts)
 
-        # Choosing u_0 = 0 we have:
-        # u_1 = u_01
-        # u_2 = u_02
-        # ...
-        # u_N = u_0N
+        # Compute per antenna uvw coordinates. Data must be ordered by time.
+        # Per antenna uvw coordinates fail on data where time!=time_centroid.
 
-        # Then, other baseline values can be derived as
-        # u_21 = u_1 - u_2
+        ant_uvw = mbu.antenna_uvw(self._uvwco[:self._nrows], 
+                                  self._antea[:self._nrows], 
+                                  self._anteb[:self._nrows], 
+                                  chunks,
+                                  self._nants, 
+                                  check_missing=False,
+                                  check_decomposition=False, 
+                                  max_err=100)
 
-        # Allocate space for per-antenna UVW, zeroing antenna 0 at each timestep.
-
-        ant_uvw = np.empty(shape=context.shape, dtype=context.dtype)
-        ant_uvw[:,0,:] = 0
-
-        # Read in uvw[1:na] row at each timestep.
-
-        for ti, t in enumerate(xrange(t_low, t_high)):
-            # Inspection confirms that this achieves the same effect as
-            # ant_uvw[ti,1:na,:] = ...getcol(UVW, ...).reshape(na-1, -1)
-            ant_uvw[ti,1:na,:] = self._uvwco[self.sort_ind, ...][t*nbl:t*nbl+na-1, :]
-
-        return ant_uvw
+        return ant_uvw[t_low:t_high, ...]
 
     def antenna1(self, context):
         """ Provides Montblanc with an array of antenna1 values. """
