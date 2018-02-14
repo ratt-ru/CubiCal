@@ -107,7 +107,7 @@ class MSSourceProvider(SourceProvider):
                                   check_decomposition=False, 
                                   max_err=100)
 
-        return ant_uvw[t_low:t_high, ...]
+        return ant_uvw[t_low:t_high, ...].astype(context.dtype)
 
     def antenna1(self, context):
         """ Provides Montblanc with an array of antenna1 values. """
