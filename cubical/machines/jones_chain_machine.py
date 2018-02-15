@@ -87,6 +87,11 @@ class JonesChain(MasterMachine):
         self.active_index = -1
         self._next_chain_term()
 
+        # this list accumulates the per-term convergence status strings
+        self._convergence_states = []
+        # True when the last active term has had its convergence status queried
+        self._convergence_states_finalized = True
+
         cached_array_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, 
                               self.n_ant, self.n_ant, self.n_cor, self.n_cor]
         self.cached_model_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
@@ -335,13 +340,17 @@ class JonesChain(MasterMachine):
         return self.active_term.num_gain_flags(mask)
 
     def _next_chain_term(self):
-        if not self.term_iters:
-            return False
         while True:
+            if not self.term_iters:
+                return False
             self.active_index = (self.active_index + 1) % self.n_terms
             if self.active_term.solvable:
-                self.active_term.iters = 0
                 self.active_term.maxiter = self.term_iters.pop(0)
+                if not self.active_term.maxiter:
+                    print>> log(1), "skipping term {}: 0 term iters specified".format(self.active_term.jones_label)
+                    continue
+                self.active_term.iters = 0
+                self._convergence_states_finalized = False
                 print>> log(1), "activating term {}".format(self.active_term.jones_label)
                 return True
             else:
@@ -358,6 +367,8 @@ class JonesChain(MasterMachine):
 
         if self.active_term.has_converged:
             print>>log(1),"term {} converged ({} iters)".format(self.active_term.jones_label, self.active_term.iters)
+            self._convergence_states.append(self.active_term.final_convergence_status_string)
+            self._convergence_states_finalized = True
             self._next_chain_term()
 
         self.active_term.next_iteration()
@@ -419,7 +430,10 @@ class JonesChain(MasterMachine):
     @property
     def final_convergence_status_string(self):
         """Final status is reported from all terms"""
-        return "; ".join([term.final_convergence_status_string for term in self.jones_terms])
+        if not self._convergence_states_finalized:
+            self._convergence_states.append(self.active_term.final_convergence_status_string)
+            self._convergence_states_finalized = True
+        return "; ".join(self._convergence_states)
 
     @property
     def has_converged(self):
