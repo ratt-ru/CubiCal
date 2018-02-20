@@ -1174,12 +1174,12 @@ class DataHandler:
                 self._add_column("BITFLAG", like_type='int')
                 if "BITFLAG_ROW" not in self.ms.colnames():
                     self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int')
+                self.reopen()
                 bitflags = flagging.Flagsets(self.ms)
                 if type(auto_init) is not str:
                     raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
                 print>> log, ModColor.Str("  Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
-                self.reopen()
             else:
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
                 print>> log, "  BITFLAG column found. Will auto-fill with '{}' ({}) from FLAG/FLAG_ROW if not filled".format(auto_init, self._auto_fill_bitflag)

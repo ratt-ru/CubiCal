@@ -107,7 +107,8 @@ class PhaseSlopeGains(ParameterisedGains):
 
         for label, num in self._labels.iteritems():
             solutions[label] = masked_array(self.slope_params[...,num,(0,1),(0,1)]), self.interval_grid
-            solutions[label+".err"] = masked_array(self.posterior_slope_error[..., num, :]), self.interval_grid
+            if self.posterior_slope_error is not None:
+                solutions[label+".err"] = masked_array(self.posterior_slope_error[..., num, :]), self.interval_grid
 
         return solutions
 
@@ -204,8 +205,8 @@ class PhaseSlopeGains(ParameterisedGains):
         gerr = np.sqrt(var_slope.sum(axis=-2))
         if self.posterior_gain_error is None:
             self.posterior_gain_error = np.zeros_like(self.gains, dtype=float)
-        self.posterior_gain_error[...,0,0] = self._interval_to_gainres(gerr[...,0])
-        self.posterior_gain_error[...,1,1] = self._interval_to_gainres(gerr[...,1])
+        self.posterior_gain_error[...,0,0] = self._interval_to_gainres(gerr[...,0], 1)
+        self.posterior_gain_error[...,1,1] = self._interval_to_gainres(gerr[...,1], 1)
 
         update = np.zeros_like(jhr)
 

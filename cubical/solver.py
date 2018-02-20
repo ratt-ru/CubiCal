@@ -133,7 +133,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     resid_arr = np.zeros(resid_shape, obser_arr.dtype)
     gm.compute_residual(obser_arr, model_arr, resid_arr)
-    
+    resid_arr[:,flags_arr!=0] = 0
+
     # This flag is set to True when we have an up-to-date residual in resid_arr.
     
     have_residuals = True
@@ -218,6 +219,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             old_chi, old_mean_chi = chi, mean_chi
 
             gm.compute_residual(obser_arr, model_arr, resid_arr)
+            resid_arr[:,flags_arr!=0] = 0
 
             chi, mean_chi = compute_chisq()
 
@@ -250,6 +252,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # Do we need to recompute the final residuals?
         if (sol_opts['last-rites'] or compute_residuals) and (not have_residuals or flagged):
             gm.compute_residual(obser_arr, model_arr, resid_arr)
+            resid_arr[:,flags_arr!=0] = 0
             if sol_opts['last-rites']:
                 # Recompute chi-squared based on original noise statistics.
                 chi, mean_chi = compute_chisq(statfield='chi2')

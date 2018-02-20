@@ -533,23 +533,20 @@ class MasterMachine(object):
             if db is not None:
                 if name in db:
                     if interpolate:
-                        print>>log,"{}: interpolating {} using {} from {}".format(
-                            self.chunk_label, self.jones_label, name, db.filename)
+                        print>>log,"{}: interpolating {} from {}".format(self.chunk_label, name, db.filename)
                         sols[label] = sol = db[name].reinterpolate(**grids)
                     else:
                         if not db[name].match_grids(**grids):
                             raise ValueError("{} does not define {} on the correct grid. Consider using "
                                              "-xfer-from rather than -load-from".format(name, db.filename))
-                        print>> log, "{}: looking up {} using {} from {}".format(
-                            self.chunk_label, self.jones_label, name, db.filename)
+                        print>> log, "{}: loading {} from {}".format(self.chunk_label, name, db.filename)
                         sols[label] = sol = db[name].lookup(**grids)
                     if sol.count() != sol.size:
                         print>>log, "{}: {:.2%} valid {} slots populated".format(
-                            self.chunk_label, sol.count()/float(sol.size), self.jones_label)
+                            self.chunk_label, sol.count()/float(sol.size), name)
                     db[name].release_cache()
                 else:
-                    print>>log,"{}: not initializing {}: {} not in {}".format(
-                        self.chunk_label, self.jones_label, name, db.filename)
+                    print>>log,"{}: {} not in {}".format(self.chunk_label, name, db.filename)
         # if anything at all was loaded from DB, import
         if sols:
             self.import_solutions(sols)
