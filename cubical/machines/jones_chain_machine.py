@@ -10,6 +10,7 @@ import cubical.kernels.cychain as cychain
 
 from cubical.tools import logger
 import machine_types
+from cubical.flagging import FL
 log = logger.getLogger("jones_chain")
 
 
@@ -86,6 +87,11 @@ class JonesChain(MasterMachine):
         self.active_index = -1
         self._next_chain_term()
 
+        # this list accumulates the per-term convergence status strings
+        self._convergence_states = []
+        # True when the last active term has had its convergence status queried
+        self._convergence_states_finalized = True
+
         cached_array_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, 
                               self.n_ant, self.n_ant, self.n_cor, self.n_cor]
         self.cached_model_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
@@ -96,7 +102,8 @@ class JonesChain(MasterMachine):
         """Precomputes various stats before starting a solution"""
         MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
         for term in self.jones_terms:
-            term.precompute_attributes(model_arr, flags_arr, inv_var_chan)
+            if term.solvable:
+                term.precompute_attributes(model_arr, flags_arr, inv_var_chan)
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
@@ -104,8 +111,9 @@ class JonesChain(MasterMachine):
         soldict = {}
         # prefix jones label to solution name
         for term in self.jones_terms:
-            for label, sol in term.export_solutions().iteritems():
-                soldict["{}:{}".format(term.jones_label, label)] = sol
+            if term.solvable:
+                for label, sol in term.export_solutions().iteritems():
+                    soldict["{}:{}".format(term.jones_label, label)] = sol
         soldict['prefixed'] = True
 
         return soldict
@@ -177,7 +185,7 @@ class JonesChain(MasterMachine):
 
         for ind in xrange(self.active_index, -1, -1):
             term = self.jones_terms[ind]
-            cychain.cycompute_jh(self.jh, term.gains, term.t_int, term.f_int)
+            cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
             
         jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
 
@@ -194,22 +202,22 @@ class JonesChain(MasterMachine):
         for ind in xrange(0, self.active_index, 1):
             term = self.jones_terms[ind]
             g_inv = np.empty_like(term.gains)
-            cyfull.cycompute_jhjinv(term.gains, g_inv, term.gflags, term.eps, term.flagbit)
-            cychain.cyapply_left_inv_jones(jhr, g_inv, term.t_int, term.f_int)
+            cyfull.cycompute_jhjinv(term.gains, g_inv, term.gflags, term.eps, FL.ILLCOND)
+            cychain.cyapply_left_inv_jones(jhr, g_inv, *term.gain_intervals)
 
         jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
         
         jhrint = np.zeros(jhrint_shape, dtype=jhr.dtype)
 
-        cychain.cysum_jhr_intervals(jhr, jhrint, self.active_term.t_int, self.active_term.f_int)
+        cychain.cysum_jhr_intervals(jhr, jhrint, *self.active_term.gain_intervals)
 
         jhj = np.zeros(jhrint_shape, dtype=obser_arr.dtype)
 
-        cyfull.cycompute_jhj(self.jh, jhj, self.active_term.t_int, self.active_term.f_int)
+        cyfull.cycompute_jhj(self.jh, jhj, *self.active_term.gain_intervals)
 
         jhjinv = np.empty(jhrint_shape, dtype=obser_arr.dtype)
 
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.active_term.gflags, self.active_term.eps, self.active_term.flagbit)
+        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
 
         return jhrint, jhjinv, flag_count
 
@@ -303,15 +311,15 @@ class JonesChain(MasterMachine):
             term.apply_gains(vis)
         return vis
 
-    def update_conv_params(self, min_delta_g):
+    def check_convergence(self, min_delta_g):
         """
-        Updates the convergence parameters of the current time-frequency chunk. 
+        Updates the convergence info of the current time-frequency chunk. 
 
         Args:
             min_delta_g (float):
                 Threshold for the minimum change in the gains - convergence criterion.
         """
-        return self.active_term.update_conv_params(min_delta_g)
+        return self.active_term.check_convergence(min_delta_g)
 
     def restrict_solution(self):
         """
@@ -320,32 +328,29 @@ class JonesChain(MasterMachine):
         """
         return self.active_term.restrict_solution()
 
-    def flag_solutions(self):
-        """ Flags gain solutions based on certain criteria, e.g. out-of-bounds, null, etc. """
-        return self.active_term.flag_solutions()
+    def flag_solutions(self, flags_arr, final=False):
+        """ Flags gain solutions."""
+        # Per-iteration flagging done on the active term, final flagging is done on all terms.
+        if final:
+            return any([ term.flag_solutions(flags_arr, True) for term in self.jones_terms if term.solvable ])
+        else:
+            return self.active_term.flag_solutions(flags_arr, False)
 
     def num_gain_flags(self, mask=None):
         return self.active_term.num_gain_flags(mask)
 
-    def propagate_gflags(self, flags):
-        """
-        Propagates the flags raised by the gain machine back into the data. This is necessary as 
-        the gain flags may not have the same shape as the data.
-
-        Args:
-            flags (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant) array containing flags. 
-        """
-        return self.active_term.propagate_gflags(flags)
-
     def _next_chain_term(self):
-        if not self.term_iters:
-            return False
         while True:
+            if not self.term_iters:
+                return False
             self.active_index = (self.active_index + 1) % self.n_terms
             if self.active_term.solvable:
-                self.active_term.iters = 0
                 self.active_term.maxiter = self.term_iters.pop(0)
+                if not self.active_term.maxiter:
+                    print>> log(1), "skipping term {}: 0 term iters specified".format(self.active_term.jones_label)
+                    continue
+                self.active_term.iters = 0
+                self._convergence_states_finalized = False
                 print>> log(1), "activating term {}".format(self.active_term.jones_label)
                 return True
             else:
@@ -362,6 +367,8 @@ class JonesChain(MasterMachine):
 
         if self.active_term.has_converged:
             print>>log(1),"term {} converged ({} iters)".format(self.active_term.jones_label, self.active_term.iters)
+            self._convergence_states.append(self.active_term.final_convergence_status_string)
+            self._convergence_states_finalized = True
             self._next_chain_term()
 
         self.active_term.next_iteration()
@@ -375,7 +382,7 @@ class JonesChain(MasterMachine):
     @property
     def has_valid_solutions(self):
         """Gives corresponding property of the active chain term"""
-        return all([term.has_valid_solutions for term in self.jones_terms])
+        return all([term.has_valid_solutions for term in self.jones_terms if term.solvable])
 
     @property
     def num_converged_solutions(self):
@@ -413,8 +420,7 @@ class JonesChain(MasterMachine):
 
     @property
     def conditioning_status_string(self):
-        return "; ".join(["{}: {}".format(term.jones_label, term.conditioning_status_string)
-                          for term in self.jones_terms])
+        return "; ".join([term.conditioning_status_string for term in self.jones_terms])
 
     @property
     def current_convergence_status_string(self):
@@ -424,8 +430,10 @@ class JonesChain(MasterMachine):
     @property
     def final_convergence_status_string(self):
         """Final status is reported from all terms"""
-        return "; ".join(["{}: {}".format(term.jones_label, term.final_convergence_status_string)
-                          for term in self.jones_terms])
+        if not self._convergence_states_finalized:
+            self._convergence_states.append(self.active_term.final_convergence_status_string)
+            self._convergence_states_finalized = True
+        return "; ".join(self._convergence_states)
 
     @property
     def has_converged(self):

@@ -348,15 +348,9 @@ class MasterMachine(object):
         return unflagged
 
     @abstractmethod				
-    def update_conv_params(self, min_delta_g):
+    def check_convergence(self, min_delta_g):
         """
-        This method should update the convergence parameters of the current time-frequency chunk. 
-        It must update:
-
-            - self.max_update
-            - self.n_cnvgd
-
-        Function signature must be consistent with the one defined here.
+        This method should check the gain solutions for convergence.
 
         Args:
             min_delta_g (float):
@@ -366,15 +360,22 @@ class MasterMachine(object):
         return NotImplementedError
 
     @abstractmethod
-    def flag_solutions(self):
+    def flag_solutions(self, flag_arr, final=False):
         """
-        This method should flag gains solutions based on certain criteria. It should update:
-
-            - self.gflags
-            - self.flagged
-            - self.n_flagged
-
-        Function signature must be consistent with the one defined here.
+        This method allows the machine to flag gains solutions. It iis called after each itration (final=False),
+        and then once again after convergence (final=True). 
+        
+        This method can propagate the flags raised by the gain machine back into the data flags.
+        
+        Args:
+            flag_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing data flags. 
+            final (bool): 
+                False while iterating, True after convergence.
+            
+        Returns:
+            True if any new flags have been propagated to the data
+        
         """
         return NotImplementedError
 
@@ -393,20 +394,6 @@ class MasterMachine(object):
                 - total number of gains
 
         """
-        return NotImplementedError
-
-    @abstractmethod
-    def propagate_gflags(self, flags):
-        """
-        This method should propagate the flags raised by the gain machine back into the data.
-        Also updates equation counts etc. This is necessary as the gain flags may not have the 
-        same shape as the data. Function signature must be consistent with the one defined here.
-
-        Args:
-            flags (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant) array containing data flags. 
-        """
-
         return NotImplementedError
 
     def next_iteration(self):
@@ -546,23 +533,20 @@ class MasterMachine(object):
             if db is not None:
                 if name in db:
                     if interpolate:
-                        print>>log,"{}: interpolating {} using {} from {}".format(
-                            self.chunk_label, self.jones_label, name, db.filename)
+                        print>>log,"{}: interpolating {} from {}".format(self.chunk_label, name, db.filename)
                         sols[label] = sol = db[name].reinterpolate(**grids)
                     else:
                         if not db[name].match_grids(**grids):
                             raise ValueError("{} does not define {} on the correct grid. Consider using "
                                              "-xfer-from rather than -load-from".format(name, db.filename))
-                        print>> log, "{}: looking up {} using {} from {}".format(
-                            self.chunk_label, self.jones_label, name, db.filename)
+                        print>> log, "{}: loading {} from {}".format(self.chunk_label, name, db.filename)
                         sols[label] = sol = db[name].lookup(**grids)
                     if sol.count() != sol.size:
                         print>>log, "{}: {:.2%} valid {} slots populated".format(
-                            self.chunk_label, sol.count()/float(sol.size), self.jones_label)
+                            self.chunk_label, sol.count()/float(sol.size), name)
                     db[name].release_cache()
                 else:
-                    print>>log,"{}: not initializing {}: {} not in {}".format(
-                        self.chunk_label, self.jones_label, name, db.filename)
+                    print>>log,"{}: {} not in {}".format(self.chunk_label, name, db.filename)
         # if anything at all was loaded from DB, import
         if sols:
             self.import_solutions(sols)

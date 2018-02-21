@@ -94,6 +94,8 @@ def main(debugging=False):
         if debugging:
             print>> log, "initializing from cubical.last"
             GD = cPickle.load(open("cubical.last"))
+            basename = GD["out"]["name"]
+            parser = None
         else:
             default_parset = parsets.Parset("%s/DefaultParset.cfg" % os.path.dirname(__file__))
 
@@ -111,7 +113,7 @@ def main(debugging=False):
                 if not parset.success:
                     raise UserInputError("'{}' must be a valid parset file. Use -h for help.".format(custom_parset_file))
                 # update default parameters with values from parset
-                default_parset.update_values(parset)
+                default_parset.update_values(parset, other_filename=' in {}'.format(custom_parset_file))
 
             import cubical
             parser = dynoptparse.DynamicOptionParser(usage='Usage: %prog [parset file] <options>',
@@ -206,7 +208,8 @@ def main(debugging=False):
             matplotlib.use("Agg")
 
         # print current options
-        parser.print_config(dest=log)
+        if parser is not None:
+            parser.print_config(dest=log)
 
         double_precision = GD["sol"]["precision"] == 64
 
@@ -223,31 +226,29 @@ def main(debugging=False):
             raise UserInputError("--model-list must be specified")
 
         ms = DataHandler(GD["data"]["ms"],
-                              GD["data"]["column"], 
-                              GD["model"]["list"].split(","),
-                              output_column=GD["out"]["column"],
-                              reinit_output_column=GD["out"]["reinit-column"],
-                              taql=GD["sel"]["taql"],
-                              fid=GD["sel"]["field"], 
-                              ddid=GD["sel"]["ddid"],
-                              channels=GD["sel"]["chan"],
-                              flagopts=GD["flags"],
-                              double_precision=double_precision,
-                              weights=GD["weight"]["column"].split(","),
-                              beam_pattern=GD["model"]["beam-pattern"], 
-                              beam_l_axis=GD["model"]["beam-l-axis"], 
-                              beam_m_axis=GD["model"]["beam-m-axis"],
-                              active_subset=GD["sol"]["subset"],
-                              min_baseline=GD["sol"]["min-bl"],
-                              max_baseline=GD["sol"]["max-bl"],
-                              use_ddes=GD["model"]["ddes"],
-                              mb_opts=GD["montblanc"])
+                          GD["data"]["column"],
+                          output_column=GD["out"]["column"],
+                          output_model_column=GD["out"]["model-column"],
+                          reinit_output_column=GD["out"]["reinit-column"],
+                          taql=GD["sel"]["taql"],
+                          fid=GD["sel"]["field"],
+                          ddid=GD["sel"]["ddid"],
+                          channels=GD["sel"]["chan"],
+                          flagopts=GD["flags"],
+                          double_precision=double_precision,
+                          beam_pattern=GD["model"]["beam-pattern"],
+                          beam_l_axis=GD["model"]["beam-l-axis"],
+                          beam_m_axis=GD["model"]["beam-m-axis"],
+                          active_subset=GD["sol"]["subset"],
+                          min_baseline=GD["sol"]["min-bl"],
+                          max_baseline=GD["sol"]["max-bl"])
 
         data_handler.global_handler = ms
 
         # set up RIME
 
         solver_opts = GD["sol"]
+        debug_opts  = GD["debug"]
         sol_jones = solver_opts["jones"]
         if type(sol_jones) is str:
             sol_jones = set(sol_jones.split(','))
@@ -257,11 +258,17 @@ def main(debugging=False):
             raise UserInputError("No Jones terms are enabled")
         print>> log, ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green")
 
+        have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
+
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
 
         if len(jones_opts) == 1:
             jones_opts = jones_opts[0]
+            # for just one term, propagate --sol-term-iters, if set, into its max-iter setting
+            term_iters = solver_opts["term-iters"]
+            if term_iters:
+                jones_opts["max-iter"] = term_iters[0] if hasattr(term_iters,'__getitem__') else term_iters
             # create a gain machine factory
             jones_class = machine_types.get_machine_class(jones_opts['type'])
             if jones_class is None:
@@ -269,39 +276,56 @@ def main(debugging=False):
         else:
             jones_class = jones_chain_machine.JonesChain
 
-        # set up subtraction options
-        solver_opts["subtract-model"] = smod = GD["out"]["subtract-model"]
-        if smod < 0 or smod >= len(ms.models):
-            raise UserInputError("--out-subtract-model {} out of range for {} model(s)".format(smod, len(ms.models)))
-        
-        # parse subtraction directions as a slice or list
-        subdirs = GD["out"]["subtract-dirs"]
-        if type(subdirs) is int:
-            subdirs = [subdirs]
-        if subdirs:
-            if type(subdirs) is str:
-                try:
-                    if ',' in subdirs:
-                        subdirs = map(int, subdirs.split(","))
-                    else:
-                        subdirs = eval("np.s_[{}]".format(subdirs))
-                except:
-                    raise UserInputError("invalid --out-subtract-model option '{}'".format(subdirs))
-            elif type(subdirs) is not list:
-                raise UserInputError("invalid --out-subtract-dirs option '{}'".format(subdirs))
-            # check ranges
-            if type(subdirs) is list:
-                out_of_range = [ d for d in subdirs if d < 0 or d >= len(ms.model_directions) ]
-                if out_of_range:
-                    raise UserInputError("--out-subtract-dirs {} out of range for {} model direction(s)".format(
-                            ",".join(map(str, out_of_range)), len(ms.model_directions)))
-            print>>log(0),"subtraction directions set to {}".format(subdirs)
-        else:
-            subdirs = slice(None)
-        solver_opts["subtract-dirs"] = subdirs
+        # init models
+        dde_mode = GD["model"]["ddes"]
+
+        if dde_mode == 'always' and not have_dd_jones:
+            raise UserInputError("we have '--model-ddes always', but no direction dependent Jones terms enabled")
+
+        ms.init_models(GD["model"]["list"].split(","),
+                       GD["weight"]["column"].split(","),
+                       mb_opts=GD["montblanc"],
+                       use_ddes=have_dd_jones and dde_mode != 'never')
+
+        if len(ms.model_directions) < 2 and have_dd_jones and dde_mode == 'auto':
+            raise UserInputError("--model-list does not specify directions. "
+                    "Have you forgotten a @dE tag perhaps? Rerun with '--model-ddes never' to proceed anyway.")
+
+        if load_model:
+            # set up subtraction options
+            solver_opts["subtract-model"] = smod = GD["out"]["subtract-model"]
+            if smod < 0 or smod >= len(ms.models):
+                raise UserInputError("--out-subtract-model {} out of range for {} model(s)".format(smod, len(ms.models)))
+
+            # parse subtraction directions as a slice or list
+            subdirs = GD["out"]["subtract-dirs"]
+            if type(subdirs) is int:
+                subdirs = [subdirs]
+            if subdirs:
+                if type(subdirs) is str:
+                    try:
+                        if ',' in subdirs:
+                            subdirs = map(int, subdirs.split(","))
+                        else:
+                            subdirs = eval("np.s_[{}]".format(subdirs))
+                    except:
+                        raise UserInputError("invalid --out-subtract-model option '{}'".format(subdirs))
+                elif type(subdirs) is not list:
+                    raise UserInputError("invalid --out-subtract-dirs option '{}'".format(subdirs))
+                # check ranges
+                if type(subdirs) is list:
+                    out_of_range = [ d for d in subdirs if d < 0 or d >= len(ms.model_directions) ]
+                    if out_of_range:
+                        raise UserInputError("--out-subtract-dirs {} out of range for {} model direction(s)".format(
+                                ",".join(map(str, out_of_range)), len(ms.model_directions)))
+                print>>log(0),"subtraction directions set to {}".format(subdirs)
+            else:
+                subdirs = slice(None)
+            solver_opts["subtract-dirs"] = subdirs
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
+
         grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,
                                                        apply_only=apply_only,
@@ -344,7 +368,7 @@ def main(debugging=False):
                     if not single_chunk or key == single_chunk:
                         processed = True
                         stats_dict[tile.get_chunk_indices(key)] = \
-                            solver.run_solver(solver_type, itile, key, solver_opts)
+                            solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
                 if processed:
                     tile.save()
                     for sd in tile.iterate_solution_chunks():
@@ -400,12 +424,11 @@ def main(debugging=False):
                 ms.close()
                 for itile, tile in enumerate(Tile.tile_list):
                     # wait for I/O job on current tile to finish
-                    print>>log(0),"waiting for I/O on tile #{}".format(itile+1)
+                    print>>log(0),"waiting for I/O on {}".format(tile.label)
                     done, not_done = cf.wait([io_futures[itile]])
                     if not done or not io_futures[itile].result():
-                        raise RuntimeError("I/O job on tile #{} failed".format(itile+1))
+                        raise RuntimeError("I/O job on {} failed".format(tile.label))
                     del io_futures[itile]
-
 
                     # immediately schedule I/O job to save previous/load next tile
                     load_next = itile+1 if itile < len(Tile.tile_list)-1 else None
@@ -416,12 +439,12 @@ def main(debugging=False):
                     # submit solver jobs
                     solver_futures = {}
 
-                    print>>log(0),"submitting solver jobs for tile #{}".format(itile+1)
+                    print>>log(0),"submitting solver jobs for {}".format(tile.label)
 
                     for key in tile.get_chunk_keys():
                         if not single_chunk or key == single_chunk:
                             solver_futures[executor.submit(solver.run_solver, solver_type,
-                                                           itile, key, solver_opts)] = key
+                                                           itile, key, solver_opts, debug_opts)] = key
                             print>> log(3), "submitted solver job for chunk {}".format(key)
 
                     # wait for solvers to finish
@@ -431,18 +454,23 @@ def main(debugging=False):
                         stats_dict[tile.get_chunk_indices(key)] = stats
                         print>>log(3),"handled result of chunk {}".format(key)
 
-                    print>> log(0), "done with tile #{}".format(itile+1)
+                    print>> log(0), "finished processing {}".format(tile.label)
 
                 # ok, at this stage we've iterated over all the tiles, but there's an outstanding
                 # I/O job saving the second-to-last tile (which was submitted with itile+1), and the last tile was
                 # never saved, so submit a job for that (also to close the MS), and wait
                 io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, finalize=True)
-                cf.wait(io_futures.values())
+                cf.wait([io_futures[-1]])
+                # get flagcounts from result of job
+                ms.update_flag_counts(io_futures[-1].result()['flagcounts'])
 
                 # and reopen the MS again
                 ms.reopen()
 
         print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
+
+        # print flagging stats
+        print>>log, ModColor.Str("Flagging stats: ",col="green") + " ".join(ms.get_flag_counts())
 
         if not apply_only:
             # now summarize the stats
@@ -533,10 +561,11 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
     """
     _init_worker()
     try:
+        result = {'success': True}
         if save is not None:
             tile = Tile.tile_list[save]
             itile = range(len(Tile.tile_list))[save]
-            print>>log(0, "blue"),"saving tile #{}".format(itile+1)
+            print>>log(0, "blue"),"saving {}".format(tile.label)
             tile.save(unlock=finalize)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
@@ -544,11 +573,14 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
             if finalize:
                 solver.ifrgain_machine.save()
                 solver.gm_factory.close()
+                result['flagcounts'] = tile.handler.flagcounts
             tile.release()
         if load is not None:
-            print>>log(0, "blue"),"loading tile #{}/{}".format(load+1, len(Tile.tile_list))
-            Tile.tile_list[load].load(load_model=load_model)
-        return True
+            tile = Tile.tile_list[load]
+            print>>log(0, "blue"),"loading {}".format(tile.label)
+            tile.load(load_model=load_model)
+        print>> log(0, "blue"), "I/O job(s) complete"
+        return result
     except Exception, exc:
         print>> log, ModColor.Str("I/O handler for load {} save {} failed with exception: {}".format(load, save, exc))
         print>> log, traceback.format_exc()

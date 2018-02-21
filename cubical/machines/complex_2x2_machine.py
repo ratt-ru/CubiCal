@@ -5,6 +5,8 @@
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import cubical.kernels.cyfull_complex as cyfull
+from cubical.flagging import FL
+
 
 class Complex2x2Gains(PerIntervalGains):
     """
@@ -85,15 +87,20 @@ class Complex2x2Gains(PerIntervalGains):
 
         jhjinv = np.empty(jhr_shape, dtype=obser_arr.dtype)
 
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, self.flagbit)
+        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhr, jhjinv, flag_count
 
     def implement_update(self, jhr, jhjinv):
         update = np.empty_like(jhr)
 
+        # jhjinv is 2x2 block-diagonal, with Hermitian blocks. TODO: what's the variance on the off-diagonals?
         # variance of gain is diagonal of jhjinv
-        self.posterior_gain_error = np.sqrt(jhjinv[...,(0,1),(0,1)].real)
+        if self.posterior_gain_error is None:
+            self.posterior_gain_error = np.zeros_like(jhjinv.real)
+        diag = jhjinv[..., (0, 1), (0, 1)].real
+        self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
+        self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
         cyfull.cycompute_update(jhr, jhjinv, update)
 

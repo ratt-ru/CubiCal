@@ -7,7 +7,7 @@ import numpy as np
 import cubical.kernels.cyfull_W_complex as cyfull
 from scipy import special
 from scipy.optimize import fsolve
-
+from cubical.flagging import FL
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -87,7 +87,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         jhwjinv = np.empty(jhwr_shape, dtype=obser_arr.dtype)
 
-        flag_count = cyfull.cycompute_jhwjinv(jhwj, jhwjinv, self.gflags, self.eps, self.flagbit)
+        flag_count = cyfull.cycompute_jhwjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhwr, jhwjinv, flag_count
 
@@ -107,7 +107,22 @@ class ComplexW2x2Gains(PerIntervalGains):
                 (((J^H)WJ)^-1)(J^H)WR
         """
 
-        flag_count = PerIntervalGains.compute_update(model_arr, obser_arr)
+        
+        jhwr, jhwjinv, flag_count = self.compute_js(obser_arr, model_arr)
+
+        update = np.empty_like(jhwr)
+
+        cyfull.cycompute_update(jhwr, jhwjinv, update)
+
+        if model_arr.shape[0]>1 or self.n_dir>1:
+            update = self.gains + update
+
+        if self.iters % 2 == 0 or self.n_dir>1 :
+            self.gains = 0.5*(self.gains + update)
+        else:
+            self.gains = update
+
+        self.restrict_solution()
         
         #Computing the weights
         resid_arr = np.empty_like(obser_arr)
@@ -280,7 +295,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         g_inv = np.empty_like(self.gains)
 
-        flag_count = cyfull.cycompute_jhwjinv(self.gains, g_inv, self.gflags, self.eps, self.flagbit) # Function can invert G.
+        flag_count = cyfull.cycompute_jhwjinv(self.gains, g_inv, self.gflags, self.eps, FL.ILLCOND) # Function can invert G.
 
         gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
 
