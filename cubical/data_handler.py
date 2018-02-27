@@ -468,9 +468,12 @@ class Tile(object):
             inactive[uv2 < self.handler.min_baseline**2] = True
             if self.handler.max_baseline:
                 inactive[uv2 > self.handler.max_baseline**2] = True
-            print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(inactive.sum() - num_inactive)
-
-        flag_arr[inactive] |= FL.SKIPSOL
+            print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(
+                inactive.sum() - num_inactive)
+            num_inactive = inactive.sum()
+        if num_inactive:
+            print>> log(0), "  {:.2%} visibilities have been deselected".format(num_inactive/float(inactive.size))
+            flag_arr[inactive] |= FL.SKIPSOL
 
         # Form up bitflag array, if needed.
         if self.handler._apply_bitflags or self.handler._save_bitflag or self.handler._auto_fill_bitflag:
@@ -515,8 +518,8 @@ class Tile(object):
 
             flagged = flag_arr!=0
             nfl = flagged.sum()
-            self.handler.flagcounts["APPLY"] += nfl
-            print>> log, "  {:.2%} input visibilities flagged".format(nfl / float(flagged.size))
+            self.handler.flagcounts["IN"] += nfl
+            print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
 
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
@@ -749,6 +752,7 @@ class Tile(object):
         """
         nrows = self.last_row - self.first_row + 1
         data = shared_dict.attach(self._data_dict_name)
+
         print>> log(0,"blue"), "{}: saving MS rows {}~{}".format(self.label, self.first_row, self.last_row)
         if self.handler.output_column and data['updated'][0]:
             print>> log, "  writing {} column".format(self.handler.output_column)
@@ -767,6 +771,7 @@ class Tile(object):
             else:
                 model = model.sum(axis=0)
             self.handler.putslice(self.handler.output_model_column, model, self.first_row, nrows)
+
 
         # write flags if (a) auto-filling BITFLAG column and/or (b) solver has generated flags, and we're saving cubical flags
         
@@ -1242,7 +1247,7 @@ class DataHandler:
 
             self.bitflags = {}
 
-        self.flagcounts['APPLY'] = 0
+        self.flagcounts['IN'] = 0
         self.flagcounts['NEW'] = 0
         self.flagcounts['OUT'] = 0
 
