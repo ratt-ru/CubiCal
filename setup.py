@@ -55,7 +55,8 @@ cmpl_args = ['-fopenmp',
              '-O2', 
              '-march=native',  
              '-mtune=native', 
-             '-ftree-vectorize']
+             '-ftree-vectorize',
+             '-fopenmp']
     
 link_args = ['-lgomp']
 
