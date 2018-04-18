@@ -869,8 +869,14 @@ class Tile(object):
         out_shape = [dims["dirs"], dims["mods"], chunk_tdim, chunk_fdim, self.nants, self.nants, 4]
         out_shape = out_shape[-reqdims:]
 
+        axes = range(len(out_shape))
+        rolled_axes = axes[-3:-1] + axes[:-3] + axes[-1:]
+        intrinsic_shape = out_shape[-3:-1] + out_shape[:-3] + out_shape[-1:]
+
         # Creates empty N-D array into which the column data can be packed.
-        out_arr = np.full(out_shape, zeroval, dtype)
+        # Place the antenna axes first, for better performance in the kernels
+
+        out_arr = np.full(intrinsic_shape, zeroval, dtype).transpose(np.argsort(rolled_axes))
 
         # Grabs the relevant time and antenna info.
 

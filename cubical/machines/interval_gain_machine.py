@@ -142,7 +142,8 @@ class PerIntervalGains(MasterMachine):
         self.gain_intervals = self.t_int, self.f_int
         self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
         self.gain_grid = self.interval_grid
-        self.gains = np.empty(self.gain_shape, dtype=self.dtype)
+        _intrinsic_shape = [self.n_ant, self.n_dir, self.n_timint, self.n_freint, self.n_cor, self.n_cor]
+        self.gains = np.empty(_intrinsic_shape, dtype=self.dtype).transpose([1,2,3,0,4,5])
         self.gains[:] = np.eye(self.n_cor)
         self.gflags = np.zeros(self.gain_shape[:-2], FL.dtype)
 
