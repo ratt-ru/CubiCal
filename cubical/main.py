@@ -171,7 +171,17 @@ def main(debugging=False):
         single_chunk = GD["data"]["single-chunk"]
 
         # figure out CPU affinities
-        ncpu = GD["dist"]["ncpu"] if not single_chunk else 0
+        ncpu = GD["dist"]["ncpu"]
+        nworker = GD["dist"]["nworker"]
+
+        if single_chunk or ncpu == 1:
+            ncpu = nworker = 0
+        elif not ncpu:
+            if nworker:
+                ncpu = nworker+1
+        else:
+            nworker = max(nworker, ncpu-1)
+
         affinities = main_affinity = None
 
         if ncpu:
@@ -342,12 +352,26 @@ def main(debugging=False):
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
+        chunks_per_tile = max(GD["dist"]["min-chunks"], ncpu-1, 1)
+        if GD["dist"]["max-chunks"]:
+            chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
+
         print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
-        ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
-                        chunk_by=chunk_by, chunk_by_jump=jump,
-                        min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
 
+        chunks_per_tile = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+                                            chunk_by=chunk_by, chunk_by_jump=jump,
+                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
+
+        if ncpu > 1:
+            nthread = GD["dist"]["nthread"]
+            if not nworker:
+                nworker = min(chunks_per_tile, ncpu-1)
+            if not nthread:
+                nthread = int((ncpu-1)/nworker)
+            print>>log,"using {} worker processes with {} threads ({} total cores)".format(nworker, nthread, nworker*nthread)
+            import cubical.kernels
+            cubical.kernels.num_omp_threads = nthread
 
         t0 = time()
 
@@ -394,7 +418,7 @@ def main(debugging=False):
             _worker_process_properties["MainProcess"] = "", main_affinity
 
             # create entries for subprocesses
-            for icpu in xrange(ncpu):
+            for icpu in xrange(nworker+1):
                 name = "Process-{}".format(icpu+1)
                 label = "io" if not icpu else "x%02d"%icpu
                 # if Montblanc is in use, do not touch affinity of I/O thread: tensorflow doesn't like it
@@ -411,7 +435,7 @@ def main(debugging=False):
                     print>>log(1),"setting main process ({}) CPU affinity to {}".format(os.getpid(), main_affinity)
                     os.system("taskset -pc {} {} >/dev/null".format(main_affinity, os.getpid()))
 
-            with cf.ProcessPoolExecutor(max_workers=ncpu-1) as executor, \
+            with cf.ProcessPoolExecutor(max_workers=nworker) as executor, \
                  cf.ProcessPoolExecutor(max_workers=1) as io_executor:
 
                 ms.flush()

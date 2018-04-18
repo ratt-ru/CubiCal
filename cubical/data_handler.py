@@ -1443,7 +1443,7 @@ class DataHandler:
         value0[:, self._channel_slice, :] = value
         return self.data.putcol(column, value0, startrow, nrows)
 
-    def define_chunk(self, tdim=1, fdim=1, chunk_by=None, chunk_by_jump=0, min_chunks_per_tile=4):
+    def define_chunk(self, tdim=1, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """
         Fetches indexing columns (TIME, DDID, ANTENNA1/2) and defines the chunk dimensions for 
         the data.
@@ -1457,8 +1457,10 @@ class DataHandler:
                 If set, chunks will have boundaries imposed by jumps in the listed columns
             chunk_by_jump (int, optional): 
                 The magnitude of a jump has to be over this value to force a chunk boundary.
-            min_chunks_per_tile (int, optional): 
+            chunks_per_tile (int, optional): 
                 The minimum number of chunks to be placed in a single tile.
+            max_chunks_per_tile (int, optional)
+                The maximum number of chunks to be placed in a single tile.
             
         Attributes:
             antea (np.ndarray): ANTENNA1 column of MS subset.
@@ -1580,10 +1582,12 @@ class DataHandler:
 
         # now, for effective I/O and parallelisation, we need to have a minimum amount of chunks per tile.
         # Coarsen our tiles to achieve this
-        coarser_tile_list = []
-        for tile in tile_list:
+        coarser_tile_list = [tile_list[0]]
+        for tile in tile_list[1:]:
+            cur_chunks = len(coarser_tile_list[-1].rowchunks)*num_freq_chunks
+            new_chunks = cur_chunks + len(tile.rowchunks)*num_freq_chunks
             # start new "coarse tile" if previous coarse tile already has the min number of chunks
-            if not coarser_tile_list or len(coarser_tile_list[-1].rowchunks)*num_freq_chunks >= min_chunks_per_tile:
+            if cur_chunks > chunks_per_tile or new_chunks > (max_chunks_per_tile or 1e+999):
                 coarser_tile_list.append(tile)
             else:
                 coarser_tile_list[-1].merge(tile)
@@ -1592,7 +1596,12 @@ class DataHandler:
         for i, tile in enumerate(Tile.tile_list):
             tile.finalize("tile #{}/{}".format(i+1, len(Tile.tile_list)))
 
-        print>> log, "  coarsening this to {} tiles (min {} chunks per tile)".format(len(Tile.tile_list), min_chunks_per_tile)
+        max_chunks = max([len(tile.rowchunks)*num_freq_chunks for tile in Tile.tile_list])
+
+        print>> log, "  coarsening this to {} tiles ({} chunks per tile based on {}/{} requested)".format(
+            len(Tile.tile_list), max_chunks, chunks_per_tile, max_chunks_per_tile)
+
+        return max_chunks
 
     def check_contig(self, columns, jump_by=0):
         """

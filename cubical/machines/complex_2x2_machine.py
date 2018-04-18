@@ -4,9 +4,9 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
+import cubical.kernels
 import cubical.kernels.cyfull_complex as cyfull
 from cubical.flagging import FL
-
 
 class Complex2x2Gains(PerIntervalGains):
     """
@@ -33,6 +33,8 @@ class Complex2x2Gains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
+        cubical.kernels.num_omp_threads = 4
+
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
         
