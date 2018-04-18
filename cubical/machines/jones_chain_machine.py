@@ -5,15 +5,11 @@
 from cubical.machines.abstract_machine import MasterMachine
 from cubical.machines.complex_2x2_machine import Complex2x2Gains
 import numpy as np
-import cubical.kernels.cyfull_complex as cyfull
-import cubical.kernels.cychain as cychain
 
 from cubical.tools import logger
 import machine_types
 from cubical.flagging import FL
 log = logger.getLogger("jones_chain")
-
-
 
 class JonesChain(MasterMachine):
     """
@@ -43,7 +39,9 @@ class JonesChain(MasterMachine):
             jones_options (dict): 
                 Dictionary of options pertaining to the chain. 
         """
-        
+        import cubical.kernels.cyfull_complex as cyfull
+        import cubical.kernels.cychain as cychain
+
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, jones_options)
 

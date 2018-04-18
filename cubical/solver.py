@@ -12,6 +12,7 @@ from cubical.data_handler import Tile
 from cubical.flagging import FL
 from cubical.statistics import SolverStats
 from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code
+import cubical.kernels
 
 log = logger.getLogger("solver")
 #log.verbosity(2)
@@ -53,6 +54,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             - stats (:obj:`~cubical.statistics.SolverStats`)
                 An object containing solver statistics.
     """
+    print>> log, "threads {}\n".format(cubical.kernels.num_omp_threads)
 
     min_delta_g  = sol_opts["delta-g"]
     chi_tol      = sol_opts["delta-chi"]

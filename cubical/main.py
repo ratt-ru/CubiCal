@@ -53,6 +53,9 @@ from cubical.statistics import SolverStats
 
 GD = None
 
+_worker_process_properties = { "MainProcess": ("", None, 0) }
+
+
 class UserInputError(Exception):
     pass
 
@@ -173,6 +176,7 @@ def main(debugging=False):
         # figure out CPU affinities
         ncpu = GD["dist"]["ncpu"]
         nworker = GD["dist"]["nworker"]
+        nthread = GD["dist"]["nthread"]
 
         if single_chunk or ncpu == 1:
             ncpu = nworker = 0
@@ -364,14 +368,13 @@ def main(debugging=False):
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
 
         if ncpu > 1:
-            nthread = GD["dist"]["nthread"]
             if not nworker:
                 nworker = min(chunks_per_tile, ncpu-1)
+            else:
+                nworker = min(nworker, ncpu-1)
             if not nthread:
                 nthread = int((ncpu-1)/nworker)
             print>>log,"using {} worker processes with {} threads ({} total cores)".format(nworker, nthread, nworker*nthread)
-            import cubical.kernels
-            cubical.kernels.num_omp_threads = nthread
 
         t0 = time()
 
@@ -385,6 +388,11 @@ def main(debugging=False):
         # returns: stats object
 
         if debugging or ncpu <= 1 or single_chunk:
+            import cubical.kernels
+            cubical.kernels.num_omp_threads = nthread or 1
+            global _worker_process_properties
+            _worker_process_properties["MainProcess"] = ("", None, nthread)
+
             for itile, tile in enumerate(Tile.tile_list):
                 tile.load(load_model=load_model)
                 processed = False
@@ -415,7 +423,7 @@ def main(debugging=False):
             # for subprocesses. If this convention changes in the future, _init_worker() below will
             # not be able to find subprocess properties, and will give warnings.
             global _worker_process_properties
-            _worker_process_properties["MainProcess"] = "", main_affinity
+            _worker_process_properties["MainProcess"] = ("", main_affinity, nthread)
 
             # create entries for subprocesses
             for icpu in xrange(nworker+1):
@@ -426,7 +434,7 @@ def main(debugging=False):
                     aff = affinities[icpu]
                 else:
                     aff = None
-                _worker_process_properties[name] = label, aff
+                _worker_process_properties[name] = label, aff, nthread
 
             if main_affinity is not None:
                 if ms.use_montblanc:
@@ -546,7 +554,6 @@ def main(debugging=False):
 
 
 _worker_initialized = None
-_worker_process_properties = { "MainProcess": ("", None) }
 
 def _init_worker():
     """Called inside every worker process to initialize its properties"""
@@ -558,11 +565,13 @@ def _init_worker():
             print>> log(0, "red"), "WARNING: unrecognized worker process name '{}'. " \
                                 "Please inform the developers.".format(name)
             return
-        label, affinity = _worker_process_properties[name]
+        label, affinity, nthread = _worker_process_properties[name]
         logger.set_subprocess_label(label)
         if affinity is not None:
             print>>log(1),"setting worker process ({}) CPU affinity to {}".format(os.getpid(), affinity)
             os.system("taskset -pc {} {} >/dev/null".format(affinity, os.getpid()))
+        import cubical.kernels
+        cubical.kernels.num_omp_threads = nthread
 
 
 def _io_handler(save=None, load=None, load_model=True, finalize=False):

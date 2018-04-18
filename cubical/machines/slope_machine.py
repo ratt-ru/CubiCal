@@ -7,10 +7,6 @@ import numpy as np
 from cubical.flagging import FL
 from numpy.ma import masked_array
 
-import cubical.kernels.cytf_plane
-import cubical.kernels.cyf_slope   
-import cubical.kernels.cyt_slope
-
 def _normalize(x, dtype):
     """
     Helper function: normalizes array to [0,1] interval.
@@ -49,7 +45,10 @@ class PhaseSlopeGains(ParameterisedGains):
             options (dict): 
                 Dictionary of options. 
         """
-        
+        import cubical.kernels.cytf_plane
+        import cubical.kernels.cyf_slope
+        import cubical.kernels.cyt_slope
+
         ParameterisedGains.__init__(self, label, data_arr, ndir, nmod,
                                     chunk_ts, chunk_fs, chunk_label, options)
 

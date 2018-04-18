@@ -4,7 +4,6 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
-import cubical.kernels.cyphase_only as cyphase
 from cubical.flagging import FL
 
 class PhaseDiagGains(PerIntervalGains):
@@ -32,7 +31,12 @@ class PhaseDiagGains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
-        
+        # clumsy but necessary: can't import at top level (OMP must not be touched before worker processes
+        # are forked off), so we import it only in here
+        import cubical.kernels.cyphase_only
+        global cyphase
+        cyphase = cubical.kernels.cyphase_only
+
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
 

@@ -2,11 +2,9 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
-from abc import ABCMeta, abstractmethod
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
-import cubical.kernels.cyfull_complex as cyfull
 
 from numpy.ma import masked_array
 
@@ -36,6 +34,9 @@ class PerIntervalGains(MasterMachine):
             options (dict): 
                 Dictionary of options. 
         """
+        import cubical.kernels.cyfull_complex
+        global cyfull
+        cyfull = cubical.kernels.cyfull_complex
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, options)

@@ -32,12 +32,11 @@ import numpy as np
 cimport numpy as np
 import cython
 from cython.parallel import parallel, prange
-import cubical.kernels 
+import cubical.kernels
 
 ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
-
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -82,7 +81,7 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
 
     cdef int num_threads = cubical.kernels.num_omp_threads
     with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant):
+        for aa in prange(n_ant, schedule='static'):
             for ab in xrange(n_ant):
                 for i in xrange(n_mod):
                     for d in xrange(n_dir):
@@ -156,7 +155,7 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
 
     cdef int num_threads = cubical.kernels.num_omp_threads
     with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant):
+        for aa in prange(n_ant, schedule='static'):
             for ab in xrange(n_ant):
                 for d in xrange(n_dir):
                     gd = d%g_dir
@@ -215,7 +214,7 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:,:,:] jh,
 
     cdef int num_threads = cubical.kernels.num_omp_threads
     with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant):
+        for aa in prange(n_ant, schedule='static'):
             for ab in xrange(n_ant):
                 for d in xrange(n_dir):
                     for i in xrange(n_mod):
@@ -273,7 +272,7 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:,:] jh,
 
     cdef int num_threads = cubical.kernels.num_omp_threads
     with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant):
+        for aa in prange(n_ant, schedule='static'):
             for ab in xrange(n_ant):
                 for d in xrange(n_dir):
                     for i in xrange(n_mod):
@@ -342,7 +341,7 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
 
     cdef int num_threads = cubical.kernels.num_omp_threads
     with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant):
+        for aa in prange(n_ant, schedule='static'):
             for d in xrange(n_dir):
                 for t in xrange(n_tim):
                     for f in xrange(n_fre):
@@ -407,7 +406,7 @@ def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
 
     cdef int num_threads = cubical.kernels.num_omp_threads
     with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant):
+        for aa in prange(n_ant, schedule='static'):
             for d in xrange(n_dir):
                 for t in xrange(n_tim):
                     for f in xrange(n_fre):
@@ -465,7 +464,7 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
 
     cdef int num_threads = cubical.kernels.num_omp_threads
     with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant):
+        for aa in prange(n_ant, schedule='static'):
             for ab in xrange(n_ant):
                 for d in xrange(n_dir):
                     for t in xrange(n_tim):
@@ -539,7 +538,7 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
 
     cdef int num_threads = cubical.kernels.num_omp_threads
     with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant):
+        for aa in prange(n_ant, schedule='static'):
             for ab in xrange(n_ant):
                 for d in xrange(n_dir):
                     gd = d%g_dir

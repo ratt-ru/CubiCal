@@ -6,8 +6,6 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.interval_gain_machine import PerIntervalGains
-from functools import partial
-from numpy.ma import masked_array
 
 class ParameterisedGains(PerIntervalGains):
     """
