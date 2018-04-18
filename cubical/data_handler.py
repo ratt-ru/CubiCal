@@ -399,10 +399,18 @@ class Tile(object):
                                                         ("()" if cluster == 'die' else "({})".format(cluster)),
                                                   imod, idir)
 
+                                # release memory asap
+                                del column_snk,snks
+
                             # finally, add model in at correct slot
                             movis[idir, imod, ...] += model
 
+            # release memory (gc.collect() particularly important), as model visibilities are *THE* major user (especially
+            # in the DD case)
             del loaded_models
+            import gc
+            gc.collect()
+
             # if data was massaged for Montblanc shape, back out of that
             if expected_nrows is not None:
                 self.unprep_for_montblanc(nrows)
