@@ -31,8 +31,6 @@ provided. Common dimensions of arrays are:
 import numpy as np
 cimport numpy as np
 import cython
-from cython.parallel import parallel, prange
-import cubical.kernels
 
 ctypedef fused complex3264:
     np.complex64_t
@@ -78,40 +76,38 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
     n_fre = m.shape[3]
     n_ant = m.shape[4]
 
+    for d in xrange(n_dir):
+        for i in xrange(n_mod):
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for aa in xrange(n_ant):
+                        for ab in xrange(n_ant):
+                            r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for ab in xrange(n_ant):
-                for i in xrange(n_mod):
-                    for d in xrange(n_dir):
-                        for t in xrange(n_tim):
-                            rr = t/t_int
-                            for f in xrange(n_fre):
-                                rc = f/f_int
-                                r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
-                                g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
-                                g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
-                                g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
-                                g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+                            r[i,t,f,aa,ab,0,1] = r[i,t,f,aa,ab,0,1] - (
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
-                                r[i,t,f,aa,ab,0,1] = r[i,t,f,aa,ab,0,1] - (
-                                g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
-                                g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
-                                g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
-                                g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+                            r[i,t,f,aa,ab,1,0] = r[i,t,f,aa,ab,1,0] - (
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
 
-                                r[i,t,f,aa,ab,1,0] = r[i,t,f,aa,ab,1,0] - (
-                                g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
-                                g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
-                                g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
-                                g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+                            r[i,t,f,aa,ab,1,1] = r[i,t,f,aa,ab,1,1] - (
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
-                                r[i,t,f,aa,ab,1,1] = r[i,t,f,aa,ab,1,1] - (
-                                g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
-                                g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
-                                g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
-                                g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -153,28 +149,27 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
 
     g_dir = g.shape[0]
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for ab in xrange(n_ant):
-                for d in xrange(n_dir):
-                    gd = d%g_dir
-                    for i in xrange(n_mod):
-                        for t in xrange(n_tim):
-                            rr = t/t_int
-                            for f in xrange(n_fre):
-                                rc = f/f_int
-                                jh[d,i,t,f,aa,ab,0,0] = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
-                                                        g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]
+    for d in xrange(n_dir):
+        gd = d%g_dir
+        for i in xrange(n_mod):
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for aa in xrange(n_ant):
+                        for ab in xrange(n_ant):
+                            jh[d,i,t,f,aa,ab,0,0] = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
+                                                    g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]
 
-                                jh[d,i,t,f,aa,ab,0,1] = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1] + \
-                                                        g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]
+                            jh[d,i,t,f,aa,ab,0,1] = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1] + \
+                                                    g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]
 
-                                jh[d,i,t,f,aa,ab,1,0] = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0] + \
-                                                        g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]
+                            jh[d,i,t,f,aa,ab,1,0] = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0] + \
+                                                    g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]
 
-                                jh[d,i,t,f,aa,ab,1,1] = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1] + \
-                                                        g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]
+                            jh[d,i,t,f,aa,ab,1,1] = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1] + \
+                                                    g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]
+
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -212,31 +207,29 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:,:,:] jh,
     n_fre = jh.shape[3]
     n_ant = jh.shape[4]
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for ab in xrange(n_ant):
-                for d in xrange(n_dir):
-                    for i in xrange(n_mod):
-                        for t in xrange(n_tim):
-                            rr = t/t_int
-                            for f in xrange(n_fre):
-                                rc = f/f_int
-                                jhr[d,rr,rc,aa,0,0] = jhr[d,rr,rc,aa,0,0] + \
-                                                        r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,0] + \
-                                                        r[i,t,f,aa,ab,0,1]*jh[d,i,t,f,ab,aa,1,0]
+    for d in xrange(n_dir):
+        for i in xrange(n_mod):
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for aa in xrange(n_ant):
+                        for ab in xrange(n_ant):
+                            jhr[d,rr,rc,aa,0,0] = jhr[d,rr,rc,aa,0,0] + \
+                                                    r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,0] + \
+                                                    r[i,t,f,aa,ab,0,1]*jh[d,i,t,f,ab,aa,1,0]
 
-                                jhr[d,rr,rc,aa,0,1] = jhr[d,rr,rc,aa,0,1] + \
-                                                        r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,1] + \
-                                                        r[i,t,f,aa,ab,0,1]*jh[d,i,t,f,ab,aa,1,1]
+                            jhr[d,rr,rc,aa,0,1] = jhr[d,rr,rc,aa,0,1] + \
+                                                    r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,1] + \
+                                                    r[i,t,f,aa,ab,0,1]*jh[d,i,t,f,ab,aa,1,1]
 
-                                jhr[d,rr,rc,aa,1,0] = jhr[d,rr,rc,aa,1,0] + \
-                                                        r[i,t,f,aa,ab,1,0]*jh[d,i,t,f,ab,aa,0,0] + \
-                                                        r[i,t,f,aa,ab,1,1]*jh[d,i,t,f,ab,aa,1,0]
+                            jhr[d,rr,rc,aa,1,0] = jhr[d,rr,rc,aa,1,0] + \
+                                                    r[i,t,f,aa,ab,1,0]*jh[d,i,t,f,ab,aa,0,0] + \
+                                                    r[i,t,f,aa,ab,1,1]*jh[d,i,t,f,ab,aa,1,0]
 
-                                jhr[d,rr,rc,aa,1,1] = jhr[d,rr,rc,aa,1,1] + \
-                                                        r[i,t,f,aa,ab,1,0]*jh[d,i,t,f,ab,aa,0,1] + \
-                                                        r[i,t,f,aa,ab,1,1]*jh[d,i,t,f,ab,aa,1,1]
+                            jhr[d,rr,rc,aa,1,1] = jhr[d,rr,rc,aa,1,1] + \
+                                                    r[i,t,f,aa,ab,1,0]*jh[d,i,t,f,ab,aa,0,1] + \
+                                                    r[i,t,f,aa,ab,1,1]*jh[d,i,t,f,ab,aa,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -270,31 +263,29 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:,:] jh,
     n_fre = jh.shape[3]
     n_ant = jh.shape[4]
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for ab in xrange(n_ant):
-                for d in xrange(n_dir):
-                    for i in xrange(n_mod):
-                        for t in xrange(n_tim):
-                            rr = t/t_int
-                            for f in xrange(n_fre):
-                                rc = f/f_int
-                                jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
-                                jh[d,i,t,f,ab,aa,0,0].conjugate()*jh[d,i,t,f,ab,aa,0,0] + \
-                                jh[d,i,t,f,ab,aa,1,0].conjugate()*jh[d,i,t,f,ab,aa,1,0]
+    for d in xrange(n_dir):
+        for i in xrange(n_mod):
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for aa in xrange(n_ant):
+                        for ab in xrange(n_ant):
+                            jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
+                            jh[d,i,t,f,ab,aa,0,0].conjugate()*jh[d,i,t,f,ab,aa,0,0] + \
+                            jh[d,i,t,f,ab,aa,1,0].conjugate()*jh[d,i,t,f,ab,aa,1,0]
 
-                                jhj[d,rr,rc,aa,0,1] = jhj[d,rr,rc,aa,0,1] + \
-                                jh[d,i,t,f,ab,aa,0,0].conjugate()*jh[d,i,t,f,ab,aa,0,1] + \
-                                jh[d,i,t,f,ab,aa,1,0].conjugate()*jh[d,i,t,f,ab,aa,1,1]
+                            jhj[d,rr,rc,aa,0,1] = jhj[d,rr,rc,aa,0,1] + \
+                            jh[d,i,t,f,ab,aa,0,0].conjugate()*jh[d,i,t,f,ab,aa,0,1] + \
+                            jh[d,i,t,f,ab,aa,1,0].conjugate()*jh[d,i,t,f,ab,aa,1,1]
 
-                                jhj[d,rr,rc,aa,1,0] = jhj[d,rr,rc,aa,1,0] + \
-                                jh[d,i,t,f,ab,aa,0,1].conjugate()*jh[d,i,t,f,ab,aa,0,0] + \
-                                jh[d,i,t,f,ab,aa,1,1].conjugate()*jh[d,i,t,f,ab,aa,1,0]
+                            jhj[d,rr,rc,aa,1,0] = jhj[d,rr,rc,aa,1,0] + \
+                            jh[d,i,t,f,ab,aa,0,1].conjugate()*jh[d,i,t,f,ab,aa,0,0] + \
+                            jh[d,i,t,f,ab,aa,1,1].conjugate()*jh[d,i,t,f,ab,aa,1,0]
 
-                                jhj[d,rr,rc,aa,1,1] = jhj[d,rr,rc,aa,1,1] + \
-                                jh[d,i,t,f,ab,aa,0,1].conjugate()*jh[d,i,t,f,ab,aa,0,1] + \
-                                jh[d,i,t,f,ab,aa,1,1].conjugate()*jh[d,i,t,f,ab,aa,1,1]
+                            jhj[d,rr,rc,aa,1,1] = jhj[d,rr,rc,aa,1,1] + \
+                            jh[d,i,t,f,ab,aa,0,1].conjugate()*jh[d,i,t,f,ab,aa,0,1] + \
+                            jh[d,i,t,f,ab,aa,1,1].conjugate()*jh[d,i,t,f,ab,aa,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -339,39 +330,37 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
     n_fre = jhj.shape[2]
     n_ant = jhj.shape[3]
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for d in xrange(n_dir):
-                for t in xrange(n_tim):
-                    for f in xrange(n_fre):
-                        if flags[d,t,f,aa]:
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            for f in xrange(n_fre):
+                for aa in xrange(n_ant):
+                    if flags[d,t,f,aa]:
 
-                                jhjinv[d,t,f,aa,0,0] = 0
-                                jhjinv[d,t,f,aa,1,1] = 0
-                                jhjinv[d,t,f,aa,0,1] = 0
-                                jhjinv[d,t,f,aa,1,0] = 0
+                            jhjinv[d,t,f,aa,0,0] = 0
+                            jhjinv[d,t,f,aa,1,1] = 0
+                            jhjinv[d,t,f,aa,0,1] = 0
+                            jhjinv[d,t,f,aa,1,0] = 0
+
+                    else:
+                        denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
+                                jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
+
+                        if (denom*denom.conjugate()).real<=eps:
+
+                            jhjinv[d,t,f,aa,0,0] = 0
+                            jhjinv[d,t,f,aa,1,1] = 0
+                            jhjinv[d,t,f,aa,0,1] = 0
+                            jhjinv[d,t,f,aa,1,0] = 0
+
+                            flags[d,t,f,aa] = flagbit
+                            flag_count += 1
 
                         else:
-                            denom = jhj[d,t,f,aa,0,0] * jhj[d,t,f,aa,1,1] - \
-                                    jhj[d,t,f,aa,0,1] * jhj[d,t,f,aa,1,0]
 
-                            if (denom*denom.conjugate()).real<=eps:
-
-                                jhjinv[d,t,f,aa,0,0] = 0
-                                jhjinv[d,t,f,aa,1,1] = 0
-                                jhjinv[d,t,f,aa,0,1] = 0
-                                jhjinv[d,t,f,aa,1,0] = 0
-
-                                flags[d,t,f,aa] = flagbit
-                                flag_count += 1
-
-                            else:
-
-                                jhjinv[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
-                                jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
-                                jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
-                                jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
+                            jhjinv[d,t,f,aa,0,0] = jhj[d,t,f,aa,1,1]/denom
+                            jhjinv[d,t,f,aa,1,1] = jhj[d,t,f,aa,0,0]/denom
+                            jhjinv[d,t,f,aa,0,1] = -1 * jhj[d,t,f,aa,0,1]/denom
+                            jhjinv[d,t,f,aa,1,0] = -1 * jhj[d,t,f,aa,1,0]/denom
 
     return flag_count
 
@@ -404,24 +393,22 @@ def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
     n_fre = jhr.shape[2]
     n_ant = jhr.shape[3]
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for d in xrange(n_dir):
-                for t in xrange(n_tim):
-                    for f in xrange(n_fre):
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            for f in xrange(n_fre):
+                for aa in xrange(n_ant):
 
-                        upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,0] + \
-                                            jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,0]
+                    upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,0] + \
+                                        jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,0]
 
-                        upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,1] + \
-                                            jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,1]
+                    upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,1] + \
+                                        jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,1]
 
-                        upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,0] + \
-                                            jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,0]
+                    upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,0] + \
+                                        jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,0]
 
-                        upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,1] + \
-                                            jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,1]
+                    upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,1] + \
+                                        jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,1]
                     
 
 @cython.cdivision(True)
@@ -462,38 +449,35 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
     n_fre = o.shape[1]
     n_ant = o.shape[2]
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for ab in xrange(n_ant):
-                for d in xrange(n_dir):
-                    for t in xrange(n_tim):
-                        rr = t/t_int
-                        for f in xrange(n_fre):
-                            rc = f/f_int
-                            corr[t,f,aa,ab,0,0] = \
-                            g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
-                            g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0]
+    for t in xrange(n_tim):
+        rr = t/t_int
+        for f in xrange(n_fre):
+            rc = f/f_int
+            for aa in xrange(n_ant):
+                for ab in xrange(n_ant):
+                    corr[t,f,aa,ab,0,0] = \
+                    g[0,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[0,rr,rc,ab,0,0] + \
+                    g[0,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[0,rr,rc,ab,0,0] + \
+                    g[0,rr,rc,aa,0,0]*o[t,f,aa,ab,0,1]*gh[0,rr,rc,ab,1,0] + \
+                    g[0,rr,rc,aa,0,1]*o[t,f,aa,ab,1,1]*gh[0,rr,rc,ab,1,0]
 
-                            corr[t,f,aa,ab,0,1] = \
-                            g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,0,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
-                            g[d,rr,rc,aa,0,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]
+                    corr[t,f,aa,ab,0,1] = \
+                    g[0,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[0,rr,rc,ab,0,1] + \
+                    g[0,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[0,rr,rc,ab,0,1] + \
+                    g[0,rr,rc,aa,0,0]*o[t,f,aa,ab,0,1]*gh[0,rr,rc,ab,1,1] + \
+                    g[0,rr,rc,aa,0,1]*o[t,f,aa,ab,1,1]*gh[0,rr,rc,ab,1,1]
 
-                            corr[t,f,aa,ab,1,0] = \
-                            g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
-                            g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
-                            g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0]
+                    corr[t,f,aa,ab,1,0] = \
+                    g[0,rr,rc,aa,1,0]*o[t,f,aa,ab,0,0]*gh[0,rr,rc,ab,0,0] + \
+                    g[0,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[0,rr,rc,ab,0,0] + \
+                    g[0,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[0,rr,rc,ab,1,0] + \
+                    g[0,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[0,rr,rc,ab,1,0]
 
-                            corr[t,f,aa,ab,1,1] = \
-                            g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
-                            g[d,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
-                            g[d,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1]
+                    corr[t,f,aa,ab,1,1] = \
+                    g[0,rr,rc,aa,1,0]*o[t,f,aa,ab,0,0]*gh[0,rr,rc,ab,0,1] + \
+                    g[0,rr,rc,aa,1,1]*o[t,f,aa,ab,1,0]*gh[0,rr,rc,ab,0,1] + \
+                    g[0,rr,rc,aa,1,0]*o[t,f,aa,ab,0,1]*gh[0,rr,rc,ab,1,1] + \
+                    g[0,rr,rc,aa,1,1]*o[t,f,aa,ab,1,1]*gh[0,rr,rc,ab,1,1]
 
 
 @cython.cdivision(True)
@@ -536,41 +520,40 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
 
     g_dir = g.shape[0]
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for ab in xrange(n_ant):
-                for d in xrange(n_dir):
-                    gd = d%g_dir
-                    for i in xrange(n_mod):
-                        for t in xrange(n_tim):
-                            rr = t/t_int
-                            for f in xrange(n_fre):
-                                rc = f/f_int
-                                gmtmp1 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
-                                         g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]
+    for d in xrange(n_dir):
+        gd = d%g_dir
+        for i in xrange(n_mod):
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for aa in xrange(n_ant):
+                        for ab in xrange(n_ant):
 
-                                gmtmp2 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1] + \
-                                         g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]
+                            gmtmp1 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
+                                     g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]
 
-                                gmtmp3 = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0] + \
-                                         g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]
+                            gmtmp2 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1] + \
+                                     g[gd,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]
 
-                                gmtmp4 = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1] + \
-                                         g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]
+                            gmtmp3 = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0] + \
+                                     g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]
 
-                                m[d,i,t,f,aa,ab,0,0] = \
-                                    gmtmp1*gh[gd,rr,rc,ab,0,0] + \
-                                    gmtmp2*gh[gd,rr,rc,ab,1,0]
+                            gmtmp4 = g[gd,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1] + \
+                                     g[gd,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]
 
-                                m[d,i,t,f,aa,ab,0,1] = \
-                                    gmtmp1*gh[gd,rr,rc,ab,0,1] + \
-                                    gmtmp2*gh[gd,rr,rc,ab,1,1]
+                            m[d,i,t,f,aa,ab,0,0] = \
+                                gmtmp1*gh[gd,rr,rc,ab,0,0] + \
+                                gmtmp2*gh[gd,rr,rc,ab,1,0]
 
-                                m[d,i,t,f,aa,ab,1,0] = \
-                                    gmtmp3*gh[gd,rr,rc,ab,0,0] + \
-                                    gmtmp4*gh[gd,rr,rc,ab,1,0]
+                            m[d,i,t,f,aa,ab,0,1] = \
+                                gmtmp1*gh[gd,rr,rc,ab,0,1] + \
+                                gmtmp2*gh[gd,rr,rc,ab,1,1]
 
-                                m[d,i,t,f,aa,ab,1,1] = \
-                                    gmtmp3*gh[gd,rr,rc,ab,0,1] + \
-                                    gmtmp4*gh[gd,rr,rc,ab,1,1]
+                            m[d,i,t,f,aa,ab,1,0] = \
+                                gmtmp3*gh[gd,rr,rc,ab,0,0] + \
+                                gmtmp4*gh[gd,rr,rc,ab,1,0]
+
+                            m[d,i,t,f,aa,ab,1,1] = \
+                                gmtmp3*gh[gd,rr,rc,ab,0,1] + \
+                                gmtmp4*gh[gd,rr,rc,ab,1,1]

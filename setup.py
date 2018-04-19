@@ -71,6 +71,9 @@ if cythonize:
             "cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.pyx"],
             include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
          Extension(
+            "cubical.kernels.cyfull_complex_omp", ["cubical/kernels/cyfull_complex_omp.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
             "cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
             include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
          Extension(
@@ -92,7 +95,7 @@ if cythonize:
             include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
             extra_link_args=link_args)]
 
-    extensions = cythonize(extensions, compiler_directives={'binding': True})
+    extensions = cythonize(extensions, compiler_directives={'binding': True}, annotate=True)
 
 else:
 
