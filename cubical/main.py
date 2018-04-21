@@ -53,7 +53,8 @@ from cubical.statistics import SolverStats
 
 GD = None
 
-_worker_process_properties = { "MainProcess": ("", None, 0) }
+# dictionary of worker process properties, applied in _init_worker() below
+_worker_process_properties = { "MainProcess": {} }
 
 
 class UserInputError(Exception):
@@ -391,7 +392,7 @@ def main(debugging=False):
             import cubical.kernels
             cubical.kernels.num_omp_threads = nthread or 1
             global _worker_process_properties
-            _worker_process_properties["MainProcess"] = ("", None, nthread)
+            _worker_process_properties["MainProcess"]["omp_threads"] = nthread
 
             for itile, tile in enumerate(Tile.tile_list):
                 tile.load(load_model=load_model)
@@ -423,7 +424,7 @@ def main(debugging=False):
             # for subprocesses. If this convention changes in the future, _init_worker() below will
             # not be able to find subprocess properties, and will give warnings.
             global _worker_process_properties
-            _worker_process_properties["MainProcess"] = ("", main_affinity, nthread)
+            _worker_process_properties["MainProcess"] = ("", main_affinity, nthread, None)
 
             # create entries for subprocesses
             for icpu in xrange(nworker+1):
@@ -434,7 +435,12 @@ def main(debugging=False):
                     aff = affinities[icpu]
                 else:
                     aff = None
-                _worker_process_properties[name] = label, aff, nthread
+                # if OMP is in use, set affinities via gomp
+                if nthread>1 and icpu:
+                    gomp = "{}-{}".format(2+(icpu-1)*nthread,2+icpu*nthread)
+                else:
+                    gomp = None
+                _worker_process_properties[name] = label, aff, nthread, gomp
 
             if main_affinity is not None:
                 if ms.use_montblanc:
@@ -551,71 +557,4 @@ def main(debugging=False):
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)
         sys.exit(2 if type(exc) is UserInputError else 1)
-
-
-_worker_initialized = None
-
-def _init_worker():
-    """Called inside every worker process to initialize its properties"""
-    global _worker_initialized
-    if not _worker_initialized:
-        _worker_initialized = True
-        name = multiprocessing.current_process().name
-        if name not in _worker_process_properties:
-            print>> log(0, "red"), "WARNING: unrecognized worker process name '{}'. " \
-                                "Please inform the developers.".format(name)
-            return
-        label, affinity, nthread = _worker_process_properties[name]
-        logger.set_subprocess_label(label)
-        if affinity is not None:
-            print>>log(1),"setting worker process ({}) CPU affinity to {}".format(os.getpid(), affinity)
-            os.system("taskset -pc {} {} >/dev/null".format(affinity, os.getpid()))
-        import cubical.kernels
-        cubical.kernels.num_omp_threads = nthread
-
-
-def _io_handler(save=None, load=None, load_model=True, finalize=False):
-    """
-    Handles disk reads and writes for the multiprocessing case.
-
-    Args:
-        save (None or int, optional):
-            If specified, corresponds to index of Tile to save.
-        load (None or int, optional):
-            If specified, corresponds to index of Tile to load.
-        load_model (bool, optional):
-            If specified, loads model column from measurement set.
-        finalize (bool, optional):
-            If True, save will call the unlock method on the handler.
-
-    Returns:
-        bool:
-            True if load/save was successful.
-    """
-    _init_worker()
-    try:
-        result = {'success': True}
-        if save is not None:
-            tile = Tile.tile_list[save]
-            itile = range(len(Tile.tile_list))[save]
-            print>>log(0, "blue"),"saving {}".format(tile.label)
-            tile.save(unlock=finalize)
-            for sd in tile.iterate_solution_chunks():
-                solver.gm_factory.save_solutions(sd)
-                solver.ifrgain_machine.accumulate(sd)
-            if finalize:
-                solver.ifrgain_machine.save()
-                solver.gm_factory.close()
-                result['flagcounts'] = tile.handler.flagcounts
-            tile.release()
-        if load is not None:
-            tile = Tile.tile_list[load]
-            print>>log(0, "blue"),"loading {}".format(tile.label)
-            tile.load(load_model=load_model)
-        print>> log(0, "blue"), "I/O job(s) complete"
-        return result
-    except Exception, exc:
-        print>> log, ModColor.Str("I/O handler for load {} save {} failed with exception: {}".format(load, save, exc))
-        print>> log, traceback.format_exc()
-        raise
 

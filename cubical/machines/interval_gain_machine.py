@@ -34,9 +34,10 @@ class PerIntervalGains(MasterMachine):
             options (dict): 
                 Dictionary of options. 
         """
-        import cubical.kernels.cyfull_complex
+        import cubical.kernels.cyfull_complex_omp
         global cyfull
-        cyfull = cubical.kernels.cyfull_complex
+        cyfull = cubical.kernels.cyfull_complex_omp
+        cyfull.omp_init()
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, options)

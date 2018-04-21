@@ -38,6 +38,14 @@ ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
 
+cimport openmp
+
+def omp_init():
+    openmp.omp_set_num_threads(128)
+    openmp.omp_set_max_active_levels(10)
+    openmp.omp_set_nested(1)
+    openmp.omp_set_dynamic(0)
+
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)

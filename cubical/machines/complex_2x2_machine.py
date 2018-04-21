@@ -34,9 +34,11 @@ class Complex2x2Gains(PerIntervalGains):
 
         # clumsy but necessary: can't import at top level (OMP must not be touched before worker processes
         # are forked off), so we import it only in here
-        import cubical.kernels.cyfull_complex
+        import cubical.kernels.cyfull_complex_omp
         global cyfull
-        cyfull = cubical.kernels.cyfull_complex
+        cyfull = cubical.kernels.cyfull_complex_omp
+        cyfull.omp_init()
+
 
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
