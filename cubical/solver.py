@@ -54,8 +54,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             - stats (:obj:`~cubical.statistics.SolverStats`)
                 An object containing solver statistics.
     """
-    print>> log, "threads {}\n".format(cubical.kernels.num_omp_threads)
-
     min_delta_g  = sol_opts["delta-g"]
     chi_tol      = sol_opts["delta-chi"]
     chi_interval = sol_opts["chi-int"]
@@ -667,8 +665,8 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
         RuntimeError:
             If gain factory has not been initialised.
     """
-    import cubical.main
-    cubical.main._init_worker()
+    import cubical.workers
+    cubical.workers._init_worker()
 
     label = None
     try:

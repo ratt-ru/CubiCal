@@ -36,6 +36,12 @@ ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
 
+def cyallocate_DTFACC(shape, dtype):
+    """
+    Allocates an array of shape NDxNTxNFxNAxNC, with its underlying memory layout optimized to the kernel
+    """
+    return np.empty(shape, dtype=dtype)
+
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)

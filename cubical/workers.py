@@ -1,29 +1,259 @@
+import multiprocessing, os, sys, traceback
+import concurrent.futures as cf
+import re
+
+
+import cubical.kernels
 from cubical.data_handler import Tile
+from cubical.tools import logger
+from cubical import solver
 
 
+log = logger.getLogger("main")
 
+worker_process_properties = dict(MainProcess={})
+
+def setup_affinities(ncpu, nworker, nthread, affinity, io_affinity, main_affinity, use_montblanc, montblanc_threads):
+    """
+    Sets up affinities and other properties of worker processes
+    
+    Args:
+        ncpu: 
+        nworker: 
+        nthread: 
+        affinity: 
+        io_affinity: 
+        main_affinity: 
+        use_montblanc: 
+        montblanc_threads: 
+
+    Returns:
+
+    """
+    # set OMP thread counts for kernels -- child processes will inherit this
+    cubical.kernels.num_omp_threads = nthread
+
+    # in serial mode, simply set the Montblanc thread count, and return
+    if ncpu < 2:
+        if use_montblanc and montblanc_threads:
+            os.environ["OMP_NUM_THREADS"] = os.environ["OMP_THREAD_LIMIT"] = str(montblanc_threads)
+        return
+
+    # parse affinity argument
+    if affinity != "" and affinity is not None:
+        if type(affinity) is int or re.match("^[\d+]$", affinity):
+            core = int(affinity)
+            corestep = 1
+        elif re.match("^(\d+):(\d+)$", affinity):
+            core, corestep = affinity.split(":")
+        else:
+            raise ValueError("invalid affinity setting '{}'".format(affinity))
+    else:
+        core = corestep = affinity = None
+
+    # first, the I/O process
+    props = worker_process_properties["Process-1"] = dict(label="io", environ={}, num_omp_threads=nthread)
+
+    # allocate cores to I/O process, if asked to pin it
+    if affinity is not None and io_affinity:
+        num_io_cores = io_affinity if use_montblanc else 1
+        io_cores = range(core,core+num_io_cores*corestep,corestep)
+        core = core + num_io_cores * corestep
+        # if Montblanc is in use, affinity controlled by GOMP setting, else by taskset
+        if use_montblanc:
+            props["environ"]["GOMP_CPU_AFFINITY"] = " ".join(map(str,io_cores))
+            props["environ"]["OMP_NUM_THREADS"] = props["environ"]["OMP_THREAD_LIMIT"] = str(io_affinity)
+        else:
+            props["taskset"] = ",".join(io_cores)
+    # else just restric Montblanc threads, if asked to
+    else:
+        io_cores = []
+        if use_montblanc and montblanc_threads:
+            props["environ"]["OMP_NUM_THREADS"] = props["environ"]["OMP_THREAD_LIMIT"] = str(montblanc_threads)
+
+    # are we asked to pin the main process?
+    if affinity is not None and main_affinity:
+        if main_affinity == "io" and io_affinity:
+            worker_process_properties["MainProcess"]["taskset"] = str(io_cores[0])
+        else:
+            worker_process_properties["MainProcess"]["taskset"] = str(core)
+            core = core + corestep
+
+    # create entries for subprocesses, and allocate cores
+    for icpu in xrange(1, nworker + 1):
+        name = "Process-{}".format(icpu + 1)
+        props = worker_process_properties[name] = dict(label="x%02d" % icpu, num_omp_threads=nthread, environ={})
+        if affinity is not None:
+            # if OMP is in use, set affinities via gomp
+            if nthread:
+                worker_cores = range(core, core + nthread * corestep, corestep)
+                core = core + nthread * corestep
+                props["environ"]["GOMP_CPU_AFFINITY"] = " ".join(map(str, worker_cores))
+            else:
+                props["taskset"] = str(core)
+                core += corestep
+
+def run_multi_process_loop(ms, nworker, nthread, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+    """
+    Runs the main loop in multiprocessing mode.
+    
+    Args:
+        ms: 
+        nworker: 
+        nthread: 
+        load_model: 
+        single_chunk: 
+        solver_type: 
+        solver_opts: 
+        debug_opts: 
+
+    Returns:
+        Stats dictionary
+    """
+
+    # this accumulates SolverStats objects from each chunk, for summarizing later
+    stats_dict = {}
+
+    with cf.ProcessPoolExecutor(max_workers=nworker) as executor, \
+            cf.ProcessPoolExecutor(max_workers=1) as io_executor:
+        # now that children are forked, init main process properties (affinity etc.)
+        _init_worker()
+
+        ms.flush()
+        # this will be a dict of tile number: future loading that tile
+        io_futures = {}
+        # schedule I/O job to load tile 0
+        io_futures[0] = io_executor.submit(_io_handler, load=0, save=None)
+        # all I/O will be done by the io"single chunk_executor, so we need to close the MS in the main process
+        # and reopen it afterwards
+        ms.close()
+        for itile, tile in enumerate(Tile.tile_list):
+            # wait for I/O job on current tile to finish
+            print>> log(0), "waiting for I/O on {}".format(tile.label)
+            done, not_done = cf.wait([io_futures[itile]])
+            if not done or not io_futures[itile].result():
+                raise RuntimeError("I/O job on {} failed".format(tile.label))
+            del io_futures[itile]
+
+            # immediately schedule I/O job to save previous/load next tile
+            load_next = itile + 1 if itile < len(Tile.tile_list) - 1 else None
+            save_prev = itile - 1 if itile else None
+            io_futures[itile + 1] = io_executor.submit(_io_handler, load=load_next,
+                                                       save=save_prev, load_model=load_model)
+
+            # submit solver jobs
+            solver_futures = {}
+
+            print>> log(0), "submitting solver jobs for {}".format(tile.label)
+
+            for key in tile.get_chunk_keys():
+                solver_futures[executor.submit(solver.run_solver, solver_type, itile, key, solver_opts, debug_opts)] = key
+                print>> log(3), "submitted solver job for chunk {}".format(key)
+
+            # wait for solvers to finish
+            for future in cf.as_completed(solver_futures):
+                key = solver_futures[future]
+                stats = future.result()
+                stats_dict[tile.get_chunk_indices(key)] = stats
+                print>> log(3), "handled result of chunk {}".format(key)
+
+            print>> log(0), "finished processing {}".format(tile.label)
+
+        # ok, at this stage we've iterated over all the tiles, but there's an outstanding
+        # I/O job saving the second-to-last tile (which was submitted with itile+1), and the last tile was
+        # never saved, so submit a job for that (also to close the MS), and wait
+        io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, finalize=True)
+        cf.wait([io_futures[-1]])
+        # get flagcounts from result of job
+        ms.update_flag_counts(io_futures[-1].result()['flagcounts'])
+
+        # and reopen the MS again
+        ms.reopen()
+
+
+def run_single_process_loop(ms, nworker, nthread, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+    """
+    Runs the main loop in single-CPU mode.
+
+    Args:
+        ms: 
+        nworker: 
+        nthread: 
+        load_model: 
+        single_chunk: 
+        solver_type: 
+        solver_opts: 
+        debug_opts: 
+
+    Returns:
+        Stats dictionary
+    """
+    import cubical.kernels
+
+    stats_dict = {}
+
+    for itile, tile in enumerate(Tile.tile_list):
+        tile.load(load_model=load_model)
+        processed = False
+        for key in tile.get_chunk_keys():
+            if not single_chunk or key == single_chunk:
+                processed = True
+                stats_dict[tile.get_chunk_indices(key)] = \
+                    solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
+        if processed:
+            tile.save()
+            for sd in tile.iterate_solution_chunks():
+                solver.gm_factory.save_solutions(sd)
+                solver.ifrgain_machine.accumulate(sd)
+        else:
+            print>> log(0), "  single-chunk {} not in this tile, skipping it.".format(single_chunk)
+        tile.release()
+        # break out after single chunk is processed
+        if processed and single_chunk:
+            print>> log(0, "red"), "single-chunk {} was processed in this tile. Will now finish".format(single_chunk)
+            break
+    solver.ifrgain_machine.save()
+    solver.gm_factory.close()
+
+    return stats_dict
+
+# this will be set to True after _init_worker is called()
 _worker_initialized = None
 
 def _init_worker():
-    """Called inside every worker process to initialize its properties"""
+    """
+    Called inside every worker process first thing, to initialize its properties
+    """
     global _worker_initialized
     if not _worker_initialized:
         _worker_initialized = True
         name = multiprocessing.current_process().name
-        if name not in _worker_process_properties:
+        if name not in worker_process_properties:
             print>> log(0, "red"), "WARNING: unrecognized worker process name '{}'. " \
                                 "Please inform the developers.".format(name)
             return
-        label, affinity, nthread, gomp = _worker_process_properties[name]
-        logger.set_subprocess_label(label)
-        if affinity is not None:
-            print>>log(1),"setting worker process ({}) CPU affinity to {}".format(os.getpid(), affinity)
-            os.system("taskset -pc {} {} >/dev/null".format(affinity, os.getpid()))
-        if gomp is not None:
-            os.environ["GOMP_CPU_AFFINITY"] = gomp
-            print>>log(0,"red"),"set GOMP_CPU_AFFINITY={}".format(os.environ["GOMP_CPU_AFFINITY"])
-        import cubical.kernels
-        cubical.kernels.num_omp_threads = nthread
+        props = worker_process_properties[name]
+
+        label = props.get("label")
+        if label is not None:
+            logger.set_subprocess_label(label)
+
+        taskset = props.get("taskset")
+        if taskset is not None:
+            print>>log(1,"blue"),"setting process ({}) CPU affinity to {} with taskset".format(os.getpid(), taskset)
+            os.system("taskset -pc {} {} >/dev/null".format(taskset, os.getpid()))
+
+        environ = props.get("environ")
+        if environ:
+            os.environ.update(environ)
+            for key, value in environ.iteritems():
+                print>>log(0,"blue"),"setting {}={}".format(key, value)
+
+        num_omp_threads = props.get("num_omp_threads")
+        if num_omp_threads is not None:
+            print>> log("blue"), "setting {} OMP threads".format(num_omp_threads)
+            import cubical.kernels
+            cubical.kernels.num_omp_threads = nthread
 
 
 def _io_handler(save=None, load=None, load_model=True, finalize=False):
@@ -67,7 +297,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
         print>> log(0, "blue"), "I/O job(s) complete"
         return result
     except Exception, exc:
-        print>> log, ModColor.Str("I/O handler for load {} save {} failed with exception: {}".format(load, save, exc))
+        print>> log("red"),"I/O handler for load {} save {} failed with exception: {}".format(load, save, exc)
         print>> log, traceback.format_exc()
         raise
 

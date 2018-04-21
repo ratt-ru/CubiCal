@@ -5,6 +5,7 @@
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 from cubical.flagging import FL
+import cubical.kernels
 
 class Complex2x2Gains(PerIntervalGains):
     """
@@ -31,14 +32,6 @@ class Complex2x2Gains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
-
-        # clumsy but necessary: can't import at top level (OMP must not be touched before worker processes
-        # are forked off), so we import it only in here
-        import cubical.kernels.cyfull_complex_omp
-        global cyfull
-        cyfull = cubical.kernels.cyfull_complex_omp
-        cyfull.omp_init()
-
 
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
@@ -69,11 +62,12 @@ class Complex2x2Gains(PerIntervalGains):
 
         jh = np.zeros_like(model_arr)
 
-        cyfull.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.cyfull.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
         jhr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
 
-        jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+        jhr = self.cyfull.cyallocate_DTFACC(jhr_shape, dtype=obser_arr.dtype)
+        jhr.fill(0)
 
         # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
         if n_dir > 1:
@@ -82,15 +76,15 @@ class Complex2x2Gains(PerIntervalGains):
         else:
             r = obser_arr
 
-        cyfull.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
+        self.cyfull.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
 
-        jhj = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+        jhj = np.zeros_like(jhr)
 
-        cyfull.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
+        self.cyfull.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
 
-        jhjinv = np.empty(jhr_shape, dtype=obser_arr.dtype)
+        jhjinv = np.empty_like(jhr)
 
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        flag_count = self.cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhr, jhjinv, flag_count
 
@@ -105,7 +99,7 @@ class Complex2x2Gains(PerIntervalGains):
         self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
-        cyfull.cycompute_update(jhr, jhjinv, update)
+        self.cyfull.cycompute_update(jhr, jhjinv, update)
 
         if self.dd_term and self.n_dir > 1:
             update = self.gains + update
@@ -143,7 +137,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         resid_arr[:] = obser_arr
 
-        cyfull.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, self.t_int, self.f_int)
+        self.cyfull.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, self.t_int, self.f_int)
 
         return resid_arr
 

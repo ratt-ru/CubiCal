@@ -34,13 +34,13 @@ class PerIntervalGains(MasterMachine):
             options (dict): 
                 Dictionary of options. 
         """
-        import cubical.kernels.cyfull_complex_omp
-        global cyfull
-        cyfull = cubical.kernels.cyfull_complex_omp
-        cyfull.omp_init()
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, options)
+
+        # clumsy but necessary: must not import at top level (OMP must not be touched before worker processes are forked)
+        import cubical.kernels
+        self.cyfull = cubical.kernels.import_cyfull_complex()
 
         self.t_int = options["time-int"] or self.n_tim
         self.f_int = options["freq-int"] or self.n_fre
@@ -143,8 +143,9 @@ class PerIntervalGains(MasterMachine):
         self.gain_intervals = self.t_int, self.f_int
         self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
         self.gain_grid = self.interval_grid
-        _intrinsic_shape = [self.n_ant, self.n_dir, self.n_timint, self.n_freint, self.n_cor, self.n_cor]
-        self.gains = np.empty(_intrinsic_shape, dtype=self.dtype).transpose([1,2,3,0,4,5])
+
+        self.gains = self.cyfull.cyallocate_DTFACC(self.gain_shape, self.dtype)
+
         self.gains[:] = np.eye(self.n_cor)
         self.gflags = np.zeros(self.gain_shape[:-2], FL.dtype)
 
@@ -169,7 +170,7 @@ class PerIntervalGains(MasterMachine):
         """
         gh = self.gains.transpose(0,1,2,3,5,4).conj()
 
-        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+        self.cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
 
         return model_arr
 
@@ -192,7 +193,7 @@ class PerIntervalGains(MasterMachine):
 
         g_inv = np.empty_like(self.gains)
 
-        flag_count = cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps,
+        flag_count = self.cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps,
                                              FL.ILLCOND)  # Function can invert G.
 
         gh_inv = g_inv.transpose(0, 1, 2, 3, 5, 4).conj()
@@ -200,7 +201,7 @@ class PerIntervalGains(MasterMachine):
         if corr_vis is None:
             corr_vis = np.empty_like(obser_arr)
 
-        cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
+        self.cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
 
         return corr_vis, flag_count
 

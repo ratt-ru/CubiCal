@@ -38,13 +38,14 @@ ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
 
-cimport openmp
+def cyallocate_DTFACC(shape, dtype):
+    """
+    Allocates an array of shape NDxNTxNFxNAxNC, with its underlying memory layout optimized to the kernel
+    """
+    nd,nt,nf,na,nc,_ = shape
+    _intrinsic_shape = [na,nd,nt,nf,nc,nc]
+    return np.empty(_intrinsic_shape, dtype=dtype).transpose((1,2,3,0,4,5))
 
-def omp_init():
-    openmp.omp_set_num_threads(128)
-    openmp.omp_set_max_active_levels(10)
-    openmp.omp_set_nested(1)
-    openmp.omp_set_dynamic(0)
 
 @cython.cdivision(True)
 @cython.wraparound(False)
