@@ -84,14 +84,15 @@ def setup_affinities(ncpu, nworker, nthread, affinity, io_affinity, main_affinit
         name = "Process-{}".format(icpu + 1)
         props = worker_process_properties[name] = dict(label="x%02d" % icpu, num_omp_threads=nthread, environ={})
         if affinity is not None:
+            props["taskset"] = str(core)
             # if OMP is in use, set affinities via gomp
             if nthread:
                 worker_cores = range(core, core + nthread * corestep, corestep)
-                core = core + nthread * corestep
+                core += nthread * corestep
                 props["environ"]["GOMP_CPU_AFFINITY"] = " ".join(map(str, worker_cores))
             else:
-                props["taskset"] = str(core)
                 core += corestep
+
 
 def run_multi_process_loop(ms, nworker, nthread, load_model, single_chunk, solver_type, solver_opts, debug_opts):
     """
@@ -116,17 +117,19 @@ def run_multi_process_loop(ms, nworker, nthread, load_model, single_chunk, solve
 
     with cf.ProcessPoolExecutor(max_workers=nworker) as executor, \
             cf.ProcessPoolExecutor(max_workers=1) as io_executor:
-        # now that children are forked, init main process properties (affinity etc.)
-        _init_worker()
-
         ms.flush()
         # this will be a dict of tile number: future loading that tile
         io_futures = {}
         # schedule I/O job to load tile 0
         io_futures[0] = io_executor.submit(_io_handler, load=0, save=None)
-        # all I/O will be done by the io"single chunk_executor, so we need to close the MS in the main process
+        # all I/O will be done by the I/O thread, so we need to close the MS in the main process
         # and reopen it afterwards
         ms.close()
+
+        # now that the I/O child is forked, init main process properties (affinity etc.)
+        # (Montblanc is finicky about affinities apparently, so we don't do it before)
+        _init_worker(main=True)
+
         for itile, tile in enumerate(Tile.tile_list):
             # wait for I/O job on current tile to finish
             print>> log(0), "waiting for I/O on {}".format(tile.label)
@@ -169,6 +172,8 @@ def run_multi_process_loop(ms, nworker, nthread, load_model, single_chunk, solve
 
         # and reopen the MS again
         ms.reopen()
+
+        return stats_dict
 
 
 def run_single_process_loop(ms, nworker, nthread, load_model, single_chunk, solver_type, solver_opts, debug_opts):
@@ -220,13 +225,16 @@ def run_single_process_loop(ms, nworker, nthread, load_model, single_chunk, solv
 # this will be set to True after _init_worker is called()
 _worker_initialized = None
 
-def _init_worker():
+def _init_worker(main=False):
     """
     Called inside every worker process first thing, to initialize its properties
     """
     global _worker_initialized
+    # for the main process, do not set the singleton guard, as child processes will inherit it
     if not _worker_initialized:
-        _worker_initialized = True
+        if not main:
+            _worker_initialized = True
+
         name = multiprocessing.current_process().name
         if name not in worker_process_properties:
             print>> log(0, "red"), "WARNING: unrecognized worker process name '{}'. " \
@@ -240,7 +248,7 @@ def _init_worker():
 
         taskset = props.get("taskset")
         if taskset is not None:
-            print>>log(1,"blue"),"setting process ({}) CPU affinity to {} with taskset".format(os.getpid(), taskset)
+            print>>log(0,"blue"),"pid {}, setting CPU affinity to {} with taskset".format(os.getpid(), taskset)
             os.system("taskset -pc {} {} >/dev/null".format(taskset, os.getpid()))
 
         environ = props.get("environ")
@@ -251,9 +259,9 @@ def _init_worker():
 
         num_omp_threads = props.get("num_omp_threads")
         if num_omp_threads is not None:
-            print>> log("blue"), "setting {} OMP threads".format(num_omp_threads)
+            print>> log(0,"blue"), "enabling {} OMP threads".format(num_omp_threads)
             import cubical.kernels
-            cubical.kernels.num_omp_threads = nthread
+            cubical.kernels.num_omp_threads = num_omp_threads
 
 
 def _io_handler(save=None, load=None, load_model=True, finalize=False):

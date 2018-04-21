@@ -53,10 +53,6 @@ from cubical.statistics import SolverStats
 
 GD = None
 
-# dictionary of worker process properties, applied in _init_worker() below
-_worker_process_properties = { "MainProcess": {} }
-
-
 class UserInputError(Exception):
     pass
 

@@ -24,6 +24,7 @@ gm_factory = None
 ifrgain_machine = None
 
 
+@profile
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     Main body of the GN/LM method. Handles iterations and convergence tests.
@@ -643,6 +644,7 @@ SOLVERS = { 'so': solve_only,
             }
 
 
+@profile
 def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
     """
     Initialises a gain machine and invokes the solver for the current chunk.
