@@ -1,6 +1,7 @@
 import numpy as np
 import timeit
 import numpy.random
+import cubical.kernels.cyfull_experimental as cyfull_exp
 import cubical.kernels.cyfull_complex_omp as cyfull_omp
 import cubical.kernels.cyfull_complex as cyfull
 import cubical.kernels
@@ -92,33 +93,52 @@ if __name__ == "__main__":
         r0 = u.r.copy()
 
         o.r.fill(0)
-        Time(lambda:cyfull_omp.cycompute_residual_nomp(o.m,o.g,o.gh,o.r,1,1), "compute_residual new (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_omp.cycompute_residual(o.m,o.g,o.gh,o.r,1,1), "compute_residual bl (no OMP, AAMTFD order, view)")
         assert((o.r-r0).max()<1e-10)
 
         o.r.fill(0)
-        Time(lambda:cyfull_omp.cycompute_residual_nomp_conj1(o.m,o.g,o.gh,o.r,1,1), "compute_residual new conj (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_omp.cycompute_residual1(o.m,o.g,o.gh,o.r,1,1), "compute_residual1 bl (OMP 1 thread, AAMTFD order, view)")
         assert((o.r-r0).max()<1e-10)
 
         o.r.fill(0)
-        Time(lambda:cyfull_omp.cycompute_residual_nomp_conj2(o.m,o.g,o.gh,o.r,1,1), "compute_residual new conj2 (no OMP, AAMTFD order, view)")
+        threads(4)
+        Time(lambda:cyfull_omp.cycompute_residual1(o.m,o.g,o.gh,o.r,1,1), "compute_residual1 bl (OMP 32 threads, AAMTFD order, view)")
+        threads(1)
+        assert((o.r-r0).max()<1e-10)
+
+
+        o.r.fill(0)
+        Time(lambda:cyfull_exp.cycompute_residual_nomp(o.m,o.g,o.gh,o.r,1,1), "compute_residual new (no OMP, AAMTFD order, view)")
         assert((o.r-r0).max()<1e-10)
 
         o.r.fill(0)
-        Time(lambda:cyfull_omp.cycompute_residual(o.m,o.g,o.gh,o.r,1,1), "compute_residual new (OMP 1 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_residual_nomp_conj1(o.m,o.g,o.gh,o.r,1,1), "compute_residual new conj (no OMP, AAMTFD order, view)")
+        assert((o.r-r0).max()<1e-10)
+
+        o.r.fill(0)
+        Time(lambda:cyfull_exp.cycompute_residual_nomp_conj2(o.m,o.g,o.gh,o.r,1,1), "compute_residual new conj2 (no OMP, AAMTFD order, view)")
+        assert((o.r-r0).max()<1e-10)
+
+        o.r.fill(0)
+        Time(lambda:cyfull_exp.cycompute_residual_nomp_conj2(o.m,o.g,o.gh,o.r,1,1), "compute_residual new conj3 (no OMP, AAMTFD order, view)")
+        assert((o.r-r0).max()<1e-10)
+
+        o.r.fill(0)
+        Time(lambda:cyfull_exp.cycompute_residual(o.m,o.g,o.gh,o.r,1,1), "compute_residual new (OMP 1 thread, AAMTFD order, view)")
         assert((o.r-r0).max()<1e-10)
 
         threads(32)
         o.r.fill(0)
-        Time(lambda:cyfull_omp.cycompute_residual(o.m,o.g,o.gh,o.r,1,1), "compute_residual new (OMP 32 threads, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_residual(o.m,o.g,o.gh,o.r,1,1), "compute_residual new (OMP 32 threads, AAMTFD order, view)")
         assert((o.r-r0).max()<1e-10)
         threads(1)
 
         u.r.fill(0)
-        Time(lambda:cyfull_omp.cycompute_residual_dmtfaa_xdir(u.m,u.g,u.gh,u.r,1,1), "compute_residual inner dir (DMTFAA order, native)")
+        Time(lambda:cyfull_exp.cycompute_residual_dmtfaa_xdir(u.m,u.g,u.gh,u.r,1,1), "compute_residual inner dir (DMTFAA order, native)")
         assert((u.r-r0).max()<1e-10)
 
         u.r.fill(0)
-        Time(lambda:cyfull_omp.cycompute_residual_dmtfaa_conj(u.m,u.g,u.gh,u.r,1,1), "compute_residual conj (DMTFAA order, native)")
+        Time(lambda:cyfull_exp.cycompute_residual_dmtfaa_conj(u.m,u.g,u.gh,u.r,1,1), "compute_residual conj (DMTFAA order, native)")
         assert((u.r-r0).max()<1e-10)
 
         o.r.fill(0)
@@ -126,7 +146,7 @@ if __name__ == "__main__":
         assert((o.r-r0).max()<1e-10)
 
         u.r.fill(0)
-        Time(lambda:cyfull_omp.cycompute_residual(u.m,u.g,u.gh,u.r,1,1), "compute_residual new (OMP, *wrong* DMTFAA order, native)")
+        Time(lambda:cyfull_exp.cycompute_residual(u.m,u.g,u.gh,u.r,1,1), "compute_residual new (OMP, *wrong* DMTFAA order, native)")
         assert((o.r-r0).max()<1e-10)
 
 
@@ -136,16 +156,16 @@ if __name__ == "__main__":
         jh0 = u.jh.copy()
 
         o.jh.fill(0)
-        Time(lambda:cyfull_omp.cycompute_jh_nomp(o.m,o.g,o.jh,1,1), "compute_jh new (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jh_nomp(o.m,o.g,o.jh,1,1), "compute_jh new (no OMP, AAMTFD order, view)")
         assert((o.jh-jh0).max()<1e-10)
 
         o.jh.fill(0)
-        Time(lambda:cyfull_omp.cycompute_jh(o.m,o.g,o.jh,1,1), "compute_jh new (OMP 1 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jh(o.m,o.g,o.jh,1,1), "compute_jh new (OMP 1 thread, AAMTFD order, view)")
         assert((o.jh-jh0).max()<1e-10)
 
         o.jh.fill(0)
         threads(32)
-        Time(lambda:cyfull_omp.cycompute_jh(o.m,o.g,o.jh,1,1), "compute_jh new (OMP 32 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jh(o.m,o.g,o.jh,1,1), "compute_jh new (OMP 32 thread, AAMTFD order, view)")
         assert((o.jh-jh0).max()<1e-10)
         threads(1)
 
@@ -157,18 +177,18 @@ if __name__ == "__main__":
 
         o.r[:] = r0
         o.jhr.fill(0)
-        Time(lambda:cyfull_omp.cycompute_jhr_nomp(o.jh,o.r,o.jhr,1,1), "compute_jhr new (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jhr_nomp(o.jh,o.r,o.jhr,1,1), "compute_jhr new (no OMP, AAMTFD order, view)")
         assert((o.jhr-jhr0).max()<1e-10)
 
         o.r[:] = r0
         o.jhr.fill(0)
-        Time(lambda:cyfull_omp.cycompute_jhr(o.jh,o.r,o.jhr,1,1), "compute_jhr new (OMP 1 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jhr(o.jh,o.r,o.jhr,1,1), "compute_jhr new (OMP 1 thread, AAMTFD order, view)")
         assert((o.jhr-jhr0).max()<1e-10)
 
         o.r[:] = r0
         o.jhr.fill(0)
         threads(32)
-        Time(lambda:cyfull_omp.cycompute_jhr(o.jh,o.r,o.jhr,1,1), "compute_jhr new (OMP 32 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jhr(o.jh,o.r,o.jhr,1,1), "compute_jhr new (OMP 32 thread, AAMTFD order, view)")
         assert((o.jhr-jhr0).max()<1e-10)
         threads(1)
 
@@ -181,18 +201,18 @@ if __name__ == "__main__":
 
         o.jh[:] = jh0
         o.jhj.fill(0)
-        Time(lambda:cyfull_omp.cycompute_jhj_nomp(o.jh,o.jhj,1,1), "compute_jhj new (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jhj_nomp(o.jh,o.jhj,1,1), "compute_jhj new (no OMP, AAMTFD order, view)")
         assert((o.jhj-jhj0).max()<1e-10)
 
         o.jh[:] = jh0
         o.jhj.fill(0)
-        Time(lambda:cyfull_omp.cycompute_jhj(o.jh,o.jhj,1,1), "compute_jhj new (OMP 1 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jhj(o.jh,o.jhj,1,1), "compute_jhj new (OMP 1 thread, AAMTFD order, view)")
         assert((o.jhj-jhj0).max()<1e-10)
 
         o.jh[:] = jh0
         o.jhj.fill(0)
         threads(32)
-        Time(lambda:cyfull_omp.cycompute_jhj(o.jh,o.jhj,1,1), "compute_jhj new (OMP 32 threads, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jhj(o.jh,o.jhj,1,1), "compute_jhj new (OMP 32 threads, AAMTFD order, view)")
         assert((o.jhj-jhj0).max()<1e-10)
         threads(1)
 
@@ -204,18 +224,18 @@ if __name__ == "__main__":
 
         o.jhj[:] = jhj0
         o.jhjinv.fill(0)
-        Time(lambda:cyfull_omp.cycompute_jhjinv_nomp(o.jhj,o.jhjinv,o.f,1e-6,0), "compute_jhjinv new (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jhjinv_nomp(o.jhj,o.jhjinv,o.f,1e-6,0), "compute_jhjinv new (no OMP, AAMTFD order, view)")
         assert((o.jhjinv-jhjinv0).max()<1e-10)
 
         o.jhj[:] = jhj0
         o.jhjinv.fill(0)
-        Time(lambda:cyfull_omp.cycompute_jhjinv(o.jhj,o.jhjinv,o.f,1e-6,0), "compute_jhjinv new (OMP 1 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jhjinv(o.jhj,o.jhjinv,o.f,1e-6,0), "compute_jhjinv new (OMP 1 thread, AAMTFD order, view)")
         assert((o.jhjinv-jhjinv0).max()<1e-10)
 
         o.jhj[:] = jhj0
         o.jhjinv.fill(0)
         threads(32)
-        Time(lambda:cyfull_omp.cycompute_jhjinv(o.jhj,o.jhjinv,o.f,0,0), "compute_jhjinv new (OMP 32 threads, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_jhjinv(o.jhj,o.jhjinv,o.f,0,0), "compute_jhjinv new (OMP 32 threads, AAMTFD order, view)")
         assert((o.jhjinv-jhjinv0).max()<1e-10)
         threads(1)
 
@@ -225,16 +245,16 @@ if __name__ == "__main__":
         upd0 = u.upd.copy()
 
         o.upd.fill(0)
-        Time(lambda:cyfull_omp.cycompute_update_nomp(o.jhr,o.jhjinv,o.upd), "compute_update new (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_update_nomp(o.jhr,o.jhjinv,o.upd), "compute_update new (no OMP, AAMTFD order, view)")
         assert((o.upd-upd0).max()<1e-10)
 
         o.upd.fill(0)
-        Time(lambda:cyfull_omp.cycompute_update(o.jhr,o.jhjinv,o.upd), "compute_update new (OMP 1 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_update(o.jhr,o.jhjinv,o.upd), "compute_update new (OMP 1 thread, AAMTFD order, view)")
         assert((o.upd-upd0).max()<1e-10)
 
         o.upd.fill(0)
         threads(32)
-        Time(lambda:cyfull_omp.cycompute_update(o.jhr,o.jhjinv,o.upd), "compute_update new (OMP 32 threads, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_update(o.jhr,o.jhjinv,o.upd), "compute_update new (OMP 32 threads, AAMTFD order, view)")
         assert((o.upd-upd0).max()<1e-10)
         threads(1)
 
@@ -245,20 +265,20 @@ if __name__ == "__main__":
         corr0 = u.corr.copy()
 
         o.corr.fill(0)
-        Time(lambda:cyfull_omp.cycompute_corrected_nomp(o.o,o.g,o.gh,o.corr,1,1), "compute_corrected new (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_corrected_nomp(o.o,o.g,o.gh,o.corr,1,1), "compute_corrected new (no OMP, AAMTFD order, view)")
         assert((o.corr-corr0).max()<1e-10)
 
         o.corr.fill(0)
-        Time(lambda:cyfull_omp.cycompute_corrected_conj(o.o,o.g,o.gh,o.corr,1,1), "compute_corrected new conj (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_corrected_conj(o.o,o.g,o.gh,o.corr,1,1), "compute_corrected new conj (no OMP, AAMTFD order, view)")
         assert((o.corr-corr0).max()<1e-10)
 
         o.corr.fill(0)
-        Time(lambda:cyfull_omp.cycompute_corrected(o.o,o.g,o.gh,o.corr,1,1), "compute_corrected new (OMP 1 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_corrected(o.o,o.g,o.gh,o.corr,1,1), "compute_corrected new (OMP 1 thread, AAMTFD order, view)")
         assert((o.corr-corr0).max()<1e-10)
 
         o.corr.fill(0)
         threads(32)
-        Time(lambda:cyfull_omp.cycompute_corrected(o.o,o.g,o.gh,o.corr,1,1), "compute_corrected new (OMP 32 threads, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cycompute_corrected(o.o,o.g,o.gh,o.corr,1,1), "compute_corrected new (OMP 32 threads, AAMTFD order, view)")
         assert((o.corr-corr0).max()<1e-10)
         threads(1)
 
@@ -273,19 +293,31 @@ if __name__ == "__main__":
         assert((mod-mod0).max()<1e-10)
 
         mod = o.m.copy()
-        Time(lambda:cyfull_omp.cyapply_gains_nomp(mod, o.g, o.gh, 1, 1), "apply_gains new (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cyapply_gains_nomp(mod, o.g, o.gh, 1, 1), "apply_gains new (no OMP, AAMTFD order, view)")
         assert((mod-mod0).max()<1e-10)
 
         mod = o.m.copy()
-        Time(lambda:cyfull_omp.cyapply_gains_conj(mod, o.g, o.gh, 1, 1), "apply_gains new conj (no OMP, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cyapply_gains_conj(mod, o.g, o.gh, 1, 1), "apply_gains new conj (no OMP, AAMTFD order, view)")
         assert((mod-mod0).max()<1e-10)
 
         mod = o.m.copy()
-        Time(lambda:cyfull_omp.cyapply_gains(mod, o.g, o.gh, 1, 1), "apply_gains new (OMP 1 thread, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cyapply_gains_conj2(mod, o.g, o.gh, 1, 1), "apply_gains new conj2 (no OMP, AAMTFD order, view)")
+        assert((mod-mod0).max()<1e-10)
+
+        mod = o.m.copy()
+        Time(lambda:cyfull_exp.cyapply_gains_conj3(mod, o.g, o.gh, 1, 1), "apply_gains new conj3 (no OMP, AAMTFD order, view)")
+        assert((mod-mod0).max()<1e-10)
+
+        mod = o.m.copy()
+        Time(lambda:cyfull_exp.cyapply_gains_conj3(mod, o.g, o.gh, 1, 1), "apply_gains new conj4 (no OMP, AAMTFD order, view)")
+        assert((mod-mod0).max()<1e-10)
+
+        mod = o.m.copy()
+        Time(lambda:cyfull_exp.cyapply_gains(mod, o.g, o.gh, 1, 1), "apply_gains new (OMP 1 thread, AAMTFD order, view)")
         assert((mod-mod0).max()<1e-10)
 
         mod = o.m.copy()
         threads(32)
-        Time(lambda:cyfull_omp.cyapply_gains(mod, o.g, o.gh, 1, 1), "apply_gains new (OMP 32 threads, AAMTFD order, view)")
+        Time(lambda:cyfull_exp.cyapply_gains(mod, o.g, o.gh, 1, 1), "apply_gains new (OMP 32 threads, AAMTFD order, view)")
         assert((mod-mod0).max()<1e-10)
         threads(1)

@@ -34,7 +34,6 @@ import cython
 from cython.parallel import parallel, prange
 import cubical.kernels
 
-
 ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
@@ -48,7 +47,7 @@ def cyallocate_DTFACC(shape, dtype):
     return np.empty(_intrinsic_shape, dtype=dtype).transpose((1,2,3,0,4,5))
 
 
-cdef inline void mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b,const complex3264 *c) nogil:
+cdef inline void mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b,const complex3264 *c):
     """
     Computes a triple 2x2 matrix product in place: out = A.B.C
     A matrix is just a sequence in memory of four complex numbers [x00,x01,x10,x11]
@@ -58,7 +57,7 @@ cdef inline void mat_product(complex3264 * out,const complex3264 *a,const comple
     out[2] = (a[2]*b[0]*c[0] + a[3]*b[2]*c[0] + a[2]*b[1]*c[2] + a[3]*b[3]*c[2])
     out[3] = (a[2]*b[0]*c[1] + a[3]*b[2]*c[1] + a[2]*b[1]*c[3] + a[3]*b[3]*c[3])
 
-cdef inline void subtract_mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b,const complex3264 *c) nogil:
+cdef inline void subtract_mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b,const complex3264 *c):
     """
     Subtracts a triple 2x2 matrix product: out -= A.B.C
     A matrix is just a sequence in memory of four complex numbers [x00,x01,x10,x11]
@@ -68,7 +67,7 @@ cdef inline void subtract_mat_product(complex3264 * out,const complex3264 *a,con
     out[2] -= (a[2]*b[0]*c[0] + a[3]*b[2]*c[0] + a[2]*b[1]*c[2] + a[3]*b[3]*c[2])
     out[3] -= (a[2]*b[0]*c[1] + a[3]*b[2]*c[1] + a[2]*b[1]*c[3] + a[3]*b[3]*c[3])
 
-cdef inline void inplace_mat_product(const complex3264 *a,complex3264 *b,const complex3264 *c) nogil:
+cdef inline void inplace_mat_product(const complex3264 *a,complex3264 *b,const complex3264 *c):
     """
     Computes a triple 2x2 matrix product in place: B = A.B.C
     """
@@ -81,7 +80,7 @@ cdef inline void inplace_mat_product(const complex3264 *a,complex3264 *b,const c
     b[1] = m01
     b[2] = m10
 
-cdef inline void mat_conjugate(complex3264 * out,const complex3264 *x) nogil:
+cdef inline void mat_conjugate(complex3264 * out,const complex3264 *x):
     """
     Computes a 2x2 matrix Hermitian conjugate: out = X^H
     """
@@ -96,6 +95,245 @@ cdef inline void mat_conjugate(complex3264 * out,const complex3264 *x) nogil:
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
+                       complex3264 [:,:,:,:,:,:] g,
+                       complex3264 [:,:,:,:,:,:] gh,
+                       complex3264 [:,:,:,:,:,:,:] r,
+                       int t_int,
+                       int f_int):
+
+    """
+    Given the model, gains, and their conjugates, computes the residual. Residual has full time and
+    frequency resolution - solution intervals are used to correctly associate the gains with the 
+    model. 
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model array with dimensions (d, m, t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        r (np.complex64 or np.complex128):
+            Typed memoryview of residual array with dimensions (m, t, f, a, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
+    """
+
+    cdef int d, i, t, f, aa, ab, rr, rc = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
+
+    n_dir = m.shape[0]
+    n_mod = m.shape[1]
+    n_tim = m.shape[2]
+    n_fre = m.shape[3]
+    n_ant = m.shape[4]
+
+
+    cdef int num_threads = cubical.kernels.num_omp_threads
+    with nogil, parallel(num_threads=num_threads):
+        for aa in prange(n_ant, schedule='static'):
+            for ab in xrange(n_ant):
+                for i in xrange(n_mod):
+                    for t in xrange(n_tim):
+                        rr = t/t_int
+                        for f in xrange(n_fre):
+                            rc = f/f_int
+                            for d in xrange(n_dir):
+                                r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
+                                g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                                g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                                g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                                g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+
+                                r[i,t,f,aa,ab,0,1] = r[i,t,f,aa,ab,0,1] - (
+                                g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                                g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                                g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                                g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+
+                                r[i,t,f,aa,ab,1,0] = r[i,t,f,aa,ab,1,0] - (
+                                g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                                g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                                g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                                g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+
+                                r[i,t,f,aa,ab,1,1] = r[i,t,f,aa,ab,1,1] - (
+                                g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                                g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                                g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                                g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_residual_nomp(complex3264 [:,:,:,:,:,:,:,:] m,
+                       complex3264 [:,:,:,:,:,:] g,
+                       complex3264 [:,:,:,:,:,:] gh,
+                       complex3264 [:,:,:,:,:,:,:] r,
+                       int t_int,
+                       int f_int):
+
+    """
+    Given the model, gains, and their conjugates, computes the residual. Residual has full time and
+    frequency resolution - solution intervals are used to correctly associate the gains with the
+    model.
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model array with dimensions (d, m, t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        r (np.complex64 or np.complex128):
+            Typed memoryview of residual array with dimensions (m, t, f, a, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
+    """
+
+    cdef int d, i, t, f, aa, ab, rr, rc = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
+
+    n_dir = m.shape[0]
+    n_mod = m.shape[1]
+    n_tim = m.shape[2]
+    n_fre = m.shape[3]
+    n_ant = m.shape[4]
+
+
+    for aa in xrange(n_ant):
+        for ab in xrange(n_ant):
+            for i in xrange(n_mod):
+                for t in xrange(n_tim):
+                    rr = t/t_int
+                    for f in xrange(n_fre):
+                        rc = f/f_int
+                        for d in xrange(n_dir):
+                            r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+
+                            r[i,t,f,aa,ab,0,1] = r[i,t,f,aa,ab,0,1] - (
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+
+                            r[i,t,f,aa,ab,1,0] = r[i,t,f,aa,ab,1,0] - (
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+
+                            r[i,t,f,aa,ab,1,1] = r[i,t,f,aa,ab,1,1] - (
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+
+
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+cdef inline void conj2x2(complex3264 [:,:] out, complex3264 [:,:] x) nogil:
+    out[0,0] = x[0,0].conjugate()
+    out[0,1] = x[1,0].conjugate()
+    out[1,0] = x[0,1].conjugate()
+    out[1,1] = x[1,1].conjugate()
+
+
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_residual_nomp_conj1(complex3264 [:,:,:,:,:,:,:,:] m,
+                       complex3264 [:,:,:,:,:,:] g,
+                       complex3264 [:,:,:,:,:,:] gh,
+                       complex3264 [:,:,:,:,:,:,:] r,
+                       int t_int,
+                       int f_int):
+
+    """
+    Given the model, gains, and their conjugates, computes the residual. Residual has full time and
+    frequency resolution - solution intervals are used to correctly associate the gains with the
+    model.
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model array with dimensions (d, m, t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        r (np.complex64 or np.complex128):
+            Typed memoryview of residual array with dimensions (m, t, f, a, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
+    """
+
+    cdef int d, i, t, f, aa, ab, rr, rc = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
+
+    n_dir = m.shape[0]
+    n_mod = m.shape[1]
+    n_tim = m.shape[2]
+    n_fre = m.shape[3]
+    n_ant = m.shape[4]
+
+
+    for aa in xrange(n_ant-1):
+        for ab in xrange(aa+1,n_ant):
+            for i in xrange(n_mod):
+                for t in xrange(n_tim):
+                    rr = t/t_int
+                    for f in xrange(n_fre):
+                        rc = f/f_int
+                        for d in xrange(n_dir):
+                            r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+
+                            r[i,t,f,aa,ab,0,1] = r[i,t,f,aa,ab,0,1] - (
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                            g[d,rr,rc,aa,0,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+
+                            r[i,t,f,aa,ab,1,0] = r[i,t,f,aa,ab,1,0] - (
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,0] + \
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,0] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,0])
+
+                            r[i,t,f,aa,ab,1,1] = r[i,t,f,aa,ab,1,1] - (
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,0]*gh[d,rr,rc,ab,0,1] + \
+                            g[d,rr,rc,aa,1,0]*m[d,i,t,f,aa,ab,0,1]*gh[d,rr,rc,ab,1,1] + \
+                            g[d,rr,rc,aa,1,1]*m[d,i,t,f,aa,ab,1,1]*gh[d,rr,rc,ab,1,1])
+                        r[i,t,f,ab,aa,0,0] = r[i,t,f,aa,ab,0,0].conjugate()
+                        r[i,t,f,ab,aa,0,1] = r[i,t,f,aa,ab,1,0].conjugate()
+                        r[i,t,f,ab,aa,1,0] = r[i,t,f,aa,ab,0,1].conjugate()
+                        r[i,t,f,ab,aa,1,1] = r[i,t,f,aa,ab,1,1].conjugate()
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_residual_nomp_conj3(complex3264 [:,:,:,:,:,:,:,:] m,
                        complex3264 [:,:,:,:,:,:] g,
                        complex3264 [:,:,:,:,:,:] gh,
                        complex3264 [:,:,:,:,:,:,:] r,
@@ -140,78 +378,7 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
                         rc = f/f_int
                         for d in xrange(n_dir):
                             subtract_mat_product(&r[i,t,f,aa,ab,0,0], &g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
-                        mat_conjugate(&r[i,t,f,ab,aa,0,0], &r[i,t,f,aa,ab,0,0])
-
-
-cdef int baselines[16384][2]                           # MAX NUMBER OF BASELINES HERE
-cdef inline int compute_baselines(int bl[16384][2],int n_ant):
-    """
-    Computes array of unique baseline indices, given a number of antennas
-    """
-    i = 0
-    for p in xrange(n_ant-1):
-        for q in xrange(p+1, n_ant):
-            bl[i][0] = p
-            bl[i][1] = q
-            i += 1
-    return n_ant*(n_ant-1)/2
-
-
-@cython.cdivision(True)
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
-def cycompute_residual1(complex3264 [:,:,:,:,:,:,:,:] m,
-                       complex3264 [:,:,:,:,:,:] g,
-                       complex3264 [:,:,:,:,:,:] gh,
-                       complex3264 [:,:,:,:,:,:,:] r,
-                       int t_int,
-                       int f_int):
-
-    """
-    Given the model, gains, and their conjugates, computes the residual. Residual has full time and
-    frequency resolution - solution intervals are used to correctly associate the gains with the
-    model.
-
-    Args:
-        m (np.complex64 or np.complex128):
-            Typed memoryview of model array with dimensions (d, m, t, f, a, a, c, c).
-        g (np.complex64 or np.complex128):
-            Typed memoryview of gain array with dimension (d, ti, fi, a, c, c).
-        gh (np.complex64 or np.complex128):
-            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
-        r (np.complex64 or np.complex128):
-            Typed memoryview of residual array with dimensions (m, t, f, a, a, c, c).
-        t_int (int):
-            Number of time slots per solution interval.
-        f_int (int):
-            Number of frequencies per solution interval.
-    """
-
-    cdef int d, i, t, f, aa, ab, ibl, rr, rc = 0
-    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
-
-    n_dir = m.shape[0]
-    n_mod = m.shape[1]
-    n_tim = m.shape[2]
-    n_fre = m.shape[3]
-    n_ant = m.shape[4]
-
-    cdef int n_bl = compute_baselines(baselines, n_ant)
-    cdef int num_threads = cubical.kernels.num_omp_threads
-
-    with nogil, parallel(num_threads=num_threads):
-        for ibl in prange(n_bl, schedule='static'):
-            aa, ab = baselines[ibl][0], baselines[ibl][1]
-            for i in xrange(n_mod):
-                for t in xrange(n_tim):
-                    rr = t/t_int
-                    for f in xrange(n_fre):
-                        rc = f/f_int
-                        for d in xrange(n_dir):
-                            subtract_mat_product(&r[i,t,f,aa,ab,0,0], &g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
-                        mat_conjugate(&r[i,t,f,ab,aa,0,0], &r[i,t,f,aa,ab,0,0])
-
+                            mat_conjugate(&r[i,t,f,ab,aa,0,0], &r[i,t,f,aa,ab,0,0])
 
 
 @cython.cdivision(True)
@@ -1598,6 +1765,48 @@ def cyapply_gains_conj2(complex3264 [:,:,:,:,:,:,:,:] m,
                             m[d,i,t,f,ab,aa,0,1] = m[d,i,t,f,aa,ab,1,0].conjugate()
                             m[d,i,t,f,ab,aa,1,0] = m[d,i,t,f,aa,ab,0,1].conjugate()
                             m[d,i,t,f,ab,aa,1,1] = m[d,i,t,f,aa,ab,1,1].conjugate()
+
+cdef inline void mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b,const complex3264 *c):
+    """
+    Computes a triple 2x2 matrix product in place: out = A.B.C
+    A matrix is just a sequence in memory of four complex numbers [x00,x01,x10,x11]
+    """
+    out[0] = (a[0]*b[0]*c[0] + a[1]*b[2]*c[0] + a[0]*b[1]*c[2] + a[1]*b[3]*c[2])
+    out[1] = (a[0]*b[0]*c[1] + a[1]*b[2]*c[1] + a[0]*b[1]*c[3] + a[1]*b[3]*c[3])
+    out[2] = (a[2]*b[0]*c[0] + a[3]*b[2]*c[0] + a[2]*b[1]*c[2] + a[3]*b[3]*c[2])
+    out[3] = (a[2]*b[0]*c[1] + a[3]*b[2]*c[1] + a[2]*b[1]*c[3] + a[3]*b[3]*c[3])
+
+cdef inline void subtract_mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b,const complex3264 *c):
+    """
+    Subtracts a triple 2x2 matrix product: out -= A.B.C
+    A matrix is just a sequence in memory of four complex numbers [x00,x01,x10,x11]
+    """
+    out[0] -= (a[0]*b[0]*c[0] + a[1]*b[2]*c[0] + a[0]*b[1]*c[2] + a[1]*b[3]*c[2])
+    out[1] -= (a[0]*b[0]*c[1] + a[1]*b[2]*c[1] + a[0]*b[1]*c[3] + a[1]*b[3]*c[3])
+    out[2] -= (a[2]*b[0]*c[0] + a[3]*b[2]*c[0] + a[2]*b[1]*c[2] + a[3]*b[3]*c[2])
+    out[3] -= (a[2]*b[0]*c[1] + a[3]*b[2]*c[1] + a[2]*b[1]*c[3] + a[3]*b[3]*c[3])
+
+cdef inline void inplace_mat_product(const complex3264 *a,complex3264 *b,const complex3264 *c):
+    """
+    Computes a triple 2x2 matrix product in place: B = A.B.C
+    """
+    cdef complex3264 m00,m01,m10
+    m00 = (a[0]*b[0]*c[0] + a[1]*b[2]*c[0] + a[0]*b[1]*c[2] + a[1]*b[3]*c[2])
+    m01 = (a[0]*b[0]*c[1] + a[1]*b[2]*c[1] + a[0]*b[1]*c[3] + a[1]*b[3]*c[3])
+    m10 = (a[2]*b[0]*c[0] + a[3]*b[2]*c[0] + a[2]*b[1]*c[2] + a[3]*b[3]*c[2])
+    b[3] = (a[2]*b[0]*c[1] + a[3]*b[2]*c[1] + a[2]*b[1]*c[3] + a[3]*b[3]*c[3])
+    b[0] = m00
+    b[1] = m01
+    b[2] = m10
+
+cdef inline void mat_conjugate(complex3264 * out,const complex3264 *x):
+    """
+    Computes a 2x2 matrix Hermitian conjugate: out = X^H
+    """
+    out[0] = x[0].conjugate()
+    out[1] = x[2].conjugate()
+    out[2] = x[1].conjugate()
+    out[3] = x[3].conjugate()
 
 @cython.cdivision(True)
 @cython.wraparound(False)

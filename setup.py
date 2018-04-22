@@ -50,14 +50,19 @@ try:
 except ImportError:
     cythonize = None
 
-cmpl_args = ['-fopenmp',
-             '-ffast-math', 
+cmpl_args = ['-ffast-math',
              '-O2', 
              '-march=native',  
              '-mtune=native', 
              '-ftree-vectorize',
              '-fopenmp']
-    
+
+cmpl_args_nomp = ['-ffast-math',
+             '-O2',
+             '-march=native',
+             '-mtune=native',
+             '-ftree-vectorize']
+
 link_args = ['-lgomp']
 
 if cythonize:
@@ -72,6 +77,9 @@ if cythonize:
             include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
          Extension(
             "cubical.kernels.cyfull_complex_omp", ["cubical/kernels/cyfull_complex_omp.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
+            "cubical.kernels.cyfull_experimental", ["cubical/kernels/cyfull_experimental.pyx"],
             include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
          Extension(
             "cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
