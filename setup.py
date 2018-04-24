@@ -54,16 +54,13 @@ cmpl_args = ['-ffast-math',
              '-O2', 
              '-march=native',  
              '-mtune=native', 
-             '-ftree-vectorize',
-             '-fopenmp']
+             '-ftree-vectorize' ]
 
-cmpl_args_nomp = ['-ffast-math',
-             '-O2',
-             '-march=native',
-             '-mtune=native',
-             '-ftree-vectorize']
+cmpl_args_omp = cmpl_args + ['-fopenmp']
 
-link_args = ['-lgomp']
+link_args = []
+
+link_args_omp = link_args + ['-lgomp']
 
 if cythonize:
 
@@ -71,18 +68,36 @@ if cythonize:
 
     CCO.buffer_max_dims = 9
 
-    extensions = \
-        [Extension(
+    extensions = [
+         Extension(
             "cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.pyx"],
             include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
          Extension(
             "cubical.kernels.cyfull_complex_omp", ["cubical/kernels/cyfull_complex_omp.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args_omp, extra_link_args=link_args_omp),
+         Extension(
+            "cubical.kernels.cyfull_complex_reference", ["cubical/kernels/cyfull_complex_reference.pyx"],
             include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
          Extension(
             "cubical.kernels.cyfull_experimental", ["cubical/kernels/cyfull_experimental.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args_omp, extra_link_args=link_args_omp),
+         Extension(
+            "cubical.kernels.cydiag_complex", ["cubical/kernels/cydiag_complex.pyx"],
             include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
          Extension(
+            "cubical.kernels.cydiag_complex_omp", ["cubical/kernels/cydiag_complex_omp.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args_omp, extra_link_args=link_args_omp),
+         Extension(
+            "cubical.kernels.cydiagdiag_complex", ["cubical/kernels/cydiagdiag_complex.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
+            "cubical.kernels.cydiagdiag_complex_omp", ["cubical/kernels/cydiagdiag_complex_omp.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args_omp, extra_link_args=link_args_omp),
+         Extension(
             "cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
+            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
+         Extension(
+            "cubical.kernels.cyphase_only_reference", ["cubical/kernels/cyphase_only_reference.pyx"],
             include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
          Extension(
             "cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.pyx"],

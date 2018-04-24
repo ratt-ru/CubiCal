@@ -50,7 +50,7 @@ def cyallocate_DTFACC(shape, dtype):
 
 cdef inline void gm_product(complex3264 * out,const complex3264 *g,const complex3264 *m) nogil:
     """
-    Computes a 2x2 matrix product: out = G.M
+    Computes a 2x2 matrix product: out = G.M. G is diagonal.
     A matrix is just a sequence in memory of four complex numbers [x00,x01,x10,x11] (so e.g. the last 2,2 axes of a cube)
 
     A note on parameter names for these matrix functions: we'll use A,B,C for generic matrices, and
@@ -61,77 +61,56 @@ cdef inline void gm_product(complex3264 * out,const complex3264 *g,const complex
     We have two simplified cases: G diagonal but visibilities 2x2, or both diagonal. In the former case
     only some of these functions get simplified, in the latter case, all do.
     """
-    out[0] = (g[0]*m[0] + g[1]*m[2])
-    out[1] = (g[0]*m[1] + g[1]*m[3])
-    out[2] = (g[2]*m[0] + g[3]*m[2])
-    out[3] = (g[2]*m[1] + g[3]*m[3])
+    out[0] = g[0]*m[0]
+    out[3] = g[3]*m[3]
 
 cdef inline void mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b) nogil:
     """
     Computes a 2x2 matrix product: out =  A.B
     This is used for the (J^HR)(J^HJ)^{-1} product. This looks same as gm_product()
     """
-    out[0] = (a[0]*b[0] + a[1]*b[2])
-    out[1] = (a[0]*b[1] + a[1]*b[3])
-    out[2] = (a[2]*b[0] + a[3]*b[2])
-    out[3] = (a[2]*b[1] + a[3]*b[3])
+    out[0] = g[0]*m[0]
+    out[3] = g[3]*m[3]
 
 cdef inline void add_rjh_product(complex3264 * out,const complex3264 *r,const complex3264 *jh) nogil:
     """
     Adds a 2x2 matrix product in place: out += R.J
     """
-    out[0] += (r[0]*jh[0] + r[1]*jh[2])
-    out[1] += (r[0]*jh[1] + r[1]*jh[3])
-    out[2] += (r[2]*jh[0] + r[3]*jh[2])
-    out[3] += (r[2]*jh[1] + r[3]*jh[3])
+    out[0] += r[0]*jh[0]
+    out[3] += r[3]*jh[3]
 
 cdef inline void add_jhj_product(complex3264 * out,const complex3264 *j) nogil:
     """
     Adds a matrix conjugate product in place: out += J^H.J
     """
-    out[0] += (j[0].conjugate()*j[0] + j[2].conjugate()*j[2])
-    out[1] += (j[0].conjugate()*j[1] + j[2].conjugate()*j[3])
-    out[2] += (j[1].conjugate()*j[0] + j[3].conjugate()*j[2])
-    out[3] += (j[1].conjugate()*j[1] + j[3].conjugate()*j[3])
+    out[0] += j[0].conjugate()*j[0]
+    out[3] += j[3].conjugate()*j[3]
 
 cdef inline void gmgh_product(complex3264 * out,const complex3264 *g,const complex3264 *m,const complex3264 *gh) nogil:
     """
     Computes a triple 2x2 matrix product: out = G.M.G^H
     """
-    out[0] = (g[0]*m[0]*gh[0] + g[1]*m[2]*gh[0] + g[0]*m[1]*gh[2] + g[1]*m[3]*gh[2])
-    out[1] = (g[0]*m[0]*gh[1] + g[1]*m[2]*gh[1] + g[0]*m[1]*gh[3] + g[1]*m[3]*gh[3])
-    out[2] = (g[2]*m[0]*gh[0] + g[3]*m[2]*gh[0] + g[2]*m[1]*gh[2] + g[3]*m[3]*gh[2])
-    out[3] = (g[2]*m[0]*gh[1] + g[3]*m[2]*gh[1] + g[2]*m[1]*gh[3] + g[3]*m[3]*gh[3])
+    out[0] = g[0]*m[0]*gh[0]
+    out[3] = g[3]*m[3]*gh[3]
 
 cdef inline void subtract_gmgh_product(complex3264 * out,const complex3264 *g,const complex3264 *m,const complex3264 *gh) nogil:
     """
     Subtracts a triple 2x2 matrix product: out -= G.M.G^H
     """
-    out[0] -= (g[0]*m[0]*gh[0] + g[1]*m[2]*gh[0] + g[0]*m[1]*gh[2] + g[1]*m[3]*gh[2])
-    out[1] -= (g[0]*m[0]*gh[1] + g[1]*m[2]*gh[1] + g[0]*m[1]*gh[3] + g[1]*m[3]*gh[3])
-    out[2] -= (g[2]*m[0]*gh[0] + g[3]*m[2]*gh[0] + g[2]*m[1]*gh[2] + g[3]*m[3]*gh[2])
-    out[3] -= (g[2]*m[0]*gh[1] + g[3]*m[2]*gh[1] + g[2]*m[1]*gh[3] + g[3]*m[3]*gh[3])
+    out[0] -= g[0]*m[0]*gh[0]
+    out[3] -= g[3]*m[3]*gh[3]
 
 cdef inline void inplace_gmgh_product(const complex3264 *g,complex3264 *m,const complex3264 *gh) nogil:
     """
     Computes a triple 2x2 matrix product in place: M = G.M.G^H
     """
-    cdef complex3264 m00,m01,m10
-    m00  = (g[0]*m[0]*gh[0] + g[1]*m[2]*gh[0] + g[0]*m[1]*gh[2] + g[1]*m[3]*gh[2])
-    m01  = (g[0]*m[0]*gh[1] + g[1]*m[2]*gh[1] + g[0]*m[1]*gh[3] + g[1]*m[3]*gh[3])
-    m10  = (g[2]*m[0]*gh[0] + g[3]*m[2]*gh[0] + g[2]*m[1]*gh[2] + g[3]*m[3]*gh[2])
-    m[3] = (g[2]*m[0]*gh[1] + g[3]*m[2]*gh[1] + g[2]*m[1]*gh[3] + g[3]*m[3]*gh[3])
-    m[0] = m00
-    m[1] = m01
-    m[2] = m10
+    gmgh_product(m,g,m,gh)
 
 cdef inline void mat_conjugate(complex3264 * out,const complex3264 *x) nogil:
     """
     Computes a 2x2 matrix Hermitian conjugate: out = X^H
     """
     out[0] = x[0].conjugate()
-    out[1] = x[2].conjugate()
-    out[2] = x[1].conjugate()
     out[3] = x[3].conjugate()
 
 

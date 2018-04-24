@@ -1863,3 +1863,57 @@ def cyapply_gains_conj3(complex3264 [:,:,:,:,:,:,:,:] m,
                             inplace_mat_product(&g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
                             mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
 
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cyapply_gains_conj4(complex3264 [:,:,:,:,:,:,:,:] m,
+                  complex3264 [:,:,:,:,:,:] g,
+                  complex3264 [:,:,:,:,:,:] gh,
+                  int t_int,
+                  int f_int):
+
+    """
+    Applies the gains and their cinjugates to the model array. This operation is performed in place
+    - be wary of losing the original array. The result has full time and frequency resolution -
+    solution intervals are used to correctly associate the gains with the model.
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model visibility array with dimensions (d, m , t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimensions (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
+    """
+
+    cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant, g_dir
+    cdef complex3264 m00,m01,m10
+
+    n_dir = m.shape[0]
+    n_mod = m.shape[1]
+    n_tim = m.shape[2]
+    n_fre = m.shape[3]
+    n_ant = m.shape[4]
+
+    g_dir = g.shape[0]
+
+    # OMS: for reasons I don't understand, this oddering of the loops goes x3 faster, even if it doesn't
+    # seem to match the memory layout...
+
+    for d in xrange(n_dir):
+        gd = d%g_dir
+        for i in xrange(n_mod):
+            for aa in xrange(n_ant-1):
+                for ab in xrange(aa+1,n_ant):
+                    for t in xrange(n_tim):
+                        rr = t/t_int
+                        for f in xrange(n_fre):
+                            rc = f/f_int
+                            inplace_mat_product(&g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
+                            mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
+

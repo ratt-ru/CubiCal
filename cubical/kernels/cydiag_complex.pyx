@@ -50,7 +50,7 @@ def cyallocate_DTFACC(shape, dtype):
 
 cdef inline void gm_product(complex3264 * out,const complex3264 *g,const complex3264 *m) nogil:
     """
-    Computes a 2x2 matrix product: out = G.M
+    Computes a 2x2 matrix product: out = G.M. G is diagonal.
     A matrix is just a sequence in memory of four complex numbers [x00,x01,x10,x11] (so e.g. the last 2,2 axes of a cube)
 
     A note on parameter names for these matrix functions: we'll use A,B,C for generic matrices, and
@@ -61,10 +61,10 @@ cdef inline void gm_product(complex3264 * out,const complex3264 *g,const complex
     We have two simplified cases: G diagonal but visibilities 2x2, or both diagonal. In the former case
     only some of these functions get simplified, in the latter case, all do.
     """
-    out[0] = (g[0]*m[0] + g[1]*m[2])
-    out[1] = (g[0]*m[1] + g[1]*m[3])
-    out[2] = (g[2]*m[0] + g[3]*m[2])
-    out[3] = (g[2]*m[1] + g[3]*m[3])
+    out[0] = g[0]*m[0]
+    out[1] = g[0]*m[1]
+    out[2] = g[3]*m[2]
+    out[3] = g[3]*m[3]
 
 cdef inline void mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b) nogil:
     """
@@ -98,32 +98,25 @@ cdef inline void gmgh_product(complex3264 * out,const complex3264 *g,const compl
     """
     Computes a triple 2x2 matrix product: out = G.M.G^H
     """
-    out[0] = (g[0]*m[0]*gh[0] + g[1]*m[2]*gh[0] + g[0]*m[1]*gh[2] + g[1]*m[3]*gh[2])
-    out[1] = (g[0]*m[0]*gh[1] + g[1]*m[2]*gh[1] + g[0]*m[1]*gh[3] + g[1]*m[3]*gh[3])
-    out[2] = (g[2]*m[0]*gh[0] + g[3]*m[2]*gh[0] + g[2]*m[1]*gh[2] + g[3]*m[3]*gh[2])
-    out[3] = (g[2]*m[0]*gh[1] + g[3]*m[2]*gh[1] + g[2]*m[1]*gh[3] + g[3]*m[3]*gh[3])
+    out[0] = g[0]*m[0]*gh[0]
+    out[1] = g[0]*m[1]*gh[3]
+    out[2] = g[3]*m[2]*gh[0]
+    out[3] = g[3]*m[3]*gh[3]
 
 cdef inline void subtract_gmgh_product(complex3264 * out,const complex3264 *g,const complex3264 *m,const complex3264 *gh) nogil:
     """
     Subtracts a triple 2x2 matrix product: out -= G.M.G^H
     """
-    out[0] -= (g[0]*m[0]*gh[0] + g[1]*m[2]*gh[0] + g[0]*m[1]*gh[2] + g[1]*m[3]*gh[2])
-    out[1] -= (g[0]*m[0]*gh[1] + g[1]*m[2]*gh[1] + g[0]*m[1]*gh[3] + g[1]*m[3]*gh[3])
-    out[2] -= (g[2]*m[0]*gh[0] + g[3]*m[2]*gh[0] + g[2]*m[1]*gh[2] + g[3]*m[3]*gh[2])
-    out[3] -= (g[2]*m[0]*gh[1] + g[3]*m[2]*gh[1] + g[2]*m[1]*gh[3] + g[3]*m[3]*gh[3])
+    out[0] -= g[0]*m[0]*gh[0]
+    out[1] -= g[0]*m[1]*gh[3]
+    out[2] -= g[3]*m[2]*gh[0]
+    out[3] -= g[3]*m[3]*gh[3]
 
 cdef inline void inplace_gmgh_product(const complex3264 *g,complex3264 *m,const complex3264 *gh) nogil:
     """
     Computes a triple 2x2 matrix product in place: M = G.M.G^H
     """
-    cdef complex3264 m00,m01,m10
-    m00  = (g[0]*m[0]*gh[0] + g[1]*m[2]*gh[0] + g[0]*m[1]*gh[2] + g[1]*m[3]*gh[2])
-    m01  = (g[0]*m[0]*gh[1] + g[1]*m[2]*gh[1] + g[0]*m[1]*gh[3] + g[1]*m[3]*gh[3])
-    m10  = (g[2]*m[0]*gh[0] + g[3]*m[2]*gh[0] + g[2]*m[1]*gh[2] + g[3]*m[3]*gh[2])
-    m[3] = (g[2]*m[0]*gh[1] + g[3]*m[2]*gh[1] + g[2]*m[1]*gh[3] + g[3]*m[3]*gh[3])
-    m[0] = m00
-    m[1] = m01
-    m[2] = m10
+    gmgh_product(m,g,m,gh)
 
 cdef inline void mat_conjugate(complex3264 * out,const complex3264 *x) nogil:
     """
