@@ -116,7 +116,7 @@ cdef inline void inplace_gmgh_product(const complex3264 *g,complex3264 *m,const 
     """
     Computes a triple 2x2 matrix product in place: M = G.M.G^H
     """
-    gmgh_product(m,g,m,gh)
+    gmgh_product(g,m,gh)
 
 cdef inline void mat_conjugate(complex3264 * out,const complex3264 *x) nogil:
     """

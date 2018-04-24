@@ -39,13 +39,25 @@ ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
 
-def cyallocate_DTFACC(shape, dtype):
-    """
-    Allocates an array of shape NDxNTxNFxNAxNC, with its underlying memory layout optimized to the kernel
-    """
-    nd,nt,nf,na,nc,_ = shape
-    _intrinsic_shape = [na,nd,nt,nf,nc,nc]
-    return np.empty(_intrinsic_shape, dtype=dtype).transpose((1,2,3,0,4,5))
+# defines memory layout of model-like arrays (axis layout is NDxNMxNTxNFxNAxNAxNCxNC)
+model_axis_layout = [4,5,1,2,3,0,6,7]    # layout is AAMTFD
+
+# defines memory layout of gain-like arrays  (axis layout is NDxNTxNFxNAxNCxNC)
+gain_axis_layout = [3,1,2,0,4,5]
+
+
+def cyallocate_modellike_array(shape, dtype):
+    if len(shape) == 5:
+        shape = [1,1] + shape
+    elif len(shape) == 6:
+        shape = [1] + shape
+    elif len(shape) != 7:
+        raise TypeError("invalid model shape requested")
+
+    return cubical.kernels.allocate_reorded_array(_intrinsic_shape, dtype=dtype, axis_memory_layout=model_axis_layout)
+
+def cyallocate_gainlike_array(shape, dtype):
+    return cubical.kernels.allocate_reorded_array(_intrinsic_shape, dtype=dtype, axis_memory_layout=grid_axis_layout)
 
 
 cdef inline void gm_product(complex3264 * out,const complex3264 *g,const complex3264 *m) nogil:
