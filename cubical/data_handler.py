@@ -37,7 +37,7 @@ log = logger.getLogger("data_handler")
 def _parse_slice(arg, what="slice"):
     """
     Helper function. Parses an string argument into a slice.  
-    Supports e.g. "5~7" (inclusive range), "5:8" (pythonic range)
+    Supports e.g. "5~7" (inclusive range), "5:8" (pythonic range). An optional ":STEP" may be added
 
     Args:
         arg (str):
@@ -60,19 +60,17 @@ def _parse_slice(arg, what="slice"):
     elif type(arg) is not str:
         raise TypeError("can't parse argument of type '{}' as a {}".format(type(arg), what))
     arg = arg.strip()
-    if re.match("(\d*)~(\d*)$", arg):
-        i0, i1 = arg.split("~", 1)
-        i0 = int(i0) if i0 else None
-        i1 = int(i1)+1 if i1 else None
-    elif re.match("(\d*):(\d*)$", arg):
-        i0, i1 = arg.split(":", 1)
-        i0 = int(i0) if i0 else None
-        i1 = int(i1) if i1 else None
+    m1 = re.match("(\d*)~(\d*)(:(\d+))?$", arg)
+    m2 = re.match("(\d*):(\d*)(:(\d+))?$", arg)
+    if m1:
+        i0, i1, i2 = [ int(x) if x else None for x in m1.group(1),m1.group(2),m1.group(4) ]
+        if i1 is not None:
+            i1 += 1
+    elif m2:
+        i0, i1, i2 = [ int(x) if x else None for x in m2.group(1),m2.group(2),m2.group(4) ]
     else:
         raise ValueError("can't parse '{}' as a {}".format(arg, what))
-    if i0 is None and i1 is None:
-        return slice(None)
-    return slice(i0,i1)
+    return slice(i0,i1,i2)
 
 
 def _parse_range(arg, nmax):
@@ -1098,6 +1096,10 @@ class DataHandler:
             chan1 = self._channel_slice.stop - 1 if self._channel_slice.stop is not None else -1
             self._ms_blc = (chan0, 0)
             self._ms_trc = (chan1, self.ncorr - 1)
+            if self._channel_slice.step is not None:
+                self._ms_inc = (self._channel_slice.step, 1)
+            else:
+                self._ms_inc = []
 
         # use TaQL to select subset
         self.taql = self.build_taql(taql, fid, self._ddids)
@@ -1407,7 +1409,7 @@ class DataHandler:
         """
         if self._channel_slice == slice(None):
             return self.data.getcol(column, startrow, nrows)
-        return self.data.getcolslice(column, self._ms_blc, self._ms_trc, [], startrow, nrows)
+        return self.data.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_inc, startrow, nrows)
 
     def putslice(self, column, value, startrow, nrows):
         """
