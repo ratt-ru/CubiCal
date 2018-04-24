@@ -69,8 +69,8 @@ cdef inline void mat_product(complex3264 * out,const complex3264 *a,const comple
     Computes a 2x2 matrix product: out =  A.B
     This is used for the (J^HR)(J^HJ)^{-1} product. This looks same as gm_product()
     """
-    out[0] = g[0]*m[0]
-    out[3] = g[3]*m[3]
+    out[0] = a[0]*b[0]
+    out[3] = a[3]*b[3]
 
 cdef inline void add_rjh_product(complex3264 * out,const complex3264 *r,const complex3264 *jh) nogil:
     """
