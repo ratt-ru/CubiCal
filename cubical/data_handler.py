@@ -1030,15 +1030,77 @@ class DataHandler:
         _spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW", ack=False)
         _poltab = pt.table(self.ms_name + "::POLARIZATION", ack=False)
         _ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
+        _obstab = pt.table(self.ms_name + "::OBSERVATION", ack=False)
         _feedtab = pt.table(self.ms_name + "::FEED", ack=False)
+        _tab = pt.table(self.ms_name + "::FEED", ack=False)
 
         self.ctype = np.complex128 if double_precision else np.complex64
         self.ftype = np.float64 if double_precision else np.float32
         self.ncorr = _poltab.getcol("NUM_CORR")[0]
         self.nants = _anttab.nrows()
-
+        
+        # antenna fields to be used when writing gain tables
+        assert set(["OFFSET", "POSITION", "TYPE", 
+                    "DISH_DIAMETER", "FLAG_ROW", "MOUNT", "NAME", 
+                    "STATION"]) == set(_anttab.colnames()), "Measurement set conformance error"
+        self.antoffset = _anttab.getcol("OFFSET")
         self.antpos   = _anttab.getcol("POSITION")
+        self.anttype = _anttab.getcol("TYPE")
+        self.antdishdiam = _anttab.getcol("DISH_DIAMETER")
+        self.antflagrow = _anttab.getcol("FLAG_ROW")
+        self.antmount = _anttab.getcol("MOUNT")
         self.antnames = _anttab.getcol("NAME")
+        self.antstation = _anttab.getcol("STATION")
+        
+        # field information to be used when writing gain tables
+        assert set(["DELAY_DIR", "PHASE_DIR", "REFERENCE_DIR", 
+                    "CODE", "FLAG_ROW", "NAME", "NUM_POLY", 
+                    "SOURCE_ID", "TIME"]) == set(_fldtab.colnames()), "Measurement set conformance error"
+        self.fielddelaydirs = _fldtab.getcol("DELAY_DIR")
+        self.fieldphasedirs = _fldtab.getcol("PHASE_DIR")
+        self.fieldrefdir = _fldtab.getcol("REFERENCE_DIR")
+        self.fieldcode = _fldtab.getcol("CODE")
+        self.fieldflagrow = _fldtab.getcol("FLAG_ROW")
+        self.fieldname = _fldtab.getcol("NAME")
+        self.fieldnumpoly = _fldtab.getcol("NUM_POLY")
+        self.fieldsrcid = _fldtab.getcol("SOURCE_ID")
+        self.fieldtime = _fldtab.getcol("TIME")
+        
+        # spw information to be used when writing gain tables
+        assert set(["MEAS_FREQ_REF", "CHAN_FREQ", "REF_FREQUENCY",
+                    "CHAN_WIDTH", "EFFECTIVE_BW", "RESOLUTION",
+                    "FLAG_ROW", "FREQ_GROUP", "FREQ_GROUP_NAME",
+                    "IF_CONV_CHAIN", "NAME", "NET_SIDEBAND",
+                    "NUM_CHAN", "TOTAL_BANDWIDTH"]) == set(_spwtab.colnames()), "Measurement set conformance error"
+        self.spwmeasfreq = _spwtab.getcol("MEAS_FREQ_REF")
+        self.spwchanfreq = _spwtab.getcol("CHAN_FREQ")
+        self.spwreffreq = _spwtab.getcol("REF_FREQUENCY")
+        self.spwchanwidth = _spwtab.getcol("CHAN_WIDTH")
+        self.spweffbw = _spwtab.getcol("EFFECTIVE_BW")
+        self.spwresolution = _spwtab.getcol("RESOLUTION")
+        self.spwflagrow = _spwtab.getcol("FLAG_ROW")
+        self.spwfreqgroup = _spwtab.getcol("FREQ_GROUP")
+        self.spwfreqgroupname = _spwtab.getcol("FREQ_GROUP_NAME")
+        self.spwifconvchain = _spwtab.getcol("IF_CONV_CHAIN")
+        self.spwname = _spwtab.getcol("NAME")
+        self.spwnetsideband = _spwtab.getcol("NET_SIDEBAND")
+        self.spwnumchan = _spwtab.getcol("NUM_CHAN")
+        self.spwtotalbandwidth = _spwtab.getcol("TOTAL_BANDWIDTH")
+        
+        # read observation details
+        assert set(["TIME_RANGE", "LOG", "SCHEDULE", "FLAG_ROW",
+                       "OBSERVER", "PROJECT", "RELEASE_DATE", "SCHEDULE_TYPE",
+                       "TELESCOPE_NAME"]) == set(_obstab.colnames()), "Measurement set conformance error"
+        self.obstimerange = _obstab.getcol("TIME_RANGE")
+        self.obslog = _obstab.getcol("LOG")
+        self.obsschedule = _obstab.getcol("SCHEDULE")
+        self.obsflagrow = _obstab.getcol("FLAG_ROW")
+        self.obsobserver = _obstab.getcol("OBSERVER")
+        self.obsproject = _obstab.getcol("PROJECT")
+        self.obsreleasedate = _obstab.getcol("RELEASE_DATE")
+        self.obsscheduletype = _obstab.getcol("SCHEDULE_TYPE")
+        self.obstelescopename = _obstab.getcol("TELESCOPE_NAME")
+        
         self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
         self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
         
