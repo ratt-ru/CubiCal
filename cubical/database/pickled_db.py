@@ -15,7 +15,7 @@ import time
 from collections import OrderedDict, Iterator
 
 from cubical.database.parameter import Parameter, _Record
-
+from iface_database import iface_database
 class _ParmSegment(_Record):
     """
     A ParmSegment is just a Record -- we just want it to be a special type so that it
@@ -23,7 +23,7 @@ class _ParmSegment(_Record):
     """
     pass
 
-class PickledDatabase(object):
+class PickledDatabase(iface_database):
     """
     This class implements a simple parameter database saved to a pickle.
     """
