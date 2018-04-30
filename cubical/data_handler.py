@@ -37,7 +37,7 @@ log = logger.getLogger("data_handler")
 def _parse_slice(arg, what="slice"):
     """
     Helper function. Parses an string argument into a slice.  
-    Supports e.g. "5~7" (inclusive range), "5:8" (pythonic range)
+    Supports e.g. "5~7" (inclusive range), "5:8" (pythonic range). An optional ":STEP" may be added
 
     Args:
         arg (str):
@@ -60,19 +60,17 @@ def _parse_slice(arg, what="slice"):
     elif type(arg) is not str:
         raise TypeError("can't parse argument of type '{}' as a {}".format(type(arg), what))
     arg = arg.strip()
-    if re.match("(\d*)~(\d*)$", arg):
-        i0, i1 = arg.split("~", 1)
-        i0 = int(i0) if i0 else None
-        i1 = int(i1)+1 if i1 else None
-    elif re.match("(\d*):(\d*)$", arg):
-        i0, i1 = arg.split(":", 1)
-        i0 = int(i0) if i0 else None
-        i1 = int(i1) if i1 else None
+    m1 = re.match("(\d*)~(\d*)(:(\d+))?$", arg)
+    m2 = re.match("(\d*):(\d*)(:(\d+))?$", arg)
+    if m1:
+        i0, i1, i2 = [ int(x) if x else None for x in m1.group(1),m1.group(2),m1.group(4) ]
+        if i1 is not None:
+            i1 += 1
+    elif m2:
+        i0, i1, i2 = [ int(x) if x else None for x in m2.group(1),m2.group(2),m2.group(4) ]
     else:
         raise ValueError("can't parse '{}' as a {}".format(arg, what))
-    if i0 is None and i1 is None:
-        return slice(None)
-    return slice(i0,i1)
+    return slice(i0,i1,i2)
 
 
 def _parse_range(arg, nmax):
@@ -468,9 +466,12 @@ class Tile(object):
             inactive[uv2 < self.handler.min_baseline**2] = True
             if self.handler.max_baseline:
                 inactive[uv2 > self.handler.max_baseline**2] = True
-            print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(inactive.sum() - num_inactive)
-
-        flag_arr[inactive] |= FL.SKIPSOL
+            print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(
+                inactive.sum() - num_inactive)
+            num_inactive = inactive.sum()
+        if num_inactive:
+            print>> log(0), "  {:.2%} visibilities have been deselected".format(num_inactive/float(inactive.size))
+            flag_arr[inactive] |= FL.SKIPSOL
 
         # Form up bitflag array, if needed.
         if self.handler._apply_bitflags or self.handler._save_bitflag or self.handler._auto_fill_bitflag:
@@ -515,8 +516,8 @@ class Tile(object):
 
             flagged = flag_arr!=0
             nfl = flagged.sum()
-            self.handler.flagcounts["APPLY"] += nfl
-            print>> log, "  {:.2%} input visibilities flagged".format(nfl / float(flagged.size))
+            self.handler.flagcounts["IN"] += nfl
+            print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
 
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
@@ -749,6 +750,7 @@ class Tile(object):
         """
         nrows = self.last_row - self.first_row + 1
         data = shared_dict.attach(self._data_dict_name)
+
         print>> log(0,"blue"), "{}: saving MS rows {}~{}".format(self.label, self.first_row, self.last_row)
         if self.handler.output_column and data['updated'][0]:
             print>> log, "  writing {} column".format(self.handler.output_column)
@@ -767,6 +769,7 @@ class Tile(object):
             else:
                 model = model.sum(axis=0)
             self.handler.putslice(self.handler.output_model_column, model, self.first_row, nrows)
+
 
         # write flags if (a) auto-filling BITFLAG column and/or (b) solver has generated flags, and we're saving cubical flags
         
@@ -1093,6 +1096,10 @@ class DataHandler:
             chan1 = self._channel_slice.stop - 1 if self._channel_slice.stop is not None else -1
             self._ms_blc = (chan0, 0)
             self._ms_trc = (chan1, self.ncorr - 1)
+            if self._channel_slice.step is not None:
+                self._ms_inc = (self._channel_slice.step, 1)
+            else:
+                self._ms_inc = []
 
         # use TaQL to select subset
         self.taql = self.build_taql(taql, fid, self._ddids)
@@ -1242,7 +1249,7 @@ class DataHandler:
 
             self.bitflags = {}
 
-        self.flagcounts['APPLY'] = 0
+        self.flagcounts['IN'] = 0
         self.flagcounts['NEW'] = 0
         self.flagcounts['OUT'] = 0
 
@@ -1402,7 +1409,7 @@ class DataHandler:
         """
         if self._channel_slice == slice(None):
             return self.data.getcol(column, startrow, nrows)
-        return self.data.getcolslice(column, self._ms_blc, self._ms_trc, [], startrow, nrows)
+        return self.data.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_inc, startrow, nrows)
 
     def putslice(self, column, value, startrow, nrows):
         """
