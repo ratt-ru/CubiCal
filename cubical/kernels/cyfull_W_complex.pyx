@@ -333,7 +333,7 @@ def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
 
     cdef int d, t, f, aa, ab = 0
     cdef int n_mod, n_tim, n_fre, n_ant
-    cdef complex3264 r00, r01, r10, r11, denom
+    cdef complex3264 r00, r01, r10, r11, denom, upd
     cdef complex3264 c00, c01, c02, c03, c10, c11, c12, c13, c20, c21, c22, c23, c30, c31, c32, c33
 
     c00, c01, c02, c03 = cov[0,0], cov[0,1], cov[0,2], cov[0,3]
