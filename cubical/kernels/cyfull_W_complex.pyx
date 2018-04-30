@@ -319,19 +319,21 @@ def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
 def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
                      complex3264 [:,:] cov,
                      complex3264[:,:,:,:,:,:] w,
-                     float v):
+                     float v,
+                     int npol):
     """
     This function updates the weights, using the 
-    expression w[i] = (v+8)/(v + 2*r[i].T.cov.r[i])
+    expression w[i] = (v+2*npol)/(v + 2*r[i].T.cov.r[i])
     r: the reisudals
-    cov : the weigted covariance matrix
+    cov : the weigted covariance matrix inverse
     w : weights
     v : v (degrees of freedom of the t-distribution)
+    npol: number of polarizations really present 2 or 4
     """
 
     cdef int d, t, f, aa, ab = 0
     cdef int n_mod, n_tim, n_fre, n_ant
-    cdef complex3264 r00, r01, r10, r11, denom
+    cdef complex3264 r00, r01, r10, r11, denom, upd
     cdef complex3264 c00, c01, c02, c03, c10, c11, c12, c13, c20, c21, c22, c23, c30, c31, c32, c33
 
     c00, c01, c02, c03 = cov[0,0], cov[0,1], cov[0,2], cov[0,3]
@@ -350,11 +352,15 @@ def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
+                        
                         r00, r01, r10, r11 = r[i,t,f,aa,ab,0,0], r[i,t,f,aa,ab,0,1], r[i,t,f,aa,ab,1,0], r[i,t,f,aa,ab,1,1]
                         
-                        denom = r00*(c00*r00.conjugate() + c10*r10.conjugate() + c20*r01.conjugate() + c30*r11.conjugate()) + r01*(c02*r00.conjugate() + c12*r10.conjugate() + c22*r01.conjugate() + c32*r11.conjugate()) + r10*(c01*r00.conjugate() + c11*r10.conjugate() + c21*r01.conjugate() + c31*r11.conjugate()) + r11*(c03*r00.conjugate() + c13*r10.conjugate() + c23*r01.conjugate() + c33*r11.conjugate())
-
-                        w[i,t,f,aa,ab,0] = (v+8)/(v + 2*denom)
+                        denom = r00.conjugate()*c00*r00 + r01.conjugate()*c01*r00 + r10.conjugate()*c20*r00 + r11.conjugate()*c30*r00 + \
+                        r00.conjugate()*c01*r01 + r01.conjugate()*c11*r01 + r10.conjugate()*c21*r01 + r11.conjugate()*c31*r01 + r00.conjugate()*c02*r01 + \
+                        r01.conjugate()*c12*r10 + r10.conjugate()*c22*r10 +r11.conjugate()*c32*r10 + r00.conjugate()*c03*r11 + r01.conjugate()*c13*r11 + \
+                        r10.conjugate()*c23*r11 + r11.conjugate()*c33*r11
+                        
+                        w[i,t,f,aa,ab,0] = (v+2*npol)/(v + 2*denom)
 
 
 @cython.cdivision(True)
