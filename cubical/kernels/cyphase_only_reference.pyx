@@ -95,6 +95,7 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
+                     complex3264 [:,:,:,:,:,:] jhjinv,
                      np.uint16_t [:,:,:,:] flags,
                      float eps, 
                      int flagbit):
@@ -131,18 +132,20 @@ def cycompute_jhjinv(complex3264 [:,:,:,:,:,:] jhj,
             for f in xrange(n_fre):
                 for aa in xrange(n_ant):
                     if not flags[d,t,f,aa]:
+                        jhjinv[d,t,f,aa,0,1] = jhj[d,t,f,aa,0,1]
+                        jhjinv[d,t,f,aa,1,0] = jhj[d,t,f,aa,1,0]
+
                         if (jhj[d,t,f,aa,0,0].real<eps) or (jhj[d,t,f,aa,1,1].real<eps):
 
-                            jhj[d,t,f,aa,0,0] = 0
-                            jhj[d,t,f,aa,1,1] = 0
+                            jhjinv[d,t,f,aa,0,0] = jhjinv[d,t,f,aa,1,1] = 0
 
                             flags[d,t,f,aa] = flagbit
                             flag_count += 1
 
                         else:
 
-                            jhj[d,t,f,aa,0,0] = 1/jhj[d,t,f,aa,0,0]
-                            jhj[d,t,f,aa,1,1] = 1/jhj[d,t,f,aa,1,1]
+                            jhjinv[d,t,f,aa,0,0] = 1/jhj[d,t,f,aa,0,0]
+                            jhjinv[d,t,f,aa,1,1] = 1/jhj[d,t,f,aa,1,1]
     
     return flag_count
 

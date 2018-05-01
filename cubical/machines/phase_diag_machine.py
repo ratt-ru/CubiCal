@@ -198,7 +198,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         cyphase.cycompute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)
 
-        cyphase.cycompute_jhjinv(self.jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        cyphase.cycompute_jhjinv(self.jhjinv, self.jhjinv, self.gflags, self.eps, FL.ILLCOND)
 
         self.jhjinv = self.jhjinv.real
 

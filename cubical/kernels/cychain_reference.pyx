@@ -31,22 +31,10 @@ provided. Common dimensions of arrays are:
 import numpy as np
 cimport numpy as np
 import cython
-from cython.parallel import parallel, prange
-import cubical.kernels
 
 ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
-
-cygenerics = cubical.kernels.import_kernel("cygenerics")
-cyfull = cubical.kernels.import_kernel("cyfull_complex")
-
-### allocators same as for generic full kernel
-allocate_vis_array = cyfull.allocate_vis_array
-allocate_gain_array = cyfull.allocate_gain_array
-allocate_flag_array = cyfull.allocate_flag_array
-
-include "includes/matrix_ops.pxi"
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -87,19 +75,16 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] jh,
 
     g_dir = g.shape[0]
 
-    cdef int[:,:] baselines = cygenerics.all_baselines(n_ant)
-    cdef int ibl, n_bl = baselines.shape[0]
-    cdef int num_threads = cubical.kernels.num_omp_threads
+    for d in xrange(n_dir):
+        gd = d%g_dir
+        for i in xrange(n_mod):
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for aa in xrange(n_ant):
+                        for ab in xrange(n_ant):
 
-    with nogil, parallel(num_threads=num_threads):
-        for ibl in prange(n_bl, schedule='static'):
-            aa, ab = baselines[ibl][0], baselines[ibl][1]
-            for i in xrange(n_mod):
-                for t in xrange(n_tim):
-                    rr = t/t_int
-                    for f in xrange(n_fre):
-                        rc = f/f_int
-                        for d in xrange(n_dir):
                             jh00 = jh[d,i,t,f,aa,ab,0,0]
                             jh10 = jh[d,i,t,f,aa,ab,1,0]
                             jh01 = jh[d,i,t,f,aa,ab,0,1]
@@ -156,31 +141,30 @@ def cyapply_left_inv_jones(complex3264 [:,:,:,:,:,:] jhr,
 
     g_dir = ginv.shape[0]
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for t in xrange(n_tim):
-                rr = t/t_int
-                for f in xrange(n_fre):
-                    rc = f/f_int
-                    for d in xrange(n_dir):
+    for d in xrange(n_dir):
+        gd = d%g_dir
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
 
-                        jhr00 = jhr[d,t,f,aa,0,0]
-                        jhr01 = jhr[d,t,f,aa,0,1]
-                        jhr10 = jhr[d,t,f,aa,1,0]
-                        jhr11 = jhr[d,t,f,aa,1,1]
+                    jhr00 = jhr[d,t,f,aa,0,0]
+                    jhr01 = jhr[d,t,f,aa,0,1]
+                    jhr10 = jhr[d,t,f,aa,1,0]
+                    jhr11 = jhr[d,t,f,aa,1,1]
 
-                        jhr[d,t,f,aa,0,0] = ginv[gd,rr,rc,aa,0,0]*jhr00 + \
-                                            ginv[gd,rr,rc,aa,0,1]*jhr10
+                    jhr[d,t,f,aa,0,0] = ginv[gd,rr,rc,aa,0,0]*jhr00 + \
+                                        ginv[gd,rr,rc,aa,0,1]*jhr10
 
-                        jhr[d,t,f,aa,0,1] = ginv[gd,rr,rc,aa,0,0]*jhr01 + \
-                                            ginv[gd,rr,rc,aa,0,1]*jhr11
+                    jhr[d,t,f,aa,0,1] = ginv[gd,rr,rc,aa,0,0]*jhr01 + \
+                                        ginv[gd,rr,rc,aa,0,1]*jhr11
 
-                        jhr[d,t,f,aa,1,0] = ginv[gd,rr,rc,aa,1,0]*jhr00 + \
-                                            ginv[gd,rr,rc,aa,1,1]*jhr10
+                    jhr[d,t,f,aa,1,0] = ginv[gd,rr,rc,aa,1,0]*jhr00 + \
+                                        ginv[gd,rr,rc,aa,1,1]*jhr10
 
-                        jhr[d,t,f,aa,1,1] = ginv[gd,rr,rc,aa,1,0]*jhr01 + \
-                                            ginv[gd,rr,rc,aa,1,1]*jhr11
+                    jhr[d,t,f,aa,1,1] = ginv[gd,rr,rc,aa,1,0]*jhr01 + \
+                                        ginv[gd,rr,rc,aa,1,1]*jhr11
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -214,22 +198,20 @@ def cysum_jhr_intervals(complex3264 [:,:,:,:,:,:] jhr,
     n_fre = jhr.shape[2]
     n_ant = jhr.shape[3]
 
-    cdef int num_threads = cubical.kernels.num_omp_threads
-    with nogil, parallel(num_threads=num_threads):
-        for aa in prange(n_ant, schedule='static'):
-            for t in xrange(n_tim):
-                rr = t/t_int
-                for f in xrange(n_fre):
-                    rc = f/f_int
-                    for d in xrange(n_dir):
+    for d in xrange(n_dir):
+        for t in xrange(n_tim):
+            rr = t/t_int
+            for f in xrange(n_fre):
+                rc = f/f_int
+                for aa in xrange(n_ant):
 
-                        jhrint[d,rr,rc,aa,0,0] = jhrint[d,rr,rc,aa,0,0] + jhr[d,t,f,aa,0,0]
+                    jhrint[d,rr,rc,aa,0,0] = jhrint[d,rr,rc,aa,0,0] + jhr[d,t,f,aa,0,0]
 
-                        jhrint[d,rr,rc,aa,0,1] = jhrint[d,rr,rc,aa,0,1] + jhr[d,t,f,aa,0,1]
+                    jhrint[d,rr,rc,aa,0,1] = jhrint[d,rr,rc,aa,0,1] + jhr[d,t,f,aa,0,1]
 
-                        jhrint[d,rr,rc,aa,1,0] = jhrint[d,rr,rc,aa,1,0] + jhr[d,t,f,aa,1,0]
+                    jhrint[d,rr,rc,aa,1,0] = jhrint[d,rr,rc,aa,1,0] + jhr[d,t,f,aa,1,0]
 
-                        jhrint[d,rr,rc,aa,1,1] = jhrint[d,rr,rc,aa,1,1] + jhr[d,t,f,aa,1,1]
+                    jhrint[d,rr,rc,aa,1,1] = jhrint[d,rr,rc,aa,1,1] + jhr[d,t,f,aa,1,1]
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -259,17 +241,12 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
     n_fre = m.shape[3]
     n_ant = m.shape[4]
 
-    cdef int[:,:] baselines = cygenerics.half_baselines(n_ant)
-    cdef int ibl, n_bl = baselines.shape[0]
-    cdef int num_threads = cubical.kernels.num_omp_threads
-
-    with nogil, parallel(num_threads=num_threads):
-        for ibl in prange(n_bl, schedule='static'):
-            aa, ab = baselines[ibl][0], baselines[ibl][1]
-            for i in xrange(n_mod):
-                for t in xrange(n_tim):
-                    for f in xrange(n_fre):
-                        for d in xrange(n_dir):
+    for d in xrange(n_dir):
+        for i in xrange(n_mod):
+            for t in xrange(n_tim):
+                for f in xrange(n_fre):
+                    for aa in xrange(n_ant):
+                        for ab in xrange(n_ant):
                             r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - m[d,i,t,f,aa,ab,0,0]
 
                             r[i,t,f,aa,ab,0,1] = r[i,t,f,aa,ab,0,1] - m[d,i,t,f,aa,ab,0,1]
@@ -277,5 +254,3 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
                             r[i,t,f,aa,ab,1,0] = r[i,t,f,aa,ab,1,0] - m[d,i,t,f,aa,ab,1,0]
 
                             r[i,t,f,aa,ab,1,1] = r[i,t,f,aa,ab,1,1] - m[d,i,t,f,aa,ab,1,1]
-
-                            mat_conjugate(&r[i,t,f,ab,aa,0,0], &r[i,t,f,aa,ab,0,0])

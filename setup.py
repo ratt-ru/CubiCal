@@ -25,6 +25,7 @@
 import os
 import sys
 import logging
+import glob
 
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
@@ -68,55 +69,20 @@ if cythonize:
 
     CCO.buffer_max_dims = 9
 
-    extensions = [
-         Extension(
-            "cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyfull_complex_omp", ["cubical/kernels/cyfull_complex_omp.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args_omp, extra_link_args=link_args_omp),
-         Extension(
-            "cubical.kernels.cyfull_complex_reference", ["cubical/kernels/cyfull_complex_reference.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyfull_experimental", ["cubical/kernels/cyfull_experimental.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args_omp, extra_link_args=link_args_omp),
-         Extension(
-            "cubical.kernels.cydiag_complex", ["cubical/kernels/cydiag_complex.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cydiag_complex_omp", ["cubical/kernels/cydiag_complex_omp.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args_omp, extra_link_args=link_args_omp),
-         Extension(
-            "cubical.kernels.cydiagdiag_complex", ["cubical/kernels/cydiagdiag_complex.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cydiagdiag_complex_omp", ["cubical/kernels/cydiagdiag_complex_omp.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args_omp, extra_link_args=link_args_omp),
-         Extension(
-            "cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyphase_only_reference", ["cubical/kernels/cyphase_only_reference.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cychain", ["cubical/kernels/cychain.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.pyx"],
-            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
-            extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.pyx"],
-            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
-            extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.pyx"],
-            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
-            extra_link_args=link_args)]
+    extensions = []
+    for source in glob.glob("cubical/kernels/*.pyx"):
+        name, ext = os.path.splitext(source)
+        omp = name.endswith("_omp")
+        # identify which kernels need to go via the C++ compiler
+        cpp = any([x in name for x in "cytf_plane", "cyf_slope", "cyt_slope"])
+
+        extensions.append(Extension(
+            name.replace("/","."), [source],
+            include_dirs=[include_path],
+            extra_compile_args=cmpl_args_omp if omp else cmpl_args,
+            extra_link_args=link_args_omp if omp else link_args,
+            language="c++" if cpp else "c"
+        ))
 
     extensions = cythonize(extensions, compiler_directives={'binding': True}, annotate=True)
 
@@ -124,21 +90,17 @@ else:
 
     log.info("Cython unavailable. Using bundled .c and .cpp files.")
 
-    extensions = \
-        [Extension("cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.c"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.c"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.c"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cychain", ["cubical/kernels/cychain.c"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.cpp"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.cpp"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.cpp"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args)]
+    extensions = []
+    for source in glob.glob("cubical/kernels/*.c") + glob.glob("cubical/kernels/*.cpp"):
+        name, ext = os.path.splitext(source)
+        omp = name.endswith("_omp")
+        extensions.append(Extension(
+            name.replace("/","."), [source],
+            include_dirs=[include_path],
+            extra_compile_args=cmpl_args_omp if omp else cmpl_args,
+            extra_link_args=link_args_omp if omp else link_args
+        ))
+
 
 # Check for readthedocs environment variable.
 
