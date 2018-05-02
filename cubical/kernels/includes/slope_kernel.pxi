@@ -76,13 +76,12 @@ def cycompute_jhj(float3264 [:,:,:,:,:,:] tmp_jhj,
 
     with nogil, parallel(num_threads=num_threads):
         for aa in prange(n_ant, schedule='static'):
-            for ab in xrange(n_ant):
-                for t in xrange(n_tim):
-                    rr = t/t_int
-                    for f in xrange(n_fre):
-                        rc = f/f_int
-                        for d in xrange(n_dir):
-                            update_jhj_element(tmp_jhj,jhj,ts,fs,d,t,f,rr,rc,aa,ab)
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for d in xrange(n_dir):
+                        update_jhj_element(tmp_jhj,jhj,ts,fs,d,t,f,rr,rc,aa)
 
 
 @cython.cdivision(True)
