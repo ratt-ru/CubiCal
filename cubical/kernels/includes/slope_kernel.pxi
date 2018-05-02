@@ -64,7 +64,7 @@ def cycompute_jhj(float3264 [:,:,:,:,:,:] tmp_jhj,
             Number of frequencies per solution interval.
     """
 
-    cdef int d, i, t, f, rr, rc, aa, ab = 0
+    cdef int d, i, t, f, rr, rc, aa, c
     cdef int n_dir, n_mod, n_tim, n_fre, n_ant
 
     n_dir = tmp_jhj.shape[0]
@@ -81,7 +81,8 @@ def cycompute_jhj(float3264 [:,:,:,:,:,:] tmp_jhj,
                 for f in xrange(n_fre):
                     rc = f/f_int
                     for d in xrange(n_dir):
-                        update_jhj_element(tmp_jhj,jhj,ts,fs,d,t,f,rr,rc,aa)
+                        for c in xrange(2):
+                            update_jhj_element(tmp_jhj,jhj,ts,fs,d,t,f,rr,rc,aa,c)
 
 
 @cython.cdivision(True)

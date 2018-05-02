@@ -134,37 +134,35 @@ def cycompute_jhj(float3264 [:,:,:,:,:,:,:] tmp_jhj,
                 for f in xrange(n_fre):
                     rc = f/f_int
                     for aa in xrange(n_ant):
-                        for ab in xrange(n_ant): 
+                        jhj[d,rr,rc,aa,0,0,0] = jhj[d,rr,rc,aa,0,0,0] + \
+                                                fs[f]*fs[f]*tmp_jhj[d,i,t,f,aa,0,0]
+                        jhj[d,rr,rc,aa,0,1,1] = jhj[d,rr,rc,aa,0,1,1] + \
+                                                fs[f]*fs[f]*tmp_jhj[d,i,t,f,aa,1,1]
 
-                            jhj[d,rr,rc,aa,0,0,0] = jhj[d,rr,rc,aa,0,0,0] + \
-                                                    fs[f]*fs[f]*tmp_jhj[d,i,t,f,aa,0,0]
-                            jhj[d,rr,rc,aa,0,1,1] = jhj[d,rr,rc,aa,0,1,1] + \
-                                                    fs[f]*fs[f]*tmp_jhj[d,i,t,f,aa,1,1]
+                        jhj[d,rr,rc,aa,1,0,0] = jhj[d,rr,rc,aa,1,0,0] + \
+                                                fs[f]*ts[t]*tmp_jhj[d,i,t,f,aa,0,0]
+                        jhj[d,rr,rc,aa,1,1,1] = jhj[d,rr,rc,aa,1,1,1] + \
+                                                fs[f]*ts[t]*tmp_jhj[d,i,t,f,aa,1,1]
 
-                            jhj[d,rr,rc,aa,1,0,0] = jhj[d,rr,rc,aa,1,0,0] + \
-                                                    fs[f]*ts[t]*tmp_jhj[d,i,t,f,aa,0,0]
-                            jhj[d,rr,rc,aa,1,1,1] = jhj[d,rr,rc,aa,1,1,1] + \
-                                                    fs[f]*ts[t]*tmp_jhj[d,i,t,f,aa,1,1]
+                        jhj[d,rr,rc,aa,2,0,0] = jhj[d,rr,rc,aa,2,0,0] + \
+                                                fs[f]*tmp_jhj[d,i,t,f,aa,0,0]
+                        jhj[d,rr,rc,aa,2,1,1] = jhj[d,rr,rc,aa,2,1,1] + \
+                                                fs[f]*tmp_jhj[d,i,t,f,aa,1,1]
 
-                            jhj[d,rr,rc,aa,2,0,0] = jhj[d,rr,rc,aa,2,0,0] + \
-                                                    fs[f]*tmp_jhj[d,i,t,f,aa,0,0]
-                            jhj[d,rr,rc,aa,2,1,1] = jhj[d,rr,rc,aa,2,1,1] + \
-                                                    fs[f]*tmp_jhj[d,i,t,f,aa,1,1]
+                        jhj[d,rr,rc,aa,3,0,0] = jhj[d,rr,rc,aa,3,0,0] + \
+                                                ts[t]*ts[t]*tmp_jhj[d,i,t,f,aa,0,0]
+                        jhj[d,rr,rc,aa,3,1,1] = jhj[d,rr,rc,aa,3,1,1] + \
+                                                ts[t]*ts[t]*tmp_jhj[d,i,t,f,aa,1,1]
 
-                            jhj[d,rr,rc,aa,3,0,0] = jhj[d,rr,rc,aa,3,0,0] + \
-                                                    ts[t]*ts[t]*tmp_jhj[d,i,t,f,aa,0,0]
-                            jhj[d,rr,rc,aa,3,1,1] = jhj[d,rr,rc,aa,3,1,1] + \
-                                                    ts[t]*ts[t]*tmp_jhj[d,i,t,f,aa,1,1]
+                        jhj[d,rr,rc,aa,4,0,0] = jhj[d,rr,rc,aa,4,0,0] + \
+                                                ts[t]*tmp_jhj[d,i,t,f,aa,0,0]
+                        jhj[d,rr,rc,aa,4,1,1] = jhj[d,rr,rc,aa,4,1,1] + \
+                                                ts[t]*tmp_jhj[d,i,t,f,aa,1,1]
 
-                            jhj[d,rr,rc,aa,4,0,0] = jhj[d,rr,rc,aa,4,0,0] + \
-                                                    ts[t]*tmp_jhj[d,i,t,f,aa,0,0]
-                            jhj[d,rr,rc,aa,4,1,1] = jhj[d,rr,rc,aa,4,1,1] + \
-                                                    ts[t]*tmp_jhj[d,i,t,f,aa,1,1]
-
-                            jhj[d,rr,rc,aa,5,0,0] = jhj[d,rr,rc,aa,5,0,0] + \
-                                                    tmp_jhj[d,i,t,f,aa,0,0]
-                            jhj[d,rr,rc,aa,5,1,1] = jhj[d,rr,rc,aa,5,1,1] + \
-                                                    tmp_jhj[d,i,t,f,aa,1,1]
+                        jhj[d,rr,rc,aa,5,0,0] = jhj[d,rr,rc,aa,5,0,0] + \
+                                                tmp_jhj[d,i,t,f,aa,0,0]
+                        jhj[d,rr,rc,aa,5,1,1] = jhj[d,rr,rc,aa,5,1,1] + \
+                                                tmp_jhj[d,i,t,f,aa,1,1]
 
 
 

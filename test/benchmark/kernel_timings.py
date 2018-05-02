@@ -213,8 +213,17 @@ if __name__ == "__main__":
 
             ts = np.linspace(0, 1, nt)
             fs = np.linspace(0, 1, nf)
-            nb = 6 if "_plane" in refkern_name else 3
-            nparm = 3 if "_plane" in refkern_name else 2
+            if "tf_plane" in refkern_name:
+                JHJAXIS = (3,4,1,5,2,0)       # scramble NEW JHJ axes into that order (w.r.t reference)
+                JHRAXIS = (1,2,0,3,4,5)
+                UPDAXIS = (1,2,0)
+                nb, nparm = 6, 3
+            elif "f_slope" in refkern_name or "t_slope" in refkern_name:
+                JHJAXIS = (2,1,0)
+                JHRAXIS = (1,0,2)
+                UPDAXIS = (1,0)
+            nb = len(JHJAXIS)
+            nparm = len(UPDAXIS)
             dtype = np.complex128
             ftype = np.float64
 
@@ -260,8 +269,8 @@ if __name__ == "__main__":
 
             # skipping J^H.R check as order of parameters has scrambled the blocks. Update should come right anyway.
             benchmark_function('cycompute_jhr', (ojhr1.real, o.jhr, ts, fs, t_int, f_int),
-                               setup=lambda:o.jhr.fill(0))
-                               # check=lambda:abs(u.jhr-o.jhr[...,::-1,:,:]).max()<1e-6)
+                               setup=lambda:o.jhr.fill(0),
+                               check=lambda:abs(u.jhr-o.jhr[...,JHRAXIS,:,:]).max()<1e-6)
 
             args.pdb and nfailed and pdb.set_trace()
 
@@ -276,13 +285,13 @@ if __name__ == "__main__":
             benchmark(lambda: refkern.cycompute_tmp_jhj(u.m, ujhj1),"{}.compute_tmp_jhj (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cycompute_inner_jhj', (o.m, ojhj1),
-                               setup=lambda:ojhj1.fill(0), check=lambda:abs(ujhj1[0]-ojhj1).max()<1e-9)
+                               setup=lambda:ojhj1.fill(0), check=lambda:abs(ujhj1[:,0,...]-ojhj1).max()<1e-9)
 
             u.jhj.fill(0)
             benchmark(lambda: refkern.cycompute_jhj(ujhj1.real, u.jhj, ts, fs, t_int, f_int),"{}.compute_jhj (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cycompute_jhj', (ojhj1.real, o.jhj, ts, fs, t_int, f_int),
-                               setup=lambda:o.jhj.fill(0), check=lambda:abs(u.jhj-o.jhj[...,::-1,:,:]).max()<1e-6)
+                               setup=lambda:o.jhj.fill(0), check=lambda:abs(u.jhj-o.jhj[...,JHJAXIS,:,:]).max()<1e-6)
 
             args.pdb and nfailed and pdb.set_trace()
 
@@ -292,7 +301,7 @@ if __name__ == "__main__":
                       "{}.compute_jhjinv (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cycompute_jhjinv', (o.jhj, o.jhjinv, 1e-6),
-                               check=lambda: abs(o.jhjinv - u.jhjinv[...,::-1,:,:]).max() < 1e-8)
+                               check=lambda: abs(u.jhjinv - o.jhjinv[...,JHJAXIS,:,:]).max() < 1e-8)
             args.pdb and nfailed and pdb.set_trace()
 
             print('*** Update')
@@ -300,7 +309,7 @@ if __name__ == "__main__":
                       "{}.compute_update (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cycompute_update', (o.jhr, o.jhjinv, o.p),
-                               check=lambda: abs(o.p[...,::-1,:,:] - u.p).max() < 1e-8)
+                               check=lambda: abs(o.p[...,UPDAXIS,:,:] - u.p).max() < 1e-8)
             args.pdb and nfailed and pdb.set_trace()
 
             print('*** Construct gains')
