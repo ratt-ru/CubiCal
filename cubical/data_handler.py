@@ -351,8 +351,12 @@ class Tile(object):
                                 model = loaded_models[model_source][cluster]
                             # cluster of None signifies that this is a visibility column
                             elif cluster is None:
-                                print>>log(0),"  reading {} for model {} direction {}".format(model_source, imod, idir)
-                                model = self.handler.fetchslice(model_source, self.first_row, nrows)
+                                if model_source is 1:
+                                    print>>log(0),"  using 1.+0j for model {} direction {}".format(model_source, imod, idir)
+                                    model = np.ones(obvis.shape, np.complex64)
+                                else:
+                                    print>>log(0),"  reading {} for model {} direction {}".format(model_source, imod, idir)
+                                    model = self.handler.fetchslice(model_source, self.first_row, nrows)
                                 loaded_models.setdefault(model_source, {})[None] = model
                             # else evaluate a Tigger model with Montblanc
                             else:
@@ -1288,7 +1292,11 @@ class DataHandler:
                     continue
                 idirtag = " dir{}".format(idir if use_ddes else 0)
                 for component in dirmodel.split("+"):
-                    if component.startswith("./") or component not in self.ms.colnames():
+                    # special case: "1" means unity visibilities
+                    if component == "1":
+                        dirmodels.setdefault(idirtag, []).append((1, None))
+                    # else check for an LSM component
+                    elif component.startswith("./") or component not in self.ms.colnames():
                         # check if LSM ends with @tag specification
                         if "@" in component:
                             component, tag = component.rsplit("@",1)
@@ -1309,6 +1317,7 @@ class DataHandler:
                                 dirmodels.setdefault(dirname, []).append((component, key))
                         else:
                             raise ValueError,"model component {} is neither a valid LSM nor an MS column".format(component)
+                    # else it is a visibility column component
                     else:
                         dirmodels.setdefault(idirtag, []).append((component, None))
             self.model_directions.update(dirmodels.iterkeys())
