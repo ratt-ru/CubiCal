@@ -674,14 +674,26 @@ class Tile(object):
         else:
             mod_arr = None
 
-        # flag invalid data
-        flags[(~np.isfinite(obs_arr)).any(axis=(-2, -1))] |= FL.INVALID
-        flagged = flags != 0
-
+        # flag invalid data or zero weights
+        unflagged = flags==0
+        
+        mask = (~np.isfinite(obs_arr)).any(axis=(-2, -1))
+        mask &= unflagged
+        flags[mask] = FL.INVALID
+        # flag null data
+        mask = obs_arr[...,0,0]==0
+        mask |= obs_arr[...,1,1]==0
+        mask &= unflagged
+        flags[mask] |= FL.NULLDATA
+        
         if 'weigh' in data:
             wgt_arr = self._column_to_cube(data['weigh'], t_dim, f_dim, rows, freq_slice, self.handler.ftype)
             wgt_arr = np.sqrt(np.sum(wgt_arr, axis=-1))  # take the square root of sum over correlations
-            wgt_arr[flagged] = 0
+            mask = wgt_arr==0
+            mask &= unflagged
+            flags[mask] |= FL.NULLWGHT
+            del mask,unflagged
+            wgt_arr[flags!=0] = 0
             wgt_arr = wgt_arr.reshape([1, t_dim, f_dim, nants, nants])
         else:
             wgt_arr = None
