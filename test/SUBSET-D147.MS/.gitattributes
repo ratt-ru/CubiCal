@@ -1,0 +1,2 @@
+table.f* filter=lfs diff=lfs merge=lfs -crlf
+table.info filter=lfs diff=lfs merge=lfs -crlf
