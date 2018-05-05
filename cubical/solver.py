@@ -24,7 +24,6 @@ gm_factory = None
 ifrgain_machine = None
 
 
-@profile
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     Main body of the GN/LM method. Handles iterations and convergence tests.
@@ -644,7 +643,6 @@ SOLVERS = { 'so': solve_only,
             }
 
 
-@profile
 def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
     """
     Initialises a gain machine and invokes the solver for the current chunk.
@@ -682,7 +680,12 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
         # Get chunk data from tile.
 
-        obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
+        # need to know which kernel to use to allocate visibility and flag arrays
+        kernel = gm_factory.get_kernel()
+
+        obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key,
+                                 allocator=kernel.allocate_vis_array,
+                                 flag_allocator=kernel.allocate_flag_array)
         
 #        import pdb; pdb.set_trace()
 

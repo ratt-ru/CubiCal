@@ -26,7 +26,7 @@ class ParameterisedGains(PerIntervalGains):
         self.gflags = np.zeros(self.gain_shape[:-2],FL.dtype)
 
         # Function used to unpack the gains or flags into full time/freq resolution.
-        self._gainres_to_fullres  = lambda array,time_ind=0: array
+        self._gainres_to_fullres  = self.copy_or_identity
 
         # function used to unpack interval resolution to gain resolution.
         self._interval_to_gainres = self.unpack_intervals

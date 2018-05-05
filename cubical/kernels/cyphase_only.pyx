@@ -92,3 +92,6 @@ cycompute_corrected = cydiag.cycompute_corrected
 
 ### gains applied as diagonal
 cyapply_gains = cydiag.cyapply_gains
+
+### gains inverted as diagonal
+cyinvert_gains = cygenerics.cycompute_diag_inverse

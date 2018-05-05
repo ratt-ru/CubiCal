@@ -120,3 +120,4 @@ include "includes/complex_gain_kernel.pxi"
 
 cycompute_jhjinv = cygenerics.cycompute_2x2_inverse
 
+cyinvert_gains = cygenerics.cycompute_diag_inverse

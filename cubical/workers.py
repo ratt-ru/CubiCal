@@ -282,8 +282,8 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
         bool:
             True if load/save was successful.
     """
-    _init_worker()
     try:
+        _init_worker()
         result = {'success': True}
         if save is not None:
             tile = Tile.tile_list[save]
@@ -305,7 +305,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
         print>> log(0, "blue"), "I/O job(s) complete"
         return result
     except Exception, exc:
-        print>> log("red"),"I/O handler for load {} save {} failed with exception: {}".format(load, save, exc)
+        print>> log(0, "red"),"I/O handler for load {} save {} failed with exception: {}".format(load, save, exc)
         print>> log, traceback.format_exc()
         raise
 

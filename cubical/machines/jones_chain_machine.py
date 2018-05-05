@@ -5,6 +5,7 @@
 from cubical.machines.abstract_machine import MasterMachine
 from cubical.machines.complex_2x2_machine import Complex2x2Gains
 import numpy as np
+import cubical.kernels
 
 from cubical.tools import logger
 import machine_types
@@ -39,8 +40,8 @@ class JonesChain(MasterMachine):
             jones_options (dict): 
                 Dictionary of options pertaining to the chain. 
         """
-        import cubical.kernels.cyfull_complex as cyfull
-        import cubical.kernels.cychain as cychain
+        self.cykernel = self.get_kernel(jones_options["sol"])
+        self.cychain  = cubical.kernels.import_kernel("cychain")
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, jones_options)
@@ -95,6 +96,15 @@ class JonesChain(MasterMachine):
         self.cached_model_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
         self.cached_resid_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
 
+        self._r = None
+
+    @staticmethod
+    def get_kernel(options):
+        """Returns kernel approriate to Jones options"""
+        if options['diag-diag']:
+            return cubical.kernels.import_kernel("cydiagdiag_complex")
+        else:
+            return cubical.kernels.import_kernel("cyfull_complex")
 
     def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
         """Precomputes various stats before starting a solution"""
@@ -179,45 +189,48 @@ class JonesChain(MasterMachine):
 
             self.jh = np.empty_like(self.cached_model_arr)
 
+            jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
+
+            self._jhr = self.cykernel.allocate_gain_array(jhr_shape, dtype=obser_arr.dtype)
+
+            jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
+
+            self._jhrint = self.cykernel.allocate_gain_array(jhrint_shape, dtype=self._jhr.dtype)
+            self._jhj = np.empty_like(self._jhrint)
+            self._jhjint =  np.empty_like(self._jhrint)
+
         self.jh[:] = self.cached_model_arr
 
         for ind in xrange(self.active_index, -1, -1):
             term = self.jones_terms[ind]
-            cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
+            self.cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
             
-        jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
-
-        jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
-
         if n_dir > 1:
-            resid_arr = np.empty_like(obser_arr)
-            r = self.compute_residual(obser_arr, model_arr, resid_arr)
+            if self._r is None:
+                self._r = np.empty_like(obser_arr)
+            r = self.compute_residual(obser_arr, model_arr, self._r)
         else:
             r = obser_arr
 
-        cyfull.cycompute_jhr(self.jh, r, jhr, 1, 1)
+        self._jhr.fill(0)
+
+        self.cykernel.cycompute_jhr(self.jh, r, self._jhr, 1, 1)
 
         for ind in xrange(0, self.active_index, 1):
             term = self.jones_terms[ind]
-            g_inv = np.empty_like(term.gains)
-            cyfull.cycompute_jhjinv(term.gains, g_inv, term.gflags, term.eps, FL.ILLCOND)
-            cychain.cyapply_left_inv_jones(jhr, g_inv, *term.gain_intervals)
+            g_inv, gh_inv, flag_counts = term.get_inverse_gains()
+            self.cychain.cyapply_left_inv_jones(self._jhr, g_inv, *term.gain_intervals)
 
-        jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
-        
-        jhrint = np.zeros(jhrint_shape, dtype=jhr.dtype)
+        self._jhrint.fill(0)
+        self.cychain.cysum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
 
-        cychain.cysum_jhr_intervals(jhr, jhrint, *self.active_term.gain_intervals)
+        self._jhj.fill(0)
+        self.cykernel.cycompute_jhj(self.jh, self._jhj, *self.active_term.gain_intervals)
 
-        jhj = np.zeros(jhrint_shape, dtype=obser_arr.dtype)
+        flag_count = self.cykernel.cycompute_jhjinv(self._jhj, self._jhjinv,
+                                                    self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
 
-        cyfull.cycompute_jhj(self.jh, jhj, *self.active_term.gain_intervals)
-
-        jhjinv = np.empty(jhrint_shape, dtype=obser_arr.dtype)
-
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
-
-        return jhrint, jhjinv, flag_count
+        return self._jhrint, self._jhjinv, flag_count
 
     def implement_update(self, jhr, jhjinv):
         return self.active_term.implement_update(jhr, jhjinv)
@@ -251,7 +264,7 @@ class JonesChain(MasterMachine):
 
         resid_arr[:] = obser_arr
 
-        cychain.cycompute_residual(self.cached_resid_arr, resid_arr)
+        self.cychain.cycompute_residual(self.cached_resid_arr, resid_arr)
 
         return resid_arr
 

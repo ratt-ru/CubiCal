@@ -85,6 +85,11 @@ class MasterMachine(object):
 
         self._iters = 0
 
+    @staticmethod
+    def get_kernel(options):
+        """Returns kernel appropriate to the set of machine options"""
+        return NotImplementedError
+
     @property
     def dd_term(self):
         """This property is true if the machine represents a direction-dependent"""
@@ -597,6 +602,13 @@ class MasterMachine(object):
             self._save_sols_byname = {}
             # initialize solution databases
             self.init_solutions()
+
+        def get_kernel(self):
+            """
+            Returns kernel appropriate for the class of the gain machine.
+            This is the kernel used to allocate data etc.
+            """
+            return self.machine_class.get_kernel(self.jones_options)
 
         def init_solutions(self):
             """

@@ -16,26 +16,23 @@ Main code body. Handles options, invokes solvers and manages multiprocessing.
 
 import cPickle
 import os, os.path
-import traceback
 import sys
 import warnings
 import numpy as np
-import re
 from time import time
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
 # even if one is only trying to save figures to .png.
 import matplotlib
 
-import multiprocessing
-import concurrent.futures as cf
-
 from cubical.tools import logger
 # set the base name of the logger. This must happen before any other loggers are instantiated
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
 
-import cubical
+import logging
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
 import cubical.data_handler as data_handler
 from cubical.data_handler import DataHandler, Tile
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
@@ -187,6 +184,31 @@ def main(debugging=False):
 
         double_precision = GD["sol"]["precision"] == 64
 
+        # set up RIME
+
+        solver_opts = GD["sol"]
+        debug_opts  = GD["debug"]
+        sol_jones = solver_opts["jones"]
+        if type(sol_jones) is str:
+            sol_jones = set(sol_jones.split(','))
+        jones_opts = [GD[j.lower()] for j in sol_jones]
+        # collect list of options from enabled Jones matrices
+        if not len(jones_opts):
+            raise UserInputError("No Jones terms are enabled")
+        print>> log, ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green")
+
+        have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
+
+        # TODO: in this case data_handler can be told to only load diagonal elements. Save memory!
+        # top-level diag-diag enforced across jones terms
+        if solver_opts['diag-diag']:
+            for jo in jones_opts:
+                jo['diag-diag'] = True
+        else:
+            solver_opts['diag-diag'] = all([jo['diag-diag'] for jo in jones_opts])
+
+        # set up data handler
+
         solver_type = GD['out']['mode']
         if solver_type not in solver.SOLVERS:
             raise UserInputError("invalid setting --out-mode {}".format(solver_type))
@@ -209,6 +231,7 @@ def main(debugging=False):
                           ddid=GD["sel"]["ddid"],
                           channels=GD["sel"]["chan"],
                           flagopts=GD["flags"],
+                          diag=solver_opts["diag-diag"],
                           double_precision=double_precision,
                           beam_pattern=GD["model"]["beam-pattern"],
                           beam_l_axis=GD["model"]["beam-l-axis"],
@@ -218,21 +241,6 @@ def main(debugging=False):
                           max_baseline=GD["sol"]["max-bl"])
 
         data_handler.global_handler = ms
-
-        # set up RIME
-
-        solver_opts = GD["sol"]
-        debug_opts  = GD["debug"]
-        sol_jones = solver_opts["jones"]
-        if type(sol_jones) is str:
-            sol_jones = set(sol_jones.split(','))
-        jones_opts = [GD[j.lower()] for j in sol_jones]
-        # collect list of options from enabled Jones matrices
-        if not len(jones_opts):
-            raise UserInputError("No Jones terms are enabled")
-        print>> log, ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green")
-
-        have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
@@ -404,7 +412,7 @@ def main(debugging=False):
                 plots.make_summary_plots(st, ms, GD, basename)
 
         # make BBC plots
-        if solver.ifrgain_machine and solver.ifrgain_machine.is_computing():
+        if solver.ifrgain_machine and solver.ifrgain_machine.is_computing() and GD["out"]["plots"]:
             import cubical.plots.ifrgains
             with warnings.catch_warnings():
                 warnings.simplefilter("error", np.ComplexWarning)
