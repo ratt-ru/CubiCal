@@ -68,7 +68,6 @@ cdef inline void compute_jhjinv_element(float3264 [:,:,:,:,:,:,:] jhj,
                             jhj[d,t,f,aa,3,c,c]*jhj[d,t,f,aa,2,c,c]*jhj[d,t,f,aa,2,c,c] -
                             jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,1,c,c]*jhj[d,t,f,aa,5,c,c] -
                             jhj[d,t,f,aa,4,c,c]*jhj[d,t,f,aa,4,c,c]*jhj[d,t,f,aa,0,c,c] )
-
     if det<eps:
         for x in xrange(6):
             jhjinv[d,t,f,aa,x,c,c] = 0
