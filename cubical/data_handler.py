@@ -1070,17 +1070,17 @@ class DataHandler:
 
         self.ctype = np.complex128 if double_precision else np.complex64
         self.ftype = np.float64 if double_precision else np.float32
-        nmscorrs = _poltab.getcol("NUM_CORR")[0]
-        if nmscorrs == 4 and diag:
+        self.nmscorrs = _poltab.getcol("NUM_CORR")[0]
+        if self.nmscorrs == 4 and diag:
             self._corr_4to2 = True
             self.ncorr = 2
             self._corr_slice = (0,3)
-        elif nmscorrs in (2,4):
-            self.ncorr = nmscorrs
+        elif self.nmscorrs in (2,4):
+            self.ncorr = self.nmscorrs
             self._corr_4to2 = False
             self._corr_slice = slice(None)
         else:
-            raise RuntimeError("MS with %d correlations not (yet) supported"%nmscorrs)
+            raise RuntimeError("MS with {} correlations not (yet) supported".format(self.nmscorrs))
         self.diag = diag
         self.nants = _anttab.nrows()
 
@@ -1186,7 +1186,7 @@ class DataHandler:
 
         print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels per DDID, %d corrs %s" % (self.nants,
                     self.nrows, len(self._ddids), self._num_total_ddids, self.ntime, self.nfreq,
-                    nmscorrs, "(using diag only)" if self._corr_4to2 else "")
+                    self.nmscorrs, "(using diag only)" if self._corr_4to2 else "")
         print>>log,"  DDID central frequencies are at {} GHz".format(
                     " ".join(["%.2f"%(self._ddid_chanfreqs[d][self.nfreq/2]*1e-9) for d in self._ddids]))
         self.nddid = len(self._ddids)
@@ -1494,7 +1494,7 @@ class DataHandler:
             except Exception, exc:
                 pass
         print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
-        value0 = np.zeros((nrows, self._nchan_orig, value.shape[2]), value.dtype)
+        value0 = np.zeros((nrows, self._nchan_orig, self.nmscorrs), value.dtype)
         value0[:, self._channel_slice, self._corr_slice] = value
         return self.data.putcol(column, value0, startrow, nrows)
 
