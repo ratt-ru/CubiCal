@@ -197,7 +197,7 @@ class JonesChain(MasterMachine):
 
             self._jhrint = self.cykernel.allocate_gain_array(jhrint_shape, dtype=self._jhr.dtype)
             self._jhj = np.empty_like(self._jhrint)
-            self._jhjint =  np.empty_like(self._jhrint)
+            self._jhjinv =  np.empty_like(self._jhrint)
 
         self.jh[:] = self.cached_model_arr
 
@@ -482,3 +482,11 @@ class JonesChain(MasterMachine):
                                      bool(opts["xfer-from"]),
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
                                      Complex2x2Gains.exportable_solutions())
+
+        def get_kernel(self):
+            """
+            Returns kernel appropriate for the class of the gain machine.
+            This is the kernel used to allocate data etc.
+            """
+            return self.machine_class.get_kernel(self.jones_options["sol"])
+

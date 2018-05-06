@@ -1766,48 +1766,6 @@ def cyapply_gains_conj2(complex3264 [:,:,:,:,:,:,:,:] m,
                             m[d,i,t,f,ab,aa,1,0] = m[d,i,t,f,aa,ab,0,1].conjugate()
                             m[d,i,t,f,ab,aa,1,1] = m[d,i,t,f,aa,ab,1,1].conjugate()
 
-cdef inline void mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b,const complex3264 *c):
-    """
-    Computes a triple 2x2 matrix product in place: out = A.B.C
-    A matrix is just a sequence in memory of four complex numbers [x00,x01,x10,x11]
-    """
-    out[0] = (a[0]*b[0]*c[0] + a[1]*b[2]*c[0] + a[0]*b[1]*c[2] + a[1]*b[3]*c[2])
-    out[1] = (a[0]*b[0]*c[1] + a[1]*b[2]*c[1] + a[0]*b[1]*c[3] + a[1]*b[3]*c[3])
-    out[2] = (a[2]*b[0]*c[0] + a[3]*b[2]*c[0] + a[2]*b[1]*c[2] + a[3]*b[3]*c[2])
-    out[3] = (a[2]*b[0]*c[1] + a[3]*b[2]*c[1] + a[2]*b[1]*c[3] + a[3]*b[3]*c[3])
-
-cdef inline void subtract_mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b,const complex3264 *c):
-    """
-    Subtracts a triple 2x2 matrix product: out -= A.B.C
-    A matrix is just a sequence in memory of four complex numbers [x00,x01,x10,x11]
-    """
-    out[0] -= (a[0]*b[0]*c[0] + a[1]*b[2]*c[0] + a[0]*b[1]*c[2] + a[1]*b[3]*c[2])
-    out[1] -= (a[0]*b[0]*c[1] + a[1]*b[2]*c[1] + a[0]*b[1]*c[3] + a[1]*b[3]*c[3])
-    out[2] -= (a[2]*b[0]*c[0] + a[3]*b[2]*c[0] + a[2]*b[1]*c[2] + a[3]*b[3]*c[2])
-    out[3] -= (a[2]*b[0]*c[1] + a[3]*b[2]*c[1] + a[2]*b[1]*c[3] + a[3]*b[3]*c[3])
-
-cdef inline void inplace_mat_product(const complex3264 *a,complex3264 *b,const complex3264 *c):
-    """
-    Computes a triple 2x2 matrix product in place: B = A.B.C
-    """
-    cdef complex3264 m00,m01,m10
-    m00 = (a[0]*b[0]*c[0] + a[1]*b[2]*c[0] + a[0]*b[1]*c[2] + a[1]*b[3]*c[2])
-    m01 = (a[0]*b[0]*c[1] + a[1]*b[2]*c[1] + a[0]*b[1]*c[3] + a[1]*b[3]*c[3])
-    m10 = (a[2]*b[0]*c[0] + a[3]*b[2]*c[0] + a[2]*b[1]*c[2] + a[3]*b[3]*c[2])
-    b[3] = (a[2]*b[0]*c[1] + a[3]*b[2]*c[1] + a[2]*b[1]*c[3] + a[3]*b[3]*c[3])
-    b[0] = m00
-    b[1] = m01
-    b[2] = m10
-
-cdef inline void mat_conjugate(complex3264 * out,const complex3264 *x):
-    """
-    Computes a 2x2 matrix Hermitian conjugate: out = X^H
-    """
-    out[0] = x[0].conjugate()
-    out[1] = x[2].conjugate()
-    out[2] = x[1].conjugate()
-    out[3] = x[3].conjugate()
-
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
