@@ -420,9 +420,7 @@ class _VisDataManager(object):
             if imod is None, otherwise the model axis is omitted.
         """
         if not self._model_corrupted:
-            import pdb; pdb.set_trace()
             self.gm.apply_gains(self.model_arr)
-            import pdb; pdb.set_trace()
             self._model_corrupted = True
         if imod is None:
             return self.model_arr
@@ -537,7 +535,6 @@ def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
     # compute residuals
-    import pdb; pdb.set_trace()
     resid_vis = vdm.corrupt_residual(sol_opts["subtract-model"],  sol_opts["subtract-dirs"])
 
     # correct residual if required
