@@ -101,6 +101,11 @@ class PhaseSlopeGains(ParameterisedGains):
         
         return exportables
 
+    def get_inverse_gains(self):
+        """Returns inverse gains and inverse conjugate gains. For phase-only, conjugation is inverse"""
+        gh = self.get_conj_gains()
+        return gh, self.gains, 0
+
     def importable_solutions(self):
         """ Returns a dictionary of importable solutions for this machine type. """
 
@@ -171,7 +176,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         jhr1 = self.get_new_jhr()
 
-        r = self.get_obs_or_res()
+        r = self.get_obs_or_res(obser_arr, model_arr)
 
         # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHR
         self.cykernel.cycompute_jhr(gh, jh, r, jhr1, 1, 1)

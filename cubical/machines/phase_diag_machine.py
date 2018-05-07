@@ -36,7 +36,7 @@ class PhaseDiagGains(PerIntervalGains):
                                   chunk_ts, chunk_fs, chunk_label, options,
                                   self.get_kernel(options))
 
-        self.phases = cykernel.allocate_gain_array(self.gain_shape, dtype=self.ftype, zeros=True)
+        self.phases = self.cykernel.allocate_gain_array(self.gain_shape, dtype=self.ftype, zeros=True)
         self.gains = np.empty_like(self.phases, dtype=self.dtype)
         self.gains[:] = np.eye(self.n_cor) 
         self.old_gains = self.gains.copy()
@@ -48,6 +48,11 @@ class PhaseDiagGains(PerIntervalGains):
             return cubical.kernels.import_kernel('cydiag_phase_only')
         else:
             return cubical.kernels.import_kernel('cyphase_only')
+
+    def get_inverse_gains(self):
+        """Returns inverse gains and inverse conjugate gains. For phase-only, conjugation is inverse"""
+        gh = self.get_conj_gains()
+        return gh, self.gains, 0
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -65,8 +70,6 @@ class PhaseDiagGains(PerIntervalGains):
             np.ndarray:
                 J\ :sup:`H`\R
         """
-
-        n_dir, n_timint, n_freint, n_ant, n_cor, n_cor = self.gains.shape
 
         gh = self.get_conj_gains()
         jh = self.get_new_jh(model_arr)

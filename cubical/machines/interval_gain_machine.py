@@ -443,7 +443,7 @@ class PerIntervalGains(MasterMachine):
 
 
     def next_iteration(self):
-        self.old_gains = self.gains.copy()
+        np.copyto(self.old_gains, self.gains)
         return MasterMachine.next_iteration(self)
 
     def flag_solutions(self, flags_arr, final):

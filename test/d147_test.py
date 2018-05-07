@@ -32,31 +32,36 @@ class SolverVerification(object):
         logprint("*** running {}".format(cmd))
         retcode = os.system(cmd)
         if retcode:
-            raise RuntimeError("gocubical failed, return code {}".format(retcode))
+            raise RuntimeError("{}: return code {}".format(cmd, retcode))
         tab = table(self.msname)
         cd = tab.getcol("CORRECTED_DATA")
         c0 = tab.getcol(colname)
         diff = abs(cd-c0).max()
         logprint("*** max diff between CORRECTED_DATA and {} is {}".format(colname, diff))
         if diff > tolerance:
-            raise RuntimeError("diff {} exceeds tolerance of {}".format(diff, tolerance))
+            raise RuntimeError("{}: diff {} exceeds tolerance of {}".format(cmd, diff, tolerance))
 
 d147_test_list = [
     ("GSOL_DATA", dict()),
-    ("GBSOL_DATA", dict(sol_jones="G,B", g_time_int=1, g_freq_int=0, b_time_int=0, b_freq_int=1))
+    ("GBSOL_DATA", dict(sol_jones="G,B", g_time_int=1, g_freq_int=0, b_time_int=0, b_freq_int=1)),
+    ("PO_DATA", dict(g_type='phase-diag')),
+    ("FS_DATA", dict(g_type='f-slope', g_time_int=1, g_freq_int=0)),
+    ("TS_DATA", dict(g_type='t-slope', g_time_int=0, g_freq_int=1)),
+    ("TFP_DATA", dict(g_type='tf-plane', g_time_int=0, g_freq_int=0)),
 ]
 
 d147_test_dict = dict(d147_test_list)
+
+
 
 DEFAULT_MS = "SUBSET-D147.MS"
 DEFAULT_PARSET = "d147-test.parset"
 DEFAULT_OUTPUT_DIR = os.environ["HOME"]+"/tmp"
 DEFAULT_NCPU = None
 
-def d147_test(ms=DEFAULT_MS, parset=DEFAULT_PARSET, workdir=None, args=[]):
-    os.system("pwd")
+def d147_test(ms=DEFAULT_MS, parset=DEFAULT_PARSET, workdir=None, args=[], tests=d147_test_list):
     tester = SolverVerification(ms, parset, workdir or DEFAULT_OUTPUT_DIR)
-    for colname, opts in d147_test_list:
+    for colname, opts in tests:
         if DEFAULT_NCPU:
             opts["dist_ncpu"] = DEFAULT_NCPU
         tester.verify(colname, args=args, **opts)
@@ -88,10 +93,9 @@ if __name__ == '__main__':
 
     if args.genref:
         tester = SolverVerification(args.ms, args.parset, args.dir)
-        for colname, opts in d147_test_list:
-            if args.tests and colname in args.tests:
-                if DEFAULT_NCPU:
-                    opts["dist_ncpu"] = DEFAULT_NCPU
-                tester.generate_reference(colname, args.args, **opts)
+        for colname, opts in tests:
+            if DEFAULT_NCPU:
+                opts["dist_ncpu"] = DEFAULT_NCPU
+            tester.generate_reference(colname, args.args, **opts)
     else:
-        d147_test(args.ms, args.parset, args.dir, args=args.args)
+        d147_test(args.ms, args.parset, args.dir, args=args.args, tests=tests)

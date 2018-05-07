@@ -243,7 +243,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
-    
+
     if gm.has_valid_solutions:
         # Final round of flagging
         flagged = gm.flag_solutions(flags_arr, True)
@@ -420,7 +420,9 @@ class _VisDataManager(object):
             if imod is None, otherwise the model axis is omitted.
         """
         if not self._model_corrupted:
+            import pdb; pdb.set_trace()
             self.gm.apply_gains(self.model_arr)
+            import pdb; pdb.set_trace()
             self._model_corrupted = True
         if imod is None:
             return self.model_arr
@@ -535,6 +537,7 @@ def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
     # compute residuals
+    import pdb; pdb.set_trace()
     resid_vis = vdm.corrupt_residual(sol_opts["subtract-model"],  sol_opts["subtract-dirs"])
 
     # correct residual if required
@@ -689,8 +692,6 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
                                  allocator=kernel.allocate_vis_array,
                                  flag_allocator=kernel.allocate_flag_array)
         
-#        import pdb; pdb.set_trace()
-
         chunk_ts, chunk_fs, _, freq_slice = tile.get_chunk_tfs(chunk_key)
 
         # apply IFR-based gains, if any
