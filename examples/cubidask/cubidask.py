@@ -311,15 +311,6 @@ if __name__ == "__main__":
 
         t_int, f_int, eps = 1.0, 1.0, 0.95
 
-        from multiprocessing.pool import ThreadPool
-        from chest import Chest
-
-        # 8 threads, 15GB memory pool
-        optkw = {
-            'pool' : ThreadPool(8),
-            'cache' : Chest(available_memory=10e9)
-        }
-
         jhr, jhjinv, flagcounts = compute_js(du, t_int, f_int, eps, FL.ILLCOND)
         update = compute_update(jhr, jhjinv)
 
@@ -327,10 +318,6 @@ if __name__ == "__main__":
         results = (jhr.sum(), jhjinv.sum(), update.sum(), flagcounts)
 
         gains = gain_update_loop(du.o, du.m, du.g, du.f, t_int, f_int, eps)
-
-        prof = Profiler()
-        rprof = ResourceProfiler()
-        cprof = CacheProfiler()
 
         # zarr chunks are slightly different and
         # not as flexible as dask chunks.
@@ -343,9 +330,28 @@ if __name__ == "__main__":
                                     chunks=chunks,
                                     compressor=zarr_compressor)
 
+        # Final graph key is a zarr store operation
         store = da.store(gains, zarr_out, compute=False)
 
-        with ProgressBar(), prof, rprof, cprof, da.set_options(**optkw):
+
+        # Configure dask run options
+        from multiprocessing.pool import ThreadPool
+        from chest import Chest
+
+        # 8 threads, spill to disk at memory limit
+        optkw = {
+            'pool' : ThreadPool(8),
+            'cache' : Chest(available_memory=10e9)
+        }
+
+        # Task, CPU/Memory and Task Cache profilers
+        progress = ProgressBar()
+        prof = Profiler()
+        rprof = ResourceProfiler()
+        cprof = CacheProfiler()
+
+        # Run the graph
+        with progress, prof, rprof, cprof, da.set_options(**optkw):
             dask.compute(store)
 
         visualize([prof, rprof, cprof])
