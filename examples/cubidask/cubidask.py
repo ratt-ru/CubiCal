@@ -13,6 +13,7 @@ from toolz import merge
 import cubical.kernels.cyfull_complex as cyfull
 import cubical.kernels
 from cubical.flagging import FL
+import zarr
 
 def Time(code, name, n=3):
     res = timeit.repeat(code, repeat=n, number=1)
@@ -58,7 +59,7 @@ class DaskArrays(object):
                       'p': ca, 'q': ca,
                       'c': 2}
 
-        self.o = self.dask_array("tfpqcc", dtype, method='empty')
+        self.o = self.dask_array("mtfpqcc", dtype, method='empty')
         self.m = self.dask_array("dmtfpqcc", dtype, method='empty')
         self.r = self.dask_array("mtfpqcc", dtype)
         self.g = self.dask_array("dtfpcc", dtype, method='empty')
@@ -233,10 +234,80 @@ def compute_js(du, t_int, f_int, eps, flag_bit):
 
     return jhr, jhjinv, flagcounts
 
+
+
+
+def gain_update_loop(obs_arr, model_arr, gains, gflags, t_int, f_int, eps):
+    """
+    """
+
+    def _compute_gains(obs_arr, model_arr, gains, gflags, t_int, f_int, eps):
+        # Extract actual ndarrays from the supplied lists
+        obs_arr = obs_arr[0][0]
+        model_arr = model_arr[0][0]
+        gains = gains
+        gflags = gflags
+
+        loops = np.random.randint(25, 35)
+
+        n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = gains.shape
+
+        for i in range(loops):
+            jh = np.zeros_like(model_arr)
+            cyfull.cycompute_jh(model_arr, gains, jh, t_int, f_int)
+
+            jhr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
+
+            jhr = np.zeros(jhr_shape, dtype=obs_arr.dtype)
+
+            # TODO: This breaks with the new compute
+            # residual code for n_dir > 1. Will need a fix.
+            if n_dir > 1:
+                resid_arr = np.empty_like(obs_arr)
+                gains_h = gains.transpose(0,1,2,3,5,4).conj()
+                r = np.empty_like(obs_arr)
+                cyfull.cycompute_residual(model_arr, gains, gains_h, r, t_int, f_int)
+            else:
+                r = obs_arr
+
+            cyfull.cycompute_jhr(jh, r, jhr, t_int, f_int)
+
+            jhj = np.zeros(jhr_shape, dtype=obs_arr.dtype)
+            cyfull.cycompute_jhj(jh, jhj, t_int, f_int)
+
+            jhjinv = np.empty(jhr_shape, dtype=obs_arr.dtype)
+            flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, gflags, eps, FL.ILLCOND)
+
+            update = np.empty_like(jhr)
+            cyfull.cycompute_update(jhr, jhjinv, update)
+
+            gains = update
+
+        return gains
+
+    return da.core.atop(_compute_gains, 'dtfpcc',
+                    obs_arr, 'mtfpqcc',
+                    model_arr, 'dmtfpqcc',
+                    gains, 'dtfpcc',
+                    gflags, 'dtfp',
+                    t_int=t_int,
+                    f_int=f_int,
+                    eps=eps,
+                    dtype=model_arr.dtype)
+
 if __name__ == "__main__":
+
+    zarr_store = zarr.DirectoryStore("zarr_data")
+    zarr_group = zarr.hierarchy.group(store=zarr_store,
+                                      overwrite=True,
+                                      synchronizer=zarr.ThreadSynchronizer())
+    zarr_compressor = zarr.Blosc(cname='zstd', clevel=3, shuffle=2)
 
     for nd in (1,):
         du = DaskArrays(nd=nd,nt=512,ct=32,nf=128,cf=32,na=64,ca=64)
+
+        group_str = 'DIRECTION_%d' % nd
+        dir_group = zarr_group.create_group(group_str)
 
         t_int, f_int, eps = 1.0, 1.0, 0.95
 
@@ -246,22 +317,36 @@ if __name__ == "__main__":
         # 8 threads, 15GB memory pool
         optkw = {
             'pool' : ThreadPool(8),
-            'cache' : Chest(available_memory=15e9)
+            'cache' : Chest(available_memory=10e9)
         }
 
-        jhr, jhjinv, flagcounts = compute_js(du, 1.0, 1.0, 0.95, FL.ILLCOND)
+        jhr, jhjinv, flagcounts = compute_js(du, t_int, f_int, eps, FL.ILLCOND)
         update = compute_update(jhr, jhjinv)
 
         # Just sum over arrays so we don't run out of memory
         results = (jhr.sum(), jhjinv.sum(), update.sum(), flagcounts)
 
+        gains = gain_update_loop(du.o, du.m, du.g, du.f, t_int, f_int, eps)
+
         prof = Profiler()
         rprof = ResourceProfiler()
         cprof = CacheProfiler()
 
+        # zarr chunks are slightly different and
+        # not as flexible as dask chunks.
+        # Set zarr chunk = max dask chunk for each dimension
+        chunks = tuple(max(c) for c in gains.chunks)
+
+        zarr_out = dir_group.empty("GAINS",
+                                    shape=gains.shape,
+                                    dtype=gains.dtype,
+                                    chunks=chunks,
+                                    compressor=zarr_compressor)
+
+        store = da.store(gains, zarr_out, compute=False)
+
         with ProgressBar(), prof, rprof, cprof, da.set_options(**optkw):
-            results = dask.compute(*results, rerun_local_exceptions=True)
-            print results
+            dask.compute(store)
 
         visualize([prof, rprof, cprof])
 
