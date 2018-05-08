@@ -1,0 +1,4 @@
+chest                       # spill to disk
+dask[array] >= 0.17.4       # Multi-core computation
+bokeh                       # For HTML Profiling charts
+psutil                      # For CPU Profiling
