@@ -12,6 +12,7 @@ from toolz import merge
 
 import cubical.kernels.cyfull_complex as cyfull
 import cubical.kernels
+from cubical.flagging import FL
 
 def Time(code, name, n=3):
     res = timeit.repeat(code, repeat=n, number=1)
@@ -248,8 +249,7 @@ if __name__ == "__main__":
             'cache' : Chest(available_memory=15e9)
         }
 
-        jhr, jhjinv, flagcounts = compute_js(du, 1.0, 1.0, 0.95, 1)
-
+        jhr, jhjinv, flagcounts = compute_js(du, 1.0, 1.0, 0.95, FL.ILLCOND)
         update = compute_update(jhr, jhjinv)
 
         # Just sum over arrays so we don't run out of memory
