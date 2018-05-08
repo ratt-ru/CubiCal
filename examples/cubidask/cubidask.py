@@ -72,13 +72,32 @@ class DaskArrays(object):
         self.corr = da.zeros_like(self.o)
 
 
-def da_compute_residual(m, g, gh, t_int, f_int):
+def compute_residual(m, g, gh, t_int, f_int):
     @wraps(cyfull.cycompute_residual)
     def _wrapper(m, g, gh, t_int, f_int):
+        # Arguments to the the wrapper may be passed as numpy arrays or lists.
+        # They will be a nested list of numpy array when there are
+        # dimension(s) in the argument absent in the result,
+        # and the nesting will equal the number of absent dimensions.
+        # For example, the final result has dimensions ``mtfpqcc``
+        # while argument ``m`` has dimensions ``dmtfpqcc``. Dimensions ``d``
+        # is absent in the result, so ``m`` is a list with a single
+        # numpy array. See
+        # http://dask.pydata.org/en/latest/array-api.html#dask.array.core.atop
+        # for further details
         r = np.zeros(m[0].shape[1:], m[0].dtype)
         cyfull.cycompute_residual(m[0], g[0], gh[0], r, t_int, f_int)
         return r
 
+    # Array tensor product. Produces a dask array of supplied dimension schema
+    # 'mtfpqcc' where each chunk is defined as a ``_wrapper`` call.
+    # Chunks of the input dask arrays (m,g,gh) are matched to the output array
+    # chunks based on their schema's ('dmtfpqcc' in the case of ``m`` for e.g.)
+    # Finally, keyword arguments (t_int, f_int) are passed to
+    # all ``_wrapper`` calls. atop
+    # http://dask.pydata.org/en/latest/array-api.html#dask.array.core.atop
+    # takes it's own keywork arguments too. Here, dtype specifies the type
+    # of the output dask array.
     return da.core.atop(_wrapper, 'mtfpqcc',
                     m, 'dmtfpqcc',
                     g, 'dtfpcc',
@@ -87,7 +106,7 @@ def da_compute_residual(m, g, gh, t_int, f_int):
                     f_int=f_int,
                     dtype=m.dtype)
 
-def da_compute_jh(m, g, t_int, f_int):
+def compute_jh(m, g, t_int, f_int):
     @wraps(cyfull.cycompute_jh)
     def _wrapper(m, g, t_int, f_int):
         jh = np.zeros_like(m)
@@ -102,7 +121,7 @@ def da_compute_jh(m, g, t_int, f_int):
                         dtype=m.dtype)
 
 
-def da_compute_jhr(jh, r, t_int, f_int):
+def compute_jhr(jh, r, t_int, f_int):
     @wraps(cyfull.cycompute_jh)
     def _wrapper(jh, r, t_int, f_int):
         d, m, t, f, p, q, c1, c2 = jh[0][0].shape
@@ -118,7 +137,7 @@ def da_compute_jhr(jh, r, t_int, f_int):
                         dtype=r.dtype)
 
 
-def da_compute_jhj(jh, t_int, f_int):
+def compute_jhj(jh, t_int, f_int):
     @wraps(cyfull.cycompute_jh)
     def _wrapper(jh, t_int, f_int):
         d, m, t, f, p, q, c1, c2 = jh[0][0].shape
@@ -132,7 +151,7 @@ def da_compute_jhj(jh, t_int, f_int):
                         f_int=f_int,
                         dtype=jh.dtype)
 
-def da_compute_jhjinv(jhj, gflags, eps, flag_bit):
+def compute_jhjinv(jhj, gflags, eps, flag_bit):
     @wraps(cyfull.cycompute_jhjinv)
     def _wrapper(jhj, gflags, eps, flag_bit):
         jhjinv = np.zeros_like(jhj)
@@ -191,19 +210,32 @@ def da_compute_jhjinv(jhj, gflags, eps, flag_bit):
     # Return reduction of flagcounts as well as the jhjinv array
     return flagcounts.sum(), jhjinv
 
+def compute_update(jhr, jhjinv):
+
+    @wraps(cyfull.cycompute_update)
+    def _wrapper(jhr, jhjinv):
+        update = np.empty_like(jhr[0])
+        cyfull.cycompute_update(jhr[0], jhjinv, update)
+        return update
+
+    return da.core.atop(_wrapper, 'dtfpcc',
+                        jhr, 'tfpqcc',
+                        jhjinv, 'dtfpcc',
+                        dtype=jhr.dtype)
+
 def compute_js(du, t_int, f_int, eps, flag_bit):
-    res = da_compute_residual(du.m, du.g, du.gh, t_int, f_int)
-    jh = da_compute_jh(du.m, du.g, t_int, f_int)
-    jhr = da_compute_jhr(jh, res, t_int, f_int)
-    jhj = da_compute_jhj(jh, t_int, f_int)
-    flagcounts, jhjinv = da_compute_jhjinv(jhj, du.f, eps, 1)
+    res = compute_residual(du.m, du.g, du.gh, t_int, f_int)
+    jh = compute_jh(du.m, du.g, t_int, f_int)
+    jhr = compute_jhr(jh, res, t_int, f_int)
+    jhj = compute_jhj(jh, t_int, f_int)
+    flagcounts, jhjinv = compute_jhjinv(jhj, du.f, eps, 1)
 
     return jhr, jhjinv, flagcounts
 
 if __name__ == "__main__":
 
     for nd in (1,):
-        du = DaskArrays(nd=nd,nt=512,ct=32,nf=128,cf=64,na=64,ca=64)
+        du = DaskArrays(nd=nd,nt=512,ct=32,nf=128,cf=32,na=64,ca=64)
 
         t_int, f_int, eps = 1.0, 1.0, 0.95
 
@@ -216,10 +248,12 @@ if __name__ == "__main__":
             'cache' : Chest(available_memory=15e9)
         }
 
-        jhj, jhjinv, flagcounts = compute_js(du, 1.0, 1.0, 0.95, 1)
+        jhr, jhjinv, flagcounts = compute_js(du, 1.0, 1.0, 0.95, 1)
+
+        update = compute_update(jhr, jhjinv)
 
         # Just sum over arrays so we don't run out of memory
-        results = (jhj.sum(), jhjinv.sum(), flagcounts)
+        results = (jhr.sum(), jhjinv.sum(), update.sum(), flagcounts)
 
         prof = Profiler()
         rprof = ResourceProfiler()
