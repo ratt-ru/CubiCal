@@ -331,7 +331,7 @@ if __name__ == "__main__":
                                     compressor=zarr_compressor)
 
         # Final graph key is a zarr store operation
-        store = da.store(gains, zarr_out, compute=False)
+        store = da.store(gains, zarr_out, compute=False, lock=False)
 
 
         # Configure dask run options
