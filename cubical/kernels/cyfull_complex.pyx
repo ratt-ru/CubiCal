@@ -390,27 +390,28 @@ def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
     cdef int d, t, f, aa = 0
     cdef int n_dir, n_tim, n_fre, n_ant
 
-    n_dir = jhr.shape[0]
-    n_tim = jhr.shape[1]
-    n_fre = jhr.shape[2]
-    n_ant = jhr.shape[3]
+    with nogil:
+        n_dir = jhr.shape[0]
+        n_tim = jhr.shape[1]
+        n_fre = jhr.shape[2]
+        n_ant = jhr.shape[3]
 
-    for d in xrange(n_dir):
-        for t in xrange(n_tim):
-            for f in xrange(n_fre):
-                for aa in xrange(n_ant):
+        for d in xrange(n_dir):
+            for t in xrange(n_tim):
+                for f in xrange(n_fre):
+                    for aa in xrange(n_ant):
 
-                    upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,0] + \
-                                        jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,0]
+                        upd[d,t,f,aa,0,0] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,0] + \
+                                            jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,0]
 
-                    upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,1] + \
-                                        jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,1]
+                        upd[d,t,f,aa,0,1] = jhr[d,t,f,aa,0,0]*jhjinv[d,t,f,aa,0,1] + \
+                                            jhr[d,t,f,aa,0,1]*jhjinv[d,t,f,aa,1,1]
 
-                    upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,0] + \
-                                        jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,0]
+                        upd[d,t,f,aa,1,0] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,0] + \
+                                            jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,0]
 
-                    upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,1] + \
-                                        jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,1]
+                        upd[d,t,f,aa,1,1] = jhr[d,t,f,aa,1,0]*jhjinv[d,t,f,aa,0,1] + \
+                                            jhr[d,t,f,aa,1,1]*jhjinv[d,t,f,aa,1,1]
 
 
 @cython.cdivision(True)
