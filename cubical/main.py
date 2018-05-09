@@ -331,7 +331,7 @@ def main(debugging=False):
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
-                                                       
+        
         # create IFR-based gain machine. Only compute gains if we're loading a model
         # (i.e. not in load-apply mode)
         solver.ifrgain_machine = ifr_gain_machine.IfrGainMachine(solver.gm_factory, GD["bbc"], compute=load_model)
@@ -382,8 +382,8 @@ def main(debugging=False):
                     print>>log(0),ModColor.Str("single-chunk {} was processed in this tile. Will now finish".format(single_chunk))
                     break
             solver.ifrgain_machine.save()
+            solver.gm_factory.set_metas(ms)
             solver.gm_factory.close()
-
         else:
 
             # Setup properties dict for _init_workers()
@@ -554,7 +554,10 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
             If specified, loads model column from measurement set.
         finalize (bool, optional):
             If True, save will call the unlock method on the handler.
-
+        solver (cubical solver object, mandatory):
+            Kludge: singleton in parent is out of sync with children processes
+            this forces reserialization. Better option here is to call this with a threadpool
+            and appropriate locking around setters.
     Returns:
         bool:
             True if load/save was successful.
@@ -571,6 +574,8 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
                 solver.gm_factory.save_solutions(sd)
                 solver.ifrgain_machine.accumulate(sd)
             if finalize:
+                # any metadata should have been set up by this stage
+                solver.gm_factory.set_metas(tile.handler)
                 solver.ifrgain_machine.save()
                 solver.gm_factory.close()
                 result['flagcounts'] = tile.handler.flagcounts

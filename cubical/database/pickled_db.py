@@ -31,7 +31,7 @@ class PickledDatabase(iface_database):
     def __init__(self):
         self._fobj = None
 
-    def _create(self, filename, metadata={}, backup=True):
+    def _create(self, filename, metadata={}, backup=True, **kw):
         """
         Creates a parameter database given by the filename and opens it in "create" mode.
 
@@ -42,6 +42,8 @@ class PickledDatabase(iface_database):
                 Optional metadata to be stored in DB.
             backup (bool, optional):
                 If True, and an old database with the same filename exists, make a backup.
+            kw (dict):
+                Keyword arguments.
         """
 
         self.mode = "create"

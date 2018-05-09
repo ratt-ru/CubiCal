@@ -8,6 +8,7 @@ from numpy.ma import masked_array
 import traceback
 
 from cubical import param_db
+from cubical.database.casa_db_adaptor import casa_db_adaptor
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("gain_machine")
@@ -697,7 +698,14 @@ class MasterMachine(object):
             # init DB, if needed
             db = self._save_sols_byname.get(save_to)
             if db is None:
-                self._save_sols_byname[save_to] = db = param_db.create(save_to, backup=True)
+                selfield = self.global_options["sel"]["field"]
+                assert type(selfield) is int, "Currently only supports single field data selection"
+                selddid = self.global_options["sel"]["ddid"]
+                assert ((type(selddid) is list) and (all([type(t) is int for t in selddid]))) or \
+                       (type(selddid) is int), "SPW should be a list of ints or int. This is a bug"
+                meta = {"field": selfield,
+                        "ddids": [selddid] if type(selddid) is int else selddid}
+                self._save_sols_byname[save_to] = db = param_db.create(save_to, metadata=meta, backup=True)
             self._save_sols[name] = db
             # work out type of empty value
             if type(empty_value) is float:
@@ -795,4 +803,14 @@ class MasterMachine(object):
                                     chunk_label, self.jones_options)
             gm._load_solutions(self._init_sols)
             return gm
-
+        
+        def set_metas(self, src):
+            """
+            Sets database meta information source
+            
+            Args:
+                src: instance of cubical.data_handler
+            """
+            for db in self._save_sols_byname.values():
+                db.set_metadata(src)
+                db.export_CASA_gaintable = self.global_options["out"].get("casa-gaintables", True)
