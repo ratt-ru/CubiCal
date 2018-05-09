@@ -91,12 +91,7 @@ class JonesChain(MasterMachine):
         # True when the last active term has had its convergence status queried
         self._convergence_states_finalized = True
 
-        cached_array_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, 
-                              self.n_ant, self.n_ant, self.n_cor, self.n_cor]
-        self.cached_model_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
-        self.cached_resid_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
-
-        self._r = None
+        self.cached_model_arr = self._r = self._m = None
 
     @staticmethod
     def get_kernel(options):
@@ -151,6 +146,7 @@ class JonesChain(MasterMachine):
         for term in self.jones_terms:
             term._load_solutions(init_sols)
 
+    #@profile
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
@@ -177,15 +173,18 @@ class JonesChain(MasterMachine):
         n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.active_term.gains.shape
 
         if self.last_active_index!=self.active_index or self.iters==1:
-        
-            self.cached_model_arr = model_arr.copy()
+
+            self.cached_model_arr = cached_model_arr = np.empty_like(model_arr)
+            np.copyto(cached_model_arr, model_arr)
 
             for ind in xrange(self.n_terms - 1, self.active_index, -1):
                 term = self.jones_terms[ind]
-                term.apply_gains(self.cached_model_arr)
+                term.apply_gains(cached_model_arr)
 
+            # collapse direction axis, if current term is non-DD
             if not self.active_term.dd_term and self.n_dir>1:
-                self.cached_model_arr = np.sum(self.cached_model_arr, axis=0, keepdims=True)
+                self.cached_model_arr = np.empty_like(model_arr[0:1,...])
+                np.sum(cached_model_arr, axis=0, keepdims=True, out=self.cached_model_arr)
 
             self.jh = np.empty_like(self.cached_model_arr)
 
@@ -199,7 +198,7 @@ class JonesChain(MasterMachine):
             self._jhj = np.empty_like(self._jhrint)
             self._jhjinv =  np.empty_like(self._jhrint)
 
-        self.jh[:] = self.cached_model_arr
+        np.copyto(self.jh, self.cached_model_arr)
 
         for ind in xrange(self.active_index, -1, -1):
             term = self.jones_terms[ind]
@@ -255,16 +254,17 @@ class JonesChain(MasterMachine):
             np.ndarray: 
                 Array containing the result of computing D - GMG\ :sup:`H`.
         """
-
-        self.cached_resid_arr[:] = model_arr
+        if self._m is None:
+            self._m = np.empty_like(model_arr)
+        np.copyto(self._m, model_arr)
 
         for ind in xrange(self.n_terms-1, -1, -1): 
             term = self.jones_terms[ind]
-            term.apply_gains(self.cached_resid_arr)
+            term.apply_gains(self._m)
 
-        resid_arr[:] = obser_arr
+        np.copyto(resid_arr, obser_arr)
 
-        self.cychain.cycompute_residual(self.cached_resid_arr, resid_arr)
+        self.cychain.cycompute_residual(self._m, resid_arr)
 
         return resid_arr
 

@@ -100,6 +100,7 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] jh,
                     for f in xrange(n_fre):
                         rc = f/f_int
                         for d in xrange(n_dir):
+                            gd = d%g_dir
                             jh00 = jh[d,i,t,f,aa,ab,0,0]
                             jh10 = jh[d,i,t,f,aa,ab,1,0]
                             jh01 = jh[d,i,t,f,aa,ab,0,1]
@@ -164,6 +165,7 @@ def cyapply_left_inv_jones(complex3264 [:,:,:,:,:,:] jhr,
                 for f in xrange(n_fre):
                     rc = f/f_int
                     for d in xrange(n_dir):
+                        gd = d%g_dir
 
                         jhr00 = jhr[d,t,f,aa,0,0]
                         jhr01 = jhr[d,t,f,aa,0,1]

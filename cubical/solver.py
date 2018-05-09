@@ -132,7 +132,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     resid_shape = [gm.n_mod, gm.n_tim, gm.n_fre, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
 
-    resid_arr = np.zeros(resid_shape, obser_arr.dtype)
+    resid_arr = gm.cykernel.allocate_vis_array(resid_shape, obser_arr.dtype, zeros=True)
     gm.compute_residual(obser_arr, model_arr, resid_arr)
     resid_arr[:,flags_arr!=0] = 0
 

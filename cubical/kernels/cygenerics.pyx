@@ -176,6 +176,7 @@ def half_baselines(int n_ant):
     """
     global _half_baselines
     global _half_baselines_view
+    cdef int i
     if n_ant != _half_baselines_nant:
         nbl = n_ant*(n_ant-1)/2
         _half_baselines = np.empty((nbl,2),np.int32)
@@ -195,6 +196,7 @@ def all_baselines(int n_ant):
     """
     global _all_baselines
     global _all_baselines_view
+    cdef int i
     if n_ant != _all_baselines_nant:
         nbl = n_ant*(n_ant-1)
         _all_baselines = np.empty((nbl,2),np.int32)
@@ -207,4 +209,35 @@ def all_baselines(int n_ant):
                     _all_baselines_view[i][1] = q
                     i += 1
     return _all_baselines_view
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_chisq(complex3264 [:,:,:,:,:,:,:] resid,np.float64_t [:,:,:] chisq):
+    """
+    # Compute chi-square over correlations, models, and one antenna axis. Result has shape
+    # (n_tim, n_fre, n_ant). We avoid using np.abs by taking a view of the underlying memory.
+    # This is substantially faster.
+    """
+
+    cdef int d, i, t, f, aa, ab, c1, c2
+    cdef int n_mod, n_tim, n_fre, n_ant
+
+    n_mod = resid.shape[0]
+    n_tim = resid.shape[1]
+    n_fre = resid.shape[2]
+    n_ant = resid.shape[3]
+
+    cdef int num_threads = cubical.kernels.num_omp_threads
+
+    with nogil, parallel(num_threads=num_threads):
+        for aa in prange(n_ant, schedule='static'):
+            for ab in xrange(n_ant):
+                for i in xrange(n_mod):
+                    for t in xrange(n_tim):
+                        for f in xrange(n_fre):
+                            for c1 in xrange(2):
+                                for c2 in xrange(2):
+                                    chisq[t,f,aa] += resid[i,t,f,aa,ab,c1,c2].real**2 + resid[i,t,f,aa,ab,c1,c2].imag**2
 

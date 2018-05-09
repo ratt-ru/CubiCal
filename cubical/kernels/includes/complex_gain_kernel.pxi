@@ -71,13 +71,14 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
     """
 
     cdef int d, i, t, f, aa, ab, ibl, rr, rc = 0
-    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant, g_dir, gd
 
     n_dir = m.shape[0]
     n_mod = m.shape[1]
     n_tim = m.shape[2]
     n_fre = m.shape[3]
     n_ant = m.shape[4]
+    g_dir = g.shape[0]
 
     cdef int[:,:] baselines = cygenerics.half_baselines(n_ant)
     cdef int n_bl = baselines.shape[0]
@@ -92,7 +93,8 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
                     for f in xrange(n_fre):
                         rc = f/f_int
                         for d in xrange(n_dir):
-                            subtract_gmgh_product(&r[i,t,f,aa,ab,0,0], &g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
+                            gd = d%g_dir
+                            subtract_gmgh_product(&r[i,t,f,aa,ab,0,0], &g[gd,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[gd,rr,rc,ab,0,0])
                         vis_mat_conjugate(&r[i,t,f,ab,aa,0,0], &r[i,t,f,aa,ab,0,0])
 
 
@@ -396,7 +398,7 @@ def cyapply_gains_slow(complex3264 [:,:,:,:,:,:,:,:] m,
                         rc = f/f_int
                         for d in xrange(n_dir):
                             gd = d%g_dir
-                            inplace_gmgh_product(&g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
+                            inplace_gmgh_product(&g[gd,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[gd,rr,rc,ab,0,0])
                             vis_mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
 
 @cython.cdivision(True)
@@ -455,7 +457,7 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
                     with nogil, parallel(num_threads=num_threads):
                         for ibl in prange(n_bl, schedule='static'):
                             aa, ab = half_baselines[ibl][0], half_baselines[ibl][1]
-                            inplace_gmgh_product(&g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
+                            inplace_gmgh_product(&g[gd,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[gd,rr,rc,ab,0,0])
                             vis_mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
 
 @cython.cdivision(True)
@@ -517,8 +519,9 @@ def cyapply_gains_1(complex3264 [:,:,:,:,:,:,:,:] m,
             d = j/n_mod
             rr = t/t_int
             rc = f/f_int
+            gd = d%g_dir
             aa, ab = half_baselines[ibl][0], half_baselines[ibl][1]
-            inplace_gmgh_product(&g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
+            inplace_gmgh_product(&g[gd,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[gd,rr,rc,ab,0,0])
             vis_mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
 
 
@@ -577,5 +580,6 @@ def cyapply_gains_2(complex3264 [:,:,:,:,:,:,:,:] m,
                     for f in xrange(n_fre):
                         rc = f/f_int
                         for d in xrange(n_dir):
-                            inplace_gmgh_product(&g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
+                            gd = d%g_dir
+                            inplace_gmgh_product(&g[gd,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[gd,rr,rc,ab,0,0])
                             vis_mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])

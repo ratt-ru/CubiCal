@@ -255,14 +255,15 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:] gh,
             Number of frequencies per solution interval.
     """
 
-    cdef int d, i, t, f, aa, ab, rr, rc = 0
-    cdef int n_dir, n_mod, n_tim, n_fre, n_ant
+    cdef int d, i, t, f, aa, ab, rr, rc = 0, gd = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant, g_dir
 
     n_dir = jh.shape[0]
     n_mod = jh.shape[1]
     n_tim = jh.shape[2]
     n_fre = jh.shape[3]
     n_ant = jh.shape[4]
+    g_dir = gh.shape[0]
 
     cdef int num_threads = cubical.kernels.num_omp_threads
 
@@ -275,8 +276,9 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:] gh,
                         for f in xrange(n_fre):
                             rc = f/f_int
                             for d in xrange(n_dir):
-                                    add_ghrjh_product(&jhr[d,rr,rc,aa,0,0], &gh[d,rr,rc,aa,0,0],
-                                                      &r[i,t,f,aa,ab,0,0], &jh[d,i,t,f,ab,aa,0,0])
+                                gd = d%g_dir
+                                add_ghrjh_product(&jhr[d,rr,rc,aa,0,0], &gh[gd,rr,rc,aa,0,0],
+                                                  &r[i,t,f,aa,ab,0,0], &jh[d,i,t,f,ab,aa,0,0])
 
 @cython.cdivision(True)
 @cython.wraparound(False)

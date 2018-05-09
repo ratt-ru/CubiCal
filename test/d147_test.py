@@ -5,7 +5,14 @@ from casacore.tables import table
 from collections import OrderedDict
 
 def kw_to_args(**kw):
-    return " ".join(["--{} {}".format(name.replace("_", "-"), value) for name, value in kw.items()])
+    """Converts a dict of keywords to a cubical command line. Makes sure --sol-jones comes first."""
+    if "sol_jones" in kw:
+        cmd = "--sol-jones {} ".format(kw.pop("sol_jones"))
+    else:
+        cmd = ""
+    cmd += " ".join(["--{} {}".format(name.replace("_", "-"), value) for name, value in kw.items()])
+    return cmd
+
 
 basedir = os.path.dirname(__file__)
 
@@ -21,14 +28,16 @@ class SolverVerification(object):
         logprint("*** Working directory is {}".format(os.getcwd()))
 
     def generate_reference(self, colname, args=[], **kw):
-        cmd = self.cmdline + kw_to_args(out_column=colname, out_name="ref_"+colname, **kw)
+        cmd = self.cmdline + kw_to_args(out_column=colname, out_name="ref_"+colname, **kw) + \
+                " " + " ".join(args)
         logprint("*** running {}".format(cmd))
         retcode = os.system(cmd)
         if retcode:
             raise RuntimeError("gocubical failed, return code {}".format(retcode))
 
     def verify(self, colname, args=[], tolerance=1e-6, **kw):
-        cmd = self.cmdline + kw_to_args(out_column="CORRECTED_DATA", out_name="test_"+colname, **kw)
+        cmd = self.cmdline + kw_to_args(out_column="CORRECTED_DATA", out_name="test_"+colname, **kw) + \
+                " " + " ".join(args)
         logprint("*** running {}".format(cmd))
         retcode = os.system(cmd)
         if retcode:
@@ -48,6 +57,8 @@ d147_test_list = [
     ("FS_DATA", dict(g_type='f-slope', g_time_int=1, g_freq_int=0)),
     ("TS_DATA", dict(g_type='t-slope', g_time_int=0, g_freq_int=1)),
     ("TFP_DATA", dict(g_type='tf-plane', g_time_int=0, g_freq_int=0)),
+    ("DE_DATA", dict(model_list=os.path.join(basedir, '3C147-dE-apparent.lsm.html@dE'),
+        sol_jones="G,dE", g_time_int=1, g_freq_int=1, de_time_int=60, de_freq_int=32))
 ]
 
 d147_test_dict = dict(d147_test_list)

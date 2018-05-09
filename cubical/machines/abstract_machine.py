@@ -64,6 +64,8 @@ class MasterMachine(object):
             options (dict): 
                 Dictionary of options. 
         """
+        import cubical.kernels
+        self.cygenerics = cubical.kernels.import_kernel('cygenerics')
 
         self.jones_label = jones_label
         self.chunk_label = chunk_label
@@ -310,13 +312,8 @@ class MasterMachine(object):
         # time intervals, antennas and correlations first. Normalize by per-channel variance and
         # finally sum over frequency intervals.
 
-        # TODO: Some residuals blow up and cause np.square() to overflow -- need to flag these.
-
-        # Sum chi-square over correlations, models, and one antenna axis. Result has shape
-        # (n_tim, n_fre, n_ant). We avoid using np.abs by taking a view of the underlying memory.
-        # This is substantially faster.
-
-        chisq = np.sum(np.square(resid_arr.view(dtype=resid_arr.real.dtype)), axis=(0, 4, 5, 6))
+        chisq = np.zeros(resid_arr.shape[1:4], np.float64)
+        self.cygenerics.cycompute_chisq(resid_arr, chisq)
 
         # Normalize this by the per-channel variance.
 
