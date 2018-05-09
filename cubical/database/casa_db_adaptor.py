@@ -25,7 +25,7 @@ class casa_caltable_factory(object):
         """
         
         @classmethod
-        def init_empty(cls, db, filename, solfreqs, solants, is_complex=True, viscal_label="B Jones"):
+        def init_empty(cls, db, filename, solfreqs, solants, field_ndir=1, is_complex=True, viscal_label="B Jones"):
             """
                 Initialize empty calibration table with metadata
                 
@@ -34,6 +34,7 @@ class casa_caltable_factory(object):
                     filename: filename of CASA gaintable to be written
                     solfreqs: centre frequencies of solutions to be stored in table
                     solants: Names from Cubical database antenna axis, used to order solutions
+                    field_ndir: Number of solvable directions in field
                     is_complex: Solutions are complex or real-valued
                     viscal_label: Sets viscal property of CASA table - used as identifier in CASA
             """
@@ -62,15 +63,15 @@ class casa_caltable_factory(object):
             assert type(db.metadata["field"]) is int, "Currently only supports single field"
             selfield = np.arange(len(db.fieldname)) == db.metadata["field"]
             with tbl("%s::FIELD" % filename, ack=False, readonly=False) as t:
-                t.addrows(nrows=1)
-                t.putcol("DELAY_DIR", db.fielddelaydirs[selfield])
-                t.putcol("PHASE_DIR", db.fieldphasedirs[selfield])
-                t.putcol("REFERENCE_DIR", db.fieldrefdir[selfield])
-                t.putcol("CODE", np.array(db.fieldcode)[selfield])
-                t.putcol("FLAG_ROW", db.fieldflagrow[selfield])
-                t.putcol("NAME", np.array(db.fieldname)[selfield])
-                t.putcol("SOURCE_ID", db.fieldsrcid[selfield])
-                t.putcol("TIME", db.fieldtime[selfield])
+                t.addrows(nrows=field_ndir)
+                t.putcol("DELAY_DIR", np.tile(db.fielddelaydirs[selfield], (field_ndir, 1)))
+                t.putcol("PHASE_DIR", np.tile(db.fieldphasedirs[selfield], (field_ndir, 1)))
+                t.putcol("REFERENCE_DIR", np.tile(db.fieldrefdir[selfield], (field_ndir, 1)))
+                t.putcol("CODE", np.tile(np.array(db.fieldcode)[selfield], (field_ndir, 1)))
+                t.putcol("FLAG_ROW", np.tile(db.fieldflagrow[selfield], (field_ndir, 1)))
+                t.putcol("NAME", np.array(["%s_DIR_%d" % (f, fdi) for fdi, f in enumerate([db.fieldname[np.where(selfield)[0][0]]] * field_ndir)]).T)
+                t.putcol("SOURCE_ID", np.tile(db.fieldsrcid[selfield], (field_ndir, 1)) + np.arange(field_ndir).T)
+                t.putcol("TIME", np.tile(db.fieldtime[selfield], (field_ndir, 1)))
     
             with tbl("%s::OBSERVATION" % filename, ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.obsobserver))
@@ -157,6 +158,7 @@ class casa_caltable_factory(object):
                            db.filename + ".%s.casa" % outname, 
                            db[gname].grid[db[gname].ax.freq],
                            db[gname].grid[db[gname].ax.ant],
+                           field_ndir=ndir,
                            viscal_label="G Jones")
             
             with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
@@ -172,7 +174,7 @@ class casa_caltable_factory(object):
                     paramerrs = np.swapaxes(db[gname + ".err"].get_cube()[:, :, ddsolfreqindx, :, :],
                                             2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) 
                     flags = np.ma.getmaskarray(params)
-                    fieldid = np.zeros(ndir * ntime * nant) #temp need to specify directions properly
+                    fieldid = np.repeat(np.arange(ndir), ntime * nant) # dir (marked as field) is slowest varying
                     time = np.repeat(np.tile(db[gname].grid[db[gname].ax.time], ndir), nant)
                     ant1 = np.tile(np.arange(nant), ndir * ntime) # FK ndir * ntime blocks
                     #ant2 can be the same - it is not used unless specifying mueller matricies
@@ -223,6 +225,7 @@ class casa_caltable_factory(object):
                            db.filename + ".%s.casa" % outname, 
                            db[gname].grid[db[gname].ax.freq],
                            db[gname].grid[db[gname].ax.ant],
+                           field_ndir=ndir,
                            viscal_label="B Jones" if diag else "D Jones")
             
             with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
@@ -240,7 +243,7 @@ class casa_caltable_factory(object):
                     paramerrs = np.swapaxes(db[gname + ".err"].get_cube()[:, :, ddsolfreqindx, :, :],
                                             2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr1 * ncorr2)[:, :, jones_entries]
                     flags = np.ma.getmaskarray(params)
-                    fieldid = np.zeros(ndir * ntime * nant) #temp need to specify directions properly
+                    fieldid = np.repeat(np.arange(ndir), ntime * nant) # dir (marked as field) is slowest varying
                     time = np.repeat(np.tile(db[gname].grid[db[gname].ax.time], ndir), nant)
                     ant1 = np.tile(np.arange(nant), ndir * ntime) # FK ndir * ntime blocks
                     #ant2 can be the same - it is not used unless specifying mueller matricies
@@ -270,7 +273,19 @@ class casa_caltable_factory(object):
                     outname: suffix of exported CASA gaintable
             """
             cls.create_B_table(db, gname, outname, diag=False)
-
+        
+        @classmethod
+        def create_K_table(cls, db, gname, outname = "K"):
+            """
+                Write real-valued K-Jones table
+                
+                Args:
+                    db: a cubical pickled_db instance
+                    gname: name of pickled_db solutions to export
+                    outname: suffix of exported CASA gaintable
+            """
+            pass
+        
 class casa_db_adaptor(PickledDatabase):
     
     def __init__(self):
@@ -363,10 +378,10 @@ class casa_db_adaptor(PickledDatabase):
                 assert "G:gain.err" in self.names(), "Gain error not present in solutions db? This is a bug"
                 casa_caltable_factory.create_B_table(self, "G:gain")
                 casa_caltable_factory.create_D_table(self, "G:gain")
-                
             if "G:delay" in self.names():
                 assert "G:delay.err" in self.names(), "Delay error not present in solutions db? This is a bug"
-                pass
+                casa_caltable_factory.create_K_table(self, "")
+                
         self.close()
             
     def close(self):
