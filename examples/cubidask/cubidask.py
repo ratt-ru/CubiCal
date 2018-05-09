@@ -263,7 +263,6 @@ def gain_update_loop(obs_arr, model_arr, gains, gflags, t_int, f_int, eps):
             # TODO: This breaks with the new compute
             # residual code for n_dir > 1. Will need a fix.
             if n_dir > 1:
-                resid_arr = np.empty_like(obs_arr)
                 gains_h = gains.transpose(0,1,2,3,5,4).conj()
                 r = np.empty_like(obs_arr)
                 cyfull.cycompute_residual(model_arr, gains, gains_h, r, t_int, f_int)
