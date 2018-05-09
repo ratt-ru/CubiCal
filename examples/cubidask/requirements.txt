@@ -1,5 +1,8 @@
+bokeh                       # For HTML Profiling charts
 chest                       # spill to disk
 dask[array] >= 0.17.4       # Multi-core computation
-bokeh                       # For HTML Profiling charts
+distributed >= 1.21.8       # Distributed dask
 psutil                      # For CPU Profiling
 zarr >= 2.2.0               # For writing to disk
+
+git+git://github.com/ska-sa/xarray-ms.git
