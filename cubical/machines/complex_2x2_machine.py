@@ -7,6 +7,10 @@ import numpy as np
 from cubical.flagging import FL
 import cubical.kernels
 
+from cubical.tools import logger
+log = logger.getLogger("complex_2x2")
+
+
 class Complex2x2Gains(PerIntervalGains):
     """
     This class implements the full complex 2x2 gain machine.
@@ -96,9 +100,8 @@ class Complex2x2Gains(PerIntervalGains):
         if self.posterior_gain_error is None:
             self.posterior_gain_error = np.zeros_like(jhjinv.real)
         diag = jhjinv[..., (0, 1), (0, 1)].real
-        np.sqrt(diag, out=self.posterior_gain_error[...,(0,1),(0,1)])
-        np.sqrt(np.sqrt(diag.sum(axis=-1)/2), out=self.posterior_gain_error[...,0,1])
-        self.posterior_gain_error[...,1,0] = self.posterior_gain_error[...,0,1]
+        self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
+        self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
         update = self.init_update(jhr)
         self.cykernel.cycompute_update(jhr, jhjinv, update)

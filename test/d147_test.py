@@ -57,7 +57,7 @@ d147_test_list = [
     ("FS_DATA", dict(g_type='f-slope', g_time_int=1, g_freq_int=0)),
     ("TS_DATA", dict(g_type='t-slope', g_time_int=0, g_freq_int=1)),
     ("TFP_DATA", dict(g_type='tf-plane', g_time_int=0, g_freq_int=0)),
-    ("DE_DATA", dict(model_list=os.path.join(basedir, '3C147-dE-apparent.lsm.html@dE'),
+    ("DE_DATA", dict(model_list=os.path.abspath(os.path.join(basedir, '3C147-dE-apparent.lsm.html@dE')),
         sol_jones="G,dE", g_time_int=1, g_freq_int=1, de_time_int=60, de_freq_int=32))
 ]
 

@@ -377,7 +377,8 @@ class JonesChain(MasterMachine):
         self.last_active_index = self.active_index
 
         if self.active_term.has_converged:
-            print>>log(1),"term {} converged ({} iters)".format(self.active_term.jones_label, self.active_term.iters)
+            print>>log(1),"term {} converged ({} iters): {}".format(self.active_term.jones_label,
+                        self.active_term.iters, self.active_term.final_convergence_status_string)
             self._convergence_states.append(self.active_term.final_convergence_status_string)
             self._convergence_states_finalized = True
             self._next_chain_term()
