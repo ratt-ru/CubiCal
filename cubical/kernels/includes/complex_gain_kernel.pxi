@@ -401,6 +401,120 @@ def cyapply_gains_slow(complex3264 [:,:,:,:,:,:,:,:] m,
                             inplace_gmgh_product(&g[gd,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[gd,rr,rc,ab,0,0])
                             vis_mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
 
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cyapply_gains_3(complex3264 [:,:,:,:,:,:,:,:] m,
+                  complex3264 [:,:,:,:,:,:] g,
+                  complex3264 [:,:,:,:,:,:] gh,
+                  int t_int,
+                  int f_int):
+
+    """
+    Applies the gains and their cinjugates to the model array. This operation is performed in place
+    - be wary of losing the original array. The result has full time and frequency resolution -
+    solution intervals are used to correctly associate the gains with the model.
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model visibility array with dimensions (d, m , t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimensions (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
+
+    For reasons unknown, this ordering of the loops leads to slower performance...
+    """
+
+    cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
+    cdef int n_dir, n_mod, n_tim, n_fre, n_ant, g_dir
+    cdef complex3264 gmtmp1, gmtmp2, gmtmp3, gmtmp4
+
+    n_dir = m.shape[0]
+    n_mod = m.shape[1]
+    n_tim = m.shape[2]
+    n_fre = m.shape[3]
+    n_ant = m.shape[4]
+
+    g_dir = g.shape[0]
+
+    cdef int[:,:] half_baselines = cygenerics.half_baselines(n_ant)
+    cdef int ibl, n_bl = half_baselines.shape[0]
+    cdef int num_threads = cubical.kernels.num_omp_threads
+
+    with nogil, parallel(num_threads=num_threads):
+        for ibl in prange(n_bl, schedule='static'):
+            aa, ab = half_baselines[ibl][0], half_baselines[ibl][1]
+            for i in xrange(n_mod):
+                for t in xrange(n_tim):
+                    rr = t/t_int
+                    for f in xrange(n_fre):
+                        rc = f/f_int
+                        for d in xrange(n_dir):
+                            gd = d%g_dir
+                            inplace_left_product(&g[gd,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
+                            inplace_right_product(&m[d,i,t,f,aa,ab,0,0], &gh[gd,rr,rc,ab,0,0])
+                            vis_mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cyright_multiply_gains(complex3264 [:,:,:,:,:,:] g,
+                           complex3264 [:,:,:,:,:,:] g1,
+                           int t_int,
+                           int f_int):
+
+    """
+    Applies the gains and their cinjugates to the model array. This operation is performed in place
+    - be wary of losing the original array. The result has full time and frequency resolution -
+    solution intervals are used to correctly associate the gains with the model.
+
+    Args:
+        m (np.complex64 or np.complex128):
+            Typed memoryview of model visibility array with dimensions (d, m , t, f, a, a, c, c).
+        g (np.complex64 or np.complex128):
+            Typed memoryview of gain array with dimensions (d, ti, fi, a, c, c).
+        gh (np.complex64 or np.complex128):
+            Typed memoryview of conjugate gain array with dimensions (d, ti, fi, a, c, c).
+        t_int (int):
+            Number of time slots per solution interval.
+        f_int (int):
+            Number of frequencies per solution interval.
+
+    For reasons unknown, this ordering of the loops leads to slower performance...
+    """
+
+    cdef int d, i, t, f, aa, ab, rr, rc, gd = 0
+    cdef int n_dir, n_tim, n_fre, n_ant, g_dir
+
+    n_dir = g.shape[0]
+    n_tim = g.shape[1]
+    n_fre = g.shape[2]
+    n_ant = g.shape[3]
+
+    g_dir = g1.shape[0]
+
+    cdef int num_threads = cubical.kernels.num_omp_threads
+
+    with nogil, parallel(num_threads=num_threads):
+        for aa in prange(n_ant, schedule='static'):
+            for t in xrange(n_tim):
+                rr = t/t_int
+                for f in xrange(n_fre):
+                    rc = f/f_int
+                    for d in xrange(n_dir):
+                        gd = d%g_dir
+                        inplace_right_product(&g[d,t,f,aa,0,0], &g1[gd,rr,rc,aa,0,0])
+
+
+
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)

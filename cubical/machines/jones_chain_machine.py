@@ -173,7 +173,6 @@ class JonesChain(MasterMachine):
         n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.active_term.gains.shape
 
         if self.last_active_index!=self.active_index or self.iters==1:
-
             self.cached_model_arr = cached_model_arr = np.empty_like(model_arr)
             np.copyto(cached_model_arr, model_arr)
 
@@ -234,6 +233,68 @@ class JonesChain(MasterMachine):
     def implement_update(self, jhr, jhjinv):
         return self.active_term.implement_update(jhr, jhjinv)
 
+    def accumulate_gains(self, dd=True):
+        """
+        This function returns the product of all the gains in the chain, at full TF resolution,
+        for all directions (dd=True), or just the 0th direction.
+
+        Args:
+            dd (bool):
+                Accumulate per-direction gains, if available. If False, only the
+                first direction is used.
+
+        Returns:
+            A tuple of gains,conjugate gains
+        """
+        ndir = self.n_dir if dd else 1
+        gains = self.cykernel.allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+                                                  self.dtype)
+        g0 = self.jones_terms[0].gains
+        if ndir > 1 and g0.shape[0] == 1:
+            g0 = g0.reshape(g0.shape[1:])[np.newaxis,...]
+        elif ndir == 1 and g0.shape[0] > 1:
+            g0 = g0[:1,...]
+        gains[:] = g0
+        for term in self.jones_terms[1:]:
+            self.cykernel.cyright_multiply_gains(gains, term.gains, *term.gain_intervals)
+
+        # compute conjugate gains
+        gh = np.empty_like(gains)
+        np.conj(gains.transpose(0, 1, 2, 3, 5, 4), gh)
+
+        return gains, gh
+
+    def accumulate_inv_gains(self):
+        """
+        This function returns the inverse of the product of all the non-DD gains in the chain, at full TF resolution,
+        for direction 0
+
+        Returns:
+            A tuple of gains,conjugate gains,flag_count (if flags raised in inversion)
+        """
+        gains = self.cykernel.allocate_gain_array([1, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+                                                  self.dtype)
+        init = False
+        fc0 = 0
+        # flip order of jones terms for inverse
+        for term in self.jones_terms[::-1]:
+            if not term.dd_term:
+                g, _, fc = term.get_inverse_gains()
+                fc0 += fc
+                if init:
+                    self.cykernel.cyright_multiply_gains(gains, g[:1,...], *term.gain_intervals)
+                else:
+                    init = True
+                    gains[:] = g[:1,...]
+
+        # compute conjugate gains
+        gh = np.empty_like(gains)
+        np.conj(gains.transpose(0, 1, 2, 3, 5, 4), gh)
+
+        return gains, gh, fc
+
+
+    #@profile
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
         This function computes the residual. This is the difference between the
@@ -254,17 +315,9 @@ class JonesChain(MasterMachine):
             np.ndarray: 
                 Array containing the result of computing D - GMG\ :sup:`H`.
         """
-        if self._m is None:
-            self._m = np.empty_like(model_arr)
-        np.copyto(self._m, model_arr)
-
-        for ind in xrange(self.n_terms-1, -1, -1): 
-            term = self.jones_terms[ind]
-            term.apply_gains(self._m)
-
+        g, gh = self.accumulate_gains()
         np.copyto(resid_arr, obser_arr)
-
-        self.cychain.cycompute_residual(self._m, resid_arr)
+        self.cykernel.cycompute_residual(model_arr, g, gh, resid_arr, 1, 1)
 
         return resid_arr
 
@@ -288,19 +341,9 @@ class JonesChain(MasterMachine):
         if corr_vis is None:
             corr_vis = np.empty_like(resid_vis)
 
-        flag_count = 0
+        g, gh, flag_count = self.accumulate_inv_gains()
 
-        for ind in xrange(self.n_terms):  
-            term = self.jones_terms[ind]
-
-            if term.dd_term:
-                break
-
-            _, fc = term.apply_inv_gains(resid_vis, corr_vis)
-
-            flag_count += fc
-
-            resid_vis[:] = corr_vis[:]
+        self.cykernel.cycompute_corrected(resid_vis, g, gh, corr_vis, 1, 1)
 
         return corr_vis, flag_count
 
@@ -317,9 +360,8 @@ class JonesChain(MasterMachine):
             np.ndarray:
                 Array containing the result of GMG\ :sup:`H`.
         """
-        # simply go through the chain in reverse, applying each Jones term in turn
-        for term in self.jones_terms[::-1]:
-            term.apply_gains(vis)
+        g, gh = self.accumulate_gains()
+        self.cykernel.cyapply_gains(vis, g, gh, 1, 1)
         return vis
 
     def check_convergence(self, min_delta_g):

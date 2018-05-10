@@ -85,6 +85,24 @@ cdef inline void inplace_gmgh_product(const complex3264 *g,complex3264 *m,const 
     """
     gmgh_product(m,g,m,gh)
 
+cdef inline void inplace_left_product(const complex3264 *g,complex3264 *m) nogil:
+    """
+    Computes a triple 2x2 matrix product in place: M = G.M.G^H
+    """
+    m[0] *= g[0]
+    m[1] =  m[2] = 0
+    m[3] *= g[3]
+
+cdef inline void inplace_right_product(complex3264 *m,complex3264 *g) nogil:
+    """
+    Computes a triple 2x2 matrix product in place: M = G.M.G^H
+    """
+    m[0] *= g[0]
+    m[1] =  m[2] = 0
+    m[3] *= g[3]
+
+
+
 cdef inline void vis_mat_conjugate(complex3264 * out,const complex3264 *x) nogil:
     mat_conjugate_diag(out,x)
 

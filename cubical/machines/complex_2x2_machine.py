@@ -93,6 +93,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         return jhr, jhjinv, flag_count
 
+    #@profile
     def implement_update(self, jhr, jhjinv):
 
         # jhjinv is 2x2 block-diagonal, with Hermitian blocks. TODO: what's the variance on the off-diagonals?

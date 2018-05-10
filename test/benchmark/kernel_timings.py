@@ -439,7 +439,6 @@ if __name__ == "__main__":
                               check=lambda: abs(oupd - uupd).max() < 1e-8)
             else:
                 benchmark(lambda:refkern.cycompute_update(u.jhr, u.jhjinv, u.p), "{}.compute_update (DMTFAA order, native)".format(refkern_name))
-                upd0 = u.upd.copy()
 
                 benchmark_function('cycompute_update', (o.jhr, o.jhjinv, o.p),
                               setup=lambda: (np.copyto(o.jhr, jhr0), np.copyto(o.jhjinv, jhjinv0), o.p.fill(0)),
