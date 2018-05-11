@@ -13,31 +13,108 @@ log = logger.getLogger("main")
 
 worker_process_properties = dict(MainProcess={})
 
-def setup_affinities(ncpu, nworker, nthread, affinity, io_affinity, main_affinity, use_montblanc, montblanc_threads):
+# number of worker processes that will be run
+num_workers = 0
+
+def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc_threads):
     """
-    Sets up affinities and other properties of worker processes
-    
-    Args:
-        ncpu: 
-        nworker: 
-        nthread: 
-        affinity: 
-        io_affinity: 
-        main_affinity: 
-        use_montblanc: 
-        montblanc_threads: 
+    Internal helper -- determines how many workers and threads to allocate, based on defaults specified. See discussion in
+    https://github.com/ratt-ru/CubiCal/pull/171#issuecomment-388334586
 
     Returns:
-
+        Tuple of parallel,nworkers,nthreads
     """
-    # set OMP thread counts for kernels -- child processes will inherit this
-    cubical.kernels.num_omp_threads = nthread
+    # generate montblanc status string for use in log reports below
+    if montblanc_threads is None:
+        montblanc = ""
+    elif montblanc_threads:
+        montblanc = ", --montblanc-threads {}".format(montblanc_threads)
+    else:
+        montblanc = ", unlimited Montblanc threads"
+    if force_serial:
+        cubical.kernels.num_omp_threads = nthreads
+        if nthreads:
+            nthreads = max(nthreads, montblanc_threads)
+            print>> log(0, "blue"), "forcing single-process mode, {} OMP and/or Montblanc threads".format(nthreads)
+        elif montblanc_threads:
+            nthreads = montblanc_threads
+        print>> log(0, "blue"), "forcing single-process mode, single thread{}".format(montblanc)
+        return False, 0, nthreads
+    if nworkers and nthreads:
+        print>> log(0, "blue"), "multi-process mode: --dist-nworker {}, --dist-nthread {}{}".format(nworkers, nthreads, montblanc)
+        return True, nworkers, nthreads
+    if ncpu:
+        cores = ncpu - (montblanc_threads or 1)
+        if not nworkers and not nthreads:
+            print>> log(0, "blue"), "multi-process mode: {} workers, single thread{}".format(cores, montblanc)
+            return True, cores, 1
+        if nworkers:
+            nthreads = max(1, cores // nworkers)
+            print>> log(0, "blue"), "multi-process mode: --dist-nworker {}, {} OMP threads{}".format(nworkers, nthreads, montblanc)
+            return True, nworkers, nthreads
+        if nthreads:
+            nworkers = max(1, cores // nthreads)
+            print>> log(0, "blue"), "multi-process mode: {} workers, --dist-nthread {}{}".format(nworkers, nthreads, montblanc)
+            return True, nworkers, nthreads
+    else:  # ncpu not set, and nworkers/nthreads not both set
+        if nworkers:
+            print>> log(0, "blue"), "multi-process mode: --dist-nworker {}, single thread{}".format(nworkers, montblanc)
+            return True, nworkers, 1
+        if nthreads:
+            print>> log(0, "blue"), "single-process mode: --dist-thread {}{}".format(nthreads, montblanc)
+            return False, 0, nthreads
+        print>> log(0, "blue"), "single-process, single-thread mode{}".format(montblanc)
+        return False, 0, 0
+    raise RuntimeError("can't be here -- this is a bug!")
 
-    # in serial mode, simply set the Montblanc thread count, and return
-    if ncpu < 2:
-        if use_montblanc and montblanc_threads:
-            os.environ["OMP_NUM_THREADS"] = os.environ["OMP_THREAD_LIMIT"] = str(montblanc_threads)
-        return
+
+def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinity, main_affinity, use_montblanc, montblanc_threads):
+    """
+    Sets up parallelism, affinities and other properties of worker processes.
+    
+    Args:
+        ncpu (int):
+            max number of cores to use
+        nworker (int):
+            Number of workers to run (excluding the I/O worker). If 0, determine automatically.
+        nthread (int):
+            Number of threads to run per worker. If 0, determine automatically.
+        force_serial (bool):
+            If True, force serial mode, disabling worker parallelism (threads can still be used)
+        affinity (int or str or None):
+            If None or empty string, all CPU affinity setting is disabled.
+            An "N:M" string specifies allocating starting with core N, stepping by M. An int N specifies
+            starting with core N, stepping by 1.
+        io_affinity (int):
+            If set, enables affinity setting on the I/O worker, and allocates that number of cores to it
+            (which includes montblanc threads), overriding the montblanc_threads setting.
+        main_affinity (bool or str):
+            If set, allocates a separate core to the main process and sets its affinity. If set to "io", pins
+            the main process to the same cores as allocated to the I/O worker. If not set, the main process
+            is not pinned to any core.
+        use_montblanc (bool):
+            True if montblanc is being used to predict the model
+        montblanc_threads:
+            Number of threads to allocate to montblanc. If 0, it will be unlimited.
+
+    Returns:
+        True if parallel mode is invoked (i.e. workers are to be launched)
+    """
+    global num_workers
+    parallel, num_workers, nthread = _setup_workers_and_threads(force_serial, ncpu, nworker, nthread,
+                                                                montblanc_threads if use_montblanc else None)
+
+    # in serial mode, simply set the Montblanc and/or worker thread count, and return
+    if not parallel:
+        if nthread:
+            os.environ["OMP_NUM_THREADS"] = os.environ["OMP_THREAD_LIMIT"] = str(nthread)
+        return False
+
+    # TODO: check actual number of cores on the system, and throw an error if affinity settings exceed this
+    # (at the moment we just get an error down the line from libgomp and/or taskset)
+
+    # child processes will inherit this
+    cubical.kernels.num_omp_threads = nthread
 
     # parse affinity argument
     if affinity != "" and affinity is not None:
@@ -52,7 +129,7 @@ def setup_affinities(ncpu, nworker, nthread, affinity, io_affinity, main_affinit
         core = corestep = affinity = None
 
     # first, the I/O process
-    props = worker_process_properties["Process-1"] = dict(label="io", environ={}, num_omp_threads=nthread)
+    props = worker_process_properties["Process-1"] = dict(label="io", environ={})
 
     # allocate cores to I/O process, if asked to pin it
     if affinity is not None and io_affinity:
@@ -65,7 +142,7 @@ def setup_affinities(ncpu, nworker, nthread, affinity, io_affinity, main_affinit
             props["environ"]["OMP_NUM_THREADS"] = props["environ"]["OMP_THREAD_LIMIT"] = str(io_affinity)
         else:
             props["taskset"] = ",".join(io_cores)
-    # else just restric Montblanc threads, if asked to
+    # else just restrict Montblanc threads, if asked to
     else:
         io_cores = []
         if use_montblanc and montblanc_threads:
@@ -80,7 +157,7 @@ def setup_affinities(ncpu, nworker, nthread, affinity, io_affinity, main_affinit
             core = core + corestep
 
     # create entries for subprocesses, and allocate cores
-    for icpu in xrange(1, nworker + 1):
+    for icpu in xrange(1, num_workers + 1):
         name = "Process-{}".format(icpu + 1)
         props = worker_process_properties[name] = dict(label="x%02d" % icpu, num_omp_threads=nthread, environ={})
         if affinity is not None:
@@ -92,9 +169,34 @@ def setup_affinities(ncpu, nworker, nthread, affinity, io_affinity, main_affinit
                 props["environ"]["GOMP_CPU_AFFINITY"] = " ".join(map(str, worker_cores))
             else:
                 core += corestep
+    return True
+
+def run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+    """
+    Runs the main loop. If debugging is set, or single_chunk mode is on, forces serial mode.
+    Otherwise selects serial or parallel depending on previous call to setup_parallelism().
+
+    Args:
+        ms:
+        nworker:
+        nthread:
+        load_model:
+        single_chunk:
+        debugging:
+        solver_type:
+        solver_opts:
+        debug_opts:
+
+    Returns:
+        Stats dictionary
+    """
+    if num_workers:
+        return _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts)
+    else:
+        return _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 
 
-def run_multi_process_loop(ms, nworker, nthread, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts):
     """
     Runs the main loop in multiprocessing mode.
     
@@ -115,7 +217,7 @@ def run_multi_process_loop(ms, nworker, nthread, load_model, single_chunk, solve
     # this accumulates SolverStats objects from each chunk, for summarizing later
     stats_dict = {}
 
-    with cf.ProcessPoolExecutor(max_workers=nworker) as executor, \
+    with cf.ProcessPoolExecutor(max_workers=num_workers) as executor, \
             cf.ProcessPoolExecutor(max_workers=1) as io_executor:
         ms.flush()
         # this will be a dict of tile number: future loading that tile
@@ -176,7 +278,7 @@ def run_multi_process_loop(ms, nworker, nthread, load_model, single_chunk, solve
         return stats_dict
 
 
-def run_single_process_loop(ms, nworker, nthread, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts):
     """
     Runs the main loop in single-CPU mode.
 
