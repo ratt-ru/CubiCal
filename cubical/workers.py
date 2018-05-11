@@ -41,24 +41,24 @@ def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc
         print>> log(0, "blue"), "forcing single-process mode, single thread{}".format(montblanc)
         return False, 0, nthreads
     if nworkers and nthreads:
-        print>> log(0, "blue"), "multi-process mode: --dist-nworker {}, --dist-nthread {}{}".format(nworkers, nthreads, montblanc)
+        print>> log(0, "blue"), "multi-process mode: --dist-nworker {} (+1), --dist-nthread {}{}".format(nworkers, nthreads, montblanc)
         return True, nworkers, nthreads
     if ncpu:
         cores = ncpu - (montblanc_threads or 1)
         if not nworkers and not nthreads:
-            print>> log(0, "blue"), "multi-process mode: {} workers, single thread{}".format(cores, montblanc)
+            print>> log(0, "blue"), "multi-process mode: {}+1 workers, single thread{}".format(cores, montblanc)
             return True, cores, 1
         if nworkers:
             nthreads = max(1, cores // nworkers)
-            print>> log(0, "blue"), "multi-process mode: --dist-nworker {}, {} OMP threads{}".format(nworkers, nthreads, montblanc)
+            print>> log(0, "blue"), "multi-process mode: --dist-nworker {} (+1), {} OMP threads{}".format(nworkers, nthreads, montblanc)
             return True, nworkers, nthreads
         if nthreads:
             nworkers = max(1, cores // nthreads)
-            print>> log(0, "blue"), "multi-process mode: {} workers, --dist-nthread {}{}".format(nworkers, nthreads, montblanc)
+            print>> log(0, "blue"), "multi-process mode: {}+1 workers, --dist-nthread {}{}".format(nworkers, nthreads, montblanc)
             return True, nworkers, nthreads
     else:  # ncpu not set, and nworkers/nthreads not both set
         if nworkers:
-            print>> log(0, "blue"), "multi-process mode: --dist-nworker {}, single thread{}".format(nworkers, montblanc)
+            print>> log(0, "blue"), "multi-process mode: --dist-nworker {} (+1), single thread{}".format(nworkers, montblanc)
             return True, nworkers, 1
         if nthreads:
             print>> log(0, "blue"), "single-process mode: --dist-thread {}{}".format(nthreads, montblanc)
