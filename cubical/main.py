@@ -319,16 +319,23 @@ def main(debugging=False):
         solver.ifrgain_machine = ifr_gain_machine.IfrGainMachine(solver.gm_factory, GD["bbc"], compute=load_model)
         
 
-        # set up chunking
         single_chunk = GD["data"]["single-chunk"]
-        ncpu = GD["dist"]["ncpu"]
+
+        # setup worker process properties
+
+        workers.setup_parallelism(GD["dist"]["ncpu"], GD["dist"]["nworker"], GD["dist"]["nthread"],
+                                  debugging or single_chunk,
+                                  GD["dist"]["pin"], GD["dist"]["pin-io"], GD["dist"]["pin-main"],
+                                  ms.use_montblanc, GD["montblanc"]["threads"])
+
+        # set up chunking
 
         chunk_by = GD["data"]["chunk-by"]
         if type(chunk_by) is str:
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
-        chunks_per_tile = max(GD["dist"]["min-chunks"], ncpu-1, 1)
+        chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
         if GD["dist"]["max-chunks"]:
             chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
 
@@ -339,48 +346,10 @@ def main(debugging=False):
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
 
-        # decide how many CPUs and workers and/or threads we need
-        nworker = GD["dist"]["nworker"]
-        nthread = GD["dist"]["nthread"]
-
-        if single_chunk or ncpu == 1:
-            ncpu = nworker = 0
-        elif not ncpu:
-            if nworker:
-                ncpu = nworker+1
-        else:
-            nworker = max(nworker, ncpu-1)
-
-        if ncpu > 1:
-            if not nworker:
-                nworker = min(chunks_per_tile, ncpu-1)
-            else:
-                nworker = min(nworker, ncpu-1)
-            if not nthread:
-                nthread = int((ncpu-1)/nworker)
-            print>>log(0,"blue"),"running {} worker processes with {} OMP threads each ({} total cores)".format(nworker, nthread, nworker*nthread)
-        else:
-            if nthread:
-                print>>log(0,"blue"),"running in single-process mode with {} OMP threads".format(nthread)
-            else:
-                print>>log(0,"blue"),"running in single-process mode"
-
-
-        # setup worker process properties
-
-        workers.setup_affinities(ncpu, nworker, nthread, GD["dist"]["pin"], GD["dist"]["pin-io"], GD["dist"]["pin-main"],
-                                 ms.use_montblanc, GD["montblanc"]["threads"])
-
-
         # run the main loop
 
         t0 = time()
-        if debugging or ncpu <= 1:
-            stats_dict = workers.run_single_process_loop(ms, nworker, nthread, load_model,
-                                                        single_chunk, solver_type, solver_opts, debug_opts)
-        else:
-            stats_dict = workers.run_multi_process_loop(ms, nworker, nthread, load_model,
-                                                        single_chunk, solver_type, solver_opts, debug_opts)
+        stats_dict = workers.run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 
         print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
 
