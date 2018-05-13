@@ -15,7 +15,7 @@ class Complex2x2Gains(PerIntervalGains):
     """
     This class implements the full complex 2x2 gain machine.
     """
-    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
+    def __init__(self, label, data_arr, ndir, nmod, double_precision, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a 2x2 complex gain machine.
         
@@ -27,8 +27,10 @@ class Complex2x2Gains(PerIntervalGains):
                 visibilities. 
             ndir (int):
                 Number of directions.
-            nmod (nmod):
+            nmod (int):
                 Number of models.
+            double_precision (bool):
+                Force use of double precision if True (else use dtype of data)
             chunk_ts (np.ndarray):
                 Times for the data being processed.
             chunk_fs (np.ndarray):
@@ -36,7 +38,7 @@ class Complex2x2Gains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
-        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, double_precision,
                                   chunk_ts, chunk_fs, chunk_label, options,
                                   self.get_kernel(options))
 

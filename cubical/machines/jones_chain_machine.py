@@ -19,7 +19,7 @@ class JonesChain(MasterMachine):
     underlying complex 2x2 machines.
     """
 
-    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, jones_options):
+    def __init__(self, label, data_arr, ndir, nmod, double_precision, times, frequencies, chunk_label, jones_options):
         """
         Initialises a chain of complex 2x2 gain machines.
         
@@ -31,8 +31,10 @@ class JonesChain(MasterMachine):
                 visibilities. 
             ndir (int):
                 Number of directions.
-            nmod (nmod):
+            nmod (int):
                 Number of models.
+            double_precision (bool):
+                Force use of double precision if True (else use dtype of data)
             times (np.ndarray):
                 Times for the data being processed.
             frequencies (np.ndarray):
@@ -43,7 +45,7 @@ class JonesChain(MasterMachine):
         self.cykernel = self.get_kernel(jones_options["sol"])
         self.cychain  = cubical.kernels.import_kernel("cychain")
 
-        MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
+        MasterMachine.__init__(self, label, data_arr, ndir, nmod, double_precision, times, frequencies,
                                chunk_label, jones_options)
 
         self.n_dir, self.n_mod = ndir, nmod
@@ -248,7 +250,7 @@ class JonesChain(MasterMachine):
         """
         ndir = self.n_dir if dd else 1
         gains = self.cykernel.allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
-                                                  self.dtype)
+                                                  self.ctype)
         g0 = self.jones_terms[0].gains
         if ndir > 1 and g0.shape[0] == 1:
             g0 = g0.reshape(g0.shape[1:])[np.newaxis,...]
@@ -273,7 +275,7 @@ class JonesChain(MasterMachine):
             A tuple of gains,conjugate gains,flag_count (if flags raised in inversion)
         """
         gains = self.cykernel.allocate_gain_array([1, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
-                                                  self.dtype)
+                                                  self.ctype)
         init = False
         fc0 = 0
         # flip order of jones terms for inverse

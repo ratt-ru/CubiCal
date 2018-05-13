@@ -21,7 +21,7 @@ class ParameterisedGains(PerIntervalGains):
         self.gain_intervals = 1, 1
         self.gain_grid = self.data_grid
         self.gain_shape = [self.n_dir,self.n_tim,self.n_fre,self.n_ant,self.n_cor,self.n_cor]
-        self.gains = np.empty(self.gain_shape, dtype=self.dtype)
+        self.gains = np.empty(self.gain_shape, dtype=self.ctype)
         self.gains[:] = np.eye(self.n_cor)
         self.gflags = np.zeros(self.gain_shape[:-2],FL.dtype)
 

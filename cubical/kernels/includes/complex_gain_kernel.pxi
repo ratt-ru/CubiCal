@@ -43,10 +43,10 @@ allocate_param_array = allocate_gain_array
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
+def cycompute_residual(vcomplex [:,:,:,:,:,:,:,:] m,
                        complex3264 [:,:,:,:,:,:] g,
                        complex3264 [:,:,:,:,:,:] gh,
-                       complex3264 [:,:,:,:,:,:,:] r,
+                       vcomplex [:,:,:,:,:,:,:] r,
                        int t_int,
                        int f_int):
 
@@ -103,9 +103,9 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
+def cycompute_jh(vcomplex [:,:,:,:,:,:,:,:] m,
                  complex3264 [:,:,:,:,:,:] g,
-                 complex3264 [:,:,:,:,:,:,:,:] jh,
+                 vcomplex [:,:,:,:,:,:,:,:] jh,
                  int t_int,
                  int f_int):
 
@@ -159,8 +159,8 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhr(complex3264 [:,:,:,:,:,:,:,:] jh,
-                  complex3264 [:,:,:,:,:,:,:] r,
+def cycompute_jhr(vcomplex [:,:,:,:,:,:,:,:] jh,
+                  vcomplex [:,:,:,:,:,:,:] r,
                   complex3264 [:,:,:,:,:,:] jhr,
                   int t_int,
                   int f_int):
@@ -210,7 +210,7 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:,:,:] jh,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jhj(complex3264 [:,:,:,:,:,:,:,:] jh,
+def cycompute_jhj(vcomplex [:,:,:,:,:,:,:,:] jh,
                   complex3264 [:,:,:,:,:,:] jhj,
                   int t_int,
                   int f_int):
@@ -294,10 +294,10 @@ def cycompute_update(complex3264 [:,:,:,:,:,:] jhr,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
+def cycompute_corrected(vcomplex [:,:,:,:,:,:] o,
                         complex3264 [:,:,:,:,:,:] g,
                         complex3264 [:,:,:,:,:,:] gh,
-                        complex3264 [:,:,:,:,:,:] corr,
+                        vcomplex [:,:,:,:,:,:] corr,
                         int t_int,
                         int f_int):
 
@@ -346,7 +346,7 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cyapply_gains_slow(complex3264 [:,:,:,:,:,:,:,:] m,
+def cyapply_gains_slow(vcomplex [:,:,:,:,:,:,:,:] m,
                   complex3264 [:,:,:,:,:,:] g,
                   complex3264 [:,:,:,:,:,:] gh,
                   int t_int,
@@ -406,7 +406,7 @@ def cyapply_gains_slow(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cyapply_gains_3(complex3264 [:,:,:,:,:,:,:,:] m,
+def cyapply_gains_3(vcomplex [:,:,:,:,:,:,:,:] m,
                   complex3264 [:,:,:,:,:,:] g,
                   complex3264 [:,:,:,:,:,:] gh,
                   int t_int,
@@ -519,7 +519,7 @@ def cyright_multiply_gains(complex3264 [:,:,:,:,:,:] g,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
+def cyapply_gains(vcomplex [:,:,:,:,:,:,:,:] m,
                   complex3264 [:,:,:,:,:,:] g,
                   complex3264 [:,:,:,:,:,:] gh,
                   int t_int,
@@ -578,7 +578,7 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cyapply_gains_1(complex3264 [:,:,:,:,:,:,:,:] m,
+def cyapply_gains_1(vcomplex [:,:,:,:,:,:,:,:] m,
                   complex3264 [:,:,:,:,:,:] g,
                   complex3264 [:,:,:,:,:,:] gh,
                   int t_int,
@@ -643,7 +643,7 @@ def cyapply_gains_1(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cyapply_gains_2(complex3264 [:,:,:,:,:,:,:,:] m,
+def cyapply_gains_2(vcomplex [:,:,:,:,:,:,:,:] m,
                   complex3264 [:,:,:,:,:,:] g,
                   complex3264 [:,:,:,:,:,:] gh,
                   int t_int,

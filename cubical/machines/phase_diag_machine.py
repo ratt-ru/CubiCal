@@ -11,7 +11,7 @@ class PhaseDiagGains(PerIntervalGains):
     """
     This class implements the diagonal phase-only gain machine.
     """
-    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
+    def __init__(self, label, data_arr, ndir, nmod, double_precision, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a diagonal phase-only gain machine.
         
@@ -23,8 +23,10 @@ class PhaseDiagGains(PerIntervalGains):
                 visibilities. 
             ndir (int):
                 Number of directions.
-            nmod (nmod):
+            nmod (int):
                 Number of models.
+            double_precision (bool):
+                Force use of double precision if True (else use dtype of data)
             chunk_ts (np.ndarray):
                 Times for the data being processed.
             chunk_fs (np.ndarray):
@@ -32,12 +34,12 @@ class PhaseDiagGains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
-        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, double_precision,
                                   chunk_ts, chunk_fs, chunk_label, options,
                                   self.get_kernel(options))
 
         self.phases = self.cykernel.allocate_gain_array(self.gain_shape, dtype=self.ftype, zeros=True)
-        self.gains = np.empty_like(self.phases, dtype=self.dtype)
+        self.gains = np.empty_like(self.phases, dtype=self.ctype)
         self.gains[:] = np.eye(self.n_cor) 
         self.old_gains = self.gains.copy()
 

@@ -23,7 +23,7 @@ class MasterMachine(object):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, jones_label, data_arr, ndir, nmod, times, freqs, chunk_label, options):
+    def __init__(self, jones_label, data_arr, ndir, nmod, double_precision, times, freqs, chunk_label, options):
         """
         Initializes a gain machine.
         
@@ -36,8 +36,8 @@ class MasterMachine(object):
                 from options['dd-term'], default False
             - n_dir, n_mod, n_tim, n_fre, n_ant, n_cor:
                 problem dimensions
-            - dtype:
-                complex dtype of data/model (complex64 or complex128)
+            - ctype:
+                complex dtype to use for solutions (complex64 or complex128)
             - ftype:
                 corresponding float dtype (float32 or float64)
             - iters:
@@ -46,6 +46,7 @@ class MasterMachine(object):
                 from options['max-iters'], default 0
         
         Args:
+            double_precision:
             jones_label (str):
                 Label identifying the Jones term.
             data_arr (np.ndarray): 
@@ -53,8 +54,10 @@ class MasterMachine(object):
                 visibilities. 
             ndir (int):
                 Number of directions.
-            nmod (nmod):
+            nmod (int):
                 Number of models.
+            double_precision (bool):
+                Force use of double precision if True (else use dtype of data)
             times (np.ndarray):
                 Times for the data being processed.
             freqs (np.ndarray):
@@ -82,8 +85,12 @@ class MasterMachine(object):
         self.n_dir, self.n_mod = ndir if self._dd_term else 1, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
 
-        self.dtype = data_arr.dtype
-        self.ftype = data_arr.real.dtype
+        if double_precision:
+            self.ctype = np.complex128
+            self.ftype = np.float64
+        else:
+            self.ctype = data_arr.dtype
+            self.ftype = data_arr.real.dtype
 
         self._iters = 0
 
@@ -572,7 +579,8 @@ class MasterMachine(object):
                 grid: the grid on which solutions are expected, for axes that are already known (antennas, correlations)
                   A dictionary of {axis_name:values_vector}. time/freq need not be supplied, as it is filled in chunk by chunk.
                   
-                double_precision: if True, gain machines will use 64-bit float arithmetic
+                double_precision: if True, gain machines will use 64-bit floats (note that data/model
+                    may still be in 32 bits)
                 
                 apply_only: if True, solutions are only applied, not solved for
                 
@@ -588,6 +596,7 @@ class MasterMachine(object):
                 self.jones_options['solvable'] = False
             self.solvable = self.jones_options['solvable']
             self.grid = grid
+            self._double_precision = double_precision
             self.ctype = np.complex128 if double_precision else np.complex64
             self.ftype = np.float64    if double_precision else np.float32
             # dict of jones label -> param database object to init from
@@ -800,8 +809,10 @@ class MasterMachine(object):
             Returns:
                 An instance of a gain machine
             """
-            gm = self.machine_class(self.jones_label, data_arr, n_dir, n_mod, times, freqs,
+            gm = self.machine_class(self.jones_label, data_arr, n_dir, n_mod,
+                                    self._double_precision, times, freqs,
                                     chunk_label, self.jones_options)
             gm._load_solutions(self._init_sols)
+
             return gm
 

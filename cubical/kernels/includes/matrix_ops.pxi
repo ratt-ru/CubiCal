@@ -1,3 +1,19 @@
+ctypedef fused complex3264:
+    np.complex64_t
+    np.complex128_t
+
+ctypedef fused float3264:
+    np.float32_t
+    np.float64_t
+
+# complex gain (for mixed-precision kernels)
+ctypedef np.complex128_t gcomplex
+
+# complex visibility (for mixed-precision kernels)
+ctypedef np.complex64_t  vcomplex
+
+
+
 cdef inline void mat_product(complex3264 * out,const complex3264 *a,const complex3264 *b) nogil:
     """
     Computes a 2x2 matrix product: out = A.B

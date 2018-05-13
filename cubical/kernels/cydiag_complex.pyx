@@ -34,11 +34,6 @@ import cython
 from cython.parallel import parallel, prange
 import cubical.kernels
 
-
-ctypedef fused complex3264:
-    np.complex64_t
-    np.complex128_t
-
 # pull in standard inlined matrix operations
 include "includes/matrix_ops.pxi"
 
@@ -48,7 +43,7 @@ include "includes/matrix_ops.pxi"
 # themselves are written in terms of these functions -- they're pulled in from complex_gain_kernel.pxi below
 
 
-cdef inline void mat_product_gm(complex3264 * out,const complex3264 *g,const complex3264 *m) nogil:
+cdef inline void mat_product_gm(vcomplex * out,const gcomplex *g,const vcomplex *m) nogil:
     """
     Computes a 2x2 matrix product: out = G.M. G is diagonal.
     """
@@ -65,7 +60,7 @@ cdef inline void mat_product_update(complex3264 * out,const complex3264 *a,const
     out[1] = out[2] = 0
     out[3] = (a[2]*b[1] + a[3]*b[3])
 
-cdef inline void add_rjh_product(complex3264 * out,const complex3264 *r,const complex3264 *jh) nogil:
+cdef inline void add_rjh_product(complex3264 * out,const vcomplex *r,const vcomplex *jh) nogil:
     """
     Adds a 2x2 matrix product in place: out += R.J
     """
@@ -74,7 +69,7 @@ cdef inline void add_rjh_product(complex3264 * out,const complex3264 *r,const co
     out[2] += (r[2]*jh[0] + r[3]*jh[2])
     out[3] += (r[2]*jh[1] + r[3]*jh[3])
 
-cdef inline void add_jhj_product(complex3264 * out,const complex3264 *j) nogil:
+cdef inline void add_jhj_product(complex3264 * out,const vcomplex *j) nogil:
     """
     Adds a matrix conjugate product in place: out += J^H.J
     """
@@ -83,7 +78,7 @@ cdef inline void add_jhj_product(complex3264 * out,const complex3264 *j) nogil:
     out[2] += (j[1].conjugate()*j[0] + j[3].conjugate()*j[2])
     out[3] += (j[1].conjugate()*j[1] + j[3].conjugate()*j[3])
 
-cdef inline void gmgh_product(complex3264 * out,const complex3264 *g,const complex3264 *m,const complex3264 *gh) nogil:
+cdef inline void gmgh_product(vcomplex * out,const complex3264 *g,const vcomplex *m,const complex3264 *gh) nogil:
     """
     Computes a triple 2x2 matrix product: out = G.M.G^H
     """
@@ -92,7 +87,7 @@ cdef inline void gmgh_product(complex3264 * out,const complex3264 *g,const compl
     out[2] = g[3]*m[2]*gh[0]
     out[3] = g[3]*m[3]*gh[3]
 
-cdef inline void subtract_gmgh_product(complex3264 * out,const complex3264 *g,const complex3264 *m,const complex3264 *gh) nogil:
+cdef inline void subtract_gmgh_product(vcomplex * out,const complex3264 *g,const vcomplex *m,const complex3264 *gh) nogil:
     """
     Subtracts a triple 2x2 matrix product: out -= G.M.G^H
     """
@@ -101,14 +96,14 @@ cdef inline void subtract_gmgh_product(complex3264 * out,const complex3264 *g,co
     out[2] -= g[3]*m[2]*gh[0]
     out[3] -= g[3]*m[3]*gh[3]
 
-cdef inline void inplace_gmgh_product(const complex3264 *g,complex3264 *m,const complex3264 *gh) nogil:
+cdef inline void inplace_gmgh_product(const complex3264 *g,vcomplex *m,const complex3264 *gh) nogil:
     """
     Computes a triple 2x2 matrix product in place: M = G.M.G^H
     """
     gmgh_product(m,g,m,gh)
 
 
-cdef inline void inplace_left_product(const complex3264 *g,complex3264 *m) nogil:
+cdef inline void inplace_left_product(const complex3264 *g,vcomplex *m) nogil:
     """
     Computes a triple 2x2 matrix product in place: M = G.M.G^H
     """
@@ -117,7 +112,7 @@ cdef inline void inplace_left_product(const complex3264 *g,complex3264 *m) nogil
     m[2] *= g[3]
     m[3] *= g[3]
 
-cdef inline void inplace_right_product(complex3264 *m,const complex3264 *g) nogil:
+cdef inline void inplace_right_product(vcomplex *m,const complex3264 *g) nogil:
     """
     Computes a triple 2x2 matrix product in place: M = G.M.G^H
     """

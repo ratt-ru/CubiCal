@@ -20,7 +20,7 @@ class PerIntervalGains(MasterMachine):
     This is a base class for all gain solution machines that use solutions intervals.
     """
 
-    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, options, cykernel):
+    def __init__(self, label, data_arr, ndir, nmod, double_precision, times, frequencies, chunk_label, options, cykernel):
         """
         Initialises a gain machine which supports solution intervals.
         
@@ -32,8 +32,10 @@ class PerIntervalGains(MasterMachine):
                 visibilities. 
             ndir (int):
                 Number of directions.
-            nmod (nmod):
+            nmod (int):
                 Number of models.
+            double_precision (bool):
+                Force use of double precision if True (else use dtype of data)
             times (np.ndarray):
                 Times for the data being processed.
             freqs (np.ndarray):
@@ -42,7 +44,7 @@ class PerIntervalGains(MasterMachine):
                 Dictionary of options. 
         """
 
-        MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
+        MasterMachine.__init__(self, label, data_arr, ndir, nmod, double_precision, times, frequencies,
                                chunk_label, options)
 
         self.cykernel = cykernel
@@ -214,7 +216,7 @@ class PerIntervalGains(MasterMachine):
         self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
         self.gain_grid = self.interval_grid
 
-        self.gains = self.cykernel.allocate_gain_array(self.gain_shape, self.dtype)
+        self.gains = self.cykernel.allocate_gain_array(self.gain_shape, self.ctype)
 
         self.gains[:] = np.eye(self.n_cor)
         self.gflags = np.zeros(self.gain_shape[:-2], FL.dtype)

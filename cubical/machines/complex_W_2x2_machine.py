@@ -13,7 +13,7 @@ class ComplexW2x2Gains(PerIntervalGains):
     This class implements the weighted full complex 2x2 gain machine
     """
     
-    def __init__(self, label, model_arr, ndir, nmod,
+    def __init__(self, label, model_arr, ndir, nmod, double_precision,
                  chunk_ts, chunk_fs, chunk_label, options):
         # clumsy but necessary: can't import at top level (OMP must not be touched before worker processes
         # are forked off), so we import it only in here
@@ -21,10 +21,10 @@ class ComplexW2x2Gains(PerIntervalGains):
         global cyfull
         cyfull = cubical.kernels.cyfull_W_complex
 
-        PerIntervalGains.__init__(self, label, model_arr, ndir, nmod, chunk_ts, chunk_fs,
+        PerIntervalGains.__init__(self, label, model_arr, ndir, nmod, double_precision, chunk_ts, chunk_fs,
                                   chunk_label, options)
         
-        self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
+        self.gains     = np.empty(self.gain_shape, dtype=self.ctype)
         
         self.gains[:]  = np.eye(self.n_cor)
         
@@ -32,7 +32,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
         
-        self.weights = np.ones(self.weights_shape, dtype=self.dtype)
+        self.weights = np.ones(self.weights_shape, dtype=self.ctype)
         
         self.v = 2.
 
@@ -168,7 +168,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         covinv = np.linalg.pinv(cov)
 
-        return np.array(covinv, dtype=self.dtype)
+        return np.array(covinv, dtype=self.ctype)
 
 
     def update_weights(self, r, covinv, w, v):

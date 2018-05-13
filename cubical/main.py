@@ -182,8 +182,6 @@ def main(debugging=False):
         if parser is not None:
             parser.print_config(dest=log)
 
-        double_precision = GD["sol"]["precision"] == 64
-
         # set up RIME
 
         solver_opts = GD["sol"]
@@ -198,6 +196,18 @@ def main(debugging=False):
         print>> log, ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green")
 
         have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
+
+        if GD["sol"]["precision"] == 32:
+            print>> log(0,"red"), "enforcing single precison for visibilities and solutions"
+            data_double_prec = sol_double_prec = False
+        elif GD["sol"]["precision"] == 64:
+            print>> log(0,"blue"), "enforcing double precison for visibilities and solutions"
+            data_double_prec = sol_double_prec = True
+        elif GD["sol"]["precision"] == "mixed":
+            print>> log(0,"green"), "using single precison for data and double for solutions"
+            data_double_prec, sol_double_prec = False, True
+        else:
+            raise ValueError("unknown --sol-precision {} setting".format(GD["sol"]["precision"]))
 
         # TODO: in this case data_handler can be told to only load diagonal elements. Save memory!
         # top-level diag-diag enforced across jones terms
@@ -232,7 +242,7 @@ def main(debugging=False):
                           channels=GD["sel"]["chan"],
                           flagopts=GD["flags"],
                           diag=solver_opts["diag-diag"],
-                          double_precision=double_precision,
+                          double_precision=data_double_prec,
                           beam_pattern=GD["model"]["beam-pattern"],
                           beam_l_axis=GD["model"]["beam-l-axis"],
                           beam_m_axis=GD["model"]["beam-m-axis"],
@@ -311,7 +321,7 @@ def main(debugging=False):
         grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,
                                                        apply_only=apply_only,
-                                                       double_precision=double_precision,
+                                                       double_precision=sol_double_prec,
                                                        global_options=GD, jones_options=jones_opts)
                                                        
         # create IFR-based gain machine. Only compute gains if we're loading a model

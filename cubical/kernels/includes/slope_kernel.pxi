@@ -3,6 +3,10 @@
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 
+# second type, for mixing e.g. models and gains of different precision
+ctypedef fused complex3264a:
+    np.complex64_t
+    np.complex128_t
 
 #
 # This defines a standard set of kernel methods for phase slopes. It is reused in the

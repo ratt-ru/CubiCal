@@ -3,6 +3,10 @@
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 
+# second type, for mixing e.g. models and gains of different precision
+ctypedef fused complex3264a:
+    np.complex64_t
+    np.complex128_t
 
 #
 # This defines a standard set of kernel methods for diagonal phase-only gains. It is reused in the
@@ -57,7 +61,7 @@ allocate_param_array = allocate_gain_array
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 def cycompute_jhj(complex3264 [:,:,:,:,:,:,:,:] m,
-                  complex3264   [:,:,:,:,:,:] jhj,
+                  complex3264a   [:,:,:,:,:,:] jhj,
                   int t_int=1,
                   int f_int=1):
 
@@ -230,8 +234,8 @@ def _bad_cycompute_jhj_1(complex3264 [:,:,:,:,:,:,:,:] m,
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 def cycompute_jhr(complex3264 [:,:,:,:,:,:] gh,
-                  complex3264 [:,:,:,:,:,:,:,:] jh,
-                  complex3264 [:,:,:,:,:,:,:] r,
+                  complex3264a [:,:,:,:,:,:,:,:] jh,
+                  complex3264a [:,:,:,:,:,:,:] r,
                   complex3264 [:,:,:,:,:,:] jhr,
                   int t_int=1,
                   int f_int=1):

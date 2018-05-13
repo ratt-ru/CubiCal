@@ -24,7 +24,7 @@ class PhaseSlopeGains(ParameterisedGains):
     This class implements the diagonal phase-only parameterised slope gain machine.
     """
 
-    def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
+    def __init__(self, label, data_arr, ndir, nmod, double_precision, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a diagonal phase-slope gain machine.
         
@@ -36,8 +36,10 @@ class PhaseSlopeGains(ParameterisedGains):
                 visibilities. 
             ndir (int):
                 Number of directions.
-            nmod (nmod):
+            nmod (int):
                 Number of models.
+            double_precision (bool):
+                Force use of double precision if True (else use dtype of data)
             chunk_ts (np.ndarray):
                 Times for the data being processed.
             chunk_fs (np.ndarray):
@@ -48,7 +50,7 @@ class PhaseSlopeGains(ParameterisedGains):
         ### this kernel used for residuals etc.
         cykernel = self.get_kernel(options)
 
-        ParameterisedGains.__init__(self, label, data_arr, ndir, nmod,
+        ParameterisedGains.__init__(self, label, data_arr, ndir, nmod, double_precision,
                                     chunk_ts, chunk_fs, chunk_label, options, cykernel)
 
         self.slope_type = options["type"]
@@ -267,7 +269,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         jhj1_shape = [self.n_dir, self.n_tim, self.n_fre, self.n_ant, 2, 2]
 
-        jhj1 = self.cyslope.allocate_gain_array(jhj1_shape, dtype=self.dtype, zeros=True)
+        jhj1 = self.cyslope.allocate_gain_array(jhj1_shape, dtype=self.ctype, zeros=True)
 
         # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHJ
         self.cykernel.cycompute_jhj(model_arr, jhj1, 1,1)
