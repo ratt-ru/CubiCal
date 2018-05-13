@@ -60,6 +60,20 @@ cubical.last
 cubical.parset
 cubical.stats.pickle
 *.bat
+*.parmdb
+table.lock
+*.tmp
+*.skel
+cubical/kernels/*.c
+cubical/kernels/*.cpp
+cubical/kernels/*.html
+cubical/kernels/includes/*.html
+build/*
+cubical.egg-info/*
+*.py~
+examples/.ipynb_checkpoints/
+test/SUBSET-D147-output.MS/table.*
+
 
 # Folders #
 ###########
