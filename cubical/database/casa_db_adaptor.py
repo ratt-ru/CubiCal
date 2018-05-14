@@ -10,6 +10,7 @@ from pyrap.tables import table as tbl
 import os
 import shutil
 import numpy as np
+import copy
 
 log = logger.getLogger("casa_db_adaptor")
 
@@ -43,7 +44,7 @@ class casa_caltable_factory(object):
                     log.error("CASA calibration table destination already exists but is not a directory. Will not remove.")    
                     return
                 else:
-                    log.info("Destination CASA gain table exists. Will overwrite.")
+                    log.info("Destination CASA gain table '%s' exists. Will overwrite." % filename)
                     shutil.rmtree(filename) # CASA convention is to overwrite
                     
             shutil.copytree(BLANK_TABLE_TEMPLATE, filename)
@@ -89,6 +90,7 @@ class casa_caltable_factory(object):
             
             with tbl("%s::SPECTRAL_WINDOW" % filename, ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.metadata["ddids"]))
+                # Per DDID determine solution spacing in frequency
                 for iddid, ddid in enumerate(db.metadata["ddids"]):
                     spwid = db.ddid_spw_map[ddid]
                     minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
@@ -125,7 +127,7 @@ class casa_caltable_factory(object):
                 if not is_complex:
                     cdesc = t.getcoldesc("CPARAM")
                     cdesc["valueType"] = "float"
-                    t.addcols({"FPARAM", cdesc})
+                    t.addcols({"FPARAM": cdesc})
                     t.removecols("CPARAM")
                         
         @classmethod
@@ -284,7 +286,62 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
-            pass
+            if np.prod(db[gname].shape) == 0:
+                log.warn("No %s solutions. Will not write CASA table" % gname)
+                return
+            assert db[gname].shape == db[gname + ".err"].shape, "PARAM err shape does not match PARAM shape, this is a bug"
+            assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr'), "DB table in unrecognized format"
+            
+            ddids = db.metadata["ddids"]
+            ndir = len(db[gname].grid[db[gname].ax.dir])
+            ntime = len(db[gname].grid[db[gname].ax.time])
+            nant = len(db[gname].grid[db[gname].ax.ant])
+            ncorr = len(db[gname].grid[db[gname].ax.corr])
+            nddids = len(db.metadata["ddids"])
+            nrow = ndir * ntime * \
+                    nant * len(ddids)
+            assert ncorr == 2, "Expected diagnonal Jones matrix"
+            
+            cls.init_empty(db, 
+                           db.filename + ".%s.casa" % outname, 
+                           db[gname].grid[db[gname].ax.freq],
+                           db[gname].grid[db[gname].ax.ant],
+                           field_ndir=ndir,
+                           is_complex=False,
+                           viscal_label="K Jones")
+            
+            with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
+                t.addrows(nrows=nrow)
+                for iddid, ddid in enumerate(db.metadata["ddids"]):
+                    spwid = db.ddid_spw_map[ddid]
+                    minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
+                    maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
+                    ddsolfreqindx = np.argwhere(np.logical_and(db[gname].grid[db[gname].ax.freq] >= minfreq,
+                                                               db[gname].grid[db[gname].ax.freq] <= maxfreq))
+                    # note -- CASA K table delays are in nanoseconds. This presumes delays in the cubical tables are already denormalized into seconds
+                    params = np.swapaxes(db[gname].get_cube()[:, :, ddsolfreqindx, :, :],
+                                         2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) * 1.0e9
+                    paramerrs = np.swapaxes(db[gname + ".err"].get_cube()[:, :, ddsolfreqindx, :, :],
+                                            2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) * 1.0e9
+                    flags = np.ma.getmaskarray(params)
+                    fieldid = np.repeat(np.arange(ndir), ntime * nant) # dir (marked as field) is slowest varying
+                    time = np.repeat(np.tile(db[gname].grid[db[gname].ax.time], ndir), nant)
+                    ant1 = np.tile(np.arange(nant), ndir * ntime) # FK ndir * ntime blocks
+                    #ant2 can be the same - it is not used unless specifying mueller matricies
+                    nrowsdd = ntime *  nant * ndir
+                    t.putcol("TIME", time, startrow=nrowsdd * iddid)
+                    t.putcol("FIELD_ID", fieldid, startrow=nrowsdd * iddid)
+                    t.putcol("SPECTRAL_WINDOW_ID", np.ones(ant1.shape) * iddid, startrow=nrowsdd * iddid) # new spectral window with freq range for these sols
+                    t.putcol("ANTENNA1", ant1, startrow=nrowsdd * iddid)
+                    t.putcol("ANTENNA2", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) 
+                    t.putcol("INTERVAL", np.zeros(ant1.shape), startrow=nrowsdd * iddid) #TODO: unclear from MEMO 229
+                    t.putcol("SCAN_NUMBER", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) #TODO this FK info is not available yet @oms
+                    t.putcol("OBSERVATION_ID", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) #TODO this FK info is not available yet @oms
+                    t.putcol("FPARAM", np.ma.getdata(params), startrow=nrowsdd * iddid)
+                    t.putcol("PARAMERR", np.ma.getdata(paramerrs), startrow=nrowsdd * iddid)
+                    t.putcol("FLAG", flags, startrow=nrowsdd * iddid)
+                    t.putcol("SNR", np.ones(params.shape) * np.inf, startrow=nrowsdd * iddid) #TODO this is not available @oms
+                    t.putcol("WEIGHT", np.ones(params.shape), startrow=nrowsdd * iddid) #TODO this is not available @oms
         
 class casa_db_adaptor(PickledDatabase):
     
@@ -317,46 +374,46 @@ class casa_db_adaptor(PickledDatabase):
         if not isinstance(src, DataHandler):
             raise TypeError("src must be of type Cubical DataHandler")
         
-        self.antoffset = src.antoffset
-        self.antpos = src.antpos
-        self.anttype = src.anttype
-        self.antdishdiam = src.antdishdiam
-        self.antflagrow = src.antflagrow
-        self.antmount = src.antmount
-        self.antnames = src.antnames
-        self.antstation = src.antstation
-        self.fielddelaydirs = src.fielddelaydirs
-        self.fieldphasedirs = src.fieldphasedirs
-        self.fieldrefdir = src.fieldrefdir
-        self.fieldcode = src.fieldcode
-        self.fieldflagrow = src.fieldflagrow
-        self.fieldname = src.fieldname
-        self.fieldnumpoly = src.fieldnumpoly
-        self.fieldsrcid = src.fieldsrcid
-        self.fieldtime = src.fieldtime
-        self.obstimerange = src.obstimerange
-        self.obslog = src.obslog
-        self.obsschedule = src.obsschedule
-        self.obsflagrow = src.obsflagrow
-        self.obsobserver = src.obsobserver
-        self.obsproject = src.obsproject
-        self.obsreleasedate = src.obsreleasedate
-        self.obsscheduletype = src.obsscheduletype
-        self.obstelescopename = src.obstelescopename
-        self.spwmeasfreq = src.spwmeasfreq
-        self.spwchanfreq = src.spwchanfreq
-        self.spwreffreq = src.spwreffreq
-        self.spwchanwidth = src.spwchanwidth
-        self.spweffbw = src.spweffbw
-        self.spwresolution = src.spwresolution
-        self.spwflagrow = src.spwflagrow
-        self.spwfreqgroup = src.spwfreqgroup
-        self.spwfreqgroupname = src.spwfreqgroupname
-        self.spwifconvchain = src.spwifconvchain
-        self.spwname = src.spwname
-        self.spwnetsideband = src.spwnetsideband
-        self.spwnumchan = src.spwnumchan
-        self.spwtotalbandwidth = src.spwtotalbandwidth
+        self.antoffset = src._anttabcols["OFFSET"]
+        self.antpos = src._anttabcols["POSITION"]
+        self.anttype = src._anttabcols["TYPE"]
+        self.antdishdiam = src._anttabcols["DISH_DIAMETER"]
+        self.antflagrow = src._anttabcols["FLAG_ROW"]
+        self.antmount = src._anttabcols["MOUNT"]
+        self.antnames = src._anttabcols["NAME"]
+        self.antstation = src._anttabcols["STATION"]
+        self.fielddelaydirs = src._fldtabcols["DELAY_DIR"]
+        self.fieldphasedirs = src._fldtabcols["PHASE_DIR"]
+        self.fieldrefdir = src._fldtabcols["REFERENCE_DIR"]
+        self.fieldcode = src._fldtabcols["CODE"]
+        self.fieldflagrow = src._fldtabcols["FLAG_ROW"]
+        self.fieldname = src._fldtabcols["NAME"]
+        self.fieldnumpoly = src._fldtabcols["NUM_POLY"]
+        self.fieldsrcid = src._fldtabcols["SOURCE_ID"]
+        self.fieldtime = src._fldtabcols["TIME"]
+        self.obstimerange = src._obstabcols["TIME_RANGE"]
+        self.obslog = src._obstabcols["LOG"]
+        self.obsschedule = src._obstabcols["SCHEDULE"]
+        self.obsflagrow = src._obstabcols["FLAG_ROW"]
+        self.obsobserver = src._obstabcols["OBSERVER"]
+        self.obsproject = src._obstabcols["PROJECT"]
+        self.obsreleasedate = src._obstabcols["RELEASE_DATE"]
+        self.obsscheduletype = src._obstabcols["SCHEDULE_TYPE"]
+        self.obstelescopename = src._obstabcols["TELESCOPE_NAME"]
+        self.spwmeasfreq = src._spwtabcols["MEAS_FREQ_REF"]
+        self.spwchanfreq = src._spwtabcols["CHAN_FREQ"]
+        self.spwreffreq = src._spwtabcols["REF_FREQUENCY"]
+        self.spwchanwidth = src._spwtabcols["CHAN_WIDTH"]
+        self.spweffbw = src._spwtabcols["EFFECTIVE_BW"]
+        self.spwresolution = src._spwtabcols["RESOLUTION"]
+        self.spwflagrow = src._spwtabcols["FLAG_ROW"]
+        self.spwfreqgroup = src._spwtabcols["FREQ_GROUP"]
+        self.spwfreqgroupname = src._spwtabcols["FREQ_GROUP_NAME"]
+        self.spwifconvchain = src._spwtabcols["IF_CONV_CHAIN"]
+        self.spwname = src._spwtabcols["NAME"]
+        self.spwnetsideband = src._spwtabcols["NET_SIDEBAND"]
+        self.spwnumchan = src._spwtabcols["NUM_CHAN"]
+        self.spwtotalbandwidth = src._spwtabcols["TOTAL_BANDWIDTH"]
         self.ddid_spw_map = src._ddid_spw
         self.do_write_casatbl = True
         self.meta_avail = True
@@ -380,7 +437,7 @@ class casa_db_adaptor(PickledDatabase):
                 casa_caltable_factory.create_D_table(self, "G:gain")
             if "G:delay" in self.names():
                 assert "G:delay.err" in self.names(), "Delay error not present in solutions db? This is a bug"
-                casa_caltable_factory.create_K_table(self, "")
+                casa_caltable_factory.create_K_table(self, "G:delay")
                 
         self.close()
             
