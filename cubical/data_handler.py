@@ -16,6 +16,7 @@ from cubical.tools import shared_dict
 import cubical.flagging as flagging
 from cubical.flagging import FL
 from pdb import set_trace as BREAK  # useful: can set static breakpoints by putting BREAK() in the code
+import math
 
 # Try to import montblanc: if not successful, remember error for later.
 
@@ -33,6 +34,10 @@ except:
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("data_handler")
+
+def _divide_up(n, k):
+    """For two integers n and k, returns ceil(n/k)"""
+    return n//k + (1 if n%k else 0)
 
 def _parse_slice(arg, what="slice"):
     """
@@ -167,7 +172,7 @@ class Tile(object):
                 Row chunk which is used to initialise the tile.
         """
 
-        self.handler = handler
+        self.dh = handler
         self.rowchunks = [chunk]
         self.first_row = chunk.rows[0]
         self.last_row = chunk.rows[-1]
@@ -226,14 +231,14 @@ class Tile(object):
 
         self._chunk_dict = OrderedDict()
         self._chunk_indices = {}
-        num_freq_chunks = len(self.handler.chunk_find)-1
+        num_freq_chunks = len(self.dh.chunk_find) - 1
         for rowchunk in self.rowchunks:
             for ifreq in range(num_freq_chunks):
                 key = "D{}T{}F{}".format(rowchunk.ddid, rowchunk.tchunk, ifreq)
-                chan0, chan1 = self.handler.chunk_find[ifreq:ifreq + 2]
+                chan0, chan1 = self.dh.chunk_find[ifreq:ifreq + 2]
                 self._chunk_dict[key] = rowchunk, chan0, chan1
                 self._chunk_indices[key] = rowchunk.tchunk, \
-                                           self.handler._ddid_index[rowchunk.ddid] * num_freq_chunks + ifreq
+                                           self.dh._ddid_index[rowchunk.ddid] * num_freq_chunks + ifreq
 
         # Copy various useful info from handler and make a simple list of unique ddids.
 
@@ -241,15 +246,14 @@ class Tile(object):
         self.ddids = np.unique([rowchunk.ddid for rowchunk,_,_ in self._chunk_dict.itervalues()])
 
         # various columns
-        self.ddid_col = self.handler.ddid_col[self.first_row:self.last_row+1]
-        self.time_col = self.handler.time_col[self.first_row:self.last_row+1]
-        self.antea = self.handler.antea[self.first_row:self.last_row+1]
-        self.anteb = self.handler.anteb[self.first_row:self.last_row+1]
-        self.times = self.handler.times[self.first_row:self.last_row+1]
-        self.ctype = self.handler.ctype
-        self.nants = self.handler.nants
-        self.ncorr = self.handler.ncorr
-        self.nfreq = self.handler.nfreq
+        self.ddid_col = self.dh.ddid_col[self.first_row:self.last_row + 1]
+        self.time_col = self.dh.time_col[self.first_row:self.last_row + 1]
+        self.antea = self.dh.antea[self.first_row:self.last_row + 1]
+        self.anteb = self.dh.anteb[self.first_row:self.last_row + 1]
+        self.times = self.dh.times[self.first_row:self.last_row + 1]
+        self.nants = self.dh.nants
+        self.ncorr = self.dh.ncorr
+        self.nfreq = self.dh.nfreq
 
     def get_chunk_indices(self, key):
         """ Returns chunk indices based on the key value. """
@@ -278,9 +282,9 @@ class Tile(object):
         rowchunk, chan0, chan1 = self._chunk_dict[key]
         timeslice = slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1)
         # lookup ordinal number of this DDID, and convert this to offset in frequencies
-        chan_offset = self.handler._ddid_index[rowchunk.ddid] * self.nfreq
-        return self.handler.uniq_times[timeslice], \
-               self.handler._ddid_chanfreqs[rowchunk.ddid, chan0:chan1], \
+        chan_offset = self.dh._ddid_index[rowchunk.ddid] * self.nfreq
+        return self.dh.uniq_times[timeslice], \
+               self.dh._ddid_chanfreqs[rowchunk.ddid, chan0:chan1], \
                slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1), \
                slice(chan_offset + chan0, chan_offset + chan1)
 
@@ -314,30 +318,186 @@ class Tile(object):
         data['updated'] = np.array([False, False])
         self._auto_filled_bitflag = False
 
-        print>>log(0,"blue"),"{}: reading MS rows {}~{}".format(self.label, self.first_row, self.last_row)
-        
-        nrows = self.last_row - self.first_row + 1
-        
-        data['obvis'] = obvis = self.handler.fetchslice(
-            self.handler.data_column, self.first_row, nrows).astype(self.handler.ctype)
-        print>> log(2), "  read " + self.handler.data_column
+        nrows0 = self.last_row - self.first_row + 1
+        print>> log(0, "blue"), "{}: reading MS rows {}~{}".format(self.label, self.first_row, self.last_row)
 
-        self.uvwco = uvw = data['uvwco'] = self.handler.fetch("UVW", self.first_row, nrows)
+        obvis0 = self.dh.fetchslice(self.dh.data_column, self.first_row, nrows0).astype(self.dh.ctype)
+        print>> log(2), "  read " + self.dh.data_column
+
+        uvw0 = self.dh.fetch("UVW", self.first_row, nrows0)
         print>> log(2), "  read UVW coordinates"
 
-        # The following either reads model visibilities from the measurement set, or uses an lsm 
-        # and Montblanc to simulate them. Data may need to be massaged to be compatible with 
+        # read weight columns, if a model is to be read
+
+        if self.dh.has_weights and load_model:
+            weights0 = np.zeros([len(self.dh.models)] + list(obvis0.shape), self.dh.wtype)
+            wcol_cache = {}
+            for i, (_, weight_col) in enumerate(self.dh.models):
+                if weight_col not in wcol_cache:
+                    print>> log(1), "  reading weights from {}".format(weight_col)
+                    wcol = self.dh.fetch(weight_col, self.first_row, nrows0)
+                    # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
+                    if weight_col == "WEIGHT":
+                        wcol_cache[weight_col] = wcol[:, np.newaxis, self.dh._corr_slice].repeat(self.dh.nfreq, 1)
+                    else:
+                        wcol_cache[weight_col] = wcol[:, self.dh._channel_slice, self.dh._corr_slice]
+                weights0[i, ...] = wcol_cache[weight_col]
+            del wcol_cache
+        else:
+            weights0 = None
+
+        # The following block of code deals with the various flagging operations and columns. The
+        # aim is to correctly populate flag_arr from the various flag sources.
+
+        # Make a flag array. This will contain FL.PRIOR for any points flagged in the MS.
+
+        flag_arr0 = np.zeros(obvis0.shape, dtype=FL.dtype)
+
+        # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them.
+
+        flagcol = flagrow = None
+        self._flagcol_sum = 0
+        self.dh.flagcounts["TOTAL"] += flag_arr0.size
+
+        if self.dh._apply_flags or self.dh._auto_fill_bitflag:
+            flagcol = self.dh.fetchslice("FLAG", self.first_row, nrows0)
+            flagrow = self.dh.fetch("FLAG_ROW", self.first_row, nrows0)
+            flagcol[flagrow, :, :] = True
+            print>> log(2), "  read FLAG/FLAG_ROW"
+            # compute stats
+            self._flagcol_sum = flagcol.sum()
+            self.dh.flagcounts["FLAG"] += self._flagcol_sum
+
+            if self.dh._apply_flags:
+                flag_arr0[flagcol] = FL.PRIOR
+
+        # if an active row subset is specified, flag non-active rows as priors. Start as all flagged,
+        # the clear the flags
+        if self.dh.active_row_numbers is not None:
+            rows = self.dh.active_row_numbers - self.first_row
+            rows = rows[(rows>=0)&(rows<nrows0)]
+            inactive = np.ones(nrows0, bool)
+            inactive[rows] = False
+        else:
+            inactive = np.zeros(nrows0, bool)
+        num_inactive = inactive.sum()
+        if num_inactive:
+            print>> log(0), "  applying a solvable subset deselects {} rows".format(num_inactive)
+        # apply baseline selection
+        if self.dh.min_baseline or self.dh.max_baseline:
+            uv2 = (uvw0[:,0:2]**2).sum(1)
+            inactive[uv2 < self.dh.min_baseline ** 2] = True
+            if self.dh.max_baseline:
+                inactive[uv2 > self.dh.max_baseline ** 2] = True
+            print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(
+                inactive.sum() - num_inactive)
+            num_inactive = inactive.sum()
+        if num_inactive:
+            print>> log(0), "  {:.2%} visibilities have been deselected".format(num_inactive/float(inactive.size))
+            flag_arr0[inactive] |= FL.SKIPSOL
+
+        # Form up bitflag array, if needed.
+        if self.dh._apply_bitflags or self.dh._save_bitflag or self.dh._auto_fill_bitflag:
+            read_bitflags = False
+            # If not explicitly re-initializing, try to read column.
+            if not self.dh._reinit_bitflags:
+                self.bflagrow = self.dh.fetch("BITFLAG_ROW", self.first_row, nrows0)
+                # If there's an error reading BITFLAG, it must be unfilled. This is a common
+                # occurrence so we may as well deal with it. In this case, if auto-fill is set,
+                # fill BITFLAG from FLAG/FLAG_ROW.
+                try:
+                    self.bflagcol = self.dh.fetchslice("BITFLAG", self.first_row, nrows0)
+                    print>> log(2), "  read BITFLAG/BITFLAG_ROW"
+                    read_bitflags = True
+                except Exception:
+                    if not self.dh._auto_fill_bitflag:
+                        print>> log, ModColor.Str(traceback.format_exc().strip())
+                        print>> log, ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set.")
+                        raise
+                    print>>log,"  error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
+                    for line in traceback.format_exc().strip().split("\n"):
+                        print>> log, "    "+line
+            # If column wasn't read, create arrays.
+            if not read_bitflags:
+                self.bflagcol = np.zeros(flagcol.shape, np.int32)
+                self.bflagrow = np.zeros(flagrow.shape, np.int32)
+                if self.dh._auto_fill_bitflag:
+                    self.bflagcol[flagcol] = self.dh._auto_fill_bitflag
+                    self.bflagrow[flagrow] = self.dh._auto_fill_bitflag
+                    print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s"%str(self.bflagcol.shape)
+                    self._auto_filled_bitflag = True
+            # compute stats
+            for flagset, bitmask in self.dh.bitflags.iteritems():
+                flagged = self.bflagcol&bitmask != 0
+                flagged[self.bflagrow&bitmask != 0, :, :] = True
+                self.dh.flagcounts[flagset] += flagged.sum()
+
+            # apply
+            if self.dh._apply_bitflags:
+                flag_arr0[(self.bflagcol & self.dh._apply_bitflags) != 0] = FL.PRIOR
+                flag_arr0[(self.bflagrow & self.dh._apply_bitflags) != 0, :, :] = FL.PRIOR
+
+            flagged = flag_arr0!=0
+            nfl = flagged.sum()
+            self.dh.flagcounts["IN"] += nfl
+            print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
+
+        # now rebin arrays if appropriate
+        if self.dh.rebin_time>1 or self.dh.rebin_freq>1:
+            nrows = _divide_up(nrows0, self.dh.rebin_time)
+            print>> log(0, "blue"), "{}: rebinning MS".format(self.label)
+            nrows = _divide_up(nrows0, self.dh.rebin_time)
+
+            import cubical.kernels
+            cygenerics = cubical.kernels.import_kernel("cygenerics")
+
+            obvis = data.addSharedArray('obvis', [nrows, self.dh.nfreq_rebinned, self.dh.ncorr])
+            flag_arr = data.addSharedArray('flags', obvis.shape, FL.dtype)
+            flag_arr.fill(-1)
+            self.uvwco = data.addSharedArray('uvwco', [nrows, 3], float)
+            # make dummy weight array if not 0
+            if weights0 is not None:
+                num_weights = len(self.dh.models)
+                weights = data.addSharedArray('weigh', [num_weights] + list(obvis.shape), self.dh.wtype)
+            else:
+                num_weights = 0
+                weights = weights0 = np.zeros(1, self.dh.wtype)
+            self.time_col, time_col0 = np.zeros(nrows, float), self.time_col
+            self.times, times0 = np.zeros(nrows, int), self.times
+            self.antea, antea0 = np.zeros(nrows, int), self.antea
+            self.anteb, anteb0 = np.zeros(nrows, int), self.anteb
+
+            nrows = cygenerics.cyrebin_vis(obvis, obvis0, self.uvwco, uvw0, self.time_col, time_col0, flag_arr, flag_arr0,
+                                               weights, weights0, num_weights,
+                                               self.times, self.antea, self.anteb,
+                                               times0, antea0, anteb0,
+                                               self.dh.rebin_time, self.dh.rebin_freq)
+            # this is the same in every row, so simply take a slice
+            self.ddid_col = self.ddid_col[:nrows]
+
+        # else copy arrays to shm directly
+        else:
+            nrows = self.nrows = nrows0
+            obvis = data['obvis'] = obvis0
+            data['flags'] = flag_arr0
+            self.uvwco = data['uvwco'] = uvw0
+            if weights0 is not None:
+                data['weigh'] = weights0
+        del obvis0, flag_arr0, uvw0, weights0
+
+        # The following either reads model visibilities from the measurement set, or uses an lsm
+        # and Montblanc to simulate them. Data may need to be massaged to be compatible with
         # Montblanc's strict requirements. 
 
         if load_model:
-            model_shape = [ len(self.handler.model_directions), len(self.handler.models) ] + list(obvis.shape)
+            model_shape = [len(self.dh.model_directions), len(self.dh.models)] + list(obvis.shape)
             loaded_models = {}
             expected_nrows = None
-            movis = data.addSharedArray('movis', model_shape, self.handler.ctype)
+            movis = data.addSharedArray('movis', model_shape, self.dh.ctype)
 
-            for imod, (dirmodels, _) in enumerate(self.handler.models):
+            for imod, (dirmodels, _) in enumerate(self.dh.models):
                 # populate directions of this model
-                for idir,dirname in enumerate(self.handler.model_directions):
+                for idir,dirname in enumerate(self.dh.model_directions):
                     if dirname in dirmodels:
                         # loop over additive components
                         for model_source, cluster in dirmodels[dirname]:
@@ -350,41 +510,41 @@ class Tile(object):
                             # cluster of None signifies that this is a visibility column
                             elif cluster is None:
                                 print>>log(0),"  reading {} for model {} direction {}".format(model_source, imod, idir)
-                                model = self.handler.fetchslice(model_source, self.first_row, nrows)
+                                model = self.dh.fetchslice(model_source, self.first_row, nrows)
                                 loaded_models.setdefault(model_source, {})[None] = model
                             # else evaluate a Tigger model with Montblanc
                             else:
                                 # massage data into Montblanc-friendly shapes
                                 if expected_nrows is None:
-                                    expected_nrows, sort_ind, row_identifiers = self.prep_for_montblanc()
+                                    expected_nrows, sort_ind, row_identifiers = self.prep_for_montblanc(nrows)
                                     measet_src = MSSourceProvider(self, self.uvwco, sort_ind, nrows)
                                     cached_ms_src = CachedSourceProvider(measet_src,
                                                                          cache_data_sources=["parallactic_angles"],
                                                                          clear_start=False, clear_stop=False)
-                                    if self.handler.beam_pattern:
-                                        arbeam_src = FitsBeamSourceProvider(self.handler.beam_pattern,
-                                                                            self.handler.beam_l_axis,
-                                                                            self.handler.beam_m_axis)
+                                    if self.dh.beam_pattern:
+                                        arbeam_src = FitsBeamSourceProvider(self.dh.beam_pattern,
+                                                                            self.dh.beam_l_axis,
+                                                                            self.dh.beam_m_axis)
 
                                 print>>log(0),"  computing visibilities for {}".format(model_source)
                                 # setup Montblanc computation for this LSM
                                 tigger_source = model_source
                                 cached_src = CachedSourceProvider(tigger_source, clear_start=True, clear_stop=True)
                                 srcs = [cached_ms_src, cached_src]
-                                if self.handler.beam_pattern:
+                                if self.dh.beam_pattern:
                                     srcs.append(arbeam_src)
 
                                 # make a sink with an array to receive visibilities
                                 ndirs = model_source._nclus
                                 model_shape = (ndirs, 1, expected_nrows, self.nfreq, self.ncorr)
-                                full_model = np.zeros(model_shape, self.handler.ctype)
+                                full_model = np.zeros(model_shape, self.dh.ctype)
                                 column_snk = ColumnSinkProvider(self, full_model, sort_ind)
                                 snks = [ column_snk ]
 
                                 for direction in xrange(ndirs):
                                     tigger_source.set_direction(direction)
                                     column_snk.set_direction(direction)
-                                    simulate(srcs, snks, self.handler.mb_opts)
+                                    simulate(srcs, snks, self.dh.mb_opts)
 
                                 # now associate each cluster in the LSM with an entry in the loaded_models cache
                                 loaded_models[model_source] = {
@@ -413,126 +573,15 @@ class Tile(object):
             if expected_nrows is not None:
                 self.unprep_for_montblanc(nrows)
 
-            # read weight columns
-            if self.handler.has_weights:
-                weights = data.addSharedArray('weigh', [ len(self.handler.models) ] + list(obvis.shape), self.handler.ftype)
-                wcol_cache = {}
-                for i, (_, weight_col) in enumerate(self.handler.models):
-                    if weight_col not in wcol_cache:
-                        print>> log(1), "  reading weights from {}".format(weight_col)
-                        wcol = self.handler.fetch(weight_col, self.first_row, nrows)
-                        # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
-                        if weight_col == "WEIGHT":
-                            wcol_cache[weight_col] = wcol[:, np.newaxis, self.handler._corr_slice].repeat(self.handler.nfreq, 1)
-                        else:
-                            wcol_cache[weight_col] = wcol[:, self.handler._channel_slice, self.handler._corr_slice]
-                    weights[i, ...] = wcol_cache[weight_col]
-                del wcol_cache
+        data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
 
-        data.addSharedArray('covis', data['obvis'].shape, self.handler.ctype)
-
-        # The following block of code deals with the various flagging operations and columns. The
-        # aim is to correctly populate flag_arr from the various flag sources.
-
-        # Make a flag array. This will contain FL.PRIOR for any points flagged in the MS.
-
-        flag_arr = data.addSharedArray("flags", data['obvis'].shape, dtype=FL.dtype)
-
-        # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them.
-
-        flagcol = flagrow = None
-        self._flagcol_sum = 0
-        self.handler.flagcounts["TOTAL"] += flag_arr.size
-
-        if self.handler._apply_flags or self.handler._auto_fill_bitflag:
-            flagcol = self.handler.fetchslice("FLAG", self.first_row, nrows)
-            flagrow = self.handler.fetch("FLAG_ROW", self.first_row, nrows)
-            flagcol[flagrow, :, :] = True
-            print>> log(2), "  read FLAG/FLAG_ROW"
-            # compute stats
-            self._flagcol_sum = flagcol.sum()
-            self.handler.flagcounts["FLAG"] += self._flagcol_sum
-
-            if self.handler._apply_flags:
-                flag_arr[flagcol] = FL.PRIOR
-
-        # if an active row subset is specified, flag non-active rows as priors. Start as all flagged,
-        # the clear the flags
-        if self.handler.active_row_numbers is not None:
-            rows = self.handler.active_row_numbers - self.first_row
-            rows = rows[(rows>=0)&(rows<nrows)]
-            inactive = np.ones(nrows, bool)
-            inactive[rows] = False
-        else:
-            inactive = np.zeros(nrows, bool)
-        num_inactive = inactive.sum()
-        if num_inactive:
-            print>> log(0), "  applying a solvable subset deselects {} rows".format(num_inactive)
-        # apply baseline selection
-        if self.handler.min_baseline or self.handler.max_baseline:
-            uv2 = (uvw[:,0:2]**2).sum(1)
-            inactive[uv2 < self.handler.min_baseline**2] = True
-            if self.handler.max_baseline:
-                inactive[uv2 > self.handler.max_baseline**2] = True
-            print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(
-                inactive.sum() - num_inactive)
-            num_inactive = inactive.sum()
-        if num_inactive:
-            print>> log(0), "  {:.2%} visibilities have been deselected".format(num_inactive/float(inactive.size))
-            flag_arr[inactive] |= FL.SKIPSOL
-
-        # Form up bitflag array, if needed.
-        if self.handler._apply_bitflags or self.handler._save_bitflag or self.handler._auto_fill_bitflag:
-            read_bitflags = False
-            # If not explicitly re-initializing, try to read column.
-            if not self.handler._reinit_bitflags:
-                self.bflagrow = self.handler.fetch("BITFLAG_ROW", self.first_row, nrows)
-                # If there's an error reading BITFLAG, it must be unfilled. This is a common 
-                # occurrence so we may as well deal with it. In this case, if auto-fill is set, 
-                # fill BITFLAG from FLAG/FLAG_ROW.
-                try:
-                    self.bflagcol = self.handler.fetchslice("BITFLAG", self.first_row, nrows)
-                    print>> log(2), "  read BITFLAG/BITFLAG_ROW"
-                    read_bitflags = True
-                except Exception:
-                    if not self.handler._auto_fill_bitflag:
-                        print>> log, ModColor.Str(traceback.format_exc().strip())
-                        print>> log, ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set.")
-                        raise
-                    print>>log,"  error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
-                    for line in traceback.format_exc().strip().split("\n"):
-                        print>> log, "    "+line
-            # If column wasn't read, create arrays.
-            if not read_bitflags:
-                self.bflagcol = np.zeros(flagcol.shape, np.int32)
-                self.bflagrow = np.zeros(flagrow.shape, np.int32)
-                if self.handler._auto_fill_bitflag:
-                    self.bflagcol[flagcol] = self.handler._auto_fill_bitflag
-                    self.bflagrow[flagrow] = self.handler._auto_fill_bitflag
-                    print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s"%str(self.bflagcol.shape)
-                    self._auto_filled_bitflag = True
-            # compute stats
-            for flagset, bitmask in self.handler.bitflags.iteritems():
-                flagged = self.bflagcol&bitmask != 0
-                flagged[self.bflagrow&bitmask != 0, :, :] = True
-                self.handler.flagcounts[flagset] += flagged.sum()
-
-            # apply
-            if self.handler._apply_bitflags:
-                flag_arr[(self.bflagcol & self.handler._apply_bitflags) != 0] = FL.PRIOR
-                flag_arr[(self.bflagrow & self.handler._apply_bitflags) != 0, :, :] = FL.PRIOR
-
-            flagged = flag_arr!=0
-            nfl = flagged.sum()
-            self.handler.flagcounts["IN"] += nfl
-            print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
 
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
 
         return data
 
-    def prep_for_montblanc(self):
+    def prep_for_montblanc(self, nrows):
         """
         Manipulates data to be consistent with Montblanc's requirements. Mainly adds elements 
         which are missing from the measurement set.
@@ -555,15 +604,13 @@ class Tile(object):
         uniq_time_col = np.unique(self.time_col)
         t_offset = uniq_times[0]
 
-        nrows = self.last_row - self.first_row + 1
-
         # The row identifiers determine which rows in the SORTED/ALL ROWS are required for the data
         # that is present in the MS. Essentially, they allow for the selection of an array of a size
         # matching that of the observed data. First term determines the offset by ddid, the second
         # is the offset by time, and the last turns antea and anteb into a unique offset per 
         # baseline.
 
-        ddid_ind = np.array([self.handler._ddid_index[ddid] for ddid in self.ddid_col])
+        ddid_ind = np.array([self.dh._ddid_index[ddid] for ddid in self.ddid_col])
 
         row_identifiers = ddid_ind*n_bl*ntime + (self.times - self.times[0])*n_bl + \
                           (-0.5*self.antea**2 + (self.nants - 1.5)*self.antea + self.anteb - 1).astype(np.int32)
@@ -625,13 +672,15 @@ class Tile(object):
         self.ddid_col = self.ddid_col[:nrows]
 
 
-    def get_chunk_cubes(self, key, allocator=np.empty, flag_allocator=np.empty):
+    def get_chunk_cubes(self, key, ctype=np.complex128, allocator=np.empty, flag_allocator=np.empty):
         """
         Produces the CubiCal data cubes corresponding to the specified key.
 
         Args:
             key (str):
                 The label corresponding to the chunk of interest.
+            ctype (type):
+                Data type of complex arrays.
             allocator (callable):
                 Function called to allocate array. Signature (shape,dtype)
             flag_allocator (callable):
@@ -655,11 +704,11 @@ class Tile(object):
 
         rowchunk, freq0, freq1 = self._chunk_dict[key]
 
-        t_dim = self.handler.chunk_ntimes[rowchunk.tchunk]
+        t_dim = self.dh.chunk_ntimes[rowchunk.tchunk]
         f_dim = freq1 - freq0
         freq_slice = slice(freq0, freq1)
         rows = rowchunk.rows
-        nants = self.handler.nants
+        nants = self.dh.nants
 
         flags_2x2 = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice,
                                      FL.dtype, FL.MISSING, allocator=allocator)
@@ -669,11 +718,11 @@ class Tile(object):
         else:
             flags[:] = flags_2x2[...,0,0]
             flags   |= flags_2x2[...,1,1]
-        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype,
+        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, ctype,
                                        reqdims=6, allocator=allocator)
         if 'movis' in data:
-            mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype,
-                                       reqdims=8, allocator=allocator)
+            mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, ctype,
+                                           reqdims=8, allocator=allocator)
             # flag invalid model visibilities
             flags[(~np.isfinite(mod_arr[0, 0, ...])).any(axis=(-2, -1))] |= FL.INVALID
         else:
@@ -684,7 +733,7 @@ class Tile(object):
         flagged = flags != 0
 
         if 'weigh' in data:
-            wgt_2x2 = self._column_to_cube(data['weigh'], t_dim, f_dim, rows, freq_slice, self.handler.ftype,
+            wgt_2x2 = self._column_to_cube(data['weigh'], t_dim, f_dim, rows, freq_slice, self.dh.wtype,
                                            allocator=allocator)
             wgt_arr = flag_allocator(wgt_2x2.shape[:-2], wgt_2x2.dtype)
             np.mean(wgt_2x2, axis=(-1,-2), out=wgt_arr)
@@ -774,62 +823,62 @@ class Tile(object):
         data = shared_dict.attach(self._data_dict_name)
 
         print>> log(0,"blue"), "{}: saving MS rows {}~{}".format(self.label, self.first_row, self.last_row)
-        if self.handler.output_column and data['updated'][0]:
-            print>> log, "  writing {} column".format(self.handler.output_column)
-            if self.handler._add_column(self.handler.output_column):
-                self.handler.reopen()
-            self.handler.putslice(self.handler.output_column, data['covis'], self.first_row, nrows)
+        if self.dh.output_column and data['updated'][0]:
+            print>> log, "  writing {} column".format(self.dh.output_column)
+            if self.dh._add_column(self.dh.output_column):
+                self.dh.reopen()
+            self.dh.putslice(self.dh.output_column, data['covis'], self.first_row, nrows)
 
-        if self.handler.output_model_column and 'movis' in data:
-            print>> log, "  writing {} column".format(self.handler.output_model_column)
-            if self.handler._add_column(self.handler.output_model_column):
-                self.handler.reopen()
+        if self.dh.output_model_column and 'movis' in data:
+            print>> log, "  writing {} column".format(self.dh.output_model_column)
+            if self.dh._add_column(self.dh.output_model_column):
+                self.dh.reopen()
             # take first mode, and sum over directions if needed
             model = data['movis'][:,0]
             if model.shape[0] == 1:
                 model = model.reshape(model.shape[1:])
             else:
                 model = model.sum(axis=0)
-            self.handler.putslice(self.handler.output_model_column, model, self.first_row, nrows)
+            self.dh.putslice(self.dh.output_model_column, model, self.first_row, nrows)
 
 
         # write flags if (a) auto-filling BITFLAG column and/or (b) solver has generated flags, and we're saving cubical flags
         
-        if self.handler._save_bitflag:
+        if self.dh._save_bitflag:
             if data['updated'][1]:
                 # clear bitflag column first
-                self.bflagcol &= ~self.handler._save_bitflag
+                self.bflagcol &= ~self.dh._save_bitflag
                 # add bitflag to points where data wasn't flagged for prior reasons
                 newflags = data['flags']&~(FL.PRIOR|FL.SKIPSOL) != 0
                 # add to stats
-                self.handler.flagcounts['NEW'] += newflags.sum()
-                self.bflagcol[newflags] |= self.handler._save_bitflag
-                self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
+                self.dh.flagcounts['NEW'] += newflags.sum()
+                self.bflagcol[newflags] |= self.dh._save_bitflag
+                self.dh.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
                 print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged by solver)".format(newflags.sum()/float(newflags.size))
                 self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
-                self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
+                self.dh.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
                 flag_col = self.bflagcol != 0
-                self.handler.putslice("FLAG", flag_col, self.first_row, nrows)
+                self.dh.putslice("FLAG", flag_col, self.first_row, nrows)
                 totflags = flag_col.sum()
-                self.handler.flagcounts['OUT'] += totflags
+                self.dh.flagcounts['OUT'] += totflags
                 print>> log, "  updated FLAG column ({:.2%} total visibilities flagged)".format(totflags / float(flag_col.size))
                 flag_row = flag_col.all(axis=(-1, -2))
-                self.handler.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)
+                self.dh.data.putcol("FLAG_ROW", flag_row, self.first_row, nrows)
                 print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(
                     flag_row.sum() / float(flag_row.size))
             else:
                 print>>log,"  no new flags generated"
-                self.handler.flagcounts['OUT'] += self._flagcol_sum
+                self.dh.flagcounts['OUT'] += self._flagcol_sum
 
         elif self._auto_filled_bitflag:
-            self.handler.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
+            self.dh.putslice("BITFLAG", self.bflagcol, self.first_row, nrows)
             print>> log, "  auto-filled BITFLAG column"
             self.bflagrow = np.bitwise_and.reduce(self.bflagcol,axis=(-1,-2))
-            self.handler.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
-            self.handler.flagcounts['OUT'] += self._flagcol_sum
+            self.dh.data.putcol("BITFLAG_ROW", self.bflagrow, self.first_row, nrows)
+            self.dh.flagcounts['OUT'] += self._flagcol_sum
 
         if unlock:
-            self.handler.unlock()
+            self.dh.unlock()
 
     def release(self):
         """ Releases the shared memory data dict. """
@@ -922,7 +971,7 @@ class Tile(object):
             if self.ncorr == 4:
                 out_arr[cub_selection] = colsel = column[col_selection]
                 cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
-                if dtype == self.ctype:
+                if np.iscomplexobj(out_arr):
                     out_arr[cub_selection] = colsel.conj()[..., (0, 2, 1, 3)]
                 else:
                     out_arr[cub_selection] = colsel[..., (0, 2, 1, 3)]
@@ -930,7 +979,7 @@ class Tile(object):
             elif self.ncorr == 2:
                 out_arr[cub_selection] = colsel = column[col_selection]
                 cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
-                if dtype == self.ctype:
+                if np.iscomplexobj(out_arr):
                     out_arr[cub_selection] = colsel.conj()
                 else:
                     out_arr[cub_selection] = colsel
@@ -938,7 +987,7 @@ class Tile(object):
             elif self.ncorr == 1:
                 out_arr[cub_selection] = colsel = column[col_selection][..., (0,0)]
                 cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
-                if dtype == self.ctype:
+                if np.iscomplexobj(out_arr):
                     out_arr[cub_selection] = colsel.conj()
                 else:
                     out_arr[cub_selection] = colsel
@@ -995,9 +1044,10 @@ class DataHandler:
     def __init__(self, ms_name, data_column, output_column=None, output_model_column=None,
                  reinit_output_column=False,
                  taql=None, fid=None, ddid=None, channels=None, flagopts={},
-                 diag=False, double_precision=False,
+                 diag=False,
                  beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
-                 active_subset=None, min_baseline=0, max_baseline=0):
+                 active_subset=None, min_baseline=0, max_baseline=0,
+                 rebin_time=1, rebin_freq=1):
         """
         Initialises a DataHandler object.
 
@@ -1024,8 +1074,6 @@ class DataHandler:
                 Flagging options.
             diag (bool)
                 If True, only the diagonal correlations are read in
-            double_precision (bool, optional):
-                Use 64-bit precision if True, else 32-bit.
             ddes (bool, optional):
                 If True, use direction dependent simulation.
             weight_column (str or None, optional):
@@ -1038,6 +1086,10 @@ class DataHandler:
                 Corresponding axis in fits beam, else None.
             mb_opts (dict or None):
                 Dictionary of Montblanc options if specified, else None.
+            rebin_time (int):
+                Average specified number of timeslots together on-the-fly
+            rebin_freq (int):
+                Average specified number of channels together on-the-fly
 
         Raises:
             RuntimeError:
@@ -1050,6 +1102,8 @@ class DataHandler:
         self.beam_pattern = beam_pattern
         self.beam_l_axis = beam_l_axis
         self.beam_m_axis = beam_m_axis
+
+        self.rebin_time, self.rebin_freq = rebin_time, rebin_freq
 
         self.fid = fid if fid is not None else 0
 
@@ -1066,8 +1120,8 @@ class DataHandler:
         _ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
         _feedtab = pt.table(self.ms_name + "::FEED", ack=False)
 
-        self.ctype = np.complex128 if double_precision else np.complex64
-        self.ftype = np.float64 if double_precision else np.float32
+        self.ctype = np.complex64   # MS complex data type
+        self.wtype = np.float32     # MS weights type
         self.nmscorrs = _poltab.getcol("NUM_CORR")[0]
         if self.nmscorrs == 4 and diag:
             self._corr_4to2 = True
@@ -1181,14 +1235,19 @@ class DataHandler:
         self.uniq_times = np.unique(self.time_col)
         self.ntime = len(self.uniq_times)
 
+        self.ntime_rebinned = int(math.ceil(self.ntime/float(self.rebin_time)))
+        self.nfreq_rebinned = int(math.ceil(self.nfreq/float(self.rebin_freq)))
 
         print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels per DDID, %d corrs %s" % (self.nants,
                     self.nrows, len(self._ddids), self._num_total_ddids, self.ntime, self.nfreq,
                     self.nmscorrs, "(using diag only)" if self._corr_4to2 else "")
         print>>log,"  DDID central frequencies are at {} GHz".format(
-                    " ".join(["%.2f"%(self._ddid_chanfreqs[d][self.nfreq/2]*1e-9) for d in self._ddids]))
+                " ".join(["%.2f"%(self._ddid_chanfreqs[d][self.nfreq/2]*1e-9) for d in self._ddids]))
+        if self.rebin_time>1 or self.rebin_freq>1:
+            print>> log, "  will rebin input into %d timeslots and %d channels per DDID" % (self.ntime_rebinned, self.nfreq_rebinned)
+            if output_column or output_model_column:
+                print>>log(0, "red"),"  output columns will be upsampled from rebinned data!"
         self.nddid = len(self._ddids)
-
 
         self.data_column = data_column
         self.output_column = output_column
@@ -1461,6 +1520,26 @@ class DataHandler:
         if self._ms_blc == None:
             return self.data.getcol(column, startrow, nrows)
         return self.data.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
+
+    def fetchslicenp(self, column, data, startrow, nrows):
+        """
+        Convenience function similar to fetch(), but assumes a column of NFREQxNCORR shape,
+        and calls pyrap.tables.table.getcolslice() if there's a channel slice to be applied,
+        else just uses getcol(). This version reads dirctly into an array in memory given by 'data'.
+
+        Args:
+            startrow (int):
+                Starting row to read.
+            nrows (int):
+                Number of rows to read.
+
+        Returns:
+            np.ndarray:
+                Result of getcolslice()
+        """
+        if self._ms_blc == None:
+            return self.data.getcolnp(column, data, startrow, nrows)
+        return self.data.getcolslicenp(column, data, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
 
     def putslice(self, column, value, startrow, nrows):
         """

@@ -232,7 +232,6 @@ def main(debugging=False):
                           channels=GD["sel"]["chan"],
                           flagopts=GD["flags"],
                           diag=solver_opts["diag-diag"],
-                          double_precision=double_precision,
                           beam_pattern=GD["model"]["beam-pattern"],
                           beam_l_axis=GD["model"]["beam-l-axis"],
                           beam_m_axis=GD["model"]["beam-m-axis"],
@@ -263,6 +262,10 @@ def main(debugging=False):
 
         if dde_mode == 'always' and not have_dd_jones:
             raise UserInputError("we have '--model-ddes always', but no direction dependent Jones terms enabled")
+
+        # force floats in Montblanc calculations
+        mb_opts = GD["montblanc"]
+        mb_opts['dtype'] = 'float'
 
         ms.init_models(GD["model"]["list"].split(","),
                        GD["weight"]["column"].split(","),

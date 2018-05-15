@@ -42,7 +42,7 @@ class MSSourceProvider(SourceProvider):
 
         """
 
-        self._handler = tile.handler
+        self._handler = tile.dh
         self._ms = self._handler.ms
         self._ms_name = self._handler.ms_name
         self._name = "Measurement set '{ms}'".format(ms=self._ms_name)
@@ -166,7 +166,7 @@ class ColumnSinkProvider(SinkProvider):
 
         self._tile = tile
         self._model = model
-        self._handler = tile.handler
+        self._handler = tile.dh
         self._ncorr = self._handler.ncorr
         self._name = "Measurement Set '{ms}'".format(ms=self._handler.ms_name)
         self._dir = 0

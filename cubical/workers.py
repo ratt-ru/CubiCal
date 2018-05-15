@@ -398,7 +398,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
             if finalize:
                 solver.ifrgain_machine.save()
                 solver.gm_factory.close()
-                result['flagcounts'] = tile.handler.flagcounts
+                result['flagcounts'] = tile.dh.flagcounts
             tile.release()
         if load is not None:
             tile = Tile.tile_list[load]

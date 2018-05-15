@@ -686,6 +686,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
         kernel = gm_factory.get_kernel()
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key,
+                                 gm_factory.ctype,
                                  allocator=kernel.allocate_vis_array,
                                  flag_allocator=kernel.allocate_flag_array)
         
