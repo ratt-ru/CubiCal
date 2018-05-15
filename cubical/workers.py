@@ -38,7 +38,7 @@ def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc
             print>> log(0, "blue"), "forcing single-process mode, {} OMP and/or Montblanc threads".format(nthreads)
         elif montblanc_threads:
             nthreads = montblanc_threads
-        print>> log(0, "blue"), "forcing single-process mode, single thread{}".format(montblanc)
+            print>> log(0, "blue"), "forcing single-process mode, single thread{}".format(montblanc)
         return False, 0, nthreads
     if nworkers and nthreads:
         print>> log(0, "blue"), "multi-process mode: --dist-nworker {} (+1), --dist-nthread {}{}".format(nworkers, nthreads, montblanc)
@@ -122,7 +122,7 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
             core = int(affinity)
             corestep = 1
         elif re.match("^(\d+):(\d+)$", affinity):
-            core, corestep = affinity.split(":")
+            core, corestep = map(int, affinity.split(":"))
         else:
             raise ValueError("invalid affinity setting '{}'".format(affinity))
     else:
@@ -132,14 +132,20 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     props = worker_process_properties["Process-1"] = dict(label="io", environ={})
 
     # allocate cores to I/O process, if asked to pin it
+    
+    # for now, since we can't figure out this tensorflow affinity shit
+    if affinity is not None and io_affinity and use_montblanc:
+        io_affinity = None
+        print>>log(0,"red"),"Montblanc currently does not support CPU affinity settings: ignoring --dist-pin-io"
+        
     if affinity is not None and io_affinity:
-        num_io_cores = io_affinity if use_montblanc else 1
+        num_io_cores = montblanc_threads if use_montblanc else 1
         io_cores = range(core,core+num_io_cores*corestep,corestep)
         core = core + num_io_cores * corestep
         # if Montblanc is in use, affinity controlled by GOMP setting, else by taskset
         if use_montblanc:
             props["environ"]["GOMP_CPU_AFFINITY"] = " ".join(map(str,io_cores))
-            props["environ"]["OMP_NUM_THREADS"] = props["environ"]["OMP_THREAD_LIMIT"] = str(io_affinity)
+            props["environ"]["OMP_NUM_THREADS"] = props["environ"]["OMP_THREAD_LIMIT"] = str(montblanc_threads)
         else:
             props["taskset"] = ",".join(io_cores)
     # else just restrict Montblanc threads, if asked to
@@ -150,8 +156,9 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
 
     # are we asked to pin the main process?
     if affinity is not None and main_affinity:
-        if main_affinity == "io" and io_affinity:
-            worker_process_properties["MainProcess"]["taskset"] = str(io_cores[0])
+        if main_affinity == "io":
+            if io_affinity:
+                worker_process_properties["MainProcess"]["taskset"] = str(io_cores[0])
         else:
             worker_process_properties["MainProcess"]["taskset"] = str(core)
             core = core + corestep
