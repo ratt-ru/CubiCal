@@ -423,9 +423,9 @@ class Tile(object):
                         wcol = self.handler.fetch(weight_col, self.first_row, nrows)
                         # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
                         if weight_col == "WEIGHT":
-                            wcol_cache[weight_col] = wcol[:, np.newaxis, :].repeat(self.handler.nfreq, 1)
+                            wcol_cache[weight_col] = wcol[:, np.newaxis, self.handler._corr_slice].repeat(self.handler.nfreq, 1)
                         else:
-                            wcol_cache[weight_col] = wcol[:, self.handler._channel_slice, :]
+                            wcol_cache[weight_col] = wcol[:, self.handler._channel_slice, self.handler._corr_slice]
                     weights[i, ...] = wcol_cache[weight_col]
                 del wcol_cache
 
@@ -625,13 +625,18 @@ class Tile(object):
         self.ddid_col = self.ddid_col[:nrows]
 
 
-    def get_chunk_cubes(self, key):
+    def get_chunk_cubes(self, key, allocator=np.empty, flag_allocator=np.empty):
         """
         Produces the CubiCal data cubes corresponding to the specified key.
 
         Args:
             key (str):
                 The label corresponding to the chunk of interest.
+            allocator (callable):
+                Function called to allocate array. Signature (shape,dtype)
+            flag_allocator (callable):
+                Function called to allocate flag-like arrays. Signature (shape,dtype)
+            
     
         Returns:
             tuple:
@@ -656,13 +661,19 @@ class Tile(object):
         rows = rowchunk.rows
         nants = self.handler.nants
 
-        flags = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice, FL.dtype, FL.MISSING)
-        flags = np.bitwise_or.reduce(flags, axis=-1) if self.ncorr==4 else np.bitwise_or.reduce(flags[...,::3], axis=-1)
-        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=5)
-        obs_arr = obs_arr.reshape(list(obs_arr.shape[:-1]) + [2, 2])
+        flags_2x2 = self._column_to_cube(data['flags'], t_dim, f_dim, rows, freq_slice,
+                                     FL.dtype, FL.MISSING, allocator=allocator)
+        flags = flag_allocator(flags_2x2.shape[:-2], flags_2x2.dtype)
+        if self.ncorr == 4:
+            np.bitwise_or.reduce(flags_2x2, axis=(-1,-2), out=flags)
+        else:
+            flags[:] = flags_2x2[...,0,0]
+            flags   |= flags_2x2[...,1,1]
+        obs_arr = self._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype,
+                                       reqdims=6, allocator=allocator)
         if 'movis' in data:
-            mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype, reqdims=7)
-            mod_arr = mod_arr.reshape(list(mod_arr.shape[:-1]) + [2, 2])
+            mod_arr = self._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, self.handler.ctype,
+                                       reqdims=8, allocator=allocator)
             # flag invalid model visibilities
             flags[(~np.isfinite(mod_arr[0, 0, ...])).any(axis=(-2, -1))] |= FL.INVALID
         else:
@@ -673,8 +684,11 @@ class Tile(object):
         flagged = flags != 0
 
         if 'weigh' in data:
-            wgt_arr = self._column_to_cube(data['weigh'], t_dim, f_dim, rows, freq_slice, self.handler.ftype)
-            wgt_arr = np.sqrt(np.sum(wgt_arr, axis=-1))  # take the square root of sum over correlations
+            wgt_2x2 = self._column_to_cube(data['weigh'], t_dim, f_dim, rows, freq_slice, self.handler.ftype,
+                                           allocator=allocator)
+            wgt_arr = flag_allocator(wgt_2x2.shape[:-2], wgt_2x2.dtype)
+            np.mean(wgt_2x2, axis=(-1,-2), out=wgt_arr)
+#            wgt_arr = np.sqrt(wgt_2x2.sum(axis=(-1,-2)))    # this is wrong
             wgt_arr[flagged] = 0
             wgt_arr = wgt_arr.reshape([1, t_dim, f_dim, nants, nants])
         else:
@@ -823,7 +837,8 @@ class Tile(object):
         data = shared_dict.attach(self._data_dict_name)
         data.delete()
 
-    def _column_to_cube(self, column, chunk_tdim, chunk_fdim, rows, freqs, dtype, zeroval=0, reqdims=5):
+    def _column_to_cube(self, column, chunk_tdim, chunk_fdim, rows, freqs, dtype, zeroval=0, reqdims=6,
+                        allocator=np.empty):
         """
         Converts input data into N-dimensional measurement matrices.
 
@@ -844,6 +859,9 @@ class Tile(object):
                 Null value with which to fill missing array elements.
             reqdims (int):
                 Required number of output dimensions.
+            allocator (callable):
+                Function to call to allocate empty array. Must have signature (shape,dtype).
+                Default is np.empty.
 
         Returns:
             np.ndarray:
@@ -864,11 +882,20 @@ class Tile(object):
         dims.setdefault("mods", 1)
         dims.setdefault("dirs", 1)
 
-        out_shape = [dims["dirs"], dims["mods"], chunk_tdim, chunk_fdim, self.nants, self.nants, 4]
+        out_shape = [dims["dirs"], dims["mods"], chunk_tdim, chunk_fdim, self.nants, self.nants, 2, 2]
         out_shape = out_shape[-reqdims:]
 
+        # this shape has "4" at the end instead of 2,2
+        out_shape_4 = out_shape[:-2]+[4]
+
         # Creates empty N-D array into which the column data can be packed.
-        out_arr = np.full(out_shape, zeroval, dtype)
+        # Place the antenna axes first, for better performance in the kernels
+
+        out_arr0 = allocator(out_shape, dtype)
+        out_arr0.fill(zeroval)
+
+        # view onto output array with 4 corr axis rather than 2,2
+        out_arr = out_arr0.reshape(out_shape_4)
 
         # Grabs the relevant time and antenna info.
 
@@ -884,12 +911,10 @@ class Tile(object):
         col_selections = [[dirs, mods, rows, freqs, slice(None)][-col_ndim:] 
                             for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
 
-        cub_selections = [[dirs, mods, tchunk, slice(None), achunk, bchunk, corr_slice][-reqdims:]
+        cub_selections = [[dirs, mods, tchunk, slice(None), achunk, bchunk, corr_slice][-(reqdims-1):]
                             for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
 
-        n_sel = len(col_selections)
-
-        # The following takes the arbitrarily ordered data from the MS and places it into a N-D 
+        # The following takes the arbitrarily ordered data from the MS and places it into a N-D
         # data structure (correlation matrix).
 
         for col_selection, cub_selection in zip(col_selections, cub_selections):
@@ -923,7 +948,7 @@ class Tile(object):
         
         out_arr[..., range(self.nants), range(self.nants), :] = zeroval
 
-        return out_arr
+        return out_arr0
 
 
     def _cube_to_column(self, column, in_arr, rows, freqs, flags=False):
@@ -969,7 +994,8 @@ class DataHandler:
 
     def __init__(self, ms_name, data_column, output_column=None, output_model_column=None,
                  reinit_output_column=False,
-                 taql=None, fid=None, ddid=None, channels=None, flagopts={}, double_precision=False,
+                 taql=None, fid=None, ddid=None, channels=None, flagopts={},
+                 diag=False, double_precision=False,
                  beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
                  active_subset=None, min_baseline=0, max_baseline=0):
         """
@@ -996,6 +1022,8 @@ class DataHandler:
                 Data descriptor identifer/s if specified, else None.
             flagopts (dict, optional):
                 Flagging options.
+            diag (bool)
+                If True, only the diagonal correlations are read in
             double_precision (bool, optional):
                 Use 64-bit precision if True, else 32-bit.
             ddes (bool, optional):
@@ -1040,7 +1068,18 @@ class DataHandler:
 
         self.ctype = np.complex128 if double_precision else np.complex64
         self.ftype = np.float64 if double_precision else np.float32
-        self.ncorr = _poltab.getcol("NUM_CORR")[0]
+        self.nmscorrs = _poltab.getcol("NUM_CORR")[0]
+        if self.nmscorrs == 4 and diag:
+            self._corr_4to2 = True
+            self.ncorr = 2
+            self._corr_slice = (0,3)
+        elif self.nmscorrs in (2,4):
+            self.ncorr = self.nmscorrs
+            self._corr_4to2 = False
+            self._corr_slice = slice(None)
+        else:
+            raise RuntimeError("MS with {} correlations not (yet) supported".format(self.nmscorrs))
+        self.diag = diag
         self.nants = _anttab.nrows()
 
         self.antpos   = _anttab.getcol("POSITION")
@@ -1102,12 +1141,15 @@ class DataHandler:
             print>>log,"  applying a channel selection of {}".format(channels)
             chan0 = self._channel_slice.start if self._channel_slice.start is not None else 0
             chan1 = self._channel_slice.stop - 1 if self._channel_slice.stop is not None else -1
-            self._ms_blc = (chan0, 0)
-            self._ms_trc = (chan1, self.ncorr - 1)
-            if self._channel_slice.step is not None:
-                self._ms_inc = (self._channel_slice.step, 1)
-            else:
-                self._ms_inc = []
+            self._ms_blc  = (chan0, 0)
+            self._ms_trc  = (chan1, self.ncorr - 1)
+            self._ms_incr = (1, 3) if self._corr_4to2 else (1,1)
+        elif self._corr_4to2:
+            self._ms_blc  = (0, 0)
+            self._ms_trc  = (self._nchan_orig-1, 3)
+            self._ms_incr = (1, 3)
+        else:
+            self._ms_trc = self._ms_blc = self._ms_incr = None    # tells fetchslice that no slicing
 
         # use TaQL to select subset
         self.taql = self.build_taql(taql, fid, self._ddids)
@@ -1140,8 +1182,9 @@ class DataHandler:
         self.ntime = len(self.uniq_times)
 
 
-        print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels per DDID, %d corrs" % (self.nants,
-                    self.nrows, len(self._ddids), self._num_total_ddids, self.ntime, self.nfreq, self.ncorr)
+        print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d channels per DDID, %d corrs %s" % (self.nants,
+                    self.nrows, len(self._ddids), self._num_total_ddids, self.ntime, self.nfreq,
+                    self.nmscorrs, "(using diag only)" if self._corr_4to2 else "")
         print>>log,"  DDID central frequencies are at {} GHz".format(
                     " ".join(["%.2f"%(self._ddid_chanfreqs[d][self.nfreq/2]*1e-9) for d in self._ddids]))
         self.nddid = len(self._ddids)
@@ -1415,9 +1458,9 @@ class DataHandler:
             np.ndarray:
                 Result of getcolslice()
         """
-        if self._channel_slice == slice(None):
+        if self._ms_blc == None:
             return self.data.getcol(column, startrow, nrows)
-        return self.data.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_inc, startrow, nrows)
+        return self.data.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
 
     def putslice(self, column, value, startrow, nrows):
         """
@@ -1439,7 +1482,7 @@ class DataHandler:
         """
         # if no slicing, just use putcol to put the whole thing. This always works,
         # unless the MS is screwed up
-        if self._channel_slice == slice(None):
+        if self._ms_blc == None:
             return self.data.putcol(column, value, startrow, nrows)
         # A variable-shape column may be uninitialized, in which case putcolslice will not work.
         # But we try it first anyway, especially if the first row of the block looks initialized
@@ -1449,11 +1492,11 @@ class DataHandler:
             except Exception, exc:
                 pass
         print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
-        value0 = np.zeros((nrows, self._nchan_orig, value.shape[2]), value.dtype)
-        value0[:, self._channel_slice, :] = value
+        value0 = np.zeros((nrows, self._nchan_orig, self.nmscorrs), value.dtype)
+        value0[:, self._channel_slice, self._corr_slice] = value
         return self.data.putcol(column, value0, startrow, nrows)
 
-    def define_chunk(self, tdim=1, fdim=1, chunk_by=None, chunk_by_jump=0, min_chunks_per_tile=4):
+    def define_chunk(self, tdim=1, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """
         Fetches indexing columns (TIME, DDID, ANTENNA1/2) and defines the chunk dimensions for 
         the data.
@@ -1467,8 +1510,10 @@ class DataHandler:
                 If set, chunks will have boundaries imposed by jumps in the listed columns
             chunk_by_jump (int, optional): 
                 The magnitude of a jump has to be over this value to force a chunk boundary.
-            min_chunks_per_tile (int, optional): 
+            chunks_per_tile (int, optional): 
                 The minimum number of chunks to be placed in a single tile.
+            max_chunks_per_tile (int, optional)
+                The maximum number of chunks to be placed in a single tile.
             
         Attributes:
             antea (np.ndarray): ANTENNA1 column of MS subset.
@@ -1590,10 +1635,12 @@ class DataHandler:
 
         # now, for effective I/O and parallelisation, we need to have a minimum amount of chunks per tile.
         # Coarsen our tiles to achieve this
-        coarser_tile_list = []
-        for tile in tile_list:
+        coarser_tile_list = [tile_list[0]]
+        for tile in tile_list[1:]:
+            cur_chunks = len(coarser_tile_list[-1].rowchunks)*num_freq_chunks
+            new_chunks = cur_chunks + len(tile.rowchunks)*num_freq_chunks
             # start new "coarse tile" if previous coarse tile already has the min number of chunks
-            if not coarser_tile_list or len(coarser_tile_list[-1].rowchunks)*num_freq_chunks >= min_chunks_per_tile:
+            if cur_chunks > chunks_per_tile or new_chunks > (max_chunks_per_tile or 1e+999):
                 coarser_tile_list.append(tile)
             else:
                 coarser_tile_list[-1].merge(tile)
@@ -1602,7 +1649,12 @@ class DataHandler:
         for i, tile in enumerate(Tile.tile_list):
             tile.finalize("tile #{}/{}".format(i+1, len(Tile.tile_list)))
 
-        print>> log, "  coarsening this to {} tiles (min {} chunks per tile)".format(len(Tile.tile_list), min_chunks_per_tile)
+        max_chunks = max([len(tile.rowchunks)*num_freq_chunks for tile in Tile.tile_list])
+
+        print>> log, "  coarsening this to {} tiles ({} chunks per tile based on {}/{} requested)".format(
+            len(Tile.tile_list), max_chunks, chunks_per_tile, max_chunks_per_tile)
+
+        return max_chunks
 
     def check_contig(self, columns, jump_by=0):
         """
@@ -1725,12 +1777,14 @@ class DataHandler:
             # new column needs to be inserted -- get column description from column 'like_col'
             print>> log, "  inserting new column %s" % (col_name)
             desc = self.ms.getcoldesc(like_col)
-            desc["name"] = col_name
+            desc['name'] = col_name
             desc['comment'] = desc['comment'].replace(" ", "_")  # got this from Cyril, not sure why
+            dminfo = self.ms.getdminfo(like_col)
+            dminfo["NAME"] =  "{}-{}".format(dminfo["NAME"], col_name)
             # if a different type is specified, insert that
             if like_type:
                 desc['valueType'] = like_type
-            self.ms.addcols(desc)
+            self.ms.addcols(desc, dminfo)
             return True
         return False
 
