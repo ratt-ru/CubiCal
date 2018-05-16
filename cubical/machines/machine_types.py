@@ -8,6 +8,7 @@ import slope_machine
 
 GAIN_MACHINE_TYPES = {
     'complex-2x2': complex_2x2_machine.Complex2x2Gains,
+    'complex-diag': complex_2x2_machine.Complex2x2Gains,
     'phase-diag': phase_diag_machine.PhaseDiagGains,
     'robust-2x2': complex_W_2x2_machine.ComplexW2x2Gains,
     'f-slope': slope_machine.PhaseSlopeGains,

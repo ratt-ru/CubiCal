@@ -12,6 +12,7 @@ from cubical.data_handler import Tile
 from cubical.flagging import FL
 from cubical.statistics import SolverStats
 from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code
+import cubical.kernels
 
 log = logger.getLogger("solver")
 #log.verbosity(2)
@@ -23,6 +24,7 @@ gm_factory = None
 ifrgain_machine = None
 
 
+#@profile
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     Main body of the GN/LM method. Handles iterations and convergence tests.
@@ -53,7 +55,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             - stats (:obj:`~cubical.statistics.SolverStats`)
                 An object containing solver statistics.
     """
-
     min_delta_g  = sol_opts["delta-g"]
     chi_tol      = sol_opts["delta-chi"]
     chi_interval = sol_opts["chi-int"]
@@ -131,7 +132,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     resid_shape = [gm.n_mod, gm.n_tim, gm.n_fre, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
 
-    resid_arr = np.zeros(resid_shape, obser_arr.dtype)
+    resid_arr = gm.cykernel.allocate_vis_array(resid_shape, obser_arr.dtype, zeros=True)
     gm.compute_residual(obser_arr, model_arr, resid_arr)
     resid_arr[:,flags_arr!=0] = 0
 
@@ -242,7 +243,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
-    
+
     if gm.has_valid_solutions:
         # Final round of flagging
         flagged = gm.flag_solutions(flags_arr, True)
@@ -643,6 +644,7 @@ SOLVERS = { 'so': solve_only,
             }
 
 
+#@profile
 def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
     """
     Initialises a gain machine and invokes the solver for the current chunk.
@@ -665,8 +667,8 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
         RuntimeError:
             If gain factory has not been initialised.
     """
-    import cubical.main
-    cubical.main._init_worker()
+    import cubical.workers
+    cubical.workers._init_worker()
 
     label = None
     try:
@@ -680,10 +682,13 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
         # Get chunk data from tile.
 
-        obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key)
-        
-#        import pdb; pdb.set_trace()
+        # need to know which kernel to use to allocate visibility and flag arrays
+        kernel = gm_factory.get_kernel()
 
+        obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key,
+                                 allocator=kernel.allocate_vis_array,
+                                 flag_allocator=kernel.allocate_flag_array)
+        
         chunk_ts, chunk_fs, _, freq_slice = tile.get_chunk_tfs(chunk_key)
 
         # apply IFR-based gains, if any

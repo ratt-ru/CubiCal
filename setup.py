@@ -25,6 +25,7 @@
 import os
 import sys
 import logging
+import glob
 
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
@@ -32,6 +33,9 @@ from setuptools.command.build_ext import build_ext
 
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 log = logging.getLogger()
+
+with open('README.md') as f:
+	long_description = f.read()
 
 # Try get location of numpy headers. Compilation requires these headers. 
 
@@ -50,14 +54,17 @@ try:
 except ImportError:
     cythonize = None
 
-cmpl_args = ['-fopenmp',
-             '-ffast-math', 
+cmpl_args = ['-ffast-math',
              '-O2', 
              '-march=native',  
              '-mtune=native', 
-             '-ftree-vectorize']
-    
-link_args = ['-lgomp']
+             '-ftree-vectorize' ]
+
+cmpl_args_omp = cmpl_args + ['-fopenmp']
+
+link_args = []
+
+link_args_omp = link_args + ['-lgomp']
 
 if cythonize:
 
@@ -65,53 +72,38 @@ if cythonize:
 
     CCO.buffer_max_dims = 9
 
-    extensions = \
-        [Extension(
-            "cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cychain", ["cubical/kernels/cychain.pyx"],
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.pyx"],
-            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
-            extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.pyx"],
-            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
-            extra_link_args=link_args),
-         Extension(
-            "cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.pyx"],
-            include_dirs=[include_path], language="c++", extra_compile_args=cmpl_args, 
-            extra_link_args=link_args)]
+    extensions = []
+    for source in glob.glob("cubical/kernels/*.pyx"):
+        name, ext = os.path.splitext(source)
+        omp = name.endswith("_omp")
+        # identify which kernels need to go via the C++ compiler
+        cpp = any([x in name for x in "cytf_plane", "cyf_slope", "cyt_slope"])
 
-    extensions = cythonize(extensions, compiler_directives={'binding': True})
+        extensions.append(Extension(
+            name.replace("/","."), [source],
+            include_dirs=[include_path],
+            extra_compile_args=cmpl_args_omp if omp else cmpl_args,
+            extra_link_args=link_args_omp if omp else link_args,
+            language="c++" if cpp else "c"
+        ))
+
+    extensions = cythonize(extensions, compiler_directives={'binding': True}, annotate=True)
 
 else:
 
     log.info("Cython unavailable. Using bundled .c and .cpp files.")
 
-    extensions = \
-        [Extension("cubical.kernels.cyfull_complex", ["cubical/kernels/cyfull_complex.c"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cyphase_only", ["cubical/kernels/cyphase_only.c"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cyfull_W_complex", ["cubical/kernels/cyfull_W_complex.c"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cychain", ["cubical/kernels/cychain.c"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cytf_plane", ["cubical/kernels/cytf_plane.cpp"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cyf_slope", ["cubical/kernels/cyf_slope.cpp"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args),
-         Extension("cubical.kernels.cyt_slope", ["cubical/kernels/cyt_slope.cpp"], 
-            include_dirs=[include_path], extra_compile_args=cmpl_args, extra_link_args=link_args)]
+    extensions = []
+    for source in glob.glob("cubical/kernels/*.c") + glob.glob("cubical/kernels/*.cpp"):
+        name, ext = os.path.splitext(source)
+        omp = name.endswith("_omp")
+        extensions.append(Extension(
+            name.replace("/","."), [source],
+            include_dirs=[include_path],
+            extra_compile_args=cmpl_args_omp if omp else cmpl_args,
+            extra_link_args=link_args_omp if omp else link_args
+        ))
+
 
 # Check for readthedocs environment variable.
 
@@ -133,7 +125,7 @@ else:
                     'astro-tigger-lsm']
 
 setup(name='cubical',
-      version='1.0.0',
+      version='1.1.1',
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/JSKenyon/phd-code',
       classifiers=[
@@ -146,6 +138,8 @@ setup(name='cubical',
       author='Jonathan Kenyon',
       author_email='jonosken@gmail.com',
       license='GNU GPL v3',
+      long_description=long_description,
+      long_description_content_type='text/markdown',
       cmdclass={'build_ext': build_ext},
       packages=['cubical', 
                 'cubical.machines', 
