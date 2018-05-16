@@ -34,6 +34,9 @@ from setuptools.command.build_ext import build_ext
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 log = logging.getLogger()
 
+with open('README.md') as f:
+	long_description = f.read()
+
 # Try get location of numpy headers. Compilation requires these headers. 
 
 try:
@@ -135,6 +138,8 @@ setup(name='cubical',
       author='Jonathan Kenyon',
       author_email='jonosken@gmail.com',
       license='GNU GPL v3',
+      long_description=long_description,
+      long_description_content_type='text/markdown',
       cmdclass={'build_ext': build_ext},
       packages=['cubical', 
                 'cubical.machines', 
