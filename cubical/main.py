@@ -16,33 +16,30 @@ Main code body. Handles options, invokes solvers and manages multiprocessing.
 
 import cPickle
 import os, os.path
-import traceback
 import sys
 import warnings
 import numpy as np
-import re
 from time import time
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
 # even if one is only trying to save figures to .png.
 import matplotlib
 
-import multiprocessing
-import concurrent.futures as cf
-
 from cubical.tools import logger
 # set the base name of the logger. This must happen before any other loggers are instantiated
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
 
-import cubical
+import logging
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
 import cubical.data_handler as data_handler
 from cubical.data_handler import DataHandler, Tile
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine
 from cubical.machines import ifr_gain_machine
-
+from cubical import workers
 
 log = logger.getLogger("main")
 
@@ -168,32 +165,6 @@ def main(debugging=False):
         if not debugging:
             print>>log, "started " + " ".join(sys.argv)
 
-        single_chunk = GD["data"]["single-chunk"]
-
-        # figure out CPU affinities
-        ncpu = GD["dist"]["ncpu"] if not single_chunk else 0
-        affinities = main_affinity = None
-
-        if ncpu:
-            affinity = GD["dist"]["affinity"]
-            if not affinity:
-                affinities = None
-            elif type(affinity) is int:
-                affinities = range(0, ncpu*affinity, affinity)
-            else:
-                affinities = affinity
-                if type(affinities) is not list or not all([type(x) is int for x in affinities]):
-                    raise UserInputError("invalid --dist-affinity setting '{}'".format(affinity))
-                if len(affinities) != ncpu:
-                    raise UserInputError("--dist-ncpu is {}, while --dist-affinity specifies {} numbers".format(
-                                         ncpu, len(affinities)))
-            main_affinity = GD["dist"]["main-affinity"]
-            if main_affinity is not None:
-                if main_affinity == "auto":
-                    main_affinity = affinities[0]
-                if type(main_affinity) is not int:
-                    raise UserInputError("invalid --dist-main-affinity setting '{}'".format(main_affinity))
-
         # disable matplotlib's tk backend if we're not going to be showing plots
         if GD['out']['plots-show']:
             import pylab
@@ -212,6 +183,31 @@ def main(debugging=False):
             parser.print_config(dest=log)
 
         double_precision = GD["sol"]["precision"] == 64
+
+        # set up RIME
+
+        solver_opts = GD["sol"]
+        debug_opts  = GD["debug"]
+        sol_jones = solver_opts["jones"]
+        if type(sol_jones) is str:
+            sol_jones = set(sol_jones.split(','))
+        jones_opts = [GD[j.lower()] for j in sol_jones]
+        # collect list of options from enabled Jones matrices
+        if not len(jones_opts):
+            raise UserInputError("No Jones terms are enabled")
+        print>> log, ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green")
+
+        have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
+
+        # TODO: in this case data_handler can be told to only load diagonal elements. Save memory!
+        # top-level diag-diag enforced across jones terms
+        if solver_opts['diag-diag']:
+            for jo in jones_opts:
+                jo['diag-diag'] = True
+        else:
+            solver_opts['diag-diag'] = all([jo['diag-diag'] for jo in jones_opts])
+
+        # set up data handler
 
         solver_type = GD['out']['mode']
         if solver_type not in solver.SOLVERS:
@@ -235,6 +231,7 @@ def main(debugging=False):
                           ddid=GD["sel"]["ddid"],
                           channels=GD["sel"]["chan"],
                           flagopts=GD["flags"],
+                          diag=solver_opts["diag-diag"],
                           double_precision=double_precision,
                           beam_pattern=GD["model"]["beam-pattern"],
                           beam_l_axis=GD["model"]["beam-l-axis"],
@@ -244,21 +241,6 @@ def main(debugging=False):
                           max_baseline=GD["sol"]["max-bl"])
 
         data_handler.global_handler = ms
-
-        # set up RIME
-
-        solver_opts = GD["sol"]
-        debug_opts  = GD["debug"]
-        sol_jones = solver_opts["jones"]
-        if type(sol_jones) is str:
-            sol_jones = set(sol_jones.split(','))
-        jones_opts = [GD[j.lower()] for j in sol_jones]
-        # collect list of options from enabled Jones matrices
-        if not len(jones_opts):
-            raise UserInputError("No Jones terms are enabled")
-        print>> log, ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green")
-
-        have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
@@ -331,141 +313,43 @@ def main(debugging=False):
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
-        
+                                                       
         # create IFR-based gain machine. Only compute gains if we're loading a model
         # (i.e. not in load-apply mode)
         solver.ifrgain_machine = ifr_gain_machine.IfrGainMachine(solver.gm_factory, GD["bbc"], compute=load_model)
         
+
+        single_chunk = GD["data"]["single-chunk"]
+
+        # setup worker process properties
+
+        workers.setup_parallelism(GD["dist"]["ncpu"], GD["dist"]["nworker"], GD["dist"]["nthread"],
+                                  debugging or single_chunk,
+                                  GD["dist"]["pin"], GD["dist"]["pin-io"], GD["dist"]["pin-main"],
+                                  ms.use_montblanc, GD["montblanc"]["threads"])
+
         # set up chunking
+
         chunk_by = GD["data"]["chunk-by"]
         if type(chunk_by) is str:
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
+        chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
+        if GD["dist"]["max-chunks"]:
+            chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
+
         print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
-        ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
-                        chunk_by=chunk_by, chunk_by_jump=jump,
-                        min_chunks_per_tile=max(GD["dist"]["ncpu"], GD["dist"]["min-chunks"]))
 
+        chunks_per_tile = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+                                            chunk_by=chunk_by, chunk_by_jump=jump,
+                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
+
+        # run the main loop
 
         t0 = time()
-
-        # this accumulates SolverStats objects from each chunk, for summarizing later
-        stats_dict = {}
-
-        # target function has the following signature/behaviour
-        # inputs: itile:       number of tile (in ms.tile_list)
-        #         key:         chunk key (as returned by tile.get_chunk_keys())
-        #         solver_opts: dict of solver options
-        # returns: stats object
-
-        if debugging or ncpu <= 1 or single_chunk:
-            for itile, tile in enumerate(Tile.tile_list):
-                tile.load(load_model=load_model)
-                processed = False
-                for key in tile.get_chunk_keys():
-                    if not single_chunk or key == single_chunk:
-                        processed = True
-                        stats_dict[tile.get_chunk_indices(key)] = \
-                            solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
-                if processed:
-                    tile.save()
-                    for sd in tile.iterate_solution_chunks():
-                        solver.gm_factory.save_solutions(sd)
-                        solver.ifrgain_machine.accumulate(sd)
-                else:
-                    print>>log(0),"  single-chunk {} not in this tile, skipping it.".format(single_chunk)
-                tile.release()
-                # break out after single chunk is processed
-                if processed and single_chunk:
-                    print>>log(0),ModColor.Str("single-chunk {} was processed in this tile. Will now finish".format(single_chunk))
-                    break
-            solver.ifrgain_machine.save()
-            solver.gm_factory.set_metas(ms)
-            solver.gm_factory.close()
-        else:
-
-            # Setup properties dict for _init_workers()
-            # This is a hack, which relies on the multiprocessing module to retain its naming convention
-            # for subprocesses. If this convention changes in the future, _init_worker() below will
-            # not be able to find subprocess properties, and will give warnings.
-            global _worker_process_properties
-            _worker_process_properties["MainProcess"] = "", main_affinity
-
-            # create entries for subprocesses
-            for icpu in xrange(ncpu):
-                name = "Process-{}".format(icpu+1)
-                label = "io" if not icpu else "x%02d"%icpu
-                # if Montblanc is in use, do not touch affinity of I/O thread: tensorflow doesn't like it
-                if affinities and (icpu or not ms.use_montblanc):
-                    aff = affinities[icpu]
-                else:
-                    aff = None
-                _worker_process_properties[name] = label, aff
-
-            if main_affinity is not None:
-                if ms.use_montblanc:
-                    print>>log(1),"Montblanc in use: ignoring affinity setting of main and I/O process"
-                else:
-                    print>>log(1),"setting main process ({}) CPU affinity to {}".format(os.getpid(), main_affinity)
-                    os.system("taskset -pc {} {} >/dev/null".format(main_affinity, os.getpid()))
-
-            with cf.ProcessPoolExecutor(max_workers=ncpu-1) as executor, \
-                 cf.ProcessPoolExecutor(max_workers=1) as io_executor:
-
-                ms.flush()
-                # this will be a dict of tile number: future loading that tile
-                io_futures = {}
-                # schedule I/O job to load tile 0
-                io_futures[0] = io_executor.submit(_io_handler, load=0, save=None)
-                # all I/O will be done by the io"single chunk_executor, so we need to close the MS in the main process
-                # and reopen it afterwards
-                ms.close()
-                for itile, tile in enumerate(Tile.tile_list):
-                    # wait for I/O job on current tile to finish
-                    print>>log(0),"waiting for I/O on {}".format(tile.label)
-                    done, not_done = cf.wait([io_futures[itile]])
-                    if not done or not io_futures[itile].result():
-                        raise RuntimeError("I/O job on {} failed".format(tile.label))
-                    del io_futures[itile]
-
-                    # immediately schedule I/O job to save previous/load next tile
-                    load_next = itile+1 if itile < len(Tile.tile_list)-1 else None
-                    save_prev = itile-1 if itile else None
-                    io_futures[itile+1] = io_executor.submit(_io_handler, load=load_next,
-                                                             save=save_prev, load_model=load_model)
-
-                    # submit solver jobs
-                    solver_futures = {}
-
-                    print>>log(0),"submitting solver jobs for {}".format(tile.label)
-
-                    for key in tile.get_chunk_keys():
-                        if not single_chunk or key == single_chunk:
-                            solver_futures[executor.submit(solver.run_solver, solver_type,
-                                                           itile, key, solver_opts, debug_opts)] = key
-                            print>> log(3), "submitted solver job for chunk {}".format(key)
-
-                    # wait for solvers to finish
-                    for future in cf.as_completed(solver_futures):
-                        key = solver_futures[future]
-                        stats = future.result()
-                        stats_dict[tile.get_chunk_indices(key)] = stats
-                        print>>log(3),"handled result of chunk {}".format(key)
-
-                    print>> log(0), "finished processing {}".format(tile.label)
-
-                # ok, at this stage we've iterated over all the tiles, but there's an outstanding
-                # I/O job saving the second-to-last tile (which was submitted with itile+1), and the last tile was
-                # never saved, so submit a job for that (also to close the MS), and wait
-                io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, finalize=True)
-                cf.wait([io_futures[-1]])
-                # get flagcounts from result of job
-                ms.update_flag_counts(io_futures[-1].result()['flagcounts'])
-
-                # and reopen the MS again
-                ms.reopen()
+        stats_dict = workers.run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 
         print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
 
@@ -497,7 +381,7 @@ def main(debugging=False):
                 plots.make_summary_plots(st, ms, GD, basename)
 
         # make BBC plots
-        if solver.ifrgain_machine and solver.ifrgain_machine.is_computing():
+        if solver.ifrgain_machine and solver.ifrgain_machine.is_computing() and GD["out"]["plots"]:
             import cubical.plots.ifrgains
             with warnings.catch_warnings():
                 warnings.simplefilter("error", np.ComplexWarning)
@@ -519,75 +403,4 @@ def main(debugging=False):
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)
         sys.exit(2 if type(exc) is UserInputError else 1)
-
-
-_worker_initialized = None
-_worker_process_properties = { "MainProcess": ("", None) }
-
-def _init_worker():
-    """Called inside every worker process to initialize its properties"""
-    global _worker_initialized
-    if not _worker_initialized:
-        _worker_initialized = True
-        name = multiprocessing.current_process().name
-        if name not in _worker_process_properties:
-            print>> log(0, "red"), "WARNING: unrecognized worker process name '{}'. " \
-                                "Please inform the developers.".format(name)
-            return
-        label, affinity = _worker_process_properties[name]
-        logger.set_subprocess_label(label)
-        if affinity is not None:
-            print>>log(1),"setting worker process ({}) CPU affinity to {}".format(os.getpid(), affinity)
-            os.system("taskset -pc {} {} >/dev/null".format(affinity, os.getpid()))
-
-
-def _io_handler(save=None, load=None, load_model=True, finalize=False):
-    """
-    Handles disk reads and writes for the multiprocessing case.
-
-    Args:
-        save (None or int, optional):
-            If specified, corresponds to index of Tile to save.
-        load (None or int, optional):
-            If specified, corresponds to index of Tile to load.
-        load_model (bool, optional):
-            If specified, loads model column from measurement set.
-        finalize (bool, optional):
-            If True, save will call the unlock method on the handler.
-        solver (cubical solver object, mandatory):
-            Kludge: singleton in parent is out of sync with children processes
-            this forces reserialization. Better option here is to call this with a threadpool
-            and appropriate locking around setters.
-    Returns:
-        bool:
-            True if load/save was successful.
-    """
-    _init_worker()
-    try:
-        result = {'success': True}
-        if save is not None:
-            tile = Tile.tile_list[save]
-            itile = range(len(Tile.tile_list))[save]
-            print>>log(0, "blue"),"saving {}".format(tile.label)
-            tile.save(unlock=finalize)
-            for sd in tile.iterate_solution_chunks():
-                solver.gm_factory.save_solutions(sd)
-                solver.ifrgain_machine.accumulate(sd)
-            if finalize:
-                # any metadata should have been set up by this stage
-                solver.gm_factory.set_metas(tile.handler)
-                solver.ifrgain_machine.save()
-                solver.gm_factory.close()
-                result['flagcounts'] = tile.handler.flagcounts
-            tile.release()
-        if load is not None:
-            tile = Tile.tile_list[load]
-            print>>log(0, "blue"),"loading {}".format(tile.label)
-            tile.load(load_model=load_model)
-        print>> log(0, "blue"), "I/O job(s) complete"
-        return result
-    except Exception, exc:
-        print>> log, ModColor.Str("I/O handler for load {} save {} failed with exception: {}".format(load, save, exc))
-        print>> log, traceback.format_exc()
-        raise
 

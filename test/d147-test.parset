@@ -1,0 +1,125 @@
+[data]
+ms = None
+column = DATA 
+time-chunk = 60 
+freq-chunk = 32 
+chunk-on-scans = True 
+single-chunk =  
+
+[sel]
+field = 0 
+ddid = None 
+taql =  
+
+[model]
+list = MODEL_DATA 
+ddes = auto
+beam-pattern = None 
+beam-l-axis = None 
+beam-m-axis = None 
+
+[montblanc]
+device-type = CPU 
+dtype = float
+feed-type = circular 
+mem-budget = 4096 
+
+[weight]
+column = WEIGHT_SPECTRUM 
+
+[flags]
+apply = legacy 
+auto-init = legacy 
+save = cubical 
+reinit-bitflags = False 
+tf-chisq-median = 1.2 
+tf-np-median = 0.5 
+time-density = 0.5 
+chan-density = 0.5 
+ddid-density = 0.5 
+
+[sol]
+jones = G
+precision = 64 
+delta-g = 1e-06 
+delta-chi = 1e-06 
+chi-int = 5 
+last-rites = True 
+stall-quorum = 0.99 
+term-iters = 20,20,20
+
+[dist]
+ncpu = 0 
+min-chunks = 32 
+
+[out]
+name = d147 
+mode = sr 
+column = CORRECTED_DATA 
+plots = False 
+plots-show = False
+
+[log]
+memory = True 
+boring = False 
+append = False 
+
+[debug]
+verbose = 0 
+pdb = 0
+
+[misc]
+random-seed = None 
+parset-version = 0.1 
+
+[g]
+solvable = True 
+label = G 
+type = complex-2x2 
+load-from =  
+save-to = {data[ms]}/G-field:{sel[field]}.parmdb 
+dd-term = False 
+update-type = full 
+time-int = 1 
+freq-int = 1 
+clip-low = 0.1 
+clip-high = 10.0 
+clip-after = 5 
+max-iter = 200 
+conv-quorum = 0.99 
+term-iters = 2 
+
+[b]
+solvable = True 
+label = B 
+type = complex-2x2 
+load-from =  
+save-to = {data[ms]}/B-field:{sel[field]}.parmdb
+dd-term = False 
+update-type = full 
+time-int = 1 
+freq-int = 1 
+clip-low = 0.1 
+clip-high = 10.0 
+clip-after = 5 
+max-iter = 200 
+conv-quorum = 0.99 
+term-iters = 2 
+
+[de]
+solvable = True 
+label = dE 
+type = complex-2x2 
+load-from =  
+save-to = {data[ms]}/dE-field:{sel[field]}.parmdb
+dd-term = True 
+update-type = full 
+time-int = 32 
+freq-int = 32 
+clip-low = 0
+clip-high = 0 
+clip-after = 5 
+max-iter = 200 
+conv-quorum = 0.99 
+term-iters = 2 
+
