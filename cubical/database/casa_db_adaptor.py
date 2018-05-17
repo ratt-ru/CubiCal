@@ -88,6 +88,8 @@ class casa_caltable_factory(object):
             assert (type(db.metadata["ddids"]) is list) \
                     and all([type(dd) is int for dd in db.metadata["ddids"]]), "Expect list of selected ddids"
             
+            db.metadata["ddids"] = db.metadata["ddids"] if db.metadata is not None else range(db.ddid_spw_map.size)
+            
             with tbl("%s::SPECTRAL_WINDOW" % filename, ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.metadata["ddids"]))
                 # Per DDID determine solution spacing in frequency
