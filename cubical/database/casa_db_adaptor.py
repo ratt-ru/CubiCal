@@ -84,16 +84,11 @@ class casa_caltable_factory(object):
                 t.putcol("PROJECT", db.obsproject)
                 t.putcol("RELEASE_DATE", db.obsreleasedate)
                 t.putcol("TELESCOPE_NAME", db.obstelescopename)
-                
-            assert (type(db.metadata["ddids"]) is list) \
-                    and all([type(dd) is int for dd in db.metadata["ddids"]]), "Expect list of selected ddids"
-            
-            db.metadata["ddids"] = db.metadata["ddids"] if db.metadata is not None else range(db.ddid_spw_map.size)
             
             with tbl("%s::SPECTRAL_WINDOW" % filename, ack=False, readonly=False) as t:
-                t.addrows(nrows=len(db.metadata["ddids"]))
+                t.addrows(nrows=len(db.sel_ddids))
                 # Per DDID determine solution spacing in frequency
-                for iddid, ddid in enumerate(db.metadata["ddids"]):
+                for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
                     minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
                     maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
@@ -151,12 +146,12 @@ class casa_caltable_factory(object):
             assert db[gname].shape == db[gname + ".err"].shape, "PARAM err shape does not match PARAM shape, this is a bug"
             assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr'), "DB table in unrecognized format"
             
-            ddids = db.metadata["ddids"]
+            ddids = db.sel_ddids
             ndir = len(db[gname].grid[db[gname].ax.dir])
             ntime = len(db[gname].grid[db[gname].ax.time])
             nant = len(db[gname].grid[db[gname].ax.ant])
             ncorr = len(db[gname].grid[db[gname].ax.corr])
-            nddids = len(db.metadata["ddids"])
+            nddids = len(db.sel_ddids)
             nrow = ndir * ntime * \
                     nant * len(ddids)
             assert ncorr == 2, "Expected diagnonal Jones matrix"
@@ -170,7 +165,7 @@ class casa_caltable_factory(object):
             
             with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
-                for iddid, ddid in enumerate(db.metadata["ddids"]):
+                for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
                     minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
                     maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
@@ -217,13 +212,13 @@ class casa_caltable_factory(object):
             assert db[gname].shape == db[gname + ".err"].shape, "PARAM err shape does not match PARAM shape, this is a bug"
             assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr1', 'corr2'), "DB table in unrecognized format"
             
-            ddids = db.metadata["ddids"]
+            ddids = db.sel_ddids
             ndir = len(db[gname].grid[db[gname].ax.dir])
             ntime = len(db[gname].grid[db[gname].ax.time])
             nant = len(db[gname].grid[db[gname].ax.ant])
             ncorr1 = len(db[gname].grid[db[gname].ax.corr1])
             ncorr2 = len(db[gname].grid[db[gname].ax.corr2])
-            nddids = len(db.metadata["ddids"])
+            nddids = len(db.sel_ddids)
             nrow = ndir * ntime * \
                     nant * len(ddids)
             assert ncorr1 == ncorr2 and ncorr1 == 2, "Expected 2x2 solution, this is a bug"
@@ -238,7 +233,7 @@ class casa_caltable_factory(object):
             with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
                 
-                for iddid, ddid in enumerate(db.metadata["ddids"]):
+                for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
                     minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
                     maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
@@ -297,12 +292,12 @@ class casa_caltable_factory(object):
             assert db[gname].shape == db[gname + ".err"].shape, "PARAM err shape does not match PARAM shape, this is a bug"
             assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr'), "DB table in unrecognized format"
             
-            ddids = db.metadata["ddids"]
+            ddids = db.sel_ddids
             ndir = len(db[gname].grid[db[gname].ax.dir])
             ntime = len(db[gname].grid[db[gname].ax.time])
             nant = len(db[gname].grid[db[gname].ax.ant])
             ncorr = len(db[gname].grid[db[gname].ax.corr])
-            nddids = len(db.metadata["ddids"])
+            nddids = len(db.sel_ddids)
             nrow = ndir * ntime * \
                     nant * len(ddids)
             assert ncorr == 2, "Expected diagnonal Jones matrix"
@@ -317,7 +312,7 @@ class casa_caltable_factory(object):
             
             with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
-                for iddid, ddid in enumerate(db.metadata["ddids"]):
+                for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
                     minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
                     maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
@@ -420,6 +415,7 @@ class casa_db_adaptor(PickledDatabase):
         self.spwnumchan = src._spwtabcols["NUM_CHAN"]
         self.spwtotalbandwidth = src._spwtabcols["TOTAL_BANDWIDTH"]
         self.ddid_spw_map = src._ddid_spw
+        self.sel_ddids = src._ddids
         self.do_write_casatbl = True
         self.meta_avail = True
     
