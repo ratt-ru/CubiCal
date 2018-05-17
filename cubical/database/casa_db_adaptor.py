@@ -104,7 +104,7 @@ class casa_caltable_factory(object):
                         chN = np.max(db.spwchanfreq)
                         ddsolwidthmax = 2 * (ddsolfreqs[0] - ch0)
                         ddsolwidth = np.ones(ddsolfreqs.size) * ddsolwidthmax
-                        ddsolwidth[-1] = ddsolwidthmax + (chN - ddsolfreqs.size * ddsolwidthmax + ch0)
+                        ddsolwidth[-1] = ddsolwidthmax + (chN - (ddsolfreqs.size * ddsolwidthmax + ch0))
                     else:
                         ddsolwidth = db.spwtotalbandwidth
                         
