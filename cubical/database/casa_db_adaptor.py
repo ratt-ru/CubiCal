@@ -97,14 +97,17 @@ class casa_caltable_factory(object):
                     maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
                     ddsolfreqs = solfreqs[np.logical_and(solfreqs >= minfreq,
                                                          solfreqs <= maxfreq)]
-                    # assume linearly-spaced solutions
+                    # assume linearly-spaced solutions for N - 1 solutions along grid and last solution 
+                    # may have different spacing if solution interval does not exactly divide number of channels
                     if ddsolfreqs.size > 1:
-                        ddsolwidth = ddsolfreqs[1:] - ddsolfreqs[:-1]
-                        assert np.all(ddsolwidth == ddsolwidth[0]), "Solutions should be equidistant, bug"
+                        ch0 = np.min(db.spwchanfreq)
+                        chN = np.max(db.spwchanfreq)
+                        ddsolwidthmax = 2 * (ddsolfreqs[0] - ch0)
+                        ddsolwidth = np.ones(ddsolfreqs.size) * ddsolwidthmax
+                        ddsolwidth[-1] = ddsolwidthmax + (chN - ddsolfreqs.size * ddsolwidthmax + ch0)
                     else:
                         ddsolwidth = db.spwtotalbandwidth
                         
-                    ddsolwidth = np.ones(ddsolfreqs.shape) * ddsolwidth[0]
                     t.putcell("MEAS_FREQ_REF", iddid, db.spwmeasfreq[spwid])
                     t.putcell("CHAN_FREQ", iddid, ddsolfreqs)
                     t.putcell("REF_FREQUENCY", iddid, db.spwreffreq[spwid])
