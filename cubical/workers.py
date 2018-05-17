@@ -327,7 +327,7 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
             print>> log(0, "red"), "single-chunk {} was processed in this tile. Will now finish".format(single_chunk)
             break
     solver.ifrgain_machine.save()
-    solver.set_metas(ms)
+    solver.gm_factory.set_metas(ms)
     solver.gm_factory.close()
 
     return stats_dict
@@ -405,7 +405,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
                 solver.ifrgain_machine.accumulate(sd)
             if finalize:
                 solver.ifrgain_machine.save()
-                solver.set_metas(tile.handler)
+                solver.gm_factory.set_metas(tile.handler)
                 solver.gm_factory.close()
                 result['flagcounts'] = tile.handler.flagcounts
             tile.release()
