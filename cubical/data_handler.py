@@ -1088,7 +1088,7 @@ class DataHandler:
                     "DISH_DIAMETER", "FLAG_ROW", "MOUNT", "NAME", 
                     "STATION"]
         assert set(anttabcols) == set(_anttab.colnames()), "Measurement set conformance error"
-        self._anttabcols = {t: _anttab.getcol(t) for t in anttabcols}
+        self._anttabcols = {t: _anttab.getcol(t) if _anttab.iscelldefined(t, 0) else np.array([]) for t in anttabcols}
         self.antnames = self._anttabcols["NAME"]
         self.antpos = self._anttabcols["POSITION"]
         
@@ -1097,7 +1097,7 @@ class DataHandler:
                     "CODE", "FLAG_ROW", "NAME", "NUM_POLY", 
                     "SOURCE_ID", "TIME"]
         assert set(fldtabcols) == set(_fldtab.colnames()), "Measurement set conformance error"
-        self._fldtabcols = {t: _fldtab.getcol(t) for t in fldtabcols}
+        self._fldtabcols = {t: _fldtab.getcol(t) if _fldtab.iscelldefined(t, 0) else np.array([]) for t in fldtabcols}
         
         # spw information to be used when writing gain tables
         spwtabcols = ["MEAS_FREQ_REF", "CHAN_FREQ", "REF_FREQUENCY",
@@ -1114,8 +1114,7 @@ class DataHandler:
                        "OBSERVER", "PROJECT", "RELEASE_DATE", "SCHEDULE_TYPE",
                        "TELESCOPE_NAME"]
         assert set(obstabcols) == set(_obstab.colnames()), "Measurement set conformance error"
-        self._obstabcols = {t: _obstab.getcol(t) for t in obstabcols}
-        
+        self._obstabcols = {t: _obstab.getcol(t) if _obstab.iscelldefined(t, 0) else np.array([]) for t in obstabcols}
         
         self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
         self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
