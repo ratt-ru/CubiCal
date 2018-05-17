@@ -712,8 +712,7 @@ class MasterMachine(object):
                 selddid = self.global_options["sel"]["ddid"]
                 assert ((type(selddid) is list) and (all([type(t) is int for t in selddid]))) or \
                        (type(selddid) is int) or selddid is None, "SPW should be a list of ints or int or None. This is a bug"
-                meta = {"field": selfield,
-                        "ddids": [selddid] if type(selddid) is int else selddid}
+                meta = {"field": selfield}
                 self._save_sols_byname[save_to] = db = param_db.create(save_to, metadata=meta, backup=True)
             self._save_sols[name] = db
             # work out type of empty value
