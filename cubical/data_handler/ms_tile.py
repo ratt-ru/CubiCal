@@ -165,19 +165,17 @@ class MSTile(object):
 
         # set up per-DDID subsets. These will be inherited by workers.
 
-        # for each DDID, gives a tuple of shared dict name, row subset within the dicts
-        self._ddid_data_dict = {}
         # gives list of subsets to be read in, as a tuple of shared dict name, MS row subset
         self._subsets = []
 
         if self.dh._ddids_unequal:
             for ddid in self.ddids:
                 rows = self.first_row + np.where(self.ddid_col == ddid)[0]
-                dictname = "{}:DDID{}".format(self._data_dict_name, ddid)
-                self._subsets.append((dictname, rows))
-                self._ddid_data_dict[ddid] = dictname, slice(None)
+                datadict = "{}:D{}".format(self._data_dict_name, ddid)
+                self._subsets.append((ddid, datadict, rows))
+                self._ddid_data_dict[ddid] = datadict, slice(None)
         else:
-            self._subsets.append((self._data_dict_name,None))   # None means read all rows
+            self._subsets.append((0, None, None))   # None means read all DDIDs and rows
             for ddid in self.ddids:
                 self._ddid_data_dict[ddid] = self._data_dict_name, np.where(self.ddid_col == ddid)[0]
 
@@ -209,9 +207,9 @@ class MSTile(object):
         rowchunk, chan0, chan1 = self._chunk_dict[key]
         timeslice = slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1)
         # lookup ordinal number of this DDID, and convert this to offset in frequencies
-        chan_offset = self.dh._ddid_index[rowchunk.ddid] * self.nfreq
+        chan_offset = self.dh.ddid_first_chan[rowchunk.ddid]
         return self.dh.uniq_times[timeslice], \
-               self.dh._ddid_chanfreqs[rowchunk.ddid, chan0:chan1], \
+               self.dh.chanfreqs[rowchunk.ddid][chan0:chan1], \
                slice(self.times[rowchunk.rows[0]], self.times[rowchunk.rows[-1]] + 1), \
                slice(chan_offset + chan0, chan_offset + chan1)
 
@@ -236,305 +234,312 @@ class MSTile(object):
 
         # Create a shared dict for the data arrays.
 
-        data = shared_dict.create(self._data_dict_name)
+        data0 = shared_dict.create(self._data_dict_name)
 
-        # These flags indicate if the (corrected) data or flags have been updated
-        # Gotcha for shared_dict users! The only truly shared objects are arrays.
-        # Thus, we create an array for the two "updated" inicators.
+        # These two variables indicate if the (corrected) data or flags have been updated
+        # (Gotcha for shared_dict users! The only truly shared objects are arrays.
+        # Thus, we create an array for the two "updated" variables.)
 
-        data['updated'] = np.array([False, False])
+        data0['updated'] = np.array([False, False])
         self._auto_filled_bitflag = False
 
-        # now, if DDIDs have the same channel structure, we can read the tile in one gulp, from the
-        # first row to the last (since all column have the same shape). If not, we have to loop over DDIDs and read
-        # the subsets of rows individually.
+        # now run over the subsets of the tile set up above. Each subset is a chunk of rows with the same
+        # channel shape. If all DDIDs have the same shape, this will be just the one
 
-        if self.dh._ddids_unequal:
-            subsets = []
-            for ddid in self.ddids:
-                rows = self.first_row + np.where(self.ddid_col == ddid)[0]
-                subsets.append((ddid, rows))
-        else:
-            subsets = [(None, None)]
-
-
-        nrows0 = self.last_row - self.first_row + 1
-        print>> log(0, "blue"), "{}: reading MS rows {}~{}".format(self.label, self.first_row, self.last_row)
-
-        obvis0 = self.dh.fetchslice(self.dh.data_column, self.first_row, nrows0).astype(self.dh.ctype)
-        print>> log(2), "  read " + self.dh.data_column
-
-        uvw0 = self.dh.fetch("UVW", self.first_row, nrows0)
-        print>> log(2), "  read UVW coordinates"
-
-        # read weight columns, if a model is to be read
-
-        if self.dh.has_weights and load_model:
-            weights0 = np.zeros([len(self.dh.models)] + list(obvis0.shape), self.dh.wtype)
-            wcol_cache = {}
-            for i, (_, weight_col) in enumerate(self.dh.models):
-                if weight_col not in wcol_cache:
-                    print>> log(1), "  reading weights from {}".format(weight_col)
-                    wcol = self.dh.fetch(weight_col, self.first_row, nrows0)
-                    # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
-                    if weight_col == "WEIGHT":
-                        wcol_cache[weight_col] = wcol[:, np.newaxis, self.dh._corr_slice].repeat(self.dh.nfreq, 1)
-                    else:
-                        wcol_cache[weight_col] = wcol[:, self.dh._channel_slice, self.dh._corr_slice]
-                weights0[i, ...] = wcol_cache[weight_col]
-            del wcol_cache
-            num_weights = len(self.dh.models)
-        else:
-            weights0 = np.zeros((len(self.dh.models), 1, 1, 1), self.dh.wtype)
-            num_weights = 0
-
-        # The following block of code deals with the various flagging operations and columns. The
-        # aim is to correctly populate flag_arr from the various flag sources.
-
-        # Make a flag array. This will contain FL.PRIOR for any points flagged in the MS.
-
-        flag_arr0 = np.zeros(obvis0.shape, dtype=FL.dtype)
-
-        # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them.
-
-        flagcol = flagrow = None
-        self._flagcol_sum = 0
-        self.dh.flagcounts["TOTAL"] += flag_arr0.size
-
-        if self.dh._apply_flags or self.dh._auto_fill_bitflag:
-            flagcol = self.dh.fetchslice("FLAG", self.first_row, nrows0)
-            flagrow = self.dh.fetch("FLAG_ROW", self.first_row, nrows0)
-            flagcol[flagrow, :, :] = True
-            print>> log(2), "  read FLAG/FLAG_ROW"
-            # compute stats
-            self._flagcol_sum = flagcol.sum()
-            self.dh.flagcounts["FLAG"] += self._flagcol_sum
-
-            if self.dh._apply_flags:
-                flag_arr0[flagcol] = FL.PRIOR
-
-        # if an active row subset is specified, flag non-active rows as priors. Start as all flagged,
-        # the clear the flags
-        if self.dh.active_row_numbers is not None:
-            rows = self.dh.active_row_numbers - self.first_row
-            rows = rows[(rows >= 0) & (rows < nrows0)]
-            inactive = np.ones(nrows0, bool)
-            inactive[rows] = False
-        else:
-            inactive = np.zeros(nrows0, bool)
-        num_inactive = inactive.sum()
-        if num_inactive:
-            print>> log(0), "  applying a solvable subset deselects {} rows".format(num_inactive)
-        # apply baseline selection
-        if self.dh.min_baseline or self.dh.max_baseline:
-            uv2 = (uvw0[:, 0:2] ** 2).sum(1)
-            inactive[uv2 < self.dh.min_baseline ** 2] = True
-            if self.dh.max_baseline:
-                inactive[uv2 > self.dh.max_baseline ** 2] = True
-            print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(
-                inactive.sum() - num_inactive)
-            num_inactive = inactive.sum()
-        if num_inactive:
-            print>> log(0), "  {:.2%} visibilities have been deselected".format(num_inactive / float(inactive.size))
-            flag_arr0[inactive] |= FL.SKIPSOL
-
-        # Form up bitflag array, if needed.
-        if self.dh._apply_bitflags or self.dh._save_bitflag or self.dh._auto_fill_bitflag:
-            read_bitflags = False
-            # If not explicitly re-initializing, try to read column.
-            if not self.dh._reinit_bitflags:
-                self.bflagrow = self.dh.fetch("BITFLAG_ROW", self.first_row, nrows0)
-                # If there's an error reading BITFLAG, it must be unfilled. This is a common
-                # occurrence so we may as well deal with it. In this case, if auto-fill is set,
-                # fill BITFLAG from FLAG/FLAG_ROW.
-                try:
-                    self.bflagcol = self.dh.fetchslice("BITFLAG", self.first_row, nrows0)
-                    print>> log(2), "  read BITFLAG/BITFLAG_ROW"
-                    read_bitflags = True
-                except Exception:
-                    if not self.dh._auto_fill_bitflag:
-                        print>> log, ModColor.Str(traceback.format_exc().strip())
-                        print>> log, ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set.")
-                        raise
-                    print>> log, "  error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
-                    for line in traceback.format_exc().strip().split("\n"):
-                        print>> log, "    " + line
-            # If column wasn't read, create arrays.
-            if not read_bitflags:
-                self.bflagcol = np.zeros(flagcol.shape, np.int32)
-                self.bflagrow = np.zeros(flagrow.shape, np.int32)
-                if self.dh._auto_fill_bitflag:
-                    self.bflagcol[flagcol] = self.dh._auto_fill_bitflag
-                    self.bflagrow[flagrow] = self.dh._auto_fill_bitflag
-                    print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s" % str(self.bflagcol.shape)
-                    self._auto_filled_bitflag = True
-            # compute stats
-            for flagset, bitmask in self.dh.bitflags.iteritems():
-                flagged = self.bflagcol & bitmask != 0
-                flagged[self.bflagrow & bitmask != 0, :, :] = True
-                self.dh.flagcounts[flagset] += flagged.sum()
-
-            # apply
-            if self.dh._apply_bitflags:
-                flag_arr0[(self.bflagcol & self.dh._apply_bitflags) != 0] = FL.PRIOR
-                flag_arr0[(self.bflagrow & self.dh._apply_bitflags) != 0, :, :] = FL.PRIOR
-
-            flagged = flag_arr0 != 0
-            nfl = flagged.sum()
-            self.dh.flagcounts["IN"] += nfl
-            print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
-
-        # now rebin arrays if appropriate
-        if self.dh.rebin_time > 1 or self.dh.rebin_freq > 1:
-            nrows = _divide_up(nrows0, self.dh.rebin_time)
-            print>> log(0), "  rebinning into {} rows and {} channels".format(nrows, self.dh.nfreq_rebinned)
-
-            import cubical.kernels
-            cygenerics = cubical.kernels.import_kernel("cygenerics")
-
-            obvis = data.addSharedArray('obvis', [nrows, self.dh.nfreq_rebinned, self.dh.ncorr])
-            flag_arr = data.addSharedArray('flags', obvis.shape, FL.dtype)
-            flag_arr.fill(-1)
-            self.uvwco = data.addSharedArray('uvwco', [nrows, 3], float)
-            # make dummy weight array if not 0
-            if num_weights:
-                weights = data.addSharedArray('weigh', [num_weights] + list(obvis.shape), self.dh.wtype)
+        for ddid, subset_dict, rows0 in self._subsets:
+            if rows0 is None:
+                print>> log(0, "blue"), "{}: reading MS rows {}~{}".format(self.label, self.first_row, self.last_row)
+                data = data0
+                table_subset = self.dh.data.selectrows(xrange(self.first_row, self.last_row+1))
+                nrows0 = self.last_row - self.first_row + 1
+                rebin_row_map = self.dh.rebin_row_map[self.first_row:self.last_row+1]
             else:
-                weights = np.zeros((1, 1, 1, 1), self.dh.wtype)
-            self.time_col, time_col0 = np.zeros(nrows, float), self.time_col
-            self.times, times0 = np.zeros(nrows, int), self.times
-            self.antea, antea0 = np.zeros(nrows, int), self.antea
-            self.anteb, anteb0 = np.zeros(nrows, int), self.anteb
+                nrows0 = len(rows0)
+                print>> log(0, "blue"), "{}: reading MS rows {}~{}, DDID {} ({} rows)".format(self.label, self.first_row,
+                                                                                              self.last_row, ddid, nrows0)
+                data = shared_dict.create(subset_dict)
+                table_subset = self.dh.data.selectrows(rows0)
+                rebin_row_map = self.dh.rebin_row_map[rows0]
 
-            nrows, rebin_map = cygenerics.cyrebin_vis(obvis, obvis0, self.uvwco, uvw0, self.time_col, time_col0,
-                                                      flag_arr, flag_arr0,
-                                                      weights, weights0, num_weights,
-                                                      self.times, self.antea, self.anteb,
-                                                      times0, antea0, anteb0,
-                                                      self.dh.rebin_time, self.dh.rebin_freq)
+            original_row_numbers = table_subset.rownumbers(self.data)
 
-            # TODO: freqs and DDIDs not correct after rebinning!
-            self.ddid_col = self.ddid_col[:nrows]
+            # rebin map refers to global row numbers -- make row 0 refer to first row of tile
+            # note that even without rebinning, the map contains negative rows for conjugate visibilities, so we always
+            # use it
+            rebin_row_map = rebin_row_map - rebin_row_map[0]
 
-            del obvis0, uvw0
-            # we'll need flag_arr0 and weights0 for load_models below so don't delete
-        # else copy arrays to shm directly
-        else:
-            rebin_map = None
-            nrows = nrows0
-            obvis = data['obvis'] = obvis0
-            data['flags'] = flag_arr0
-            self.uvwco = data['uvwco'] = uvw0
-            if num_weights:
-                data['weigh'] = weights0
-            del obvis0, flag_arr0, uvw0, weights0
-            freqs = self.dh._ddid_chanfreqs[self.ddids, :]
+            obvis0 = self.dh.fetchslice(self.dh.data_column, subset=table_subset).astype(self.dh.ctype)
+            print>> log(2), "  read " + self.dh.data_column
 
-        # The following either reads model visibilities from the measurement set, or uses an lsm
-        # and Montblanc to simulate them. Data may need to be massaged to be compatible with
-        # Montblanc's strict requirements.
+            uvw0 = table_subset.getcol("UVW")
+            print>> log(2), "  read UVW coordinates"
 
-        if load_model:
-            model_shape = [len(self.dh.model_directions), len(self.dh.models)] + list(obvis.shape)
-            loaded_models = {}
-            expected_nrows = None
-            movis = data.addSharedArray('movis', model_shape, self.dh.ctype)
+            # read weight columns, if a model is to be read
 
-            for imod, (dirmodels, _) in enumerate(self.dh.models):
-                # populate directions of this model
-                for idir, dirname in enumerate(self.dh.model_directions):
-                    if dirname in dirmodels:
-                        # loop over additive components
-                        for model_source, cluster in dirmodels[dirname]:
-                            # see if data for this model is already loaded
-                            if model_source in loaded_models:
-                                print>> log(1), "  reusing {}{} for model {} direction {}".format(model_source,
-                                                                                                  "" if not cluster else (
-                                                                                                      "()" if cluster == 'die' else "({})".format(
-                                                                                                          cluster)),
-                                                                                                  imod, idir)
-                                model = loaded_models[model_source][cluster]
-                            # cluster of None signifies that this is a visibility column
-                            elif cluster is None:
-                                print>> log(0), "  reading {} for model {} direction {}".format(model_source, imod,
-                                                                                                idir)
-                                model0 = self.dh.fetchslice(model_source, self.first_row, nrows0)
-                                if rebin_map:
-                                    print>> log(0), "  rebinning into {} rows and {} channels".format(nrows,
-                                                                                                      self.dh.nfreq_rebinned)
-                                    model = np.empty_like(obvis)
-                                    cygenerics.cyrebin_model(model, model0, flag_arr0,
-                                                             weights0[imod], num_weights > 0,
-                                                             rebin_map, self.dh.rebin_time, self.dh.rebin_freq)
+            if self.dh.has_weights and load_model:
+                weights0 = np.zeros([len(self.dh.models)] + list(obvis0.shape), self.dh.wtype)
+                wcol_cache = {}
+                for i, (_, weight_col) in enumerate(self.dh.models):
+                    if weight_col not in wcol_cache:
+                        print>> log(1), "  reading weights from {}".format(weight_col)
+                        wcol = table_subset.getcol(weight_col)
+                        # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
+                        if weight_col == "WEIGHT":
+                            wcol_cache[weight_col] = wcol[:, np.newaxis, self.dh._corr_slice].repeat(self.dh.nfreq, 1)
+                        else:
+                            wcol_cache[weight_col] = wcol[:, self.dh._channel_slice, self.dh._corr_slice]
+                    weights0[i, ...] = wcol_cache[weight_col]
+                del wcol_cache
+                num_weights = len(self.dh.models)
+            else:
+                weights0 = np.zeros((len(self.dh.models), 1, 1, 1), self.dh.wtype)
+                num_weights = 0
+
+            # The following block of code deals with the various flagging operations and columns. The
+            # aim is to correctly populate flag_arr from the various flag sources.
+
+            # Make a flag array. This will contain FL.PRIOR for any points flagged in the MS.
+
+            flag_arr0 = np.zeros(obvis0.shape, dtype=FL.dtype)
+
+            # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them.
+
+            flagcol = flagrow = None
+            self._flagcol_sum = 0
+            self.dh.flagcounts["TOTAL"] += flag_arr0.size
+
+            if self.dh._apply_flags or self.dh._auto_fill_bitflag:
+                flagcol = self.dh.fetchslice("FLAG", subset=table_subset)
+                flagrow = table_subset.getcol("FLAG_ROW")
+                flagcol[flagrow, :, :] = True
+                print>> log(2), "  read FLAG/FLAG_ROW"
+                # compute stats
+                self._flagcol_sum = flagcol.sum()
+                self.dh.flagcounts["FLAG"] += self._flagcol_sum
+
+                if self.dh._apply_flags:
+                    flag_arr0[flagcol] = FL.PRIOR
+
+            # if an active row subset is specified, flag non-active rows as priors. Start as all flagged,
+            # the clear the flags
+            if self.dh.inactive_rows is not None:
+                inactive = self.dh.inactive_rows[original_row_numbers]
+            else:
+                inactive = np.zeros(nrows0, bool)
+            num_inactive = inactive.sum()
+            if num_inactive:
+                print>> log(0), "  applying a solvable subset deselects {} rows".format(num_inactive)
+            # apply baseline selection
+            if self.dh.min_baseline or self.dh.max_baseline:
+                uv2 = (uvw0[:, 0:2] ** 2).sum(1)
+                inactive[uv2 < self.dh.min_baseline ** 2] = True
+                if self.dh.max_baseline:
+                    inactive[uv2 > self.dh.max_baseline ** 2] = True
+                print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(
+                    inactive.sum() - num_inactive)
+                num_inactive = inactive.sum()
+            if num_inactive:
+                print>> log(0), "  {:.2%} visibilities have been deselected".format(num_inactive / float(inactive.size))
+                flag_arr0[inactive] |= FL.SKIPSOL
+
+            # Form up bitflag array, if needed.
+            if self.dh._apply_bitflags or self.dh._save_bitflag or self.dh._auto_fill_bitflag:
+                read_bitflags = False
+                # If not explicitly re-initializing, try to read column.
+                if not self.dh._reinit_bitflags:
+                    self.bflagrow = table_subset.getcol("BITFLAG_ROW")
+                    # If there's an error reading BITFLAG, it must be unfilled. This is a common
+                    # occurrence so we may as well deal with it. In this case, if auto-fill is set,
+                    # fill BITFLAG from FLAG/FLAG_ROW.
+                    try:
+                        self.bflagcol = self.dh.fetchslice("BITFLAG", subset=table_subset)
+                        print>> log(2), "  read BITFLAG/BITFLAG_ROW"
+                        read_bitflags = True
+                    except Exception:
+                        if not self.dh._auto_fill_bitflag:
+                            print>> log, ModColor.Str(traceback.format_exc().strip())
+                            print>> log, ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set.")
+                            raise
+                        print>> log, "  error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
+                        for line in traceback.format_exc().strip().split("\n"):
+                            print>> log, "    " + line
+                # If column wasn't read, create arrays.
+                if not read_bitflags:
+                    self.bflagcol = np.zeros(flagcol.shape, np.int32)
+                    self.bflagrow = np.zeros(flagrow.shape, np.int32)
+                    if self.dh._auto_fill_bitflag:
+                        self.bflagcol[flagcol] = self.dh._auto_fill_bitflag
+                        self.bflagrow[flagrow] = self.dh._auto_fill_bitflag
+                        print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s" % str(self.bflagcol.shape)
+                        self._auto_filled_bitflag = True
+                # compute stats
+                for flagset, bitmask in self.dh.bitflags.iteritems():
+                    flagged = self.bflagcol & bitmask != 0
+                    flagged[self.bflagrow & bitmask != 0, :, :] = True
+                    self.dh.flagcounts[flagset] += flagged.sum()
+
+                # apply
+                if self.dh._apply_bitflags:
+                    flag_arr0[(self.bflagcol & self.dh._apply_bitflags) != 0] = FL.PRIOR
+                    flag_arr0[(self.bflagrow & self.dh._apply_bitflags) != 0, :, :] = FL.PRIOR
+
+                flagged = flag_arr0 != 0
+                nfl = flagged.sum()
+                self.dh.flagcounts["IN"] += nfl
+                print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
+
+            # now rebin arrays if appropriate
+            if self.dh._rebin_freq or self.dh._rebin_time:
+                nrows = rebin_row_map[-1]+1
+                rebin_chan_map = self.dh.rebin_chan_maps[ddid]
+                if rebin_chan_map is None:
+                    rebin_chan_map = np.arange(len(self.chanfreqs[ddid]), np.int64)
+                nchan = rebin_chan_map[-1]+1
+                print>> log(0), "  rebinning into {} rows and {} channels".format(nrows, nchan)
+
+                import cubical.kernels
+                cygenerics = cubical.kernels.import_kernel("cygenerics")
+
+                obvis = data.addSharedArray('obvis', [nrows, nchan, self.dh.ncorr])
+                flag_arr = data.addSharedArray('flags', obvis.shape, FL.dtype)
+                flag_arr.fill(-1)
+                self.uvwco = data.addSharedArray('uvwco', [nrows, 3], float)
+                # make dummy weight array if not 0
+                if num_weights:
+                    weights = data.addSharedArray('weigh', [num_weights] + list(obvis.shape), self.dh.wtype)
+                else:
+                    weights = np.zeros((1, 1, 1, 1), self.dh.wtype)
+                self.time_col, time_col0 = np.zeros(nrows, float), self.time_col
+                self.times, times0 = np.zeros(nrows, int), self.times
+                self.antea, antea0 = np.zeros(nrows, int), self.antea
+                self.anteb, anteb0 = np.zeros(nrows, int), self.anteb
+
+                nrows, rebin_map = cygenerics.cyrebin_vis(obvis, obvis0, self.uvwco, uvw0, self.time_col, time_col0,
+                                                          flag_arr, flag_arr0,
+                                                          weights, weights0, num_weights,
+                                                          self.times, self.antea, self.anteb,
+                                                          times0, antea0, anteb0,
+                                                          rebin_row_map, rebin_chan_map)
+
+                del obvis0, uvw0
+                # we'll need flag_arr0 and weights0 for load_models below so don't delete
+            # else copy arrays to shm directly
+            else:
+                rebin_map = None
+                nrows = nrows0
+                obvis = data['obvis'] = obvis0
+                data['flags'] = flag_arr0
+                self.uvwco = data['uvwco'] = uvw0
+                if num_weights:
+                    data['weigh'] = weights0
+                del obvis0, flag_arr0, uvw0, weights0
+                freqs = self.dh._ddid_chanfreqs[self.ddids, :]
+
+            # The following either reads model visibilities from the measurement set, or uses an lsm
+            # and Montblanc to simulate them. Data may need to be massaged to be compatible with
+            # Montblanc's strict requirements.
+
+            if load_model:
+                model_shape = [len(self.dh.model_directions), len(self.dh.models)] + list(obvis.shape)
+                loaded_models = {}
+                expected_nrows = None
+                movis = data.addSharedArray('movis', model_shape, self.dh.ctype)
+
+                for imod, (dirmodels, _) in enumerate(self.dh.models):
+                    # populate directions of this model
+                    for idir, dirname in enumerate(self.dh.model_directions):
+                        if dirname in dirmodels:
+                            # loop over additive components
+                            for model_source, cluster in dirmodels[dirname]:
+                                # see if data for this model is already loaded
+                                if model_source in loaded_models:
+                                    print>> log(1), "  reusing {}{} for model {} direction {}".format(model_source,
+                                                                                                      "" if not cluster else (
+                                                                                                          "()" if cluster == 'die' else "({})".format(
+                                                                                                              cluster)),
+                                                                                                      imod, idir)
+                                    model = loaded_models[model_source][cluster]
+                                # cluster of None signifies that this is a visibility column
+                                elif cluster is None:
+                                    print>> log(0), "  reading {} for model {} direction {}".format(model_source, imod,
+                                                                                                    idir)
+                                    model0 = self.dh.fetchslice(model_source, self.first_row, nrows0)
+                                    if rebin_map:
+                                        print>> log(0), "  rebinning into {} rows and {} channels".format(nrows,
+                                                                                                          self.dh.nfreq_rebinned)
+                                        model = np.empty_like(obvis)
+                                        cygenerics.cyrebin_model(model, model0, flag_arr0,
+                                                                 weights0[imod], num_weights > 0,
+                                                                 rebin_map, self.dh.rebin_time, self.dh.rebin_freq)
+                                    else:
+                                        model = model0
+                                    loaded_models.setdefault(model_source, {})[None] = model
+                                    model0 = None
+                                # else evaluate a Tigger model with Montblanc
                                 else:
-                                    model = model0
-                                loaded_models.setdefault(model_source, {})[None] = model
-                                model0 = None
-                            # else evaluate a Tigger model with Montblanc
-                            else:
-                                # massage data into Montblanc-friendly shapes
-                                if expected_nrows is None:
-                                    expected_nrows, sort_ind, row_identifiers = self.prep_for_montblanc(nrows)
-                                    measet_src = MSSourceProvider(self, self.uvwco, freqs, sort_ind, nrows)
-                                    cached_ms_src = CachedSourceProvider(measet_src,
-                                                                         cache_data_sources=["parallactic_angles"],
-                                                                         clear_start=False, clear_stop=False)
+                                    # massage data into Montblanc-friendly shapes
+                                    if expected_nrows is None:
+                                        expected_nrows, sort_ind, row_identifiers = self.prep_for_montblanc(nrows)
+                                        measet_src = MSSourceProvider(self, self.uvwco, freqs, sort_ind, nrows)
+                                        cached_ms_src = CachedSourceProvider(measet_src,
+                                                                             cache_data_sources=["parallactic_angles"],
+                                                                             clear_start=False, clear_stop=False)
+                                        if self.dh.beam_pattern:
+                                            arbeam_src = FitsBeamSourceProvider(self.dh.beam_pattern,
+                                                                                self.dh.beam_l_axis,
+                                                                                self.dh.beam_m_axis)
+
+                                    print>> log(0), "  computing visibilities for {}".format(model_source)
+                                    # setup Montblanc computation for this LSM
+                                    tigger_source = model_source
+                                    cached_src = CachedSourceProvider(tigger_source, clear_start=True, clear_stop=True)
+                                    srcs = [cached_ms_src, cached_src]
                                     if self.dh.beam_pattern:
-                                        arbeam_src = FitsBeamSourceProvider(self.dh.beam_pattern,
-                                                                            self.dh.beam_l_axis,
-                                                                            self.dh.beam_m_axis)
+                                        srcs.append(arbeam_src)
 
-                                print>> log(0), "  computing visibilities for {}".format(model_source)
-                                # setup Montblanc computation for this LSM
-                                tigger_source = model_source
-                                cached_src = CachedSourceProvider(tigger_source, clear_start=True, clear_stop=True)
-                                srcs = [cached_ms_src, cached_src]
-                                if self.dh.beam_pattern:
-                                    srcs.append(arbeam_src)
+                                    # make a sink with an array to receive visibilities
+                                    ndirs = model_source._nclus
+                                    model_shape = (ndirs, 1, expected_nrows, self.nfreq, self.ncorr)
+                                    full_model = np.zeros(model_shape, self.dh.ctype)
+                                    column_snk = ColumnSinkProvider(self, full_model, sort_ind)
+                                    snks = [column_snk]
 
-                                # make a sink with an array to receive visibilities
-                                ndirs = model_source._nclus
-                                model_shape = (ndirs, 1, expected_nrows, self.nfreq, self.ncorr)
-                                full_model = np.zeros(model_shape, self.dh.ctype)
-                                column_snk = ColumnSinkProvider(self, full_model, sort_ind)
-                                snks = [column_snk]
+                                    for direction in xrange(ndirs):
+                                        tigger_source.set_direction(direction)
+                                        column_snk.set_direction(direction)
+                                        simulate(srcs, snks, self.dh.mb_opts)
 
-                                for direction in xrange(ndirs):
-                                    tigger_source.set_direction(direction)
-                                    column_snk.set_direction(direction)
-                                    simulate(srcs, snks, self.dh.mb_opts)
+                                    # now associate each cluster in the LSM with an entry in the loaded_models cache
+                                    loaded_models[model_source] = {
+                                        clus: full_model[i, 0, row_identifiers, :, :]
+                                        for i, clus in enumerate(tigger_source._cluster_keys)}
 
-                                # now associate each cluster in the LSM with an entry in the loaded_models cache
-                                loaded_models[model_source] = {
-                                    clus: full_model[i, 0, row_identifiers, :, :]
-                                    for i, clus in enumerate(tigger_source._cluster_keys)}
+                                    model = loaded_models[model_source][cluster]
+                                    print>> log(1), "  using {}{} for model {} direction {}".format(model_source,
+                                                                                                    "" if not cluster else
+                                                                                                    (
+                                                                                                        "()" if cluster == 'die' else "({})".format(
+                                                                                                            cluster)),
+                                                                                                    imod, idir)
 
-                                model = loaded_models[model_source][cluster]
-                                print>> log(1), "  using {}{} for model {} direction {}".format(model_source,
-                                                                                                "" if not cluster else
-                                                                                                (
-                                                                                                    "()" if cluster == 'die' else "({})".format(
-                                                                                                        cluster)),
-                                                                                                imod, idir)
+                                    # release memory asap
+                                    del column_snk, snks
 
-                                # release memory asap
-                                del column_snk, snks
+                                # finally, add model in at correct slot
+                                movis[idir, imod, ...] += model
+                                model = None
 
-                            # finally, add model in at correct slot
-                            movis[idir, imod, ...] += model
-                            model = None
+                # release memory (gc.collect() particularly important), as model visibilities are *THE* major user (especially
+                # in the DD case)
+                del loaded_models
+                import gc
+                gc.collect()
 
-            # release memory (gc.collect() particularly important), as model visibilities are *THE* major user (especially
-            # in the DD case)
-            del loaded_models
-            import gc
-            gc.collect()
+                # if data was massaged for Montblanc shape, back out of that
+                if expected_nrows is not None:
+                    self.unprep_for_montblanc(nrows)
 
-            # if data was massaged for Montblanc shape, back out of that
-            if expected_nrows is not None:
-                self.unprep_for_montblanc(nrows)
-
-        data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
+            data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
 
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")

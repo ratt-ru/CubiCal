@@ -10,6 +10,7 @@ import re
 import traceback
 import sys
 import os.path
+import itertools
 import logging
 
 import cubical.flagging as flagging
@@ -407,10 +408,25 @@ class MSDataHandler:
         if self._ddids_unequal:
             print>>log(0,"red"),"Selected DDIDs have differing channel structure. Processing may be less efficient."
 
-        # make flat array of all frequencies
-        self.all_freqs = np.array(sorted(all_freqs))
+
+        # TODO: this assumes DDIDs are ordered in frequency. Exotic cases where this is not?
+        self.all_freqs = np.fromiter(itertools.chain(*[list(self.chanfreqs[ddid]) for ddid in self._ddids]), float)
+
+        deltafreq = self.all_freqs[1:] - self.all_freqs[:-1]
+        if not (deltafreq<0).all() and not (deltafreq>0).all():
+            raise RuntimeError("The selected DDID/frequencies in this MS are not laid out monotonically. This is currently not supported.")
+
         # make index of DDID -> ordinal number within DDID selection
         self._ddid_index = { d: num for num,d in enumerate(self._ddids) }
+
+        # make index of DDID -> first channel representing that DDID in allfreqs
+        first_chan = np.cumsum([[len(self.chanfreqs[ddid]) for ddid in self._ddids]])
+        first_chan -= len(self.chanfreqs[self._ddids[0]])
+        self.ddid_first_chan = {ddid:first_chan[num] for num,ddid in enumerate(self._ddids)}
+
+        print>>log(1),"   overall frequency space (MHz): {}".format(" ".join([str(f*1e-6) for f in self.all_freqs]))
+        print>>log(1),"   DDIDs start at channels: {}".format(" ".join([str(ch) for ch in self.ddid_first_chan]))
+
 
         # use TaQL to select subset
         self.taql = self.build_taql(taql, fid, self._ddids)
@@ -425,10 +441,12 @@ class MSDataHandler:
         if active_subset:
             subset = self.data.query(active_subset)
             self.active_row_numbers = np.array(subset.rownumbers(self.data))
+            self.inactive_rows = np.zeros(self.data.nrow(), True)
+            self.inactive_rows[self.active_row_numbers] = False
             print>> log, "  applying TAQL query '%s' for solvable subset (%d/%d rows)" % (active_subset,
                                                             subset.nrows(), self.data.nrows())
         else:
-            self.active_row_numbers = None
+            self.active_row_numbers = self.inactive_rows = None
         self.min_baseline, self.max_baseline = min_baseline, max_baseline
 
         self.nrows = self.data.nrows()
@@ -703,7 +721,7 @@ class MSDataHandler:
 
         return self.data.getcol(*args, **kwargs)
 
-    def fetchslice(self, column, startrow, nrows):
+    def fetchslice(self, column, startrow=0, nrows=-1, subset=None):
         """
         Convenience function similar to fetch(), but assumes a column of NFREQxNCORR shape,
         and calls pyrap.tables.table.getcolslice() if there's a channel slice to be applied,
@@ -719,11 +737,12 @@ class MSDataHandler:
             np.ndarray:
                 Result of getcolslice()
         """
+        subset = subset or self.data
         if self._ms_blc == None:
-            return self.data.getcol(column, startrow, nrows)
-        return self.data.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
+            return subset.getcol(column, startrow, nrows)
+        return subset.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
 
-    def fetchslicenp(self, column, data, startrow, nrows):
+    def fetchslicenp(self, column, data, startrow, nrows, subset=None):
         """
         Convenience function similar to fetch(), but assumes a column of NFREQxNCORR shape,
         and calls pyrap.tables.table.getcolslice() if there's a channel slice to be applied,
@@ -739,9 +758,10 @@ class MSDataHandler:
             np.ndarray:
                 Result of getcolslice()
         """
+        subset = subset or self.data
         if self._ms_blc == None:
-            return self.data.getcolnp(column, data, startrow, nrows)
-        return self.data.getcolslicenp(column, data, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
+            return subset.getcolnp(column, data, startrow, nrows)
+        return subset.getcolslicenp(column, data, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
 
     def putslice(self, column, value, startrow, nrows):
         """

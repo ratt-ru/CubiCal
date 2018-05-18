@@ -93,8 +93,7 @@ def cyrebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
                 double   [:,:]   uvw,  const double   [:,:]   uvw0,
                 int      [:,:,:] flag, const int      [:,:,:] flag0,
                 wfloat [:,:,:,:] weights,const wfloat  [:,:,:,:]  weights0, int num_weights,
-                const int [:] rebin_row_map,
-                int rebin_time, int rebin_freq):
+                const int [:] rebin_row_map, const int [:] rebin_chan_map):
     """
     Rebin the input data
     """
@@ -120,7 +119,7 @@ def cyrebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
         row_sum_weights = 0  # sum of weights of current _input_ row
 
         for f0 in xrange(n_fre0):
-            f = f0 / rebin_freq
+            f = rebin_chan_map[f0]
             for c in xrange(n_cor0):
                 flag[row, f, c] &= flag0[row0, f0, c]
                 if not flag0[row0, f0, c]:
@@ -155,8 +154,7 @@ def cyrebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
 def cyrebin_model(fcomplex [:,:,:] model,  const fcomplex [:,:,:] model0,
                   const int      [:,:,:] flag0,
                   const wfloat [:,:,:]  weights0, int has_weights,
-                  const int [:] rebin_row_map,
-                  int rebin_time, int rebin_freq):
+                  const int [:] rebin_row_map, const int [:] rebin_chan_map):
     """
     Rebins a model column, following a rebin_row_map precomputed by cyrebin_vis
     """
@@ -178,7 +176,7 @@ def cyrebin_model(fcomplex [:,:,:] model,  const fcomplex [:,:,:] model0,
             row = -row
 
         for f0 in xrange(n_fre0):
-            f = f0 / rebin_freq
+            f = rebin_chan_map[f0]
             for c in xrange(n_cor0):
                 if not flag0[row0, f0, c]:
                     if has_weights:
