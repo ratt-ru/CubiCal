@@ -270,7 +270,7 @@ def main(debugging=False):
         mb_opts['dtype'] = 'float'
 
         ms.init_models(GD["model"]["list"].split(","),
-                       GD["weight"]["column"].split(","),
+                       GD["weight"]["column"].split(",") if GD["weight"]["column"] else None,
                        mb_opts=GD["montblanc"],
                        use_ddes=have_dd_jones and dde_mode != 'never')
 
