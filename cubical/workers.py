@@ -4,7 +4,6 @@ import re
 
 
 import cubical.kernels
-from cubical.data_handler import Tile
 from cubical.tools import logger
 from cubical import solver
 
@@ -171,7 +170,7 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
                 core += corestep
     return True
 
-def run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts):
     """
     Runs the main loop. If debugging is set, or single_chunk mode is on, forces serial mode.
     Otherwise selects serial or parallel depending on previous call to setup_parallelism().
@@ -190,6 +189,11 @@ def run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, deb
     Returns:
         Stats dictionary
     """
+    # if worker processes are launched, this global is inherited and will be accessed
+    # by the I/O worker
+    global tile_list
+    tile_list = _tile_list
+    
     if num_workers:
         return _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts)
     else:
@@ -213,6 +217,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
     Returns:
         Stats dictionary
     """
+    global tile_list
 
     # this accumulates SolverStats objects from each chunk, for summarizing later
     stats_dict = {}
@@ -232,7 +237,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
         # (Montblanc is finicky about affinities apparently, so we don't do it before)
         _init_worker(main=True)
 
-        for itile, tile in enumerate(Tile.tile_list):
+        for itile, tile in enumerate(tile_list):
             # wait for I/O job on current tile to finish
             print>> log(0), "waiting for I/O on {}".format(tile.label)
             done, not_done = cf.wait([io_futures[itile]])
@@ -241,7 +246,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
             del io_futures[itile]
 
             # immediately schedule I/O job to save previous/load next tile
-            load_next = itile + 1 if itile < len(Tile.tile_list) - 1 else None
+            load_next = itile + 1 if itile < len(tile_list) - 1 else None
             save_prev = itile - 1 if itile else None
             io_futures[itile + 1] = io_executor.submit(_io_handler, load=load_next,
                                                        save=save_prev, load_model=load_model)
@@ -295,11 +300,11 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
     Returns:
         Stats dictionary
     """
-    import cubical.kernels
+    global tile_list
 
     stats_dict = {}
 
-    for itile, tile in enumerate(Tile.tile_list):
+    for itile, tile in enumerate(tile_list):
         tile.load(load_model=load_model)
         processed = False
         for key in tile.get_chunk_keys():
@@ -384,12 +389,13 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
         bool:
             True if load/save was successful.
     """
+    global tile_list
     try:
         _init_worker()
         result = {'success': True}
         if save is not None:
-            tile = Tile.tile_list[save]
-            itile = range(len(Tile.tile_list))[save]
+            tile = tile_list[save]
+            itile = range(len(tile_list))[save]
             print>>log(0, "blue"),"saving {}".format(tile.label)
             tile.save(unlock=finalize)
             for sd in tile.iterate_solution_chunks():
@@ -401,7 +407,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
                 result['flagcounts'] = tile.dh.flagcounts
             tile.release()
         if load is not None:
-            tile = Tile.tile_list[load]
+            tile = tile_list[load]
             print>>log(0, "blue"),"loading {}".format(tile.label)
             tile.load(load_model=load_model)
         print>> log(0, "blue"), "I/O job(s) complete"

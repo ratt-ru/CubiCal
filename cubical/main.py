@@ -34,7 +34,7 @@ import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 import cubical.data_handler as data_handler
-from cubical.data_handler import DataHandler, Tile
+from cubical.data_handler.ms_data_handler import MSDataHandler
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine
@@ -221,7 +221,7 @@ def main(debugging=False):
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
 
-        ms = DataHandler(GD["data"]["ms"],
+        ms = MSDataHandler(GD["data"]["ms"],
                           GD["data"]["column"],
                           output_column=GD["out"]["column"],
                           output_model_column=GD["out"]["model-column"],
@@ -237,7 +237,9 @@ def main(debugging=False):
                           beam_m_axis=GD["model"]["beam-m-axis"],
                           active_subset=GD["sol"]["subset"],
                           min_baseline=GD["sol"]["min-bl"],
-                          max_baseline=GD["sol"]["max-bl"])
+                          max_baseline=GD["sol"]["max-bl"],
+                          chunk_freq=GD["data"]["freq-chunk"],
+                          rebin_freq=GD["data"]["rebin-freq"])
 
         data_handler.global_handler = ms
 
@@ -345,14 +347,15 @@ def main(debugging=False):
         print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
 
-        chunks_per_tile = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+        chunks_per_tile, tile_list = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["rebin-time"],
+                                            GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
 
         # run the main loop
 
         t0 = time()
-        stats_dict = workers.run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts)
+        stats_dict = workers.run_process_loop(ms, tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 
         print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
 

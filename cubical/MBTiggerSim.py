@@ -26,7 +26,7 @@ class MSSourceProvider(SourceProvider):
     Handles interface between CubiCal tiles and Montblanc simulation.
     """
 
-    def __init__(self, tile, uvw, sort_ind, nrows):
+    def __init__(self, tile, uvw, freqs, sort_ind, nrows):
         """
         Initialises this source provider.
 
@@ -35,6 +35,8 @@ class MSSourceProvider(SourceProvider):
                 Tile object containing information about current data selection.
             uvw (np.darray):
                 (n_row, 3) array of UVW coordinates.
+            freqs (np.darray):
+                (n_chan) array of frequencies.
             sort_ind (np.ndarray):
                 Indices which will produce sorted data. Montblanc expects data to be ordered in a specific way.
             nrows (int):
@@ -48,7 +50,7 @@ class MSSourceProvider(SourceProvider):
         self._name = "Measurement set '{ms}'".format(ms=self._ms_name)
 
         self._ntime = len(np.unique(tile.times))
-        self._nchan = self._handler.nfreq
+        self._nchan = self._handler.nfreq_rebinned
         self._nants = self._handler.nants
         self._ncorr = self._handler.ncorr
         self._nbl   = (self._nants*(self._nants - 1))/2

@@ -8,11 +8,9 @@ Implements the solver loop.
 import numpy as np
 import traceback
 from cubical.tools import logger, ModColor
-from cubical.data_handler import Tile
 from cubical.flagging import FL
 from cubical.statistics import SolverStats
 from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code
-import cubical.kernels
 
 log = logger.getLogger("solver")
 #log.verbosity(2)
@@ -672,7 +670,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
     label = None
     try:
-        tile = Tile.tile_list[itile]
+        tile = cubical.workers.tile_list[itile]
         label = chunk_key
         solver = SOLVERS[solver_type]
         # initialize the gain machine for this chunk
