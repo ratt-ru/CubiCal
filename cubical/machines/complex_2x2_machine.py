@@ -4,8 +4,11 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
-import cubical.kernels.cyfull_complex as cyfull
 from cubical.flagging import FL
+import cubical.kernels
+
+from cubical.tools import logger
+log = logger.getLogger("complex_2x2")
 
 
 class Complex2x2Gains(PerIntervalGains):
@@ -34,11 +37,20 @@ class Complex2x2Gains(PerIntervalGains):
                 Dictionary of options. 
         """
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
-                                  chunk_ts, chunk_fs, chunk_label, options)
-        
-        self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
-        self.gains[:]  = np.eye(self.n_cor)
-        self.old_gains = self.gains.copy()
+                                  chunk_ts, chunk_fs, chunk_label, options,
+                                  self.get_kernel(options))
+
+    @staticmethod
+    def get_kernel(options):
+        """Returns kernel approriate to Jones options"""
+        if options['diag-diag']:
+            return cubical.kernels.import_kernel('cydiagdiag_complex')
+        elif options['type'] == 'complex-2x2':
+            return cubical.kernels.import_kernel('cyfull_complex')
+        elif options['type'] == 'complex-diag':
+            return cubical.kernels.import_kernel('cydiag_complex')
+        else:
+            raise RuntimeError("unknown machine type '{}'".format(options['type']))
 
 
     def compute_js(self, obser_arr, model_arr):
@@ -64,35 +76,25 @@ class Complex2x2Gains(PerIntervalGains):
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
 
-        jh = np.zeros_like(model_arr)
+        jh = self.get_new_jh(model_arr)
 
-        cyfull.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.cykernel.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
-        jhr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
+        jhr = self.get_new_jhr()
+        r = self.get_obs_or_res(obser_arr, model_arr)
 
-        jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
+        self.cykernel.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
 
-        # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
-        if n_dir > 1:
-            resid_arr = np.empty_like(obser_arr)
-            r = self.compute_residual(obser_arr, model_arr, resid_arr)
-        else:
-            r = obser_arr
+        jhj, jhjinv = self.get_new_jhj()
 
-        cyfull.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
+        self.cykernel.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
 
-        jhj = np.zeros(jhr_shape, dtype=obser_arr.dtype)
-
-        cyfull.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
-
-        jhjinv = np.empty(jhr_shape, dtype=obser_arr.dtype)
-
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        flag_count = self.cykernel.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhr, jhjinv, flag_count
 
+    #@profile
     def implement_update(self, jhr, jhjinv):
-        update = np.empty_like(jhr)
 
         # jhjinv is 2x2 block-diagonal, with Hermitian blocks. TODO: what's the variance on the off-diagonals?
         # variance of gain is diagonal of jhjinv
@@ -102,47 +104,19 @@ class Complex2x2Gains(PerIntervalGains):
         self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
-        cyfull.cycompute_update(jhr, jhjinv, update)
+        update = self.init_update(jhr)
+        self.cykernel.cycompute_update(jhr, jhjinv, update)
 
         if self.dd_term and self.n_dir > 1:
-            update = self.gains + update
+            update += self.gains
 
         if self.iters % 2 == 0 or self.n_dir > 1:
-            self.gains = 0.5*(self.gains + update)
+            self.gains += update
+            self.gains *= 0.5
         else:
-            self.gains = update
+            np.copyto(self.gains, update)
 
         self.restrict_solution()
-
-
-    def compute_residual(self, obser_arr, model_arr, resid_arr):
-        """
-        This function computes the residual. This is the difference between the
-        observed data, and the model data with the gains applied to it.
-
-        Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            resid_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the 
-                computed residuals should be placed.
-
-        Returns:
-            np.ndarray: 
-                Array containing the result of computing D - GMG\ :sup:`H`.
-        """
-
-        gains_h = self.gains.transpose(0,1,2,3,5,4).conj()
-
-        resid_arr[:] = obser_arr
-
-        cyfull.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, self.t_int, self.f_int)
-
-        return resid_arr
 
 
     def restrict_solution(self):

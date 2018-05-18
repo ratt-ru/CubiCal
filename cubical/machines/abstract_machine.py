@@ -8,6 +8,7 @@ from numpy.ma import masked_array
 import traceback
 
 from cubical import param_db
+from cubical.database.casa_db_adaptor import casa_db_adaptor
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("gain_machine")
@@ -64,6 +65,8 @@ class MasterMachine(object):
             options (dict): 
                 Dictionary of options. 
         """
+        import cubical.kernels
+        self.cygenerics = cubical.kernels.import_kernel('cygenerics')
 
         self.jones_label = jones_label
         self.chunk_label = chunk_label
@@ -84,6 +87,11 @@ class MasterMachine(object):
         self.ftype = data_arr.real.dtype
 
         self._iters = 0
+
+    @staticmethod
+    def get_kernel(options):
+        """Returns kernel appropriate to the set of machine options"""
+        return NotImplementedError
 
     @property
     def dd_term(self):
@@ -305,13 +313,8 @@ class MasterMachine(object):
         # time intervals, antennas and correlations first. Normalize by per-channel variance and
         # finally sum over frequency intervals.
 
-        # TODO: Some residuals blow up and cause np.square() to overflow -- need to flag these.
-
-        # Sum chi-square over correlations, models, and one antenna axis. Result has shape
-        # (n_tim, n_fre, n_ant). We avoid using np.abs by taking a view of the underlying memory.
-        # This is substantially faster.
-
-        chisq = np.sum(np.square(resid_arr.view(dtype=resid_arr.real.dtype)), axis=(0, 4, 5, 6))
+        chisq = np.zeros(resid_arr.shape[1:4], np.float64)
+        self.cygenerics.cycompute_chisq(resid_arr, chisq)
 
         # Normalize this by the per-channel variance.
 
@@ -598,6 +601,13 @@ class MasterMachine(object):
             # initialize solution databases
             self.init_solutions()
 
+        def get_kernel(self):
+            """
+            Returns kernel appropriate for the class of the gain machine.
+            This is the kernel used to allocate data etc.
+            """
+            return self.machine_class.get_kernel(self.jones_options)
+
         def init_solutions(self):
             """
             Internal method, called from constructor. Initializes solution databases.
@@ -697,7 +707,13 @@ class MasterMachine(object):
             # init DB, if needed
             db = self._save_sols_byname.get(save_to)
             if db is None:
-                self._save_sols_byname[save_to] = db = param_db.create(save_to, backup=True)
+                selfield = self.global_options["sel"]["field"]
+                assert type(selfield) is int, "Currently only supports single field data selection"
+                selddid = self.global_options["sel"]["ddid"]
+                assert ((type(selddid) is list) and (all([type(t) is int for t in selddid]))) or \
+                       (type(selddid) is int) or selddid is None, "SPW should be a list of ints or int or None. This is a bug"
+                meta = {"field": selfield}
+                self._save_sols_byname[save_to] = db = param_db.create(save_to, metadata=meta, backup=True)
             self._save_sols[name] = db
             # work out type of empty value
             if type(empty_value) is float:
@@ -795,4 +811,14 @@ class MasterMachine(object):
                                     chunk_label, self.jones_options)
             gm._load_solutions(self._init_sols)
             return gm
-
+        
+        def set_metas(self, src):
+            """
+            Sets database meta information source
+            
+            Args:
+                src: instance of cubical.data_handler
+            """
+            for db in self._save_sols_byname.values():
+                db.set_metadata(src)
+                db.export_CASA_gaintable = self.global_options["out"].get("casa-gaintables", True)

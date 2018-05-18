@@ -4,12 +4,8 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from cubical.machines.parameterised_machine import ParameterisedGains
 import numpy as np
-from cubical.flagging import FL
 from numpy.ma import masked_array
-
-import cubical.kernels.cytf_plane
-import cubical.kernels.cyf_slope   
-import cubical.kernels.cyt_slope
+import cubical.kernels
 
 def _normalize(x, dtype):
     """
@@ -49,9 +45,11 @@ class PhaseSlopeGains(ParameterisedGains):
             options (dict): 
                 Dictionary of options. 
         """
-        
+        ### this kernel used for residuals etc.
+        cykernel = self.get_kernel(options)
+
         ParameterisedGains.__init__(self, label, data_arr, ndir, nmod,
-                                    chunk_ts, chunk_fs, chunk_label, options)
+                                    chunk_ts, chunk_fs, chunk_label, options, cykernel)
 
         self.slope_type = options["type"]
         self.n_param = 3 if self.slope_type == "tf-plane" else 2
@@ -65,16 +63,26 @@ class PhaseSlopeGains(ParameterisedGains):
         self.chunk_fs = _normalize(chunk_fs, self.ftype)
 
         if self.slope_type == "tf-plane":
-            self.cyslope = cubical.kernels.cytf_plane
-            self._labels = dict(phase=2, delay=0, rate=1)
+            self.cyslope = cubical.kernels.import_kernel("cytf_plane")
+            self._labels = dict(phase=0, delay=1, rate=2)
         elif self.slope_type == "f-slope":
-            self.cyslope = cubical.kernels.cyf_slope
-            self._labels = dict(phase=1, delay=0)
+            self.cyslope = cubical.kernels.import_kernel("cyf_slope")
+            self._labels = dict(phase=0, delay=1)
         elif self.slope_type == "t-slope":
-            self.cyslope = cubical.kernels.cyt_slope    
-            self._labels = dict(phase=1, rate=0)
+            self.cyslope = cubical.kernels.import_kernel("cyt_slope")
+            self._labels = dict(phase=0, rate=1)
         else:
-            raise RuntimeError("unknown type setting")
+            raise RuntimeError("unknown machine type '{}'".format(self.slope_type))
+
+        self._jhr0 = self._gerr = None
+
+    @staticmethod
+    def get_kernel(options):
+        """Returns kernel approriate to Jones options"""
+        if options['diag-diag']:
+            return cubical.kernels.import_kernel('cydiag_phase_only')
+        else:
+            return cubical.kernels.import_kernel('cyphase_only')
 
     @staticmethod
     def exportable_solutions():
@@ -92,6 +100,11 @@ class PhaseSlopeGains(ParameterisedGains):
         })
         
         return exportables
+
+    def get_inverse_gains(self):
+        """Returns inverse gains and inverse conjugate gains. For phase-only, conjugation is inverse"""
+        gh = self.get_conj_gains()
+        return gh, self.gains, 0
 
     def importable_solutions(self):
         """ Returns a dictionary of importable solutions for this machine type. """
@@ -156,33 +169,30 @@ class PhaseSlopeGains(ParameterisedGains):
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
 
-        gh = self.gains.transpose(0,1,2,3,5,4).conj()
-
-        jh = np.zeros_like(model_arr)
+        gh = self.get_conj_gains()
+        jh = self.get_new_jh(model_arr)
 
         self.cyslope.cycompute_jh(model_arr, self.gains, jh, 1, 1)
 
-        tmp_jhr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
+        jhr1 = self.get_new_jhr()
 
-        tmp_jhr = np.zeros(tmp_jhr_shape, dtype=obser_arr.dtype)
+        r = self.get_obs_or_res(obser_arr, model_arr)
 
-        if n_dir > 1:
-            resid_arr = np.empty_like(obser_arr)
-            r = self.compute_residual(obser_arr, model_arr, resid_arr)
-        else:
-            r = obser_arr
+        # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHR
+        self.cykernel.cycompute_jhr(gh, jh, r, jhr1, 1, 1)
 
-        self.cyslope.cycompute_tmp_jhr(gh, jh, r, tmp_jhr, 1, 1)
-
-        tmp_jhr = tmp_jhr.imag
+        jhr1 = jhr1.imag
 
         jhr_shape = [n_dir, self.n_timint, self.n_freint, n_ant, self.n_param, n_cor, n_cor]
 
-        jhr = np.zeros(jhr_shape, dtype=tmp_jhr.dtype)
+        if self._jhr0 is None:
+            self._jhr0 = self.cyslope.allocate_param_array(jhr_shape, dtype=jhr1.dtype, zeros=True)
+        else:
+            self._jhr0.fill(0)
 
-        self.cyslope.cycompute_jhr(tmp_jhr, jhr, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        self.cyslope.cycompute_jhr(jhr1, self._jhr0, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
-        return jhr, self.jhjinv, 0
+        return self._jhr0, self.jhjinv, 0
 
     @property
     def dof_per_antenna(self):
@@ -199,86 +209,37 @@ class PhaseSlopeGains(ParameterisedGains):
         # variance of slope parms is diagonal of jhjinv
         diag = (0,2) if self.n_param == 2 else (0,3,5)   # weird numbering to get diagonal elements
         var_slope = jhjinv[...,(0,1),(0,1)].real[...,diag,:]
-        self.posterior_slope_error = np.sqrt(var_slope)
+        if self.posterior_slope_error is None:
+            self.posterior_slope_error = np.sqrt(var_slope)
+        else:
+            np.sqrt(var_slope, out=self.posterior_slope_error)
 
         # variance of gain is sum of slope parameter variances
-        gerr = np.sqrt(var_slope.sum(axis=-2))
+        if self._gerr is None:
+            self._gerr = var_slope.sum(axis=-2)
+        else:
+            var_slope.sum(axis=-2, out=self._gerr)
+
+        np.sqrt(self._gerr, out=self._gerr)
         if self.posterior_gain_error is None:
             self.posterior_gain_error = np.zeros_like(self.gains, dtype=float)
-        self.posterior_gain_error[...,0,0] = self._interval_to_gainres(gerr[...,0], 1)
-        self.posterior_gain_error[...,1,1] = self._interval_to_gainres(gerr[...,1], 1)
+        self._interval_to_gainres(self._gerr[...,0], 1, out=self.posterior_gain_error[...,0,0])
+        self._interval_to_gainres(self._gerr[...,0], 1, out=self.posterior_gain_error[...,1,1])
 
-        update = np.zeros_like(jhr)
+        update = self.init_update(jhr)
 
         self.cyslope.cycompute_update(jhr, jhjinv, update)
 
         if self.iters%2 == 0:
-            self.slope_params += 0.5*update
-        else:
-            self.slope_params += update
+            update *= 0.5
+        
+        self.slope_params += update
 
         self.restrict_solution()
 
         # Need to turn updated parameters into gains.
 
         self.cyslope.cyconstruct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
-
-    def compute_residual(self, obser_arr, model_arr, resid_arr):
-        """
-        This function computes the residual. This is the difference between the
-        observed data, and the model data with the gains applied to it.
-
-        Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            resid_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the 
-                computed residuals should be placed.
-
-        Returns:
-            np.ndarray: 
-                Array containing the result of computing D - GMG\ :sup:`H`.
-        """
-        
-        gains_h = self.gains.transpose(0,1,2,3,5,4).conj()
-
-        resid_arr[:] = obser_arr
-
-        self.cyslope.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, 1, 1)
-
-        return resid_arr
-
-    def apply_inv_gains(self, resid_arr, corr_vis=None):
-        """
-        Applies the inverse of the gain estimates to the observed data matrix.
-
-        Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-            corr_vis (np.ndarray or None, optional): 
-                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
-                into which the corrected visibilities should be placed.
-
-        Returns:
-            np.ndarray: 
-                Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
-        """
-
-        g_inv = self.gains.conj()
-
-        gh_inv = g_inv.conj()
-
-        if corr_vis is None:                
-            corr_vis = np.empty_like(resid_arr)
-
-        self.cyslope.cycompute_corrected(resid_arr, g_inv, gh_inv, corr_vis, 1, 1)
-
-        return corr_vis, 0   # no flags raised here, since phase-only always invertible
 
     def restrict_solution(self):
         """
@@ -304,20 +265,21 @@ class PhaseSlopeGains(ParameterisedGains):
         """
         ParameterisedGains.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
 
-        tmp_jhj_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, self.n_ant, 2, 2] 
+        jhj1_shape = [self.n_dir, self.n_tim, self.n_fre, self.n_ant, 2, 2]
 
-        tmp_jhj = np.zeros(tmp_jhj_shape, dtype=self.dtype)
+        jhj1 = self.cyslope.allocate_gain_array(jhj1_shape, dtype=self.dtype, zeros=True)
 
-        self.cyslope.cycompute_tmp_jhj(model_arr, tmp_jhj)
+        # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHJ
+        self.cykernel.cycompute_jhj(model_arr, jhj1, 1,1)
 
         blocks_per_inverse = 6 if self.slope_type=="tf-plane" else 3
 
         jhj_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, blocks_per_inverse, 2, 2]
 
-        jhj = np.zeros(jhj_shape, dtype=self.ftype)
+        jhj = self.cyslope.allocate_param_array(jhj_shape, dtype=self.ftype, zeros=True)
 
-        self.cyslope.cycompute_jhj(tmp_jhj.real, jhj, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        self.cyslope.cycompute_jhj(jhj1.real, jhj, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
-        self.jhjinv = np.zeros(jhj_shape, dtype=self.ftype)
+        self.jhjinv = np.zeros_like(jhj)
 
         self.cyslope.cycompute_jhjinv(jhj, self.jhjinv, self.eps)

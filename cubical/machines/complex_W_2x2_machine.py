@@ -4,7 +4,6 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
-import cubical.kernels.cyfull_W_complex as cyfull
 from scipy import special
 from cubical.flagging import FL
 
@@ -38,8 +37,16 @@ class ComplexW2x2Gains(PerIntervalGains):
                 Dictionary of options. 
         """
         
-        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs,
-                                  chunk_label, options)
+        
+
+        # clumsy but necessary: can't import at top level (OMP must not be touched before worker processes
+        # are forked off), so we import it only in here
+        import cubical.kernels.cyfull_W_complex
+        global cyfull
+        cyfull = cubical.kernels.cyfull_W_complex
+
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options)
+                                  
         
         self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
         

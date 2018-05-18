@@ -2,20 +2,25 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
-from abc import ABCMeta, abstractmethod
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
-import cubical.kernels.cyfull_complex as cyfull
 
 from numpy.ma import masked_array
+
+def copy_or_identity(array, time_ind=0, out=None):
+    if out is None:
+        return array
+    np.copyto(out, array)
+    return out
+
 
 class PerIntervalGains(MasterMachine):
     """
     This is a base class for all gain solution machines that use solutions intervals.
     """
 
-    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, options):
+    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, options, cykernel):
         """
         Initialises a gain machine which supports solution intervals.
         
@@ -39,6 +44,8 @@ class PerIntervalGains(MasterMachine):
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, options)
+
+        self.cykernel = cykernel
 
         self.t_int = options["time-int"] or self.n_tim
         self.f_int = options["freq-int"] or self.n_fre
@@ -107,6 +114,71 @@ class PerIntervalGains(MasterMachine):
         self.prior_gain_error = None
         self.posterior_gain_error = None
 
+        # buffers for arrays used in internal updates
+        self._jh = self._jhr = self._jhj = self._gh = self._r = self._ginv = self._ghinv = None
+        self._update = None
+
+        # flag: have gains been updated
+        self._gh_update = self._ghinv_update = True
+
+    def get_conj_gains(self):
+        if self._gh is None:
+            self._gh = np.empty_like(self.gains)
+        if self._gh_update:
+            np.conj(self.gains.transpose(0, 1, 2, 3, 5, 4), out=self._gh)
+            self._gh_update = False
+        return self._gh
+
+    def get_inverse_gains(self):
+        if self._ginv is None:
+            self._ginv = np.empty_like(self.gains)
+            self._ghinv = np.empty_like(self.gains)
+        if self._ghinv_update:
+            self._ghinv_flag_count = self.cykernel.cyinvert_gains(
+                self.gains, self._ginv, self.gflags, self.eps, FL.ILLCOND)
+            np.conj(self._ginv.transpose(0, 1, 2, 3, 5, 4), out=self._ghinv)
+            self._ghinv_update = False
+        return self._ginv, self._ghinv, self._ghinv_flag_count
+
+    def get_new_jh(self, model_arr):
+        if self._jh is None:
+            self._jh = np.zeros_like(model_arr)
+        else:
+            self._jh.fill(0)
+        return self._jh
+
+    def get_new_jhr(self):
+        if self._jhr is None:
+            self._jhr = np.zeros_like(self.gains)
+        else:
+            self._jhr.fill(0)
+        return self._jhr
+
+    def get_new_jhj(self):
+        if self._jhj is None:
+            self._jhj = np.zeros_like(self.gains)
+            self._jhjinv = np.empty_like(self.gains)
+        else:
+            self._jhj.fill(0)
+        return self._jhj, self._jhjinv
+
+    def init_update(self, jhr):
+        if self._update is None:
+            self._update = np.zeros_like(jhr)
+        else:
+            self._update.fill(0)
+        return self._update
+
+    def get_obs_or_res(self, obser_arr, model_arr):
+        if self.n_dir > 1:
+            if self._r is None:
+                self._r = np.empty_like(obser_arr)
+            self.compute_residual(obser_arr, model_arr, self._r)
+            return self._r
+        else:
+            return obser_arr
+
+
     def init_gains(self):
         """
         Construct gain and flag arrays. Normally we have one gain/one flag per interval, but 
@@ -141,14 +213,45 @@ class PerIntervalGains(MasterMachine):
         self.gain_intervals = self.t_int, self.f_int
         self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
         self.gain_grid = self.interval_grid
-        self.gains = np.empty(self.gain_shape, dtype=self.dtype)
+
+        self.gains = self.cykernel.allocate_gain_array(self.gain_shape, self.dtype)
+
         self.gains[:] = np.eye(self.n_cor)
         self.gflags = np.zeros(self.gain_shape[:-2], FL.dtype)
 
         # function used to unpack the gains or flags into full time/freq resolution
         self._gainres_to_fullres  = self.unpack_intervals
         # function used to unpack interval resolution to gain resolution
-        self._interval_to_gainres = lambda array,time_ind=0: array
+        self._interval_to_gainres = self.copy_or_identity
+
+    def compute_residual(self, obser_arr, model_arr, resid_arr):
+        """
+        This function computes the residual. This is the difference between the
+        observed data, and the model data with the gains applied to it.
+
+        Args:
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                observed visibilities.
+            model_arr (np.ndrray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+                model visibilities.
+            resid_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the 
+                computed residuals should be placed.
+
+        Returns:
+            np.ndarray: 
+                Array containing the result of computing D - GMG\ :sup:`H`.
+        """
+
+        gains_h = self.get_conj_gains()
+
+        np.copyto(resid_arr, obser_arr)
+
+        self.cykernel.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, *self.gain_intervals)
+
+        return resid_arr
 
 
     def apply_gains(self, model_arr):
@@ -164,9 +267,9 @@ class PerIntervalGains(MasterMachine):
             np.ndarray:
                 Array containing the result of GMG\ :sup:`H`.
         """
-        gh = self.gains.transpose(0,1,2,3,5,4).conj()
+        gains_h = self.get_conj_gains()
 
-        cyfull.cyapply_gains(model_arr, self.gains, gh, self.t_int, self.f_int)
+        self.cykernel.cyapply_gains(model_arr, self.gains, gains_h, *self.gain_intervals)
 
         return model_arr
 
@@ -187,17 +290,12 @@ class PerIntervalGains(MasterMachine):
                 Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
         """
 
-        g_inv = np.empty_like(self.gains)
-
-        flag_count = cyfull.cycompute_jhjinv(self.gains, g_inv, self.gflags, self.eps,
-                                             FL.ILLCOND)  # Function can invert G.
-
-        gh_inv = g_inv.transpose(0, 1, 2, 3, 5, 4).conj()
+        g_inv, gh_inv, flag_count = self.get_inverse_gains()
 
         if corr_vis is None:
             corr_vis = np.empty_like(obser_arr)
 
-        cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
+        self.cykernel.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, *self.gain_intervals)
 
         return corr_vis, flag_count
 
@@ -345,7 +443,7 @@ class PerIntervalGains(MasterMachine):
 
 
     def next_iteration(self):
-        self.old_gains = self.gains.copy()
+        np.copyto(self.old_gains, self.gains)
         return MasterMachine.next_iteration(self)
 
     def flag_solutions(self, flags_arr, final):
@@ -489,6 +587,8 @@ class PerIntervalGains(MasterMachine):
         Restricts the solutions by, for example, selecting a reference antenna or taking only the 
         amplitude. 
         """
+        # raise flag so updates of G^H and G^-1 are computed
+        self._gh_update = self._ghinv_update = True
 
         if self.update_type == "diag":
             self.gains[...,(0,1),(1,0)] = 0
@@ -506,9 +606,17 @@ class PerIntervalGains(MasterMachine):
             self.gains[idir, ...] = self.old_gains[idir, ...]
             self.posterior_gain_error[idir, ...] = 0
 
-    def unpack_intervals(self, arr, tdim_ind=0):
+    @staticmethod
+    def copy_or_identity(array, time_ind=0, out=None):
+        """Helper conversion method. Returns array itself, or copies it to out"""
+        if out is None:
+            return array
+        np.copyto(out, array)
+        return out
+
+    def unpack_intervals(self, arr, tdim_ind=0, out=None):
         """
-        Helper method. Unpacks an array that has time/freq axes in terms of intervals into a shape
+        Helper conversion method. Unpacks an array that has time/freq axes in terms of intervals into a shape
         that has time/freq axes at full resolution.
 
         Args:
@@ -521,12 +629,15 @@ class PerIntervalGains(MasterMachine):
             np.ndarray:
                 Array at full resolution.
         """
+        if out is not None:
+            out[:] = arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
+            return out
+        else:
+            return arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
 
-        return arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
-
-    def interval_sum(self, arr, tdim_ind=0):
+    def interval_sum(self, arr, tdim_ind=0, out=None):
         """
-        Helper method. Sums an array with full resolution time/freq axes into time/freq intervals.
+        Helper conversion method. Sums an array with full resolution time/freq axes into time/freq intervals.
 
         Args:
             arr (np.ndarray):
@@ -539,9 +650,9 @@ class PerIntervalGains(MasterMachine):
                 Array with interval resolution.
         """
 
-        return np.add.reduceat(np.add.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1)
+        return np.add.reduceat(np.add.reduceat(arr, self.t_bins, tdim_ind), self.f_bins, tdim_ind+1, out=out)
 
-    def interval_and(self, arr, tdim_ind=0):
+    def interval_and(self, arr, tdim_ind=0, out=None):
         """
         Helper method. Logical-ands an array with full resolution time/freq axes into time/freq 
         intervals.
@@ -558,7 +669,7 @@ class PerIntervalGains(MasterMachine):
         """
 
         return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), 
-                                                                    self.f_bins, tdim_ind+1)
+                                                                    self.f_bins, tdim_ind+1, out=out)
     @property
     def converged_fraction(self):
         return self._frac_cnvgd

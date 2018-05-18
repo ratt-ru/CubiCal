@@ -5,15 +5,12 @@
 from cubical.machines.abstract_machine import MasterMachine
 from cubical.machines.complex_2x2_machine import Complex2x2Gains
 import numpy as np
-import cubical.kernels.cyfull_complex as cyfull
-import cubical.kernels.cychain as cychain
+import cubical.kernels
 
 from cubical.tools import logger
 import machine_types
 from cubical.flagging import FL
 log = logger.getLogger("jones_chain")
-
-
 
 class JonesChain(MasterMachine):
     """
@@ -43,7 +40,9 @@ class JonesChain(MasterMachine):
             jones_options (dict): 
                 Dictionary of options pertaining to the chain. 
         """
-        
+        self.cykernel = self.get_kernel(jones_options["sol"])
+        self.cychain  = cubical.kernels.import_kernel("cychain")
+
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, jones_options)
 
@@ -92,11 +91,15 @@ class JonesChain(MasterMachine):
         # True when the last active term has had its convergence status queried
         self._convergence_states_finalized = True
 
-        cached_array_shape = [self.n_dir, self.n_mod, self.n_tim, self.n_fre, 
-                              self.n_ant, self.n_ant, self.n_cor, self.n_cor]
-        self.cached_model_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
-        self.cached_resid_arr = np.empty(cached_array_shape, dtype=data_arr.dtype)
+        self.cached_model_arr = self._r = self._m = None
 
+    @staticmethod
+    def get_kernel(options):
+        """Returns kernel approriate to Jones options"""
+        if options['diag-diag']:
+            return cubical.kernels.import_kernel("cydiagdiag_complex")
+        else:
+            return cubical.kernels.import_kernel("cyfull_complex")
 
     def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
         """Precomputes various stats before starting a solution"""
@@ -143,6 +146,7 @@ class JonesChain(MasterMachine):
         for term in self.jones_terms:
             term._load_solutions(init_sols)
 
+    #@profile
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
@@ -169,61 +173,128 @@ class JonesChain(MasterMachine):
         n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.active_term.gains.shape
 
         if self.last_active_index!=self.active_index or self.iters==1:
-        
-            self.cached_model_arr = model_arr.copy()
+            self.cached_model_arr = cached_model_arr = np.empty_like(model_arr)
+            np.copyto(cached_model_arr, model_arr)
 
             for ind in xrange(self.n_terms - 1, self.active_index, -1):
                 term = self.jones_terms[ind]
-                term.apply_gains(self.cached_model_arr)
+                term.apply_gains(cached_model_arr)
 
+            # collapse direction axis, if current term is non-DD
             if not self.active_term.dd_term and self.n_dir>1:
-                self.cached_model_arr = np.sum(self.cached_model_arr, axis=0, keepdims=True)
+                self.cached_model_arr = np.empty_like(model_arr[0:1,...])
+                np.sum(cached_model_arr, axis=0, keepdims=True, out=self.cached_model_arr)
 
             self.jh = np.empty_like(self.cached_model_arr)
 
-        self.jh[:] = self.cached_model_arr
+            jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
+
+            self._jhr = self.cykernel.allocate_gain_array(jhr_shape, dtype=obser_arr.dtype)
+
+            jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
+
+            self._jhrint = self.cykernel.allocate_gain_array(jhrint_shape, dtype=self._jhr.dtype)
+            self._jhj = np.empty_like(self._jhrint)
+            self._jhjinv =  np.empty_like(self._jhrint)
+
+        np.copyto(self.jh, self.cached_model_arr)
 
         for ind in xrange(self.active_index, -1, -1):
             term = self.jones_terms[ind]
-            cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
+            self.cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
             
-        jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
-
-        jhr = np.zeros(jhr_shape, dtype=obser_arr.dtype)
-
         if n_dir > 1:
-            resid_arr = np.empty_like(obser_arr)
-            r = self.compute_residual(obser_arr, model_arr, resid_arr)
+            if self._r is None:
+                self._r = np.empty_like(obser_arr)
+            r = self.compute_residual(obser_arr, model_arr, self._r)
         else:
             r = obser_arr
 
-        cyfull.cycompute_jhr(self.jh, r, jhr, 1, 1)
+        self._jhr.fill(0)
+
+        self.cykernel.cycompute_jhr(self.jh, r, self._jhr, 1, 1)
 
         for ind in xrange(0, self.active_index, 1):
             term = self.jones_terms[ind]
-            g_inv = np.empty_like(term.gains)
-            cyfull.cycompute_jhjinv(term.gains, g_inv, term.gflags, term.eps, FL.ILLCOND)
-            cychain.cyapply_left_inv_jones(jhr, g_inv, *term.gain_intervals)
+            g_inv, gh_inv, flag_counts = term.get_inverse_gains()
+            self.cychain.cyapply_left_inv_jones(self._jhr, g_inv, *term.gain_intervals)
 
-        jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
-        
-        jhrint = np.zeros(jhrint_shape, dtype=jhr.dtype)
+        self._jhrint.fill(0)
+        self.cychain.cysum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
 
-        cychain.cysum_jhr_intervals(jhr, jhrint, *self.active_term.gain_intervals)
+        self._jhj.fill(0)
+        self.cykernel.cycompute_jhj(self.jh, self._jhj, *self.active_term.gain_intervals)
 
-        jhj = np.zeros(jhrint_shape, dtype=obser_arr.dtype)
+        flag_count = self.cykernel.cycompute_jhjinv(self._jhj, self._jhjinv,
+                                                    self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
 
-        cyfull.cycompute_jhj(self.jh, jhj, *self.active_term.gain_intervals)
-
-        jhjinv = np.empty(jhrint_shape, dtype=obser_arr.dtype)
-
-        flag_count = cyfull.cycompute_jhjinv(jhj, jhjinv, self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
-
-        return jhrint, jhjinv, flag_count
+        return self._jhrint, self._jhjinv, flag_count
 
     def implement_update(self, jhr, jhjinv):
         return self.active_term.implement_update(jhr, jhjinv)
 
+    def accumulate_gains(self, dd=True):
+        """
+        This function returns the product of all the gains in the chain, at full TF resolution,
+        for all directions (dd=True), or just the 0th direction.
+
+        Args:
+            dd (bool):
+                Accumulate per-direction gains, if available. If False, only the
+                first direction is used.
+
+        Returns:
+            A tuple of gains,conjugate gains
+        """
+        ndir = self.n_dir if dd else 1
+        gains = self.cykernel.allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+                                                  self.dtype)
+        g0 = self.jones_terms[0].gains
+        if ndir > 1 and g0.shape[0] == 1:
+            g0 = g0.reshape(g0.shape[1:])[np.newaxis,...]
+        elif ndir == 1 and g0.shape[0] > 1:
+            g0 = g0[:1,...]
+        gains[:] = g0
+        for term in self.jones_terms[1:]:
+            self.cykernel.cyright_multiply_gains(gains, term.gains, *term.gain_intervals)
+
+        # compute conjugate gains
+        gh = np.empty_like(gains)
+        np.conj(gains.transpose(0, 1, 2, 3, 5, 4), gh)
+
+        return gains, gh
+
+    def accumulate_inv_gains(self):
+        """
+        This function returns the inverse of the product of all the non-DD gains in the chain, at full TF resolution,
+        for direction 0
+
+        Returns:
+            A tuple of gains,conjugate gains,flag_count (if flags raised in inversion)
+        """
+        gains = self.cykernel.allocate_gain_array([1, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+                                                  self.dtype)
+        init = False
+        fc0 = 0
+        # flip order of jones terms for inverse
+        for term in self.jones_terms[::-1]:
+            if not term.dd_term:
+                g, _, fc = term.get_inverse_gains()
+                fc0 += fc
+                if init:
+                    self.cykernel.cyright_multiply_gains(gains, g[:1,...], *term.gain_intervals)
+                else:
+                    init = True
+                    gains[:] = g[:1,...]
+
+        # compute conjugate gains
+        gh = np.empty_like(gains)
+        np.conj(gains.transpose(0, 1, 2, 3, 5, 4), gh)
+
+        return gains, gh, fc
+
+
+    #@profile
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
         This function computes the residual. This is the difference between the
@@ -244,16 +315,9 @@ class JonesChain(MasterMachine):
             np.ndarray: 
                 Array containing the result of computing D - GMG\ :sup:`H`.
         """
-
-        self.cached_resid_arr[:] = model_arr
-
-        for ind in xrange(self.n_terms-1, -1, -1): 
-            term = self.jones_terms[ind]
-            term.apply_gains(self.cached_resid_arr)
-
-        resid_arr[:] = obser_arr
-
-        cychain.cycompute_residual(self.cached_resid_arr, resid_arr)
+        g, gh = self.accumulate_gains()
+        np.copyto(resid_arr, obser_arr)
+        self.cykernel.cycompute_residual(model_arr, g, gh, resid_arr, 1, 1)
 
         return resid_arr
 
@@ -277,19 +341,9 @@ class JonesChain(MasterMachine):
         if corr_vis is None:
             corr_vis = np.empty_like(resid_vis)
 
-        flag_count = 0
+        g, gh, flag_count = self.accumulate_inv_gains()
 
-        for ind in xrange(self.n_terms):  
-            term = self.jones_terms[ind]
-
-            if term.dd_term:
-                break
-
-            _, fc = term.apply_inv_gains(resid_vis, corr_vis)
-
-            flag_count += fc
-
-            resid_vis[:] = corr_vis[:]
+        self.cykernel.cycompute_corrected(resid_vis, g, gh, corr_vis, 1, 1)
 
         return corr_vis, flag_count
 
@@ -306,9 +360,8 @@ class JonesChain(MasterMachine):
             np.ndarray:
                 Array containing the result of GMG\ :sup:`H`.
         """
-        # simply go through the chain in reverse, applying each Jones term in turn
-        for term in self.jones_terms[::-1]:
-            term.apply_gains(vis)
+        g, gh = self.accumulate_gains()
+        self.cykernel.cyapply_gains(vis, g, gh, 1, 1)
         return vis
 
     def check_convergence(self, min_delta_g):
@@ -366,7 +419,8 @@ class JonesChain(MasterMachine):
         self.last_active_index = self.active_index
 
         if self.active_term.has_converged:
-            print>>log(1),"term {} converged ({} iters)".format(self.active_term.jones_label, self.active_term.iters)
+            print>>log(1),"term {} converged ({} iters): {}".format(self.active_term.jones_label,
+                        self.active_term.iters, self.active_term.final_convergence_status_string)
             self._convergence_states.append(self.active_term.final_convergence_status_string)
             self._convergence_states_finalized = True
             self._next_chain_term()
@@ -471,3 +525,11 @@ class JonesChain(MasterMachine):
                                      bool(opts["xfer-from"]),
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
                                      Complex2x2Gains.exportable_solutions())
+
+        def get_kernel(self):
+            """
+            Returns kernel appropriate for the class of the gain machine.
+            This is the kernel used to allocate data etc.
+            """
+            return self.machine_class.get_kernel(self.jones_options["sol"])
+
