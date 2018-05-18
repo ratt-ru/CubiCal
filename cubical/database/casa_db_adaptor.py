@@ -76,14 +76,14 @@ class casa_caltable_factory(object):
     
             with tbl("%s::OBSERVATION" % filename, ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.obsobserver))
-                t.putcol("TIME_RANGE", db.obstimerange)
-                t.putcol("LOG", db.obslog)
-                t.putcol("SCHEDULE", db.obsschedule)
-                t.putcol("FLAG_ROW", db.obsflagrow)
-                t.putcol("OBSERVER", db.obsobserver)
-                t.putcol("PROJECT", db.obsproject)
-                t.putcol("RELEASE_DATE", db.obsreleasedate)
-                t.putcol("TELESCOPE_NAME", db.obstelescopename)
+                (len(db.obstimerange) != 0) and t.putcol("TIME_RANGE", db.obstimerange)
+                (len(db.obslog) != 0) and t.putcol("LOG", db.obslog)
+                (len(db.obsschedule) != 0) and t.putcol("SCHEDULE", db.obsschedule)
+                (len(db.obsflagrow) != 0) and t.putcol("FLAG_ROW", db.obsflagrow)
+                (len(db.obsobserver) != 0) and t.putcol("OBSERVER", db.obsobserver)
+                (len(db.obsproject) != 0) and t.putcol("PROJECT", db.obsproject)
+                (len(db.obsreleasedate) != 0) and t.putcol("RELEASE_DATE", db.obsreleasedate)
+                (len(db.obstelescopename) != 0) and t.putcol("TELESCOPE_NAME", db.obstelescopename)
             
             with tbl("%s::SPECTRAL_WINDOW" % filename, ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.sel_ddids))
