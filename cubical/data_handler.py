@@ -1064,6 +1064,7 @@ class DataHandler:
         _spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW", ack=False)
         _poltab = pt.table(self.ms_name + "::POLARIZATION", ack=False)
         _ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
+        _obstab = pt.table(self.ms_name + "::OBSERVATION", ack=False)
         _feedtab = pt.table(self.ms_name + "::FEED", ack=False)
 
         self.ctype = np.complex128 if double_precision else np.complex64
@@ -1081,9 +1082,40 @@ class DataHandler:
             raise RuntimeError("MS with {} correlations not (yet) supported".format(self.nmscorrs))
         self.diag = diag
         self.nants = _anttab.nrows()
-
-        self.antpos   = _anttab.getcol("POSITION")
-        self.antnames = _anttab.getcol("NAME")
+        
+        # antenna fields to be used when writing gain tables
+        anttabcols = ["OFFSET", "POSITION", "TYPE", 
+                    "DISH_DIAMETER", "FLAG_ROW", "MOUNT", "NAME", 
+                    "STATION"]
+        assert set(anttabcols) == set(_anttab.colnames()), "Measurement set conformance error"
+        self._anttabcols = {t: _anttab.getcol(t) if _anttab.iscelldefined(t, 0) else np.array([]) for t in anttabcols}
+        self.antnames = self._anttabcols["NAME"]
+        self.antpos = self._anttabcols["POSITION"]
+        
+        # field information to be used when writing gain tables
+        fldtabcols = ["DELAY_DIR", "PHASE_DIR", "REFERENCE_DIR", 
+                    "CODE", "FLAG_ROW", "NAME", "NUM_POLY", 
+                    "SOURCE_ID", "TIME"]
+        assert set(fldtabcols) == set(_fldtab.colnames()), "Measurement set conformance error"
+        self._fldtabcols = {t: _fldtab.getcol(t) if _fldtab.iscelldefined(t, 0) else np.array([]) for t in fldtabcols}
+        
+        # spw information to be used when writing gain tables
+        spwtabcols = ["MEAS_FREQ_REF", "CHAN_FREQ", "REF_FREQUENCY",
+                    "CHAN_WIDTH", "EFFECTIVE_BW", "RESOLUTION",
+                    "FLAG_ROW", "FREQ_GROUP", "FREQ_GROUP_NAME",
+                    "IF_CONV_CHAIN", "NAME", "NET_SIDEBAND",
+                    "NUM_CHAN", "TOTAL_BANDWIDTH"]
+        
+        assert set(spwtabcols) == set(_spwtab.colnames()), "Measurement set conformance error"
+        self._spwtabcols = {t: _spwtab.getcol(t) for t in spwtabcols}
+        
+        # read observation details
+        obstabcols = ["TIME_RANGE", "LOG", "SCHEDULE", "FLAG_ROW",
+                       "OBSERVER", "PROJECT", "RELEASE_DATE", "SCHEDULE_TYPE",
+                       "TELESCOPE_NAME"]
+        assert set(obstabcols) == set(_obstab.colnames()), "Measurement set conformance error"
+        self._obstabcols = {t: _obstab.getcol(t) if _obstab.iscelldefined(t, 0) else np.array([]) for t in obstabcols}
+        
         self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
         self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
         
