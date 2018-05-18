@@ -265,7 +265,7 @@ def main(debugging=False):
             raise UserInputError("we have '--model-ddes always', but no direction dependent Jones terms enabled")
 
         ms.init_models(GD["model"]["list"].split(","),
-                       GD["weight"]["column"].split(","),
+                       GD["weight"]["column"].split(",") if GD["weight"]["column"] else None,
                        mb_opts=GD["montblanc"],
                        use_ddes=have_dd_jones and dde_mode != 'never')
 
