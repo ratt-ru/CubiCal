@@ -105,7 +105,25 @@ class LoggerWrapper(object):
         """
         # effective verbosity level is either set explicitly when the writer is created, or else use global level
         return _DefaultWriter(self.logger, logging.INFO - level, color=color)
-
+    
+    def warn(self, msg, color=None):
+        """
+        Wrapper for log.warn
+        """
+        _DefaultWriter(self.logger, logging.WARN, color=color).write(msg)
+    
+    def error(self, msg, color="red"):
+        """
+        Wrapper for log.error
+        """
+        _DefaultWriter(self.logger, logging.ERROR, color=color).write(msg)
+        
+    def info(self, msg, color=None):
+        """
+        Wrapper for log.info
+        """
+        _DefaultWriter(self.logger, logging.INFO, color=color).write(msg)
+    
     def write(self, message):
         return self.logger.info(message.rstrip())
 
