@@ -44,13 +44,18 @@ ctypedef fused float3264:
     np.float32_t
     np.float64_t
 
-
 # datatype of visibility weights
 ctypedef np.float32_t wfloat
 
 ctypedef np.uint16_t flag_t
 
 ctypedef np.int64_t index_t
+
+ctypdef fused vis_or_flag_t
+    np.float32_t
+    flag_t
+
+
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -133,7 +138,7 @@ def rebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
                     if num_weights:
                         for w in xrange(num_weights):
                             weights[w, row, f, c] += weights0[w, row0, f0, c]
-                        ww = weights[0, row0, f0, c]
+                        ww = weights0[0, row0, f0, c]
                     vis[row, f, c] += ww*vis0[row0, f0, c].conjugate() if conjugate else ww*vis0[row0, f0, c]
                     sum_ww[row, f, c] += ww
                     sum_rw[row] += ww
