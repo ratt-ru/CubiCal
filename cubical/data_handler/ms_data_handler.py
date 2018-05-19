@@ -15,23 +15,13 @@ import logging
 
 import cubical.flagging as flagging
 
-# Try to import montblanc: if not successful, remember error for later.
+from cubical import data_handler
 
-try:
-    import montblanc
-    # all of these potentially fall over if Montblanc is the wrong version or something, so moving them here
-    # for now
-    from cubical.MBTiggerSim import simulate, MSSourceProvider, ColumnSinkProvider
-    from cubical.TiggerSourceProvider import TiggerSourceProvider
-    from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
-except:
-    montblanc = None
-    montblanc_import_error = sys.exc_info()
-
-from ms_tile import RowChunk, MSTile
+from cubical.data_handler.ms_tile import RowChunk, MSTile
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("data_handler")
+
 
 def _divide_up(n, k):
     """For two integers n and k, returns ceil(n/k)"""
@@ -350,11 +340,11 @@ class MSDataHandler:
                     bin_start_chan0, bin_start_freq0 = chan0, freq0
                 # work out output channel number based on rebinning factor
                 if rebin_hz is None:
-                    if chan0 - bin_start_chan0 > rebin_chans:
+                    if chan0 - bin_start_chan0 >= rebin_chans:
                         chan += 1
                         bin_start_chan0, bin_start_freq0 = chan0, freq0
                 else:
-                    if abs(freq0 - bin_start_freq0) > rebin_hz:
+                    if abs(freq0 - bin_start_freq0) >= rebin_hz:
                         chan += 1
                         bin_start_chan0, bin_start_freq0 = chan0, freq0
                 rebin_chan_map[chan0] = chan
@@ -393,7 +383,7 @@ class MSDataHandler:
 
         # now accumulate list of all frequencies, and also see if selected DDIDs have a uniform rebinning and chunking map
         all_freqs = set(self.chanfreqs[self._ddids[0]])
-        self._freq_rebin = any([m is not None for m in self.rebin_chan_maps.values()])
+        self.do_freq_rebin = any([m is not None for m in self.rebin_chan_maps.values()])
         self._ddids_unequal = False
         ddid0_map = self.rebin_chan_maps[self._ddids[0]]
         for ddid in self._ddids[1:]:
@@ -465,7 +455,7 @@ class MSDataHandler:
                     self.nmscorrs, "(using diag only)" if self._corr_4to2 else "")
         print>>log,"  DDID central frequencies are at {} GHz".format(
                 " ".join(["%.2f"%(self.chanfreqs[d][len(self.chanfreqs[d])//2]*1e-9) for d in self._ddids]))
-        if self._freq_rebin and (output_column or output_model_column):
+        if self.do_freq_rebin and (output_column or output_model_column):
             print>>log(0, "red"),"WARNING: output columns will be upsampled from frequency-binned data!"
         self.nddid = len(self._ddids)
 
@@ -602,6 +592,8 @@ class MSDataHandler:
         self.use_montblanc = False    # will be set to true if Montblanc is invoked
         self.models = []
         self.model_directions = set() # keeps track of directions in Tigger models
+        global montblanc
+        montblanc = None
 
         for imodel, (model, weight_col) in enumerate(zip(models, weights)):
             # list of per-direction models
@@ -620,14 +612,17 @@ class MSDataHandler:
                             tag = None
                         if os.path.exists(component):
                             if montblanc is None:
-                                print>> log, ModColor.Str("Error importing Montblanc: ")
-                                for line in traceback.format_exception(*montblanc_import_error):
-                                    print>> log, "  " + ModColor.Str(line)
-                                print>> log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
-                                raise RuntimeError("Error importing Montblanc")
+                                montblanc, exc = data_handler.import_montblanc()
+                                if montblanc is None:
+                                    print>> log, ModColor.Str("Error importing Montblanc: ")
+                                    for line in traceback.format_exception(*exc):
+                                        print>> log, "  " + ModColor.Str(line)
+                                    print>> log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
+                                    raise RuntimeError("Error importing Montblanc")
                             self.use_montblanc = True
-                            component = TiggerSourceProvider(component, self.phadir,
-                                                dde_tag=use_ddes and tag)
+                            import TiggerSourceProvider
+                            component = TiggerSourceProvider.TiggerSourceProvider(component, self.phadir,
+                                                                                  dde_tag=use_ddes and tag)
                             for key in component._cluster_keys:
                                 dirname = idirtag if key == 'die' else key
                                 dirmodels.setdefault(dirname, []).append((component, key))
@@ -742,7 +737,7 @@ class MSDataHandler:
             return subset.getcol(column, startrow, nrows)
         return subset.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
 
-    def fetchslicenp(self, column, data, startrow, nrows, subset=None):
+    def fetchslicenp(self, column, data, startrow=0, nrows=-1, subset=None):
         """
         Convenience function similar to fetch(), but assumes a column of NFREQxNCORR shape,
         and calls pyrap.tables.table.getcolslice() if there's a channel slice to be applied,
@@ -763,7 +758,7 @@ class MSDataHandler:
             return subset.getcolnp(column, data, startrow, nrows)
         return subset.getcolslicenp(column, data, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
 
-    def putslice(self, column, value, startrow, nrows):
+    def putslice(self, column, value, startrow=0, nrows=-1, subset=None):
         """
         The opposite of fetchslice(). Assumes a column of NFREQxNCORR shape,
         and calls pyrap.tables.table.putcolslice() if there's a channel slice to be applied,
@@ -781,21 +776,22 @@ class MSDataHandler:
             np.ndarray:
                 Result of putcolslice()
         """
+        subset = subset or self.data
         # if no slicing, just use putcol to put the whole thing. This always works,
         # unless the MS is screwed up
         if self._ms_blc == None:
-            return self.data.putcol(column, value, startrow, nrows)
+            return subset.putcol(column, value, startrow, nrows)
         # A variable-shape column may be uninitialized, in which case putcolslice will not work.
         # But we try it first anyway, especially if the first row of the block looks initialized
         if self.data.iscelldefined(column, startrow):
             try:
-                return self.data.putcolslice(column, value, self._ms_blc, self._ms_trc, [], startrow, nrows)
+                return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [], startrow, nrows)
             except Exception, exc:
                 pass
         print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
         value0 = np.zeros((nrows, self._nchan_orig, self.nmscorrs), value.dtype)
         value0[:, self._channel_slice, self._corr_slice] = value
-        return self.data.putcol(column, value0, startrow, nrows)
+        return subset.putcol(column, value0, startrow, nrows)
 
     def define_chunk(self, chunk_time, rebin_time, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """
@@ -838,19 +834,11 @@ class MSDataHandler:
         self.antea = antea = self.fetch("ANTENNA1").astype(np.int64)
         self.anteb = anteb = self.fetch("ANTENNA2").astype(np.int64)
         self.time_col = time_col = self.fetch("TIME")
-        self.ddid_col = ddid_col = self.fetch("DATA_DESC_ID").astype(np.int64)
+        self.ddid_col = ddid_col = ddid_col0 = self.fetch("DATA_DESC_ID").astype(np.int64)
         print>> log, "  read indexing columns ({} total rows)".format(len(self.time_col))
+        self.do_time_rebin = False
 
-        def compute_timeslots(time_col):
-            """Helper function. Converts vector of timestamps into vector of timeslot indices and unique timestamps"""
-            # map timestamps to timeslot numbers
-            uniq_times = np.unique(time_col)
-            rmap = {t: i for i, t in enumerate(uniq_times)}
-            # apply this map to the time column to construct a timestamp column
-            times = np.fromiter(map(rmap.__getitem__, time_col), int)
-            return times, uniq_times
-
-        self.times, self.uniq_times = compute_timeslots(time_col)
+        self.times, self.uniq_times,_ = data_handler.uniquify(time_col)
         print>> log, "  built timeslot index ({} unique timestamps)".format(len(self.uniq_times))
 
         chunk_timeslots, chunk_seconds = _parse_timespec(chunk_time, 1<<31, 1e+99)
@@ -929,8 +917,8 @@ class MSDataHandler:
             # recalculate chunk rows
             timechunk_row0 = [self.rebin_row_map[row0] for row0 in timechunk_row0]
 
-            self.times, self.uniq_times = compute_timeslots(self.time_col)
-            self._time_rebin = True
+            self.times, self.uniq_times, _ = data_handler.uniquify(self.time_col)
+            self.do_time_rebin = True
             print>> log, "  will rebin into {} rows ({} rebinned timeslots)".format(nrow_out, len(self.uniq_times))
             if self.output_column or self.output_model_column:
                 print>> log(0, "red"), "WARNING: output columns will be upsampled from time-binned data!"
@@ -938,7 +926,7 @@ class MSDataHandler:
             self.rebin_row_map = np.arange(nrows0, dtype=int)
             self.rebin_row_map[self.antea > self.anteb] *= -1
             nrows_out = nrows0
-            self._time_rebin = False
+            self.do_time_rebin = False
 
         ## at the end of this, we have rebinned versions of
         ##      self.time_col, self.antea, self.anteb, self.ddid_col
@@ -956,18 +944,25 @@ class MSDataHandler:
         # Unique timestamps per time chunk
         self.chunk_timestamps = []
         
-        # For each time chunk, create a mask for associated rows.
+        # For each time chunk, create a mask for associated binned and unbinned rows
         timechunk_masks = []
+        timechunk_masks0 = []
 
-        timechunk_row0.append(nrow_out)
+        timechunk_row = [self.rebin_row_map[row0] for row0 in timechunk_row0] + [nrow_out]
+        timechunk_row0.append(nrows0)
+
         for tchunk in range(len(timechunk_row0) - 1):
-            r0, r1 = timechunk_row0[tchunk:tchunk + 2]
+            r0a, r0b = timechunk_row0[tchunk:tchunk + 2]
+            ra, rb   = timechunk_row[tchunk:tchunk + 2]
+            mask0 = np.zeros(nrows0, bool)
             mask = np.zeros(nrow_out, bool)
-            mask[r0:r1] = True
+            mask0[r0a:r0b] = True
+            mask[ra:rb] = True
+            timechunk_masks0.append(mask0)
             timechunk_masks.append(mask)
-            uniq_ts = np.unique(self.times[r0:r1])
+            uniq_ts = np.unique(self.times[ra:rb])
             self.chunk_ntimes.append(len(uniq_ts))
-            self.chunk_timestamps.append(np.unique(self.times[r0:r1]))
+            self.chunk_timestamps.append(np.unique(self.times[ra:rb]))
 
         # now make list of "row chunks": each element will be a tuple of (ddid, time_chunk_number, rowlist)
 
@@ -975,19 +970,19 @@ class MSDataHandler:
 
         self._actual_ddids = []
         for ddid in self._ddids:
+            ddid_rowmask0 = ddid_col0==ddid
             ddid_rowmask = self.ddid_col==ddid
             if ddid_rowmask.any():
                 self._actual_ddids.append(ddid)
-                for tchunk, mask in enumerate(timechunk_masks):
+                for tchunk, (mask0, mask) in enumerate(zip(timechunk_masks0, timechunk_masks)):
                     rows = np.where(ddid_rowmask & mask)[0]
                     if rows.size:
-                        chunklist.append(RowChunk(ddid, tchunk, rows))
+                        rows0 = np.where(ddid_rowmask0 & mask0)[0]
+                        timeslice = slice(self.times[rows[0]], self.times[rows[-1]]+1)
+                        chunklist.append(RowChunk(ddid, tchunk, timeslice, rows, rows0))
         self.nddid_actual = len(self._actual_ddids)
 
         print>>log,"  generated {} row chunks based on time and DDID".format(len(chunklist))
-
-        # init this, for compatibility with the chunk iterator below
-        self.chunk_rind = OrderedDict([ ((chunk.ddid, chunk.tchunk), chunk.rows) for chunk in chunklist])
 
         # re-sort these row chunks into naturally increasing order (by first row of each chunk)
         def _compare_chunks(a, b):
@@ -1006,7 +1001,7 @@ class MSDataHandler:
         tile_list = []
         for chunk in chunklist:
             # if rows do not overlap, start new tile with this chunk
-            if not tile_list or chunk.rows[0] > tile_list[-1].last_row:
+            if not tile_list or chunk.rows0[0] > tile_list[-1].last_row0:
                 tile_list.append(MSTile(self,chunk))
             # else extend previous tile
             else:

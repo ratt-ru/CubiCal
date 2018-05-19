@@ -372,7 +372,7 @@ class _VisDataManager(object):
                 self._wmod_arr = self.model_arr.copy()
                 # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
                 # as they will already get zero weight in data_handler
-                self._wmod_arr[:, self.flags_arr!=0, :, :] = 0
+                self._wmod_arr[:, :, self.flags_arr!=0, :, :] = 0
         return self._wmod_arr
 
     @property

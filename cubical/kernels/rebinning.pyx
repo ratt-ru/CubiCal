@@ -48,6 +48,10 @@ ctypedef fused float3264:
 # datatype of visibility weights
 ctypedef np.float32_t wfloat
 
+ctypedef np.uint16_t flag_t
+
+ctypedef np.int64_t index_t
+
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
@@ -56,7 +60,7 @@ def rebin_index_columns(double [:] time,const double [:] time0,
              np.int64_t [:] antea, const np.int64_t [:] antea0,
              np.int64_t [:] anteb, const np.int64_t [:] anteb0,
              np.int64_t [:] ddid_col, const np.int64_t [:] ddid_col0,
-             const np.int64_t [:] row_map):
+             const index_t [:] row_map):
     """
     Rebins indexing columns (time, ant1/2, ddid), using the given row map.
     time should be a zero-filled output column of the expected length (row_map[-1]+1)
@@ -89,11 +93,11 @@ def rebin_index_columns(double [:] time,const double [:] time0,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cyrebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
-                double   [:,:]   uvw,  const double   [:,:]   uvw0,
-                int      [:,:,:] flag, const int      [:,:,:] flag0,
-                wfloat [:,:,:,:] weights,const wfloat  [:,:,:,:]  weights0, int num_weights,
-                const int [:] rebin_row_map, const int [:] rebin_chan_map):
+def rebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
+              double   [:,:]   uvw,  const double   [:,:]   uvw0,
+              flag_t   [:,:,:] flag, const flag_t   [:,:,:] flag0,
+              wfloat [:,:,:,:] weights,const wfloat  [:,:,:,:]  weights0, int num_weights,
+              const index_t [:] rebin_row_map, const index_t [:] rebin_chan_map):
     """
     Rebin the input data
     """
@@ -106,9 +110,11 @@ def cyrebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
     n_row0, n_fre0, n_cor0 = vis0.shape[0], vis0.shape[1], vis0.shape[2]
     n_row, n_fre, n_cor = vis.shape[0], vis.shape[1], n_cor0
 
-    sum_ww = np.zeros((n_row,n_fre,n_cor), weights.dtype)    # sum of weights per each output visibility
-    sum_rw = np.zeros(n_row, weights.dtype)                  # sum of weights per each output row
-    num_rr = np.zeros(n_row, int)                            # number of input rows in each output row
+    sum_ww0 = np.zeros((n_row,n_fre,n_cor), np.float32)    # sum of weights per each output visibility
+    sum_rw0 = np.zeros(n_row, np.float32)                     # sum of weights per each output row
+
+    cdef np.float32_t [:,:,:] sum_ww = sum_ww0
+    cdef np.float32_t [:] sum_rw = sum_rw0
 
     for row0 in xrange(n_row0):
         row = rebin_row_map[row0]
@@ -151,10 +157,10 @@ def cyrebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cyrebin_model(fcomplex [:,:,:] model,  const fcomplex [:,:,:] model0,
-                  const int      [:,:,:] flag0,
+def rebin_model(fcomplex [:,:,:] model,  const fcomplex [:,:,:] model0,
+                  const flag_t [:,:,:] flag0,
                   const wfloat [:,:,:]  weights0, int has_weights,
-                  const int [:] rebin_row_map, const int [:] rebin_chan_map):
+                  const index_t [:] rebin_row_map, const index_t [:] rebin_chan_map):
     """
     Rebins a model column, following a rebin_row_map precomputed by cyrebin_vis
     """
@@ -167,7 +173,8 @@ def cyrebin_model(fcomplex [:,:,:] model,  const fcomplex [:,:,:] model0,
     n_row0, n_fre0, n_cor0 = model0.shape[0], model0.shape[1], model0.shape[2]
     n_row, n_fre, n_cor = model.shape[0], model0.shape[1], n_cor0
 
-    sum_ww = np.zeros((n_row,n_fre,n_cor), weights0.dtype)    # sum of weights per each output visibility
+    sum_ww0 = np.zeros((n_row,n_fre,n_cor), np.float32)    # sum of weights per each output visibility
+    cdef np.float32_t [:,:,:] sum_ww = sum_ww0
 
     for row0 in xrange(n_row0):
         row = rebin_row_map[row0]

@@ -26,7 +26,7 @@ class MSSourceProvider(SourceProvider):
     Handles interface between CubiCal tiles and Montblanc simulation.
     """
 
-    def __init__(self, tile, uvw, freqs, sort_ind, nrows):
+    def __init__(self, tile, time_col, antea, anteb, ddid_col, uvw, freqs, sort_ind, nrows):
         """
         Initialises this source provider.
 
@@ -36,7 +36,7 @@ class MSSourceProvider(SourceProvider):
             uvw (np.darray):
                 (n_row, 3) array of UVW coordinates.
             freqs (np.darray):
-                (n_chan) array of frequencies.
+                (n_ddid,n_chan) array of frequencies.
             sort_ind (np.ndarray):
                 Indices which will produce sorted data. Montblanc expects data to be ordered in a specific way.
             nrows (int):
@@ -44,21 +44,24 @@ class MSSourceProvider(SourceProvider):
 
         """
 
-        self._handler = tile.dh
-        self._ms = self._handler.ms
-        self._ms_name = self._handler.ms_name
+        self._ms = tile.dh.ms
+        self._ms_name = tile.dh.ms_name
         self._name = "Measurement set '{ms}'".format(ms=self._ms_name)
 
-        self._ntime = len(np.unique(tile.times))
-        self._nchan = self._handler.nfreq_rebinned
-        self._nants = self._handler.nants
-        self._ncorr = self._handler.ncorr
+        self._antpos = tile.dh.antpos
+        self._phadir = tile.dh.phadir
+
+        self._ntime = len(np.unique(time_col))
+        self._nchan = freqs.shape[1]
+        self._nants = tile.dh.nants
+        self._ncorr = tile.dh.ncorr
         self._nbl   = (self._nants*(self._nants - 1))/2
-        self._times = tile.time_col
-        self._antea = tile.antea
-        self._anteb = tile.anteb
-        self._ddids = tile.ddids
-        self._nddid = len(tile.ddids)
+        self._freqs = freqs
+        self._times = time_col
+        self._antea = antea
+        self._anteb = anteb
+        self._ddids = ddid_col
+        self._nddid = freqs.shape[0]
         self._uvwco = uvw                  #  data['uvwco']
         self._nrows = nrows
         self.sort_ind = sort_ind
@@ -81,8 +84,7 @@ class MSSourceProvider(SourceProvider):
 
     def frequency(self, context):
         """ Provides Montblanc with an array of frequencies. """
-        channels = self._handler._ddid_chanfreqs[self._ddids, :]
-        return channels.reshape(context.shape).astype(context.dtype)
+        return self._freqs.reshape(context.shape).astype(context.dtype)
 
     def uvw(self, context):
         """ Provides Montblanc with an array of uvw coordinates. """
@@ -135,8 +137,8 @@ class MSSourceProvider(SourceProvider):
 
         return mbu.parallactic_angles(
                         np.unique(self._times[self.sort_ind])[lt:ut],
-                        self._handler.antpos[la:ua],
-                        self._handler.phadir).reshape(context.shape).astype(context.dtype)
+                        self._antpos[la:ua],
+                        self._phadir).reshape(context.shape).astype(context.dtype)
 
     def __enter__(self):
         return self
@@ -152,13 +154,15 @@ class ColumnSinkProvider(SinkProvider):
     """
     Handles Montblanc output and makes it consistent with the measurement set.
     """
-    def __init__(self, tile, model, sort_ind):
+    def __init__(self, dh, freqshape, model, sort_ind):
         """
         Initialises this sink provider.
 
         Args:
-            tile (:obj:`~cubical.data_handler.Tile`):
-                Tile object containing information about current data selection.
+            dh (:obj:`~cubical.data_handler.MSDataHandler`):
+                Data handler object.
+            freqshape (tuple):
+                Shape of frequency array, i.e. (nddid, nchan)
             model (np.ndarray):
                 Array of model visibilities into which output will be written.
             sort_ind (np.ndarray):
@@ -166,15 +170,12 @@ class ColumnSinkProvider(SinkProvider):
 
         """
 
-        self._tile = tile
         self._model = model
-        self._handler = tile.dh
-        self._ncorr = self._handler.ncorr
-        self._name = "Measurement Set '{ms}'".format(ms=self._handler.ms_name)
+        self._ncorr = dh.ncorr
+        self._name = "Measurement Set '{ms}'".format(ms=dh.ms_name)
         self._dir = 0
         self.sort_ind = sort_ind
-        self._ddids = self._tile.ddids
-        self._nddid = len(self._ddids)
+        self._nddid, self._chan_per_ddid = freqshape
 
     def name(self):
         """ Returns name of associated sink provider. """
@@ -199,7 +200,6 @@ class ColumnSinkProvider(SinkProvider):
 
         ntime, nbl, nchan = context.dim_global_size('ntime', 'nbl', 'nchan')
         rows_per_ddid = ntime*nbl
-        chan_per_ddid = nchan/self._nddid
 
         if self._ncorr == 1:
             sel = 0
@@ -212,10 +212,10 @@ class ColumnSinkProvider(SinkProvider):
             offset = ddid_ind*rows_per_ddid
             lr = lower + offset
             ur = upper + offset
-            lc = ddid_ind*chan_per_ddid
-            uc = (ddid_ind+1)*chan_per_ddid
+            lc = ddid_ind*self._chan_per_ddid
+            uc = (ddid_ind+1)*self._chan_per_ddid
             self._model[self._dir, 0, lr:ur, :, :] = \
-                    context.data[:,:,lc:uc,sel].reshape(-1, chan_per_ddid, self._ncorr)
+                    context.data[:,:,lc:uc,sel].reshape(-1, self._chan_per_ddid, self._ncorr)
 
     def __str__(self):
         return self.__class__.__name__
