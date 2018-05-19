@@ -5,7 +5,7 @@
 import numpy as np
 from collections import OrderedDict
 import traceback
-import sys
+import itertools
 
 from cubical.tools import shared_dict
 from cubical.flagging import FL
@@ -96,7 +96,30 @@ class MSTile(object):
             # filled in by self.load_montblanc_models below
             self._mb_measet_src = None
 
+        def upsample(self, data):
+            """Helper method. Upsamples an array back to full resolution"""
+            if not self.tile.dh.do_freq_rebin and not self.tile.dh.do_time_rebin:
+                return data
+            shape = len(self.rebin_row_map), len(self.rebin_chan_map), data.shape[2]
+            print>>log(1),"upsampling to {} rows and {} channels".format(shape[0], shape[1])
+            return data[self.rebin_row_map[:, np.newaxis],
+                        self.rebin_chan_map[np.newaxis, :], None].reshape(shape)
+
         def load_montblanc_models(self, uvwco, loaded_models, model_source, cluster, imod, idir):
+            """
+            Invoke Montblanc to 
+
+            Args:
+                uvwco:
+                loaded_models:
+                model_source:
+                cluster:
+                imod:
+                idir:
+
+            Returns:
+
+            """
 
             import MBTiggerSim
             from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
@@ -971,17 +994,19 @@ class MSTile(object):
             table_subset = self.dh.data.selectrows(subset.rows0)
 
             if self.dh.output_column and data0['updated'][0]:
+                covis = subset.upsample(data['covis'])
                 print>> log, "  writing {} column".format(self.dh.output_column)
-                self.dh.putslice(self.dh.output_column, data['covis'], subset=table_subset)
+                self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
 
             if self.dh.output_model_column and 'movis' in data:
-                print>> log, "  writing {} column".format(self.dh.output_model_column)
                 # take first mode, and sum over directions if needed
                 model = data['movis'][:, 0]
                 if model.shape[0] == 1:
                     model = model.reshape(model.shape[1:])
                 else:
                     model = model.sum(axis=0)
+                model = subset.upsample(model)
+                print>> log, "  writing {} column".format(self.dh.output_model_column)
                 self.dh.putslice(self.dh.output_model_column, model, subset=table_subset)
 
             # write flags if (a) auto-filling BITFLAG column and/or (b) solver has generated flags, and we're saving cubical flags
@@ -991,7 +1016,7 @@ class MSTile(object):
                     # clear bitflag column first
                     self.bflagcol &= ~self.dh._save_bitflag
                     # add bitflag to points where data wasn't flagged for prior reasons
-                    newflags = data['flags'] & ~(FL.PRIOR | FL.SKIPSOL) != 0
+                    newflags = subset.upsample(data['flags'] & ~(FL.PRIOR | FL.SKIPSOL) != 0)
                     # add to stats
                     self.dh.flagcounts['NEW'] += newflags.sum()
                     self.bflagcol[newflags] |= self.dh._save_bitflag
