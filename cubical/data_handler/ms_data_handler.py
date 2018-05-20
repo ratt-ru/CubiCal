@@ -1161,7 +1161,8 @@ class MSDataHandler:
 
         if self.data is not None:
             self.data.close()
-        self.ms.close()
+        if self.ms is not None:
+            self.ms.close()
         self.data = self.ms = None
 
     def flush(self):
