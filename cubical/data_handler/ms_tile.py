@@ -81,13 +81,14 @@ class MSTile(object):
             # row map for rebinning -- label of None means subset is full tile
             if label is None:
                 self.rebin_row_map = tile.rebin_row_map
-                self.subset_rows = slice(None)
             else:
                 self.rebin_row_map = tile.rebin_row_map[rows0]
                 # since the rebinned map is now sparse in the output because we've got a subset of input rows,
-                # uniquify it so it becomes contiguous in the output
-                raise RuntimeError("this is wrong. Oleg must fix this.")
-                self.rebin_row_map, self.subset_rows, _ = data_handler.uniquify(self.rebin_row_map)
+                # uniquify it so it becomes contiguous in the output.
+                # Note that '-' signs need to be preserved
+                sign = np.sign(self.rebin_row_map)
+                self.rebin_row_map, _, _ = data_handler.uniquify(abs(self.rebin_row_map))
+                self.rebin_row_map *= sign
 
             # channel map for rebinning
             self.rebin_chan_map = tile.dh.rebin_chan_maps[self.first_ddid]
