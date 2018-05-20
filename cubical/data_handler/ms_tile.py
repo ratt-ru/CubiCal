@@ -720,7 +720,7 @@ class MSTile(object):
 
             # now rebin arrays if appropriate
             if self.dh.do_freq_rebin or self.dh.do_time_rebin:
-                nrows = subset.rebin_row_map[-1]+1
+                nrows = abs(subset.rebin_row_map[-1])+1
                 nchan = subset.rebin_chan_map[-1]+1
                 print>> log(0), "  rebinning into {} rows and {} channels".format(nrows, nchan)
 
