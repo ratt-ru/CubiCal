@@ -870,9 +870,10 @@ class MSDataHandler:
 
         # set chunk-by boundaries, if specified
         boundaries = np.zeros_like(time_col, bool)
-        for column in chunk_by:
-            value = self.fetch(column)
-            boundaries |= abs(np.roll(value, 1) - value) > chunk_by_jump
+        if chunk_by:
+            for column in chunk_by:
+                value = self.fetch(column)
+                boundaries |= abs(np.roll(value, 1) - value) > chunk_by_jump
 
         for row0, (a1,a2,ts,time,ddid,boundary) in enumerate(
                 zip(antea, anteb, self.times, time_col, ddid_col, boundaries)):
