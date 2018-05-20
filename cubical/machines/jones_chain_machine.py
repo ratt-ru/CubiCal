@@ -249,7 +249,7 @@ class JonesChain(MasterMachine):
         ndir = self.n_dir if dd else 1
         gains = self.cykernel.allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
                                                   self.dtype)
-        g0 = self.jones_terms[0].gains
+        g0 = self.jones_terms[0]._gainres_to_fullres(self.jones_terms[0].gains, tdim_ind=1)
         if ndir > 1 and g0.shape[0] == 1:
             g0 = g0.reshape(g0.shape[1:])[np.newaxis,...]
         elif ndir == 1 and g0.shape[0] > 1:
