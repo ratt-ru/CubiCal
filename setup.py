@@ -118,6 +118,7 @@ else:
                     'python-casacore>=2.1.2', 
                     'sharedarray', 
                     'matplotlib',
+                    'cython',
                     'scipy',
                     'astro-tigger-lsm']
 
