@@ -307,10 +307,11 @@ class MSDataHandler:
         self.chanfreqs = {}         # vector of rebinned channel centres
         self.chanwidth = {}         # vector of rebinned channel widths
         self.freqchunks = {}        # vector of first (rebinned) channel in each chunk
+        self._nchan0_orig = {}       # map from DDID to original channel size -- needed to init new columns
 
         for ddid in self._ddids:
             chanfreqs0 = self._spw_chanfreqs[self._ddid_spw[ddid]]
-            nchan0_orig = len(chanfreqs0)
+            nchan0_orig = self._nchan0_orig[ddid] = len(chanfreqs0)
             chanfreqs0 = chanfreqs0[self._channel_slice]
             chanwidth0 = self._spw_chanwidth[self._ddid_spw[ddid]][self._channel_slice]
             nchan0 = len(chanfreqs0)
@@ -788,8 +789,11 @@ class MSDataHandler:
                 return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [], startrow, nrows)
             except Exception, exc:
                 pass
+        if nrows<0:
+            nrows = subset.nrows()
         print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
-        value0 = np.zeros((nrows, self._nchan_orig, self.nmscorrs), value.dtype)
+        ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
+        value0 = np.zeros((nrows, self._nchan0_orig[ddid], self.nmscorrs), value.dtype)
         value0[:, self._channel_slice, self._corr_slice] = value
         return subset.putcol(column, value0, startrow, nrows)
 
