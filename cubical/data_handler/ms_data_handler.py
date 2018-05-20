@@ -1143,28 +1143,31 @@ class MSDataHandler:
         return False
 
     def unlock(self):
-        """ Unlocks the measurement set and shared memory dictionary. """
+        """ Unlocks the measurement set. """
 
-        self.data.unlock()
+        if self.data is not None:
+            self.data.unlock()
         self.ms.unlock()
 
     def lock(self):
-        """ Locks the measurement set and shared memory dictionary. """
+        """ Locks the measurement set. """
 
         self.ms.lock()
-        self.data.lock()
+        if self.data is not None:
+            self.data.lock()
 
     def close(self):
-        """ Closes the measurement set and shared memory dictionary. """
+        """ Closes the measurement set. """
 
-        if self.data:
+        if self.data is not None:
             self.data.close()
         self.ms.close()
+        self.data = self.ms = None
 
     def flush(self):
-        """ Flushes the measurement set and shared memory dictionary. """
+        """ Flushes the measurement set. """
 
-        if self.taql:
+        if self.data is not None:
             self.data.flush()
         self.ms.flush()
 
