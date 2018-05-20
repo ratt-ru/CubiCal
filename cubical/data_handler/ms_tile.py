@@ -456,9 +456,9 @@ class MSTile(object):
 
         # row rebin map, relative to start (row0) of tile
         self.rebin_row_map = self.dh.rebin_row_map[self.first_row0:self.last_row0+1]
-        first_row, last_row = self.rebin_row_map[0], self.rebin_row_map[-1]
+        first_row, last_row = abs(self.rebin_row_map[0]), abs(self.rebin_row_map[-1])
         # first rebinned row is also 0
-        self.rebin_row_map = self.rebin_row_map - first_row
+        self.rebin_row_map = np.sign(self.rebin_row_map)*(abs(self.rebin_row_map) - first_row)
 
         self._data_dict_name = "DATA:{}:{}".format(self.first_row0, self.last_row0)
 
