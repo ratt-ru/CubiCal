@@ -86,6 +86,7 @@ class MSTile(object):
                 self.rebin_row_map = tile.rebin_row_map[rows0]
                 # since the rebinned map is now sparse in the output because we've got a subset of input rows,
                 # uniquify it so it becomes contiguous in the output
+                raise RuntimeError("this is wrong. Oleg must fix this.")
                 self.rebin_row_map, self.subset_rows, _ = data_handler.uniquify(self.rebin_row_map)
 
             # channel map for rebinning
