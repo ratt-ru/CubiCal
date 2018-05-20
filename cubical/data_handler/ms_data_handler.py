@@ -901,6 +901,10 @@ class MSDataHandler:
                 nrow_out += 1
             self.rebin_row_map[row0] = row if a1<a2 else -row
 
+        print>>log,"  found {} time chunks: {} {}".format(len(timechunk_row0),
+                        " ".join([str(self.times[r]) for r in timechunk_row0]),
+                        str(self.times[-1]+1))
+
         # at the end of this, we have a list of timechunk_row0: i.e. a list of starting rows for
         # each time chunk (which may composed of multiple DDIDs), plus rebin_row_map: a vector giving
         # the rebinned row number for the original row number (row0). Use this to rebin the time vector
@@ -914,8 +918,6 @@ class MSDataHandler:
             rebinning.rebin_index_columns(self.time_col, time_col,
                                self.antea, antea, self.anteb, anteb, self.ddid_col, ddid_col,
                                self.rebin_row_map)
-            # recalculate chunk rows
-            timechunk_row0 = [self.rebin_row_map[row0] for row0 in timechunk_row0]
 
             self.times, self.uniq_times, _ = data_handler.uniquify(self.time_col)
             self.do_time_rebin = True
@@ -925,17 +927,12 @@ class MSDataHandler:
         else:
             self.rebin_row_map = np.arange(nrows0, dtype=int)
             self.rebin_row_map[self.antea > self.anteb] *= -1
-            nrows_out = nrows0
             self.do_time_rebin = False
 
         ## at the end of this, we have rebinned versions of
         ##      self.time_col, self.antea, self.anteb, self.ddid_col
         ## and self.rebin_row_map, giving the rebinning map (row0->row)
         ## and timechunk_row0, giving the (rebinned) starting row of each chunk
-
-        print>>log,"  found {} time chunks: {} {}".format(len(timechunk_row0),
-                        " ".join([str(self.times[r]) for r in timechunk_row0]),
-                        str(self.times[-1]+1))
 
 
         # Number of timeslots per time chunk
