@@ -355,18 +355,18 @@ def _init_worker(main=False):
 
         taskset = props.get("taskset")
         if taskset is not None:
-            print>>log(0,"blue"),"pid {}, setting CPU affinity to {} with taskset".format(os.getpid(), taskset)
+            print>>log(1,"blue"),"pid {}, setting CPU affinity to {} with taskset".format(os.getpid(), taskset)
             os.system("taskset -pc {} {} >/dev/null".format(taskset, os.getpid()))
 
         environ = props.get("environ")
         if environ:
             os.environ.update(environ)
             for key, value in environ.iteritems():
-                print>>log(0,"blue"),"setting {}={}".format(key, value)
+                print>>log(1,"blue"),"setting {}={}".format(key, value)
 
         num_omp_threads = props.get("num_omp_threads")
         if num_omp_threads is not None:
-            print>> log(0,"blue"), "enabling {} OMP threads".format(num_omp_threads)
+            print>> log(1,"blue"), "enabling {} OMP threads".format(num_omp_threads)
             import cubical.kernels
             cubical.kernels.num_omp_threads = num_omp_threads
 
