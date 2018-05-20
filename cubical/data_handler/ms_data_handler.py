@@ -278,9 +278,9 @@ class MSDataHandler:
             print>> log, "  applying a channel selection of {}".format(channels)
             chan0 = self._channel_slice.start if self._channel_slice.start is not None else 0
             chan1 = self._channel_slice.stop - 1 if self._channel_slice.stop is not None else -1
-            blc = (chan0, 0)
-            trc = (chan1, self.ncorr - 1)
-            incr = (1, 3) if self._corr_4to2 else (1, 1)
+            self._ms_blc = (chan0, 0)
+            self._ms_trc = (chan1, self.ncorr - 1)
+            self._ms_incr = (1, 3) if self._corr_4to2 else (1, 1)
         elif self._corr_4to2:
             self._ms_blc = (0, 0)
             self._ms_trc = (-1, 3)
