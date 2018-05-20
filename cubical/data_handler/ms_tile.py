@@ -107,7 +107,7 @@ class MSTile(object):
 
         def load_montblanc_models(self, uvwco, loaded_models, model_source, cluster, imod, idir):
             """
-            Invoke Montblanc to 
+            Invoke Montblanc to compute model visibilities
 
             Args:
                 uvwco:

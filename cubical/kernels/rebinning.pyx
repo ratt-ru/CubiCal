@@ -51,11 +51,6 @@ ctypedef np.uint16_t flag_t
 
 ctypedef np.int64_t index_t
 
-ctypdef fused vis_or_flag_t
-    np.float32_t
-    flag_t
-
-
 
 @cython.cdivision(True)
 @cython.wraparound(False)
