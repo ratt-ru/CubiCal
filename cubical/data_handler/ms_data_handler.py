@@ -927,7 +927,14 @@ class MSDataHandler:
                 print>> log(0, "red"), "WARNING: output columns will be upsampled from time-binned data!"
         else:
             self.rebin_row_map = np.arange(nrows0, dtype=int)
-            self.rebin_row_map[self.antea > self.anteb] *= -1
+            # swap conjugate baselines
+            conj = self.antea > self.anteb
+            if conj.any():
+                aa = self.antea[conj].copy()
+                self.antea[conj] = self.anteb[conj]
+                self.anteb[conj] = aa
+                self.rebin_row_map[conj] *= -1
+
             self.do_time_rebin = False
 
         ## at the end of this, we have rebinned versions of
@@ -946,7 +953,7 @@ class MSDataHandler:
         timechunk_masks = []
         timechunk_masks0 = []
 
-        timechunk_row = [self.rebin_row_map[row0] for row0 in timechunk_row0] + [nrow_out]
+        timechunk_row = [abs(self.rebin_row_map[row0]) for row0 in timechunk_row0] + [nrow_out]
         timechunk_row0.append(nrows0)
 
         for tchunk in range(len(timechunk_row0) - 1):
