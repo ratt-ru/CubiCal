@@ -43,7 +43,7 @@ include "includes/matrix_ops.pxi"
 # themselves are written in terms of these functions -- they're pulled in from complex_gain_kernel.pxi below
 
 
-cdef inline void mat_product_gm(vcomplex * out,const gcomplex *g,const vcomplex *m) nogil:
+cdef inline void mat_product_gm(complex3264a *out,complex3264 *g,complex3264a *m) nogil:
     """
     Computes a 2x2 matrix product: out = G.M. G is diagonal.
     """

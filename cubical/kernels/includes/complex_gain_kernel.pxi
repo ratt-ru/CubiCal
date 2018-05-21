@@ -103,9 +103,9 @@ def cycompute_residual(vcomplex [:,:,:,:,:,:,:,:] m,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_jh(vcomplex [:,:,:,:,:,:,:,:] m,
-                 complex3264 [:,:,:,:,:,:] g,
-                 vcomplex [:,:,:,:,:,:,:,:] jh,
+def cycompute_jh(complex3264a [:,:,:,:,:,:,:,:] m,
+                 complex3264  [:,:,:,:,:,:] g,
+                 complex3264a [:,:,:,:,:,:,:,:] jh,
                  int t_int,
                  int f_int):
 

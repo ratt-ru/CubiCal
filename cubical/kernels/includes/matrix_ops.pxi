@@ -2,6 +2,11 @@ ctypedef fused complex3264:
     np.complex64_t
     np.complex128_t
 
+ctypedef fused complex3264a:
+    np.complex64_t
+    np.complex128_t
+
+
 ctypedef fused float3264:
     np.float32_t
     np.float64_t
