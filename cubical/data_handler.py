@@ -1087,7 +1087,7 @@ class DataHandler:
         anttabcols = ["OFFSET", "POSITION", "TYPE", 
                     "DISH_DIAMETER", "FLAG_ROW", "MOUNT", "NAME", 
                     "STATION"]
-        assert set(anttabcols) == set(_anttab.colnames()), "Measurement set conformance error"
+        assert set(anttabcols) <= set(_anttab.colnames()), "Measurement set conformance error"
         self._anttabcols = {t: _anttab.getcol(t) if _anttab.iscelldefined(t, 0) else np.array([]) for t in anttabcols}
         self.antnames = self._anttabcols["NAME"]
         self.antpos = self._anttabcols["POSITION"]
@@ -1096,7 +1096,7 @@ class DataHandler:
         fldtabcols = ["DELAY_DIR", "PHASE_DIR", "REFERENCE_DIR", 
                     "CODE", "FLAG_ROW", "NAME", "NUM_POLY", 
                     "SOURCE_ID", "TIME"]
-        assert set(fldtabcols) == set(_fldtab.colnames()), "Measurement set conformance error"
+        assert set(fldtabcols) <= set(_fldtab.colnames()), "Measurement set conformance error"
         self._fldtabcols = {t: _fldtab.getcol(t) if _fldtab.iscelldefined(t, 0) else np.array([]) for t in fldtabcols}
         
         # spw information to be used when writing gain tables
@@ -1106,14 +1106,14 @@ class DataHandler:
                     "IF_CONV_CHAIN", "NAME", "NET_SIDEBAND",
                     "NUM_CHAN", "TOTAL_BANDWIDTH"]
         
-        assert set(spwtabcols) == set(_spwtab.colnames()), "Measurement set conformance error"
+        assert set(spwtabcols) <= set(_spwtab.colnames()), "Measurement set conformance error"
         self._spwtabcols = {t: _spwtab.getcol(t) for t in spwtabcols}
         
         # read observation details
         obstabcols = ["TIME_RANGE", "LOG", "SCHEDULE", "FLAG_ROW",
                        "OBSERVER", "PROJECT", "RELEASE_DATE", "SCHEDULE_TYPE",
                        "TELESCOPE_NAME"]
-        assert set(obstabcols) == set(_obstab.colnames()), "Measurement set conformance error"
+        assert set(obstabcols) <= set(_obstab.colnames()), "Measurement set conformance error"
         self._obstabcols = {t: _obstab.getcol(t) if _obstab.iscelldefined(t, 0) else np.array([]) for t in obstabcols}
         
         self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
