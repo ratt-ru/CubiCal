@@ -997,7 +997,8 @@ class DataHandler:
                  taql=None, fid=None, ddid=None, channels=None, flagopts={},
                  diag=False, double_precision=False,
                  beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
-                 active_subset=None, min_baseline=0, max_baseline=0):
+                 active_subset=None, min_baseline=0, max_baseline=0,
+                 do_load_CASA_kwtables=True):
         """
         Initialises a DataHandler object.
 
@@ -1038,6 +1039,9 @@ class DataHandler:
                 Corresponding axis in fits beam, else None.
             mb_opts (dict or None):
                 Dictionary of Montblanc options if specified, else None.
+            do_load_CASA_kwtables
+                Should load CASA MS MEMO 229 keyword tables (optional). If not loaded
+                no CASA-style gaintables can be produced.
 
         Raises:
             RuntimeError:
@@ -1083,38 +1087,42 @@ class DataHandler:
         self.diag = diag
         self.nants = _anttab.nrows()
         
-        # antenna fields to be used when writing gain tables
-        anttabcols = ["OFFSET", "POSITION", "TYPE", 
+        self.antnames = _anttab.getcol("NAME")
+        self.antpos = _anttab.getcol("POSITION")
+        
+        if do_load_CASA_kwtables:
+            # antenna fields to be used when writing gain tables
+            anttabcols = ["OFFSET", "POSITION", "TYPE", 
                     "DISH_DIAMETER", "FLAG_ROW", "MOUNT", "NAME", 
                     "STATION"]
-        assert set(anttabcols) == set(_anttab.colnames()), "Measurement set conformance error"
-        self._anttabcols = {t: _anttab.getcol(t) if _anttab.iscelldefined(t, 0) else np.array([]) for t in anttabcols}
-        self.antnames = self._anttabcols["NAME"]
-        self.antpos = self._anttabcols["POSITION"]
-        
-        # field information to be used when writing gain tables
-        fldtabcols = ["DELAY_DIR", "PHASE_DIR", "REFERENCE_DIR", 
-                    "CODE", "FLAG_ROW", "NAME", "NUM_POLY", 
-                    "SOURCE_ID", "TIME"]
-        assert set(fldtabcols) == set(_fldtab.colnames()), "Measurement set conformance error"
-        self._fldtabcols = {t: _fldtab.getcol(t) if _fldtab.iscelldefined(t, 0) else np.array([]) for t in fldtabcols}
-        
-        # spw information to be used when writing gain tables
-        spwtabcols = ["MEAS_FREQ_REF", "CHAN_FREQ", "REF_FREQUENCY",
-                    "CHAN_WIDTH", "EFFECTIVE_BW", "RESOLUTION",
-                    "FLAG_ROW", "FREQ_GROUP", "FREQ_GROUP_NAME",
-                    "IF_CONV_CHAIN", "NAME", "NET_SIDEBAND",
-                    "NUM_CHAN", "TOTAL_BANDWIDTH"]
-        
-        assert set(spwtabcols) == set(_spwtab.colnames()), "Measurement set conformance error"
-        self._spwtabcols = {t: _spwtab.getcol(t) for t in spwtabcols}
-        
-        # read observation details
-        obstabcols = ["TIME_RANGE", "LOG", "SCHEDULE", "FLAG_ROW",
-                       "OBSERVER", "PROJECT", "RELEASE_DATE", "SCHEDULE_TYPE",
-                       "TELESCOPE_NAME"]
-        assert set(obstabcols) == set(_obstab.colnames()), "Measurement set conformance error"
-        self._obstabcols = {t: _obstab.getcol(t) if _obstab.iscelldefined(t, 0) else np.array([]) for t in obstabcols}
+            assert set(anttabcols) <= set(_anttab.colnames()), "Measurement set conformance error - keyword table ANTENNA incomplete. Perhaps disable --out-casa-gaintables or check your MS!"
+            self._anttabcols = {t: _anttab.getcol(t) if _anttab.iscelldefined(t, 0) else np.array([]) for t in anttabcols}
+            
+            # field information to be used when writing gain tables
+            fldtabcols = ["DELAY_DIR", "PHASE_DIR", "REFERENCE_DIR", 
+                        "CODE", "FLAG_ROW", "NAME", "NUM_POLY", 
+                        "SOURCE_ID", "TIME"]
+            assert set(fldtabcols) <= set(_fldtab.colnames()), "Measurement set conformance error - keyword table FIELD incomplete. Perhaps disable --out-casa-gaintables or check your MS!"
+            self._fldtabcols = {t: _fldtab.getcol(t) if _fldtab.iscelldefined(t, 0) else np.array([]) for t in fldtabcols}
+            
+            # spw information to be used when writing gain tables
+            spwtabcols = ["MEAS_FREQ_REF", "CHAN_FREQ", "REF_FREQUENCY",
+                        "CHAN_WIDTH", "EFFECTIVE_BW", "RESOLUTION",
+                        "FLAG_ROW", "FREQ_GROUP", "FREQ_GROUP_NAME",
+                        "IF_CONV_CHAIN", "NAME", "NET_SIDEBAND",
+                        "NUM_CHAN", "TOTAL_BANDWIDTH"]
+            
+            assert set(spwtabcols) <= set(_spwtab.colnames()), "Measurement set conformance error - keyword table SPECTRAL_WINDOW incomplete. Perhaps disable --out-casa-gaintables or check your MS!"
+            self._spwtabcols = {t: _spwtab.getcol(t) for t in spwtabcols}
+            
+            # read observation details
+            obstabcols = ["TIME_RANGE", "LOG", "SCHEDULE", "FLAG_ROW",
+                        "OBSERVER", "PROJECT", "RELEASE_DATE", "SCHEDULE_TYPE",
+                        "TELESCOPE_NAME"]
+            assert set(obstabcols) <= set(_obstab.colnames()), "Measurement set conformance error - keyword table OBSERVATION incomplete. Perhaps disable --out-casa-gaintables or check your MS!"
+            self._obstabcols = {t: _obstab.getcol(t) if _obstab.iscelldefined(t, 0) else np.array([]) for t in obstabcols}
+        else:
+            log.warn("Not loading keyword tables FIELD, SPECTRAL_WINDOW, OBSERVATION or ANTENNA per user request.")
         
         self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
         self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
