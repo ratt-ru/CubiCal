@@ -617,7 +617,8 @@ class MSTile(object):
                         wcol = table_subset.getcol(weight_col)
                         # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
                         if weight_col == "WEIGHT":
-                            wcol_cache[weight_col] = wcol[:, np.newaxis, self.dh._corr_slice].repeat(subset.nfreq, 1)
+                            wcol_cache[weight_col] = np.empty_like(obvis0, self.dh.wtype)
+                            wcol_cache[weight_col][:] = wcol[:, np.newaxis, self.dh._corr_slice]
                         else:
                             wcol_cache[weight_col] = wcol[:, self.dh._channel_slice, self.dh._corr_slice]
                     weights0[i, ...] = wcol_cache[weight_col]
