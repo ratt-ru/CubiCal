@@ -820,5 +820,5 @@ class MasterMachine(object):
                 src: instance of cubical.data_handler
             """
             for db in self._save_sols_byname.values():
-                db.set_metadata(src)
                 db.export_CASA_gaintable = self.global_options["out"].get("casa-gaintables", True)
+                db.set_metadata(src)
