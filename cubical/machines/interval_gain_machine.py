@@ -482,34 +482,35 @@ class PerIntervalGains(MasterMachine):
                 self.gflags[goob&~flagged] |= FL.GOOB
                 flagged |= goob
 
-        # else final flagging -- check the posterior error estimate
-        if self.posterior_gain_error is not None:
-            # reset to 0 for fixed directions
-            if self.dd_term:
-                self.posterior_gain_error[self.fix_directions, ...] = 0
-            # flag gains on max error
-            # the last axis is correlation -- we flag if any correlation is flagged
-            bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=(-1,-2))  # dir,time,freq,ant
+        else:
+            # else final flagging -- check the posterior error estimate
+            if self.posterior_gain_error is not None:
+                # reset to 0 for fixed directions
+                if self.dd_term:
+                    self.posterior_gain_error[self.fix_directions, ...] = 0
+                # flag gains on max error
+                # the last axis is correlation -- we flag if any correlation is flagged
+                bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=(-1,-2))  # dir,time,freq,ant
 
-            # mask high-variance gains that are not already otherwise flagged
-            mask = self._interval_to_gainres(bad_gain_intervals, 1)&~flagged
+                # mask high-variance gains that are not already otherwise flagged
+                mask = self._interval_to_gainres(bad_gain_intervals, 1)&~flagged
 
-            # raise FL.GVAR flag on these gains (and clear on all others!)
-            self.gflags &= ~FL.GVAR
-            self.gflags[mask] |= FL.GVAR
-            flagged[mask] = True
+                # raise FL.GVAR flag on these gains (and clear on all others!)
+                self.gflags &= ~FL.GVAR
+                self.gflags[mask] |= FL.GVAR
+                flagged[mask] = True
 
-            self._n_flagged_on_max_posterior_error = mask.sum(axis=(1, 2, 3)) if mask.any() else None
+                self._n_flagged_on_max_posterior_error = mask.sum(axis=(1, 2, 3)) if mask.any() else None
 
-            # if bad_gain_intervals.any():
-            #     # (n_dir,) array showing how many were flagged per direction
-            #     self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1, 2, 3))
-            #     # raised corresponding gain flags
-            #     mask = self._interval_to_gainres(bad_gain_intervals, 1)
-            #     self.gflags[mask] |= FL.GVAR
-            #     flagged[mask] = True
-            # else:
-            #     self._n_flagged_on_max_posterior_error = None
+                # if bad_gain_intervals.any():
+                #     # (n_dir,) array showing how many were flagged per direction
+                #     self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1, 2, 3))
+                #     # raised corresponding gain flags
+                #     mask = self._interval_to_gainres(bad_gain_intervals, 1)
+                #     self.gflags[mask] |= FL.GVAR
+                #     flagged[mask] = True
+                # else:
+                #     self._n_flagged_on_max_posterior_error = None
 
         # Count the gain flags, excluding those set a priori due to missing data.
 
