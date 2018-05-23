@@ -63,18 +63,18 @@ link_args = []
 
 link_args_omp = link_args + ['-lgomp']
 
-class gocython(Command):
+class gocythonize(Command):
     """ Cythonise CubiCal kernels. """
     
     description = 'Cythonise CubiCal kernels.'
 
-    user_options = []
+    user_options = [('force', 'f', 'Force cythonisation.'),]
 
     def initialize_options(self):
         pass
 
     def finalize_options(self):
-        pass
+        self.force = self.force or 0
 
     def run(self):
         
@@ -95,32 +95,19 @@ class gocython(Command):
                           extra_link_args=link_args_omp if omp else link_args,
                           language="c++" if cpp else "c"))
 
-        cythonize(extensions, compiler_directives={'binding': True}, annotate=True)
+        cythonize(extensions, compiler_directives={'binding': True}, annotate=True, force=self.force)
 
 extensions = []
 for source in glob.glob("cubical/kernels/*.pyx"): 
     name, _ = os.path.splitext(source)
     is_cpp = any([s in name for s in "cytf_plane", "cyf_slope", "cyt_slope"])
     is_omp = name.endswith("_omp")
-    print name
-    print name.replace("/",".")
-
 
     extensions.append(
         Extension(name.replace("/","."), [name + ".cpp" if is_cpp else name + ".c"],
                   include_dirs=[include_path],
                   extra_compile_args=cmpl_args_omp if is_omp else cmpl_args,
                   extra_link_args=link_args_omp if is_omp else link_args))
-
-# extensions = []
-# for source in glob.glob("cubical/kernels/*.c") + glob.glob("cubical/kernels/*.cpp"):
-#     name, ext = os.path.splitext(source)
-#     omp = name.endswith("_omp")
-#     extensions.append(
-#         Extension(name.replace("/","."), [source],
-#                   include_dirs=[include_path],
-#                   extra_compile_args=cmpl_args_omp if omp else cmpl_args,
-#                   extra_link_args=link_args_omp if omp else link_args))
 
 # Check for readthedocs environment variable.
 
@@ -158,7 +145,7 @@ setup(name='cubical',
       long_description=long_description,
       long_description_content_type='text/markdown',
       cmdclass={'build_ext': build_ext,
-                'gocython': gocython},
+                'gocythonize': gocythonize},
       packages=['cubical', 
                 'cubical.machines', 
                 'cubical.tools', 
