@@ -64,8 +64,8 @@ cubical.stats.pickle
 table.lock
 *.tmp
 *.skel
-cubical/kernels/*.c
-cubical/kernels/*.cpp
+#cubical/kernels/*.c
+#cubical/kernels/*.cpp
 cubical/kernels/*.html
 cubical/kernels/includes/*.html
 build/*
