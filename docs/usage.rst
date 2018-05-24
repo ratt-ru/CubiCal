@@ -18,13 +18,12 @@ A basic parset file looks something like this:
 .. code-block:: none
 
 	[data]
-	ms = D147-LO-NOIFS-NOPOL-4M5S.MS/
+	ms = measurement_set.MS
 	time-chunk = 32
 	freq-chunk = 32
 
 	[model]
-	lsm = skymodels/3C147-GdB-spw0+pybdsm+apparent.lsm.html 
-	column = 
+	list = sky_model.lsm.html 
 
 	[montblanc] 
 	dtype = double
@@ -35,9 +34,9 @@ A basic parset file looks something like this:
 	jones = G
 
 	[out]
-	column = CUSTOM_DATA
+	column = CCORRECTED_DATA
 
-	[j1]
+	[g]
 	time-int = 8
 	freq-int = 8
 
@@ -68,13 +67,12 @@ command line argument), and specifying ncpu. basic.parset would then look as fol
 .. code-block:: none
 
 	[data]
-	ms = D147-LO-NOIFS-NOPOL-4M5S.MS/
+	ms = measurement_set.MS
 	time-chunk = 32
 	freq-chunk = 32
 
 	[model]
-	lsm = skymodels/3C147-GdB-spw0+pybdsm+apparent.lsm.html 
-	column = 
+	list = sky_model.lsm.html 
 
 	[montblanc] 
 	dtype = double
@@ -85,9 +83,9 @@ command line argument), and specifying ncpu. basic.parset would then look as fol
 	jones = G
 
 	[out]
-	column = CUSTOM_DATA
+	column = CCORRECTED_DATA
 
-	[j1]
+	[g]
 	time-int = 8
 	freq-int = 8
 

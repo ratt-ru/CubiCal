@@ -237,3 +237,12 @@ sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 # autodoc_mock_imports = ['pyrap', 
 #                         'SharedArray', 
 #                         'montblanc']
+
+html_static_path = ['_static']
+
+html_context = {
+    'css_files': [
+        '_static/theme_overrides.css',  # override wide tables in RTD theme
+        ],
+     }
+
