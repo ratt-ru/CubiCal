@@ -638,6 +638,7 @@ class MSTile(object):
             # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them.
 
             flagcol = flagrow = None
+            self.bflagcol = None
             self._flagcol_sum = 0
             self.dh.flagcounts["TOTAL"] += flag_arr0.size
 
@@ -716,10 +717,14 @@ class MSTile(object):
                     flag_arr0[(self.bflagcol & self.dh._apply_bitflags) != 0] = FL.PRIOR
                     flag_arr0[(self.bflagrow & self.dh._apply_bitflags) != 0, :, :] = FL.PRIOR
 
-                flagged = flag_arr0 != 0
-                nfl = flagged.sum()
-                self.dh.flagcounts["IN"] += nfl
-                print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
+            # if bitflag column is not kept, yet we need to save flags, keep the flag column
+            if self.bflagcol is None and self.dh._save_flags:
+                self._flagcol = flagcol
+
+            flagged = flag_arr0 != 0
+            nfl = flagged.sum()
+            self.dh.flagcounts["IN"] += nfl
+            print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
 
             # now rebin arrays if appropriate
             if self.dh.do_freq_rebin or self.dh.do_time_rebin:
@@ -1012,42 +1017,67 @@ class MSTile(object):
                 print>> log, "  writing {} column".format(self.dh.output_model_column)
                 self.dh.putslice(self.dh.output_model_column, model, subset=table_subset)
 
-            # write flags if (a) auto-filling BITFLAG column and/or (b) solver has generated flags, and we're saving cubical flags
+            # write flags if (a) solver has generated flags, and we're saving them, (b) always, if auto-filling BITFLAG column
+            #
+            flag_col = None     # if not None, FLAG/FLAG_ROW will be saved
+            bflag_col = None    # if not None, BITFLAG/BITFLAG_ROW will be saved
 
-            if self.dh._save_bitflag:
-                if data0['updated'][1]:
+            if data0['updated'][1]:
+                # count new flags
+                newflags = subset.upsample(data['flags'] & ~(FL.PRIOR | FL.SKIPSOL) != 0)
+                nfl = newflags.sum()
+                # add to stats
+                self.dh.flagcounts['NEW'] += nfl
+                ratio = nfl / float(newflags.size)
+
+                # write to BITFLAG, if asked to
+                if self.dh._save_bitflag:
                     # clear bitflag column first
                     self.bflagcol &= ~self.dh._save_bitflag
-                    # add bitflag to points where data wasn't flagged for prior reasons
-                    newflags = subset.upsample(data['flags'] & ~(FL.PRIOR | FL.SKIPSOL) != 0)
-                    # add to stats
-                    self.dh.flagcounts['NEW'] += newflags.sum()
                     self.bflagcol[newflags] |= self.dh._save_bitflag
-                    self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
-                    print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged by solver)".format(
-                        newflags.sum() / float(newflags.size))
-                    self.bflagrow = np.bitwise_and.reduce(self.bflagcol, axis=(-1, -2))
-                    table_subset.putcol("BITFLAG_ROW", self.bflagrow)
-                    flag_col = self.bflagcol != 0
-                    self.dh.putslice("FLAG", flag_col, subset=table_subset)
-                    totflags = flag_col.sum()
-                    self.dh.flagcounts['OUT'] += totflags
-                    print>> log, "  updated FLAG column ({:.2%} total visibilities flagged)".format(
-                        totflags / float(flag_col.size))
-                    flag_row = flag_col.all(axis=(-1, -2))
-                    table_subset.putcol("FLAG_ROW", flag_row)
-                    print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(
-                        flag_row.sum() / float(flag_row.size))
-                else:
-                    print>> log, "  no new flags generated"
-                    self.dh.flagcounts['OUT'] += self._flagcol_sum
+                    bflag_col = True
+                    if self.dh._save_flags:
+                        print>> log, "  {:.2%} visibilities flagged by solver: saving to BITFLAG and FLAG columns".format(ratio)
+                        flag_col = self.bflagcol != 0
+                    else:
+                        print>> log, "  {:.2%} visibilities flagged by solver: saving to BITFLAG column only".format(ratio)
 
-            elif self._auto_filled_bitflag:
+                # else write to FLAG/FLAG_ROW only, if asked to
+                elif self.dh._save_flags:
+                    print>> log, "  {:.2%} visibilities flagged by solver: saving to FLAG column".format(ratio)
+                    self._flagcol[newflags] = True
+                    flag_col = self._flagcol
+
+                # else just message
+                else:
+                    print>> log, "  {:.2%} visibilities flagged by solver, but we're not saving flags".format(ratio)
+            else:
+                print>> log, "  no new flags were generated"
+                if self._auto_filled_bitflag:
+                    bflag_col = True
+
+            # now figure out what to write
+            # this is set if BITFLAG/BITFLAG_ROW is to be written out
+            if bflag_col is not None:
                 self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
-                print>> log, "  auto-filled BITFLAG column"
+                totflags = (self.bflagcol != 0).sum()
+                self.dh.flagcounts['OUT'] += totflags
+                print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged)".format(totflags / float(self.bflagcol.size))
                 self.bflagrow = np.bitwise_and.reduce(self.bflagcol, axis=(-1, -2))
                 table_subset.putcol("BITFLAG_ROW", self.bflagrow)
-                self.dh.flagcounts['OUT'] += self._flagcol_sum
+                print>> log, "  updated BITFLAG_ROW column ({:.2%} rows flagged)".format(
+                    (self.bflagrow!=0).sum()/float(self.bflagrow.size))
+
+            # this is set if FLAG/FLAG_ROW is to be written out
+            if flag_col is not None:
+                self.dh.putslice("FLAG", flag_col, subset=table_subset)
+                totflags = flag_col.sum()
+                if bflag_col is None:                  # only count if not counted above
+                    self.dh.flagcounts['OUT'] += totflags
+                print>> log, "  updated FLAG column ({:.2%} visibilities flagged)".format(totflags / float(flag_col.size))
+                flag_row = flag_col.all(axis=(-1, -2))
+                table_subset.putcol("FLAG_ROW", flag_row)
+                print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum() / float(flag_row.size))
 
             if unlock:
                 self.dh.unlock()
