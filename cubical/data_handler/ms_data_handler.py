@@ -490,10 +490,12 @@ class MSDataHandler:
             bitflags = None
         apply_flags  = flagopts.get("apply")
         save_bitflag = flagopts.get("save")
+        save_flags   = flagopts.get("save-legacy")
         auto_init    = flagopts.get("auto-init")
 
         self._reinit_bitflags = flagopts["reinit-bitflags"]
         self._apply_flags = self._apply_bitflags = self._save_bitflag = self._auto_fill_bitflag = None
+        self._save_flags = bool(save_bitflag) if save_flags == "auto" else save_flags
 
         # no BITFLAG. Should we auto-init it?
 
@@ -530,7 +532,9 @@ class MSDataHandler:
                 else:
                     print>>log,"    BITFLAG column defines the following flagsets: {}".format(
                         " ".join(['{}:{}'.format(name, bitflags.bits[name]) for name in bitflags.names()]))
-                    if apply_flags[0] == '-':
+                    if apply_flags == "FLAG":
+                        self._apply_flags = True
+                    elif apply_flags[0] == '-':
                         flagset = apply_flags[1:]
                         print>> log(0), "    Excluding flagset {}".format(flagset)
                         if flagset not in bitflags.bits:
@@ -544,13 +548,21 @@ class MSDataHandler:
                                 print>>log(0,"red"),"    flagset '{}' not found -- ignoring".format(flagset)
                             else:
                                 self._apply_bitflags |= bitflags.bits[flagset]
+            if self._apply_flags:
+                print>> log, ModColor.Str("  Using flags from FLAG/FLAG_ROW columns")
             if self._apply_bitflags:
                 print>> log(0, "blue"), "  Applying BITFLAG mask {} to input data".format(self._apply_bitflags)
-            else:
+            elif not self._apply_flags:
                 print>> log(0, "red"), "  No input flags will be applied!"
             if save_bitflag:
                 self._save_bitflag = bitflags.flagmask(save_bitflag, create=True)
-                print>> log(0, "blue"), "  Will save output flags into BITFLAG '{}' ({}), and into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
+                if self._save_flags:
+                    print>> log(0, "blue"), "  Will save output flags into BITFLAG '{}' ({}), and into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
+                else:
+                    print>> log(0, "red"), "  Will save output flags into BITFLAG '{}' ({}), but not into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
+            else:
+                if self._save_flags:
+                    print>> log(0, "blue"), "  Will save output flags into into FLAG/FLAG_ROW"
 
             for flagset in bitflags.names():
                 self.flagcounts[flagset] = 0
@@ -564,9 +576,11 @@ class MSDataHandler:
             self._apply_flags = bool(apply_flags)
             self._apply_bitflags = 0
             if self._apply_flags:
-                print>> log, ModColor.Str("No BITFLAG column in this MS. Using FLAG/FLAG_ROW.")
+                print>> log, ModColor.Str("  No BITFLAG column in this MS. Using flags from FLAG/FLAG_ROW columns")
             else:
-                print>> log, ModColor.Str("No flags will be read, since --flags-apply was not set.")
+                print>> log, ModColor.Str("  No flags will be read, since --flags-apply was not set")
+            if self._save_flags:
+                print>> log(0, "blue"), "  Will save output flags into into FLAG/FLAG_ROW"
 
             self.bitflags = {}
 
