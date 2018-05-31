@@ -98,7 +98,6 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
                         vis_mat_conjugate(&r[i,t,f,ab,aa,0,0], &r[i,t,f,aa,ab,0,0])
 
 
-
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
@@ -371,7 +370,7 @@ def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
 
     cdef int i, d, t, f, aa, ab = 0
     cdef int n_mod, n_tim, n_fre, n_ant
-    cdef complex3264 denom
+    
 
 
     n_mod = r.shape[0]
