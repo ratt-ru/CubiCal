@@ -139,7 +139,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         update = self.init_update(jhr)
         self.cykernel.cycompute_update(jhr, jhjinv, update)
 
-        #if self.dd_term and self.n_dir > 1:
+        #if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
         update += self.gains
 
         if self.iters % 2 == 0 or self.n_dir > 1:
@@ -239,7 +239,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         
         if self.npol == 2:
-            covinv[(0,0,1,1,1,1,2,2,2,2,3,3), (1,2,0,1,2,3,0,1,2,3,1,2)] = 0  #(1,2),(1,2)
+            covinv[(0,0,1,1,1,1,2,2,2,2,3,3), (1,2,0,1,2,3,0,1,2,3,1,2)] = 0  
 
         return covinv
     
@@ -268,7 +268,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             Args:
                 f (callable) : function
                 low (float): lower bound, 2.
-                high (float): upper bound, 30.
+                high (float): upper bound, 100.
 
             Returns:
                 root (float) : The root of f or minimum point    
