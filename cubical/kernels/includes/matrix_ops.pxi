@@ -42,7 +42,6 @@ cdef inline void weight_upd_product(complex3264 *out, const complex3264 *r, cons
     out[0] = (v+2*npol)/(v + 2*denom)
 
 
-
 cdef inline void mat_product_diag(complex3264 * out,const complex3264 *a,const complex3264 *b) nogil:
     """
     Computes a 2x2 matrix product of two diagonal matrices: out = A.B

@@ -378,20 +378,18 @@ def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
     n_fre = r.shape[2]
     n_ant = r.shape[3]
 
-    cdef int[:,:] half_baselines = cygenerics.half_baselines(n_ant)
-    cdef int ibl, n_bl = half_baselines.shape[0]
+    cdef int[:,:] all_baselines = cygenerics.all_baselines(n_ant)
+    cdef int ibl, n_bl = all_baselines.shape[0]
     cdef int num_threads = cubical.kernels.num_omp_threads
 
     
     with nogil, parallel(num_threads=num_threads):
         for ibl in prange(n_bl, schedule='static'):
-            aa, ab = half_baselines[ibl][0], half_baselines[ibl][1]   
+            aa, ab = all_baselines[ibl][0], all_baselines[ibl][1]   
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
                     for f in xrange(n_fre):
                         weight_upd_product(&w[i,t,f,aa,ab,0], &r[i,t,f,aa,ab,0,0], &cov[0,0], v, npol)
-                        
-
 
 
 @cython.cdivision(True)

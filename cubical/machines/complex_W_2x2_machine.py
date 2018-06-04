@@ -110,7 +110,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         jhwr = self.get_new_jhr()
 
         if self.iters == 1:
-            self.residuals = self.get_obs_or_res(obser_arr, model_arr)
+            self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
         self.cykernel.cycompute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
 
@@ -139,8 +139,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         update = self.init_update(jhr)
         self.cykernel.cycompute_update(jhr, jhjinv, update)
 
-        if self.dd_term and self.n_dir > 1:
-            update += self.gains
+        #if self.dd_term and self.n_dir > 1:
+        update += self.gains
 
         if self.iters % 2 == 0 or self.n_dir > 1:
             self.gains += update
@@ -213,29 +213,33 @@ class ComplexW2x2Gains(PerIntervalGains):
         
             N = self.n_tim*self.n_fre*self.n_ant*self.n_ant
 
-            res_reshaped = np.reshape(self.residuals[:,:,:,:,:,(0,1),(0,1)],(2, N))
+            res_reshaped = np.reshape(self.residuals,(4, N))  
 
             w = np.reshape(self.weights.real, (N))
 
-            std = np.cov(res_reshaped, aweights=w)[0,0]/4 #just return the first element as diag
-            stdinv = 1/std #np.linalg.pinv(std.real)
+            std = np.cov(res_reshaped, aweights=w)/2 #Don't know why the 1/2 but it improves the results
+            
+            try: 
+                stdinv = np.linalg.inv(std)
+            except:
+                stdinv = np.linalg.pinv(std)
 
             covinv = np.eye(4, dtype=self.dtype)
 
             if self.cov_type == "hybrid":
-                if std < 1:
-                   covinv *= stdinv
+                if np.max(std) < 1:
+                    covinv = np.array(stdinv, dtype=self.dtype)
                    
 
             elif self.cov_type == "compute":
-                covinv *= stdinv
+                covinv = np.array(stdinv, dtype=self.dtype)
 
             else:
                 raise RuntimeError("unknown robust-cov setting")
 
         
         if self.npol == 2:
-            covinv[(1,2),(1,2)] = 0
+            covinv[(0,0,1,1,1,1,2,2,2,2,3,3), (1,2,0,1,2,3,0,1,2,3,1,2)] = 0  #(1,2),(1,2)
 
         return covinv
     
@@ -270,22 +274,11 @@ class ComplexW2x2Gains(PerIntervalGains):
                 root (float) : The root of f or minimum point    
             """
 
-            #t0 = time.time()
             vvals = np.linspace(low, high, 100)
             fvals = f(vvals)
-            root1 = vvals[np.argmin(np.abs(fvals))]
-            #t1 = time.time()
-            #d1 = t1-t0
-
-            # t0 = time.time()
-            # root = fsolve(f, 2.)[0]
-            # if root < low:
-            #     root = low
-            # t1 = time.time()
-            # d2 = t1-t0
-            # print "min solve took, fsolve took , vals are (%f, %f, %f, %f)"%(d1,d2,root1,root)
+            root = vvals[np.argmin(np.abs(fvals))]
             
-            return root1
+            return root
 
         self.cykernel.cycompute_weights(self.residuals,covinv,w,v,self.npol)
 
