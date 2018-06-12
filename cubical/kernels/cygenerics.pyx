@@ -40,6 +40,9 @@ ctypedef fused complex3264:
     fcomplex
     dcomplex
 
+ctypedef np.uint16_t flag_t
+
+
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
@@ -244,4 +247,27 @@ def cycompute_chisq(complex3264 [:,:,:,:,:,:,:] resid,np.float64_t [:,:,:] chisq
                                 for c2 in xrange(2):
                                     chisq[t,f,aa] += resid[i,t,f,aa,ab,c1,c2].real**2 + resid[i,t,f,aa,ab,c1,c2].imag**2
 
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_mad(resid, flags):
+    cdef int n_mod, n_tim, n_fre, n_ant, n_cor, bl, aa, ab, m, c1, c2
+
+    n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = resid.shape
+
+    mad = np.empty((n_mod, n_ant, n_ant, n_cor, n_cor), resid.real.dtype)
+    cdef np.int32_t [:,:] baselines = half_baselines(n_ant)
+    cdef n_bl = half_baselines.shape[0]
+    assert(flags.dtype == np.complex64)
+
+    with parallel(num_threads=num_threads):
+        for bl in prange(n_bl, schedule='static'):
+            aa, ab = half_baselines[bl]
+            for m in xrange(n_mod):
+                for c1 in xrange(2):
+                    for c2 in xrange(2):
+                        mad[i,aa,ab,c1,c2] = mad[i,aa,ab,c1,c2] =
+                            np.ma.median(np.ma.masked_array(resid[i,:,:,aa,ab,c1,c2].abs(), flags[:,:,c1,c2]))
 
