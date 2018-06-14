@@ -15,7 +15,7 @@ import time
 from collections import OrderedDict, Iterator
 
 from cubical.database.parameter import Parameter, _Record
-
+from iface_database import iface_database
 class _ParmSegment(_Record):
     """
     A ParmSegment is just a Record -- we just want it to be a special type so that it
@@ -23,7 +23,7 @@ class _ParmSegment(_Record):
     """
     pass
 
-class PickledDatabase(object):
+class PickledDatabase(iface_database):
     """
     This class implements a simple parameter database saved to a pickle.
     """
@@ -31,7 +31,7 @@ class PickledDatabase(object):
     def __init__(self):
         self._fobj = None
 
-    def _create(self, filename, metadata={}, backup=True):
+    def _create(self, filename, metadata={}, backup=True, **kw):
         """
         Creates a parameter database given by the filename and opens it in "create" mode.
 
@@ -42,6 +42,8 @@ class PickledDatabase(object):
                 Optional metadata to be stored in DB.
             backup (bool, optional):
                 If True, and an old database with the same filename exists, make a backup.
+            kw (dict):
+                Keyword arguments.
         """
 
         self.mode = "create"

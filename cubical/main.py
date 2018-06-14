@@ -33,7 +33,6 @@ logger.init("cc")
 import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
-import cubical.data_handler as data_handler
 from cubical.data_handler.ms_data_handler import MSDataHandler
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
@@ -239,9 +238,8 @@ def main(debugging=False):
                           min_baseline=GD["sol"]["min-bl"],
                           max_baseline=GD["sol"]["max-bl"],
                           chunk_freq=GD["data"]["freq-chunk"],
-                          rebin_freq=GD["data"]["rebin-freq"])
-
-        data_handler.global_handler = ms
+                          rebin_freq=GD["data"]["rebin-freq"],
+                          do_load_CASA_kwtables = GD["out"]["casa-gaintables"])
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory

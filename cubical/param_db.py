@@ -10,8 +10,8 @@ import numpy as np
 from cubical.tools import logger
 log = logger.getLogger("param_db")
 
-from database.pickled_db import PickledDatabase
-
+#from database.pickled_db import PickledDatabase
+from database.casa_db_adaptor import casa_db_adaptor
 def create(filename, metadata={}, backup=True):
     """
     Creates a new parameter database.
@@ -29,7 +29,7 @@ def create(filename, metadata={}, backup=True):
             A resulting parameter database.
     """
 
-    db = PickledDatabase()
+    db = casa_db_adaptor()
     db._create(filename, metadata, backup)
     
     return db
@@ -47,7 +47,7 @@ def load(filename):
             A resulting parameter database.
     """
 
-    db = PickledDatabase()
+    db = casa_db_adaptor()
     db._load(filename)
     
     return db

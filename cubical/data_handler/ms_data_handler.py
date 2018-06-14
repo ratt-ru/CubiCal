@@ -153,7 +153,8 @@ class MSDataHandler:
                  flagopts={}, diag=False,
                  beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
                  active_subset=None, min_baseline=0, max_baseline=0,
-                 chunk_freq=None, rebin_freq=None):
+                 chunk_freq=None, rebin_freq=None,
+                 do_load_CASA_kwtables=True):
         """
         Initialises a DataHandler object.
 
@@ -196,6 +197,10 @@ class MSDataHandler:
                 Average specified number of timeslots together on-the-fly
             rebin_freq (int):
                 Average specified number of channels together on-the-fly
+            do_load_CASA_kwtables
+                Should load CASA MS MEMO 229 keyword tables (optional). If not loaded
+                no CASA-style gaintables can be produced.
+
 
         Raises:
             RuntimeError:
@@ -241,6 +246,45 @@ class MSDataHandler:
             raise RuntimeError("MS with {} correlations not (yet) supported".format(self.nmscorrs))
         self.diag = diag
         self.nants = _anttab.nrows()
+
+        if do_load_CASA_kwtables:
+            # antenna fields to be used when writing gain tables
+            anttabcols = ["OFFSET", "POSITION", "TYPE",
+                          "DISH_DIAMETER", "FLAG_ROW", "MOUNT", "NAME",
+                          "STATION"]
+            assert set(anttabcols) <= set(
+                _anttab.colnames()), "Measurement set conformance error - keyword table ANTENNA incomplete. Perhaps disable --out-casa-gaintables or check your MS!"
+            self._anttabcols = {t: _anttab.getcol(t) if _anttab.iscelldefined(t, 0) else np.array([]) for t in
+                                anttabcols}
+
+            # field information to be used when writing gain tables
+            fldtabcols = ["DELAY_DIR", "PHASE_DIR", "REFERENCE_DIR",
+                          "CODE", "FLAG_ROW", "NAME", "NUM_POLY",
+                          "SOURCE_ID", "TIME"]
+            assert set(fldtabcols) <= set(
+                _fldtab.colnames()), "Measurement set conformance error - keyword table FIELD incomplete. Perhaps disable --out-casa-gaintables or check your MS!"
+            self._fldtabcols = {t: _fldtab.getcol(t) if _fldtab.iscelldefined(t, 0) else np.array([]) for t in
+                                fldtabcols}
+
+            # spw information to be used when writing gain tables
+            spwtabcols = ["MEAS_FREQ_REF", "CHAN_FREQ", "REF_FREQUENCY",
+                          "CHAN_WIDTH", "EFFECTIVE_BW", "RESOLUTION",
+                          "FLAG_ROW", "FREQ_GROUP", "FREQ_GROUP_NAME",
+                          "IF_CONV_CHAIN", "NAME", "NET_SIDEBAND",
+                          "NUM_CHAN", "TOTAL_BANDWIDTH"]
+
+            assert set(spwtabcols) <= set(
+                _spwtab.colnames()), "Measurement set conformance error - keyword table SPECTRAL_WINDOW incomplete. Perhaps disable --out-casa-gaintables or check your MS!"
+            self._spwtabcols = {t: _spwtab.getcol(t) for t in spwtabcols}
+
+            # read observation details
+            obstabcols = ["TIME_RANGE", "LOG", "SCHEDULE", "FLAG_ROW",
+                          "OBSERVER", "PROJECT", "RELEASE_DATE", "SCHEDULE_TYPE",
+                          "TELESCOPE_NAME"]
+            assert set(obstabcols) <= set(
+                _obstab.colnames()), "Measurement set conformance error - keyword table OBSERVATION incomplete. Perhaps disable --out-casa-gaintables or check your MS!"
+            self._obstabcols = {t: _obstab.getcol(t) if _obstab.iscelldefined(t, 0) else np.array([]) for t in
+                                obstabcols}
 
         self.antpos   = _anttab.getcol("POSITION")
         self.antnames = _anttab.getcol("NAME")

@@ -70,12 +70,17 @@ DEFAULT_OUTPUT_DIR = os.environ["HOME"]+"/tmp"
 DEFAULT_NCPU = None
 
 def _ensure_output_ms(ms):
+    logprint("*** output MS is {}".format(ms))
     if not os.path.exists(ms):
         tarball = ms + ".tgz"
-        logprint("*** MS {} does not exist, will look for tarball {}".format(ms, os.getcwd()))
+        logprint("*** MS {} does not exist, will look for tarball {}".format(ms, tarball))
         if os.path.exists(tarball):
             os.chdir(os.path.dirname(tarball))
-            os.system("tar zxvf " + tarball)
+            cmd = "tar zxvf " + os.path.basename(tarball)
+            logprint("*** running '{}' in {}".format(cmd, os.path.dirname(tarball)))
+            if os.system(cmd):
+                logprint("*** tarball {} failed to xtract".format(tarball))
+                sys.exit(1)
         else:
             logprint("*** tarball {} doesn't exist either".format(tarball))
             sys.exit(1)
