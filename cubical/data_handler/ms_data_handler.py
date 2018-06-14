@@ -229,6 +229,7 @@ class MSDataHandler:
         _spwtab = pt.table(self.ms_name + "::SPECTRAL_WINDOW", ack=False)
         _poltab = pt.table(self.ms_name + "::POLARIZATION", ack=False)
         _ddesctab = pt.table(self.ms_name + "::DATA_DESCRIPTION", ack=False)
+        _obstab = pt.table(self.ms_name + "::OBSERVATION", ack=False)
         _feedtab = pt.table(self.ms_name + "::FEED", ack=False)
 
         self.ctype = np.complex64   # MS complex data type
