@@ -33,8 +33,7 @@ logger.init("cc")
 import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
-import cubical.data_handler as data_handler
-from cubical.data_handler import DataHandler, Tile
+from cubical.data_handler.ms_data_handler import MSDataHandler
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine
@@ -221,7 +220,7 @@ def main(debugging=False):
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
 
-        ms = DataHandler(GD["data"]["ms"],
+        ms = MSDataHandler(GD["data"]["ms"],
                           GD["data"]["column"],
                           output_column=GD["out"]["column"],
                           output_model_column=GD["out"]["model-column"],
@@ -232,16 +231,15 @@ def main(debugging=False):
                           channels=GD["sel"]["chan"],
                           flagopts=GD["flags"],
                           diag=solver_opts["diag-diag"],
-                          double_precision=double_precision,
                           beam_pattern=GD["model"]["beam-pattern"],
                           beam_l_axis=GD["model"]["beam-l-axis"],
                           beam_m_axis=GD["model"]["beam-m-axis"],
                           active_subset=GD["sol"]["subset"],
                           min_baseline=GD["sol"]["min-bl"],
                           max_baseline=GD["sol"]["max-bl"],
+                          chunk_freq=GD["data"]["freq-chunk"],
+                          rebin_freq=GD["data"]["rebin-freq"],
                           do_load_CASA_kwtables = GD["out"]["casa-gaintables"])
-        
-        data_handler.global_handler = ms
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
@@ -264,6 +262,10 @@ def main(debugging=False):
 
         if dde_mode == 'always' and not have_dd_jones:
             raise UserInputError("we have '--model-ddes always', but no direction dependent Jones terms enabled")
+
+        # force floats in Montblanc calculations
+        mb_opts = GD["montblanc"]
+        mb_opts['dtype'] = 'float'
 
         ms.init_models(GD["model"]["list"].split(","),
                        GD["weight"]["column"].split(",") if GD["weight"]["column"] else None,
@@ -343,14 +345,15 @@ def main(debugging=False):
         print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
 
-        chunks_per_tile = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+        chunks_per_tile, tile_list = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["rebin-time"],
+                                            GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
 
         # run the main loop
 
         t0 = time()
-        stats_dict = workers.run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts)
+        stats_dict = workers.run_process_loop(ms, tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 
         print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
 

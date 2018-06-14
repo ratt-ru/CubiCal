@@ -77,7 +77,7 @@ if cythonize:
         name, ext = os.path.splitext(source)
         omp = name.endswith("_omp")
         # identify which kernels need to go via the C++ compiler
-        cpp = any([x in name for x in "cytf_plane", "cyf_slope", "cyt_slope"])
+        cpp = any([x in name for x in "cytf_plane", "cyf_slope", "cyt_slope", "rebinning"])
 
         extensions.append(Extension(
             name.replace("/","."), [source],
@@ -121,6 +121,7 @@ else:
                     'python-casacore>=2.1.2', 
                     'sharedarray', 
                     'matplotlib',
+                    'cython',
                     'scipy',
                     'astro-tigger-lsm']
 
