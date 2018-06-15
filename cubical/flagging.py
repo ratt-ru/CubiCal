@@ -32,6 +32,7 @@ class FL(object):
     GNULL    = dtype(1<<8)    # gain solution gone to zero
     LOWSNR   = dtype(1<<9)    # prior SNR too low for gain solution
     GVAR     = dtype(1<<10)   # posterior variance too low for gain solution
+    MAD      = dtype(1<<11)   # residual exceeds MAD-based threshold
     SKIPSOL  = dtype(1<<15)   # omit this data point from the solver
 
     @staticmethod

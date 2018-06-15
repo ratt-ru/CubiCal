@@ -21,7 +21,6 @@ gm_factory = None
 # IFR-based gain machine to use
 ifrgain_machine = None
 
-
 #@profile
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
@@ -57,6 +56,26 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     chi_tol      = sol_opts["delta-chi"]
     chi_interval = sol_opts["chi-int"]
     stall_quorum = sol_opts["stall-quorum"]
+
+
+    # collect flagging options
+
+    flag_warning_threshold = sol_opts["warn-thr"]
+    mad_flag = sol_opts["mad-flag"]
+    mad_threshold = sol_opts["mad-thr"]
+    medmad_threshold = sol_opts["mad-med-thr"]
+    if not isinstance(mad_threshold, list):
+        mad_threshold = [mad_threshold]
+    if not isinstance(medmad_threshold, list):
+        medmad_threshold = [medmad_threshold]
+
+    def get_mad_thresholds():
+        """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
+        until the list is down to one element."""
+        if not mad_flag:
+            return 0, 0
+        return mad_threshold.pop(0) if len(mad_threshold)>2 else (mad_threshold[0] if mad_threshold else 0), \
+               medmad_threshold.pop(0) if len(medmad_threshold)>2 else (medmad_threshold[0] if medmad_threshold else 0)
 
     # Initialise stat object.
 
@@ -137,6 +156,84 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # This flag is set to True when we have an up-to-date residual in resid_arr.
     
     have_residuals = True
+
+    stats.chunk.num_mad_flagged = 0
+
+    # apply MAD flagging
+    def beyond_thunderdome(max_label, threshold, med_threshold):
+        """This function implements MAD-based flagging on residuals"""
+        import cubical.kernels
+        cygenerics = cubical.kernels.import_kernel("cygenerics")
+        # estimate MAD of off-diagonal elements
+        absres = np.empty_like(resid_arr, dtype=np.float32)
+        np.abs(resid_arr, out=absres)
+        mad = cygenerics.cycompute_mad(absres, flags_arr, diag=False, offdiag=True)
+        # any of it non-zero?
+        if mad.mask.all():
+            return
+        # estimate median MAD
+        medmad = np.ma.median(mad)
+        # all this was worth it, just so I could type "mad.max()" as legit code
+        print>>log(2),"{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f}".format(max_label, mad.min(), mad.max(), medmad)
+        if log.verbosity() > 4:
+            for imod in xrange(gm.n_mod):
+                per_bl = [(mad[imod,p,q,], p, q) for p in xrange(gm.n_ant) for q in xrange(p+1, gm.n_ant) if not mad.mask[imod,p,q]]
+                per_bl = ["{}:{} {:.2f}".format(p, q, x) for x, p, q in sorted(per_bl)[::-1]]
+                print>>log(4),"{} model {} MADs are {}".format(label, imod, ", ".join(per_bl))
+
+        def kill_the_bad_guys(baddies, method):
+            # mask of valid 2x2 entires
+            invalid_2x2 = ~goodies.any(axis=(-1, -2))
+            # any correlation bad -> flag all 4
+            baddies = baddies.any(axis=(-1,-2))
+            # residuals w.r.t. all (nonzero) models need to be flagged for a flag to be raised
+            baddies = (baddies|invalid_2x2).all(axis=0)
+            # but drop the flag if all models were zero to begin with
+            baddies[invalid_2x2.all(axis=0)] = False
+            # clear the ones already flagged
+            baddies[flags_arr!=0] = False
+            nbad = baddies.sum()
+            stats.chunk.num_mad_flagged += nbad
+            if nbad:
+                if nbad < flags_arr.size * flag_warning_threshold:
+                    warning, color = "", "blue"
+                else:
+                    warning, color = "WARNING: ", "red"
+                print>> log(1, color), "{}{} {} kills {} ({:.2%}) visibilities".format(warning, max_label, method, nbad,
+                                        nbad/float(baddies.size))
+                flags_arr[baddies] |= FL.MAD
+                goodies[:, baddies, :, :] = False
+                if log.verbosity() > 2:
+                    per_bl = []
+                    total_elements = float(gm.n_tim * gm.n_fre)
+                    for p in xrange(gm.n_ant):
+                        for q in xrange(p + 1, gm.n_ant):
+                            n_flagged = baddies[:, :, p, q].sum()
+                            if n_flagged:
+                                per_bl.append((n_flagged, p ,q))
+                    per_bl = ["{}:{} {}".format(p, q, n_flagged, n_flagged/total_elements)
+                               for n_flagged, p, q in sorted(per_bl)[::-1]]
+                    print>> log(3), "{} of which per baseline: {}".format(label, ", ".join(per_bl))
+            else:
+                print>> log(2),"{} {} abides".format(max_label, method)
+
+        # make mask of non-zero, non-flagged residuals
+        goodies = (resid_arr != 0) & (flags_arr == 0)[np.newaxis, ..., np.newaxis, np.newaxis]
+
+        # apply per-baseline MAD threshold
+        if threshold:
+            baddies = goodies & (absres > (threshold*mad)[:, np.newaxis, np.newaxis, :, : ,np.newaxis, np.newaxis])
+            kill_the_bad_guys(baddies, "baseline-based Mad Max")
+
+        # apply global median MAD threshold
+        if med_threshold:
+            baddies = (absres > (med_threshold*medmad))
+            kill_the_bad_guys(baddies, "global Mad Max")
+
+    # do mad max flagging, if requested
+    thr1, thr2 = get_mad_thresholds()
+    if thr1 or thr2:
+        beyond_thunderdome("{} initial".format(label), thr1, thr2)
 
     def compute_chisq(statfield=None):
         """
@@ -220,6 +317,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             gm.compute_residual(obser_arr, model_arr, resid_arr)
             resid_arr[:,flags_arr!=0] = 0
 
+            # do mad max flagging, if requested
+            thr1, thr2 = get_mad_thresholds()
+            if thr1 or thr2:
+                beyond_thunderdome("{} iter {}".format(label, num_iter), thr1, thr2)
+
             chi, mean_chi = compute_chisq()
 
             have_residuals = True
@@ -245,6 +347,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     if gm.has_valid_solutions:
         # Final round of flagging
         flagged = gm.flag_solutions(flags_arr, True)
+    else:
+        flagged = None
         
     # check this again, because final round of flagging could have killed us
     if gm.has_valid_solutions:
@@ -252,6 +356,12 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         if (sol_opts['last-rites'] or compute_residuals) and (not have_residuals or flagged):
             gm.compute_residual(obser_arr, model_arr, resid_arr)
             resid_arr[:,flags_arr!=0] = 0
+
+            # do mad max flagging, if requested
+            thr1, thr2 = get_mad_thresholds()
+            if thr1 or thr2:
+                beyond_thunderdome("{} final".format(label), thr1, thr2)
+
             if sol_opts['last-rites']:
                 # Recompute chi-squared based on original noise statistics.
                 chi, mean_chi = compute_chisq(statfield='chi2')
@@ -281,7 +391,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     else:
         
-        print>>log(0, "red"), "{} {}: completely flagged".format(label, gm.final_convergence_status_string)
+        print>>log(0, "red"), "{} {}: completely flagged?".format(label, gm.final_convergence_status_string)
 
         stats.chunk.chi2 = 0
         resid_arr = obser_arr
@@ -290,7 +400,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     stats.chunk.num_converged = gm.num_converged_solutions
     stats.chunk.num_stalled = n_stall
 
-    # copy out flags, if we raised any
+    # collect messages from various flagging sources, and print to log if any
+    flagstatus = []
+
     stats.chunk.num_sol_flagged, _ = gm.num_gain_flags()
     if stats.chunk.num_sol_flagged:
         # also for up message with flagging stats
@@ -300,9 +412,22 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                 n_flag, n_tot = gm.num_gain_flags(mask)
                 if n_flag:
                     fstats += "{}:{}({:.2%}) ".format(flagname, n_flag, n_flag/float(n_tot))
+
+        flagstatus.append("solver flags {}".format(fstats))
+
+    if stats.chunk.num_mad_flagged:
+        flagstatus.append("Mad Max stomped {} visibilities".format(stats.chunk.num_mad_flagged))
+
+    if flagstatus:
         n_new_flags = (flags_arr&~(FL.PRIOR | FL.MISSING) != 0).sum() - n_original_flags
-        print>> log, ModColor.Str("{} solver flags raised: {}-> {:.2%} data flags".format(
-            label, fstats, n_new_flags / float(flags_arr.size)))
+        if n_new_flags < flags_arr.size*flag_warning_threshold:
+            warning, color = "", "blue"
+        else:
+            warning, color = "WARNING: ", "red"
+        print>> log(0, color), "{}{} {}: {} ({:.2%}) new data flags".format(
+            warning, label, ", ".join(flagstatus),
+            n_new_flags, n_new_flags / float(flags_arr.size))
+
 
     return (resid_arr if compute_residuals else None), stats
 
@@ -721,8 +846,9 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
                     raise RuntimeError("excessive amplitude in chunk {}".format(label))
 
         # Copy results back into tile.
+        have_new_flags = stats and ( stats.chunk.num_sol_flagged or stats.chunk.num_mad_flagged)
 
-        tile.set_chunk_cubes(corr_vis, flags_arr if (stats and stats.chunk.num_sol_flagged) else None, chunk_key)
+        tile.set_chunk_cubes(corr_vis, have_new_flags and flags_arr, chunk_key)
 
         # Ask the gain machine to store its solutions in the shared dict.
         gm_factory.export_solutions(vdm.gm, soldict)

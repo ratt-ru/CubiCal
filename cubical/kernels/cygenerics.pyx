@@ -28,6 +28,7 @@ Cython kernels for various generic operations. Common dimensions of arrays are:
 """
 
 import numpy as np
+import numpy.ma
 cimport numpy as np
 import cython
 from cython.parallel import parallel, prange
@@ -35,6 +36,10 @@ import cubical.kernels
 
 ctypedef np.complex64_t fcomplex
 ctypedef np.complex128_t dcomplex
+
+ctypedef fused float3264:
+    np.float32_t
+    np.float64_t
 
 ctypedef fused complex3264:
     fcomplex
@@ -247,108 +252,138 @@ def cycompute_chisq(complex3264 [:,:,:,:,:,:,:] resid,np.float64_t [:,:,:] chisq
                                 for c2 in xrange(2):
                                     chisq[t,f,aa] += resid[i,t,f,aa,ab,c1,c2].real**2 + resid[i,t,f,aa,ab,c1,c2].imag**2
 
-cdef extern from *:
-    """
-    /*
-     *  This Quickselect routine is based on the algorithm described in
-     *  "Numerical recipes in C", Second Edition,
-     *  Cambridge University Press, 1992, Section 8.5, ISBN 0-521-43108-5
-     *  This code by Nicolas Devillard - 1998. Public domain.
-     */
-    typedef float elem_type;
 
-    #define ELEM_SWAP(a,b) { register elem_type t=(a);(a)=(b);(b)=t; }
 
-    elem_type quick_select(elem_type arr[], int n)
-    {
-        int low, high ;
-        int median;
-        int middle, ll, hh;
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+cdef inline void ELEM_SWAP(float3264 * arr, int i, int j) nogil:
+    cdef float3264 tmp
+    tmp = arr[i]
+    arr[i] = arr[j]
+    arr[j] = tmp
 
-        low = 0 ; high = n-1 ; median = (low + high) / 2;
-        for (;;) {
-            if (high <= low) /* One element only */
-                return arr[median] ;
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+cdef float3264 quick_select(float3264 * arr, int n) nogil:
+    cdef int low, high
+    cdef int median
+    cdef int middle, ll, hh
 
-            if (high == low + 1) {  /* Two elements only */
-                if (arr[low] > arr[high])
-                    ELEM_SWAP(arr[low], arr[high]) ;
-                return arr[median] ;
-            }
+    low = 0
+    high = n-1
+    median = (low + high) / 2
 
-        /* Find median of low, middle and high items; swap into position low */
+    while True:
+        if high <= low:             # one element
+            return arr[median]
+
+        if high == low + 1:         # two elements only
+            if arr[low] > arr[high]:
+                ELEM_SWAP(arr, low, high)
+            return arr[median]
+
+        # Find median of low, middle and high items; swap into position low
         middle = (low + high) / 2;
-        if (arr[middle] > arr[high])    ELEM_SWAP(arr[middle], arr[high]) ;
-        if (arr[low] > arr[high])       ELEM_SWAP(arr[low], arr[high]) ;
-        if (arr[middle] > arr[low])     ELEM_SWAP(arr[middle], arr[low]) ;
+        if arr[middle] > arr[high]:
+            ELEM_SWAP(arr, middle, high)
+        if arr[low] > arr[high]:
+            ELEM_SWAP(arr, low, high)
+        if arr[middle] > arr[low]:
+            ELEM_SWAP(arr, middle, low)
 
-        /* Swap low item (now in position middle) into position (low+1) */
-        ELEM_SWAP(arr[middle], arr[low+1]) ;
+        # Swap low item (now in position middle) into position (low+1)
+        ELEM_SWAP(arr, middle, low+1)
 
-        /* Nibble from each end towards middle, swapping items when stuck */
-        ll = low + 1;
-        hh = high;
-        for (;;) {
-            do ll++; while (arr[low] > arr[ll]) ;
-            do hh--; while (arr[hh]  > arr[low]) ;
+        # Nibble from each end towards middle, swapping items when stuck
+        ll = low + 1
+        hh = high
+        while True:
+            ll += 1
+            while arr[low] > arr[ll]:
+                ll += 1
+            hh -= 1
+            while arr[hh]  > arr[low]:
+                hh -= 1
 
-            if (hh < ll)
-            break;
+            if hh < ll:
+                break
 
-            ELEM_SWAP(arr[ll], arr[hh]) ;
-        }
+            ELEM_SWAP(arr, ll, hh)
 
-        /* Swap middle item (in position low) back into correct position */
-        ELEM_SWAP(arr[low], arr[hh]) ;
+        # Swap middle item (in position low) back into correct position
+        ELEM_SWAP(arr, low, hh)
 
-        /* Re-set active partition */
-        if (hh <= median)
-            low = ll;
-            if (hh >= median)
-            high = hh - 1;
-        }
-    }
+        # Re-set active partition
+        if hh <= median:
+            low = ll
+        if hh >= median:
+            high = hh - 1
 
-    #undef ELEM_SWAP
-    """
 
-#
-#@cython.cdivision(True)
-#@cython.wraparound(False)
-#@cython.boundscheck(False)
-#@cython.nonecheck(False)
-#def cycompute_mad(fcomplex [:,:,:,:,:,:,:] resid, flag_t [:,:,:,:] flags):
-#    cdef int n_mod, n_tim, n_fre, n_ant, n_cor, bl, aa, ab, m, c1, c2, t, f, nval
-#
-#    n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = resid.shape
-#
-#    absvals_arr = np.empty((n_mod, n_ant, n_ant, n_cor, n_cor, n_tim*n_fre), resid.real.dtype)
-#    mad_arr = np.zeros((n_mod, n_ant, n_ant, n_cor, n_cor), resid.real.dtype)
-#
-#    cdef fcomplex [:,:,:,:,:,:] absvals = absvals_arr
-#    cdef np.float32_t [:,:,:,:,:] mad = mad_arr
-#
-#
-#    cdef np.int32_t [:,:] baselines = half_baselines(n_ant)
-#    cdef n_bl = half_baselines.shape[0]
-#    assert(flags.dtype == np.complex64)
-#    cdef int num_threads = cubical.kernels.num_omp_threads
-#
-#    with nogil, parallel(num_threads=num_threads):
-#        for bl in prange(n_bl, schedule='static'):
-#            aa, ab = half_baselines[bl]
-#            for m in xrange(n_mod):
-#                for c1 in xrange(2):
-#                    for c2 in xrange(2):
-#                        # get list of non-flagged absolute values
-#                        nval=0
-#                        for t in xrange(n_tim):
-#                            for f in xrange(n_freq):
-#                                if not flags[t, f, aa, ab]:
-#                                    absvals[m, aa, ab, c1, c2, nval] = abs(resid[m,t,f,aa,ab,c1,c2])
-#                                    nval = nval+1
-#                        # do quick-select
-#                        if nval:
-#                            mad[m, aa, ab, c1, c2] = quick_select(&(absvals[m, aa, ab, c1, c2]), nval)
-#
-#    return mad_arr
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,diag=True,offdiag=True):
+    cdef int n_mod, n_tim, n_fre, n_ant, bl, aa, ab, m, ic, c1, c2, t, f, nval
+    cdef np.float32_t x
+
+    n_mod = absres.shape[0]
+    n_tim = absres.shape[1]
+    n_fre = absres.shape[2]
+    n_ant = absres.shape[3]
+
+
+    cdef np.int32_t [:,:] baselines = half_baselines(n_ant)
+    cdef int n_bl = baselines.shape[0]
+    cdef int num_threads = cubical.kernels.num_omp_threads
+
+    # work out which correlations to loop over
+    if diag:
+        if offdiag:
+            corr_list = [ [c1, c2] for c1 in xrange(2) for c2 in xrange(2) ]
+        else:
+            corr_list = [ [0, 0], [1, 1] ]
+    elif offdiag:
+            corr_list = [ [0, 1], [1, 0] ]
+    else:
+        raise ValueError("diag and/or offdiag must be set")
+
+    cdef int n_cor =  len(corr_list)
+    corr_arr = np.array(corr_list, np.int32)
+    cdef np.int32_t [:,:] corr = corr_arr
+
+    absvals_arr = np.empty((n_mod, n_ant, n_ant, n_cor*n_tim*n_fre), np.float32)
+    mad_arr = np.zeros((n_mod, n_ant, n_ant), np.float32)
+    mad_arr_fl = np.zeros_like(mad_arr, np.int8)
+
+    cdef np.float32_t [:,:,:,:] absvals = absvals_arr
+    cdef np.float32_t [:,:,:] mad = mad_arr
+    cdef np.int8_t    [:,:,:] madfl = mad_arr_fl
+
+    with nogil, parallel(num_threads=num_threads):
+        for bl in prange(n_bl, schedule='static'):
+            aa = baselines[bl][0]
+            ab = baselines[bl][1]
+            for m in xrange(n_mod):
+                for ic in xrange(n_cor):
+                    c1 = corr[ic][0]
+                    c2 = corr[ic][1]
+                    # get list of non-flagged absolute values
+                    nval=0
+                    for t in xrange(n_tim):
+                        for f in xrange(n_fre):
+                            x = absres[m, t, f, aa, ab, c1, c2]
+                            if x != 0 and not flags[t, f, aa, ab]:
+                                absvals[m, aa, ab, nval] = x
+                                nval = nval+1
+                    # do quick-select
+                    if nval:
+                        mad[m, aa, ab] = mad[m, ab, aa] = quick_select(&(absvals[m, aa, ab, 0]), nval)
+                    # else no values -- flag entry
+                    else:
+                        madfl[m, aa, ab] = True
+
+    return np.ma.masked_array(mad_arr, mad_arr_fl)

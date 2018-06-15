@@ -60,6 +60,7 @@ class SolverStats (object):
         dtype = [ ('label', 'S32'), ('iters', 'i4'),
                   ('num_intervals', 'i4'), ('num_converged', 'i4'), ('num_stalled', 'i4'),
                   ('num_sol_flagged', 'i4'),
+                  ('num_mad_flagged', 'i4'),
                   ('init_chi2', 'f8'), ('init_noise', 'f8'), ('chi2', 'f8'), ('noise', 'f8') ]
         self.chunk = np.rec.array(np.zeros((), dtype))
 
