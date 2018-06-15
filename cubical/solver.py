@@ -21,6 +21,9 @@ gm_factory = None
 # IFR-based gain machine to use
 ifrgain_machine = None
 
+# Conversion factor for sigma = SIGMA_MAD*mad
+SIGMA_MAD = 1.4826
+
 #@profile
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
@@ -222,13 +225,13 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         # apply per-baseline MAD threshold
         if threshold:
-            baddies = goodies & (absres > (threshold*mad)[:, np.newaxis, np.newaxis, :, : ,np.newaxis, np.newaxis])
-            kill_the_bad_guys(baddies, "baseline-based Mad Max")
+            baddies = goodies & (absres > (threshold*mad/SIGMA_MAD)[:, np.newaxis, np.newaxis, :, : ,np.newaxis, np.newaxis])
+            kill_the_bad_guys(baddies, "baseline-based Mad Max ({} sigma)".format(threshold))
 
         # apply global median MAD threshold
         if med_threshold:
-            baddies = (absres > (med_threshold*medmad))
-            kill_the_bad_guys(baddies, "global Mad Max")
+            baddies = (absres > (med_threshold*medmad/SIGMA_MAD))
+            kill_the_bad_guys(baddies, "global Mad Max ({} sigma)".format(med_threshold))
 
     # do mad max flagging, if requested
     thr1, thr2 = get_mad_thresholds()
@@ -416,7 +419,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         flagstatus.append("solver flags {}".format(fstats))
 
     if stats.chunk.num_mad_flagged:
-        flagstatus.append("Mad Max stomped {} visibilities".format(stats.chunk.num_mad_flagged))
+        flagstatus.append("Mad Max took out {} visibilities".format(stats.chunk.num_mad_flagged))
 
     if flagstatus:
         n_new_flags = (flags_arr&~(FL.PRIOR | FL.MISSING) != 0).sum() - n_original_flags
