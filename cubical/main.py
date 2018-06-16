@@ -165,7 +165,7 @@ def main(debugging=False):
             print>>log, "started " + " ".join(sys.argv)
 
         # disable matplotlib's tk backend if we're not going to be showing plots
-        if GD['out']['plots-show']:
+        if GD['out']['plots-show'] or GD['flags']['mad-plot']:
             import pylab
             try:
                 pylab.figure()

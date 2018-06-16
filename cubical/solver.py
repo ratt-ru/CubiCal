@@ -205,7 +205,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                 print>> log(1, color), "{}{} {} kills {} ({:.2%}) visibilities".format(warning, max_label, method, nbad,
                                         nbad/float(baddies.size))
                 flags_arr[baddies] |= FL.MAD
-                goodies[:, baddies, :, :] = False
                 if log.verbosity() > 2:
                     per_bl = []
                     total_elements = float(gm.n_tim * gm.n_fre)
@@ -214,9 +213,37 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                             n_flagged = baddies[:, :, p, q].sum()
                             if n_flagged:
                                 per_bl.append((n_flagged, p ,q))
-                    per_bl = ["{}:{} {}".format(p, q, n_flagged, n_flagged/total_elements)
-                               for n_flagged, p, q in sorted(per_bl)[::-1]]
-                    print>> log(3), "{} of which per baseline: {}".format(label, ", ".join(per_bl))
+                    per_bl = sorted(per_bl, reverse=True)
+                    # print
+                    per_bl_str = ["{}:{} {}".format(p, q, n_flagged, n_flagged/total_elements)
+                               for n_flagged, p, q in per_bl]
+                    print>> log(3), "{} of which per baseline: {}".format(label, ", ".join(per_bl_str))
+                    # plot, if asked to
+                    if sol_opts["mad-plot"]:
+                        import pylab
+                        n_flagged, p, q = per_bl[0]
+                        inv = invalid_2x2[0, :, :, p, q]
+                        pylab.figure(figsize=(16,10))
+                        resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
+                        resmask[:] = inv[...,np.newaxis,np.newaxis]
+                        res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
+                        vmin = 0
+                        vmax = res.max()
+                        for c1,x1 in enumerate("XY"):
+                            for c2,x2 in enumerate("XY"):
+                                pylab.subplot(2, 4, 1+c1*2+c2)
+                                pylab.imshow(res[...,c1,c2], vmin=vmin, vmax=vmax)
+                                pylab.title("baseline {}-{} {}{} residuals".format(p, q, x1, x2))
+                                pylab.colorbar()
+                        for c1,x1 in enumerate("XY"):
+                            for c2,x2 in enumerate("XY"):
+                                pylab.subplot(2, 4, 5+c1*2+c2)
+                                pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], inv|baddies[:, :, p, q]), vmin=vmin, vmax=vmax)
+                                pylab.title("{}{}: Mad Max kills {} ({:.2%})".format(x1,x2,n_flagged, n_flagged/total_elements))
+                                pylab.colorbar()
+                        pylab.show()
+                # removed bad guys from goodies mask
+                goodies[:, baddies, :, :] = False
             else:
                 print>> log(2),"{} {} abides".format(max_label, method)
 
