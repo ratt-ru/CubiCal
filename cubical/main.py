@@ -169,6 +169,7 @@ def main(debugging=False):
             import pylab
             try:
                 pylab.figure()
+                pylab.close()
             except Exception, exc:
                 import traceback
                 print>>log, ModColor.Str("Error initializing matplotlib: {}({})\n {}".format(type(exc).__name__,
@@ -313,6 +314,8 @@ def main(debugging=False):
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
+
+        solver.metadata = ms.metadata
 
         grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,

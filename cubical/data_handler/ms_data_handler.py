@@ -8,7 +8,7 @@ import pyrap.tables as pt
 import cPickle
 import re
 import traceback
-import sys
+import math
 import os.path
 import itertools
 import logging
@@ -16,6 +16,7 @@ import logging
 import cubical.flagging as flagging
 
 from cubical import data_handler
+from cubical.data_handler import Metadata
 
 from cubical.data_handler.ms_tile import RowChunk, MSTile
 
@@ -232,6 +233,8 @@ class MSDataHandler:
         _obstab = pt.table(self.ms_name + "::OBSERVATION", ack=False)
         _feedtab = pt.table(self.ms_name + "::FEED", ack=False)
 
+        self.metadata = Metadata()
+
         self.ctype = np.complex64   # MS complex data type
         self.wtype = np.float32     # MS weights type
         self.nmscorrs = _poltab.getcol("NUM_CORR")[0]
@@ -246,7 +249,17 @@ class MSDataHandler:
         else:
             raise RuntimeError("MS with {} correlations not (yet) supported".format(self.nmscorrs))
         self.diag = diag
-        self.nants = _anttab.nrows()
+        self.nants = self.metadata.num_antennas = _anttab.nrows()
+        self.metadata.num_baselines = self.nants*(self.nants-1)/2
+        self.metadata.num_corrs  = self.ncorr
+
+        antnames = _anttab.getcol("NAME")
+        antpos = _anttab.getcol("POSITION")
+        self.metadata.antenna_name = antnames
+        self.metadata.baseline_name = { (p,q): "{}-{}".format(antnames[p], antnames[q])
+                                        for p in xrange(self.nants) for q in xrange(p+1, self.nants)}
+        self.metadata.baseline_length = { (p,q): math.sqrt(((antpos[p]-antpos[q])**2).sum())
+                                        for p in xrange(self.nants) for q in xrange(p+1, self.nants)}
 
         if do_load_CASA_kwtables:
             # antenna fields to be used when writing gain tables
@@ -290,14 +303,15 @@ class MSDataHandler:
         self.antpos   = _anttab.getcol("POSITION")
         self.antnames = _anttab.getcol("NAME")
         self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
+        self.metadata.ra0, self.metadata.dec0 = self.phadir
         self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
         
         if np.any([pol in self._poltype for pol in ['L','l','R','r']]):
             self._poltype = "circular"
-            self.feeds = "rl"
+            self.feeds = self.metadata.feeds = "rl"
         elif np.any([pol in self._poltype for pol in ['X','x','Y','y']]):
             self._poltype = "linear"
-            self.feeds = "xy"
+            self.feeds = self.metadata.feeds = "xy"
         else:
             raise TypeError("unsupported POLARIZATION_TYPE {}. Terminating.".format(self._poltype))
 

@@ -15,6 +15,9 @@ from cubical.tools import BREAK  # useful: can set static breakpoints by putting
 log = logger.getLogger("solver")
 #log.verbosity(2)
 
+# MS metadata
+metadata = None
+
 # gain machine factory to use
 gm_factory = None
 
@@ -71,6 +74,28 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         mad_threshold = [mad_threshold]
     if not isinstance(medmad_threshold, list):
         medmad_threshold = [medmad_threshold]
+    mad_diag = sol_opts['mad-diag']
+    mad_offdiag = metadata.num_corrs == 4 and sol_opts['mad-offdiag']
+    if not mad_diag and not mad_offdiag:
+        mad_flag = False
+
+    # setup MAD estimation settings
+    mad_per_corr = False
+    if sol_opts['mad-estimate'] == 'corr':
+        mad_per_corr = True
+        mad_estimate_diag, mad_estimate_offdiag = mad_diag, mad_offdiag
+    elif sol_opts['mad-estimate'] == 'all':
+        mad_estimate_diag = True
+        mad_estimate_offdiag = metadata.num_corrs == 4
+    elif sol_opts['mad-estimate'] == 'diag':
+        mad_estimate_diag, mad_estimate_offdiag = True, False
+    elif sol_opts['mad-estimate'] == 'offdiag':
+        if metadata.num_corrs == 4:
+            mad_estimate_diag, mad_estimate_offdiag = False, True
+        else:
+            mad_estimate_diag, mad_estimate_offdiag = True, False
+    else:
+        raise RuntimeError("invalid --flags-mad-estimate {} setting".format(sol_opts['mad-estimate']))
 
     def get_mad_thresholds():
         """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
@@ -170,21 +195,40 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # estimate MAD of off-diagonal elements
         absres = np.empty_like(resid_arr, dtype=np.float32)
         np.abs(resid_arr, out=absres)
-        mad = cygenerics.cycompute_mad(absres, flags_arr, diag=False, offdiag=True)
+        if mad_per_corr:
+            mad = cygenerics.cycompute_mad_per_corr(absres, flags_arr, diag=mad_estimate_diag, offdiag=mad_estimate_offdiag)
+        else:
+            mad = cygenerics.cycompute_mad(absres, flags_arr, diag=mad_estimate_diag, offdiag=mad_estimate_offdiag)
         # any of it non-zero?
         if mad.mask.all():
             return
         # estimate median MAD
-        medmad = np.ma.median(mad)
+        medmad = np.ma.median(mad, axis=(1,2))
         # all this was worth it, just so I could type "mad.max()" as legit code
-        print>>log(2),"{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f}".format(max_label, mad.min(), mad.max(), medmad)
+        print>>log(2),"{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f}".format(max_label, mad.min(), mad.max(), np.ma.median(medmad))
         if log.verbosity() > 4:
             for imod in xrange(gm.n_mod):
-                per_bl = [(mad[imod,p,q,], p, q) for p in xrange(gm.n_ant) for q in xrange(p+1, gm.n_ant) if not mad.mask[imod,p,q]]
-                per_bl = ["{}:{} {:.2f}".format(p, q, x) for x, p, q in sorted(per_bl)[::-1]]
-                print>>log(4),"{} model {} MADs are {}".format(label, imod, ", ".join(per_bl))
+                if mad_per_corr:
+                    for ic1,c1 in enumerate(metadata.feeds):
+                        for ic2,c2 in enumerate(metadata.feeds):
+                            per_bl = [(mad[imod,p,q,ic1,ic2], p, q) for p in xrange(gm.n_ant)
+                                      for q in xrange(p+1, gm.n_ant) if not mad.mask[imod,p,q,ic1,ic2]]
+                            per_bl = ["{}:{} ({}m) {:.2f}".format(p, q, int(metadata.baseline_length[p,q]), x)
+                                      for x, p, q in sorted(per_bl)[::-1]]
+                            print>>log(4),"{} model {} {}{} MADs are {}".format(label, imod,
+                                                                                c1.upper(), c2.upper(), ", ".join(per_bl))
+                else:
+                    per_bl = [(mad[imod,p,q,], p, q) for p in xrange(gm.n_ant)
+                              for q in xrange(p+1, gm.n_ant) if not mad.mask[imod,p,q]]
+                    per_bl = ["{}:{} ({}m) {:.2f}".format(p, q, int(metadata.baseline_length[p,q]), x)
+                              for x, p, q in sorted(per_bl)[::-1]]
+                    print>>log(4),"{} model {} MADs are {}".format(label, imod, ", ".join(per_bl))
 
         def kill_the_bad_guys(baddies, method):
+            if not mad_diag:
+                baddies[...,(0,0),(1,1)] = False
+            if not mad_offdiag:
+                baddies[...,(0,1),(1,0)] = False
             # mask of valid 2x2 entires
             invalid_2x2 = ~goodies.any(axis=(-1, -2))
             # any correlation bad -> flag all 4
@@ -222,6 +266,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                     if sol_opts["mad-plot"]:
                         import pylab
                         n_flagged, p, q = per_bl[0]
+                        blname = metadata.baseline_name[p,q]
+                        bllen  = metadata.baseline_length[p,q]
+                        feeds =  metadata.feeds
                         inv = invalid_2x2[0, :, :, p, q]
                         pylab.figure(figsize=(16,10))
                         resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
@@ -229,14 +276,14 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                         res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
                         vmin = 0
                         vmax = res.max()
-                        for c1,x1 in enumerate("XY"):
-                            for c2,x2 in enumerate("XY"):
+                        for c1,x1 in enumerate(feeds.upper()):
+                            for c2,x2 in enumerate(feeds.upper()):
                                 pylab.subplot(2, 4, 1+c1*2+c2)
                                 pylab.imshow(res[...,c1,c2], vmin=vmin, vmax=vmax)
-                                pylab.title("baseline {}-{} {}{} residuals".format(p, q, x1, x2))
+                                pylab.title("{} ({}m) {}{} residuals".format(blname, int(bllen), x1, x2))
                                 pylab.colorbar()
-                        for c1,x1 in enumerate("XY"):
-                            for c2,x2 in enumerate("XY"):
+                        for c1,x1 in enumerate(feeds.upper()):
+                            for c2,x2 in enumerate(feeds.upper()):
                                 pylab.subplot(2, 4, 5+c1*2+c2)
                                 pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], inv|baddies[:, :, p, q]), vmin=vmin, vmax=vmax)
                                 pylab.title("{}{}: Mad Max kills {} ({:.2%})".format(x1,x2,n_flagged, n_flagged/total_elements))
@@ -252,12 +299,20 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         # apply per-baseline MAD threshold
         if threshold:
-            baddies = goodies & (absres > (threshold*mad/SIGMA_MAD)[:, np.newaxis, np.newaxis, :, : ,np.newaxis, np.newaxis])
+            thr = threshold*mad/SIGMA_MAD
+            if mad_per_corr:
+                baddies = goodies & (absres > thr[:,np.newaxis,np.newaxis,:,:,:,:])
+            else:
+                baddies = goodies & (absres > thr[:,np.newaxis,np.newaxis,:,:,np.newaxis,np.newaxis])
             kill_the_bad_guys(baddies, "baseline-based Mad Max ({} sigma)".format(threshold))
 
         # apply global median MAD threshold
         if med_threshold:
-            baddies = (absres > (med_threshold*medmad/SIGMA_MAD))
+            thr = (med_threshold * medmad / SIGMA_MAD)
+            if mad_per_corr:
+                baddies = (absres > thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis,:,:])
+            else:
+                baddies = (absres > thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis,np.newaxis,np.newaxis])
             kill_the_bad_guys(baddies, "global Mad Max ({} sigma)".format(med_threshold))
 
     # do mad max flagging, if requested

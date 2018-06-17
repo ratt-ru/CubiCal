@@ -31,7 +31,7 @@ import numpy as np
 import numpy.ma
 cimport numpy as np
 import cython
-from cython.parallel import parallel, prange
+from cython.parallel import parallel, prange, threadid
 import cubical.kernels
 
 ctypedef np.complex64_t fcomplex
@@ -326,15 +326,14 @@ cdef float3264 quick_select(float3264 * arr, int n) nogil:
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def cycompute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,diag=True,offdiag=True):
-    cdef int n_mod, n_tim, n_fre, n_ant, bl, aa, ab, m, ic, c1, c2, t, f, nval
+def cycompute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,int diag=1,int offdiag=1):
+    cdef int n_mod, n_tim, n_fre, n_ant, bl, aa, ab, m, ic, c1, c2, t, f, thread, nval
     cdef np.float32_t x
 
     n_mod = absres.shape[0]
     n_tim = absres.shape[1]
     n_fre = absres.shape[2]
     n_ant = absres.shape[3]
-
 
     cdef np.int32_t [:,:] baselines = half_baselines(n_ant)
     cdef int n_bl = baselines.shape[0]
@@ -355,16 +354,17 @@ def cycompute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,diag=
     corr_arr = np.array(corr_list, np.int32)
     cdef np.int32_t [:,:] corr = corr_arr
 
-    absvals_arr = np.empty((n_mod, n_ant, n_ant, n_cor*n_tim*n_fre), np.float32)
+    absvals_arr = np.empty((num_threads or 1, n_cor*n_tim*n_fre), np.float32)
     mad_arr = np.zeros((n_mod, n_ant, n_ant), np.float32)
     mad_arr_fl = np.zeros_like(mad_arr, np.int8)
 
-    cdef np.float32_t [:,:,:,:] absvals = absvals_arr
+    cdef np.float32_t [:,:] absvals = absvals_arr
     cdef np.float32_t [:,:,:] mad = mad_arr
     cdef np.int8_t    [:,:,:] madfl = mad_arr_fl
 
     with nogil, parallel(num_threads=num_threads):
         for bl in prange(n_bl, schedule='static'):
+            thread = threadid()
             aa = baselines[bl][0]
             ab = baselines[bl][1]
             for m in xrange(n_mod):
@@ -377,13 +377,83 @@ def cycompute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,diag=
                         for f in xrange(n_fre):
                             x = absres[m, t, f, aa, ab, c1, c2]
                             if x != 0 and not flags[t, f, aa, ab]:
-                                absvals[m, aa, ab, nval] = x
+                                absvals[thread, nval] = x
+                                nval = nval+1
+                # do quick-select
+                if nval:
+                    mad[m, aa, ab] = mad[m, ab, aa] = quick_select(&(absvals[thread, 0]), nval)
+                # else no values -- flag entry
+                else:
+                    madfl[m, aa, ab] = madfl[m, ab, aa] = True
+
+    return np.ma.masked_array(mad_arr, mad_arr_fl)
+
+
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+def cycompute_mad_per_corr(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,int diag=1,int offdiag=1):
+    cdef int n_mod, n_tim, n_fre, n_ant, bl, aa, ab, m, ic, c1, c2, t, f, thread, nval
+    cdef np.float32_t x
+
+    n_mod = absres.shape[0]
+    n_tim = absres.shape[1]
+    n_fre = absres.shape[2]
+    n_ant = absres.shape[3]
+
+    cdef np.int32_t [:,:] baselines = half_baselines(n_ant)
+    cdef int n_bl = baselines.shape[0]
+    cdef int num_threads = cubical.kernels.num_omp_threads
+
+    # work out which correlations to loop over
+    if diag:
+        if offdiag:
+            corr_list = [ [c1, c2] for c1 in xrange(2) for c2 in xrange(2) ]
+        else:
+            corr_list = [ [0, 0], [1, 1] ]
+    elif offdiag:
+            corr_list = [ [0, 1], [1, 0] ]
+    else:
+        raise ValueError("diag and/or offdiag must be set")
+
+    cdef int n_cor =  len(corr_list)
+    corr_arr = np.array(corr_list, np.int32)
+    cdef np.int32_t [:,:] corr = corr_arr
+
+    absvals_arr = np.empty((num_threads or 1, n_tim*n_fre), np.float32)
+    mad_arr = np.zeros((n_mod, n_ant, n_ant, 2, 2), np.float32)
+    mad_arr_fl = np.zeros_like(mad_arr, np.int8)
+
+    cdef np.float32_t [:,:] absvals = absvals_arr
+    cdef np.float32_t [:,:,:,:,:] mad = mad_arr
+    cdef np.int8_t    [:,:,:,:,:] madfl = mad_arr_fl
+
+    with nogil, parallel(num_threads=num_threads):
+        for bl in prange(n_bl, schedule='static'):
+            thread = threadid()
+            aa = baselines[bl][0]
+            ab = baselines[bl][1]
+            for m in xrange(n_mod):
+                for ic in xrange(n_cor):
+                    c1 = corr[ic][0]
+                    c2 = corr[ic][1]
+                    # get list of non-flagged absolute values
+                    nval=0
+                    for t in xrange(n_tim):
+                        for f in xrange(n_fre):
+                            x = absres[m, t, f, aa, ab, c1, c2]
+                            if x != 0 and not flags[t, f, aa, ab]:
+                                absvals[thread, nval] = x
                                 nval = nval+1
                     # do quick-select
                     if nval:
-                        mad[m, aa, ab] = mad[m, ab, aa] = quick_select(&(absvals[m, aa, ab, 0]), nval)
+                        mad[m, aa, ab, c1, c2] = mad[m, ab, aa, c2, c1] = quick_select(&(absvals[thread, 0]), nval)
                     # else no values -- flag entry
                     else:
-                        madfl[m, aa, ab] = True
+                        madfl[m, aa, ab, c1, c2] = madfl[m, ab, aa, c1, c2] = True
 
     return np.ma.masked_array(mad_arr, mad_arr_fl)
+
+

@@ -38,3 +38,15 @@ def import_montblanc():
         return None, sys.exc_info()
 
 
+class Metadata(object):
+    """This class holds metadata from an MS"""
+    def __init__(self):
+        self.num_corrs    = 0
+        self.num_antennas = 0
+        self.num_baselines = 0
+        self.antenna_name = []              # p -> antenna name
+        self.baseline_name = {}             # p,q -> baseline name
+        self.baseline_length = {}           # p,q -> baseline length
+        self.feeds = "xy"                   # "xy" or "rl"
+        self.ra0 = 0
+        self.dec0 = 0
