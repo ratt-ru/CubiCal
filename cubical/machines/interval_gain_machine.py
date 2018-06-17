@@ -537,7 +537,7 @@ class PerIntervalGains(MasterMachine):
 
 
     def num_gain_flags(self, mask=None):
-        return (self.gflags&(mask or ~FL.MISSING) != 0).sum(), self.gflags.size
+        return int((self.gflags&(mask or ~FL.MISSING) != 0).sum()), self.gflags.size
 
     @property
     def dof_per_antenna(self):

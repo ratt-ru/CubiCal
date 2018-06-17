@@ -239,7 +239,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             baddies[invalid_2x2.all(axis=0)] = False
             # clear the ones already flagged
             baddies[flags_arr!=0] = False
-            nbad = baddies.sum()
+            nbad = int(baddies.sum())
             stats.chunk.num_mad_flagged += nbad
             if nbad:
                 if nbad < flags_arr.size * flag_warning_threshold:
@@ -931,7 +931,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
                     raise RuntimeError("excessive amplitude in chunk {}".format(label))
 
         # Copy results back into tile.
-        have_new_flags = stats and ( stats.chunk.num_sol_flagged or stats.chunk.num_mad_flagged)
+        have_new_flags = stats and ( stats.chunk.num_sol_flagged > 0 or stats.chunk.num_mad_flagged > 0)
 
         tile.set_chunk_cubes(corr_vis, have_new_flags and flags_arr, chunk_key)
 
