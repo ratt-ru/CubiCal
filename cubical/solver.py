@@ -15,6 +15,9 @@ from cubical.tools import BREAK  # useful: can set static breakpoints by putting
 log = logger.getLogger("solver")
 #log.verbosity(2)
 
+# global defaults dict
+GD = None
+
 # MS metadata
 metadata = None
 
@@ -66,36 +69,36 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     # collect flagging options
 
-    flag_warning_threshold = sol_opts["warn-thr"]
-    mad_flag = sol_opts["mad-flag"]
-    mad_threshold = sol_opts["mad-thr"]
-    medmad_threshold = sol_opts["mad-med-thr"]
+    flag_warning_threshold = GD['flags']["warn-thr"]
+    mad_flag = GD['flags']["mad-flag"]
+    mad_threshold = GD['flags']["mad-thr"]
+    medmad_threshold = GD['flags']["mad-med-thr"]
     if not isinstance(mad_threshold, list):
         mad_threshold = [mad_threshold]
     if not isinstance(medmad_threshold, list):
         medmad_threshold = [medmad_threshold]
-    mad_diag = sol_opts['mad-diag']
-    mad_offdiag = metadata.num_corrs == 4 and sol_opts['mad-offdiag']
+    mad_diag = GD['flags']['mad-diag']
+    mad_offdiag = metadata.num_corrs == 4 and GD['flags']['mad-offdiag']
     if not mad_diag and not mad_offdiag:
         mad_flag = False
 
     # setup MAD estimation settings
     mad_per_corr = False
-    if sol_opts['mad-estimate'] == 'corr':
+    if GD['flags']['mad-estimate'] == 'corr':
         mad_per_corr = True
         mad_estimate_diag, mad_estimate_offdiag = mad_diag, mad_offdiag
-    elif sol_opts['mad-estimate'] == 'all':
+    elif GD['flags']['mad-estimate'] == 'all':
         mad_estimate_diag = True
         mad_estimate_offdiag = metadata.num_corrs == 4
-    elif sol_opts['mad-estimate'] == 'diag':
+    elif GD['flags']['mad-estimate'] == 'diag':
         mad_estimate_diag, mad_estimate_offdiag = True, False
-    elif sol_opts['mad-estimate'] == 'offdiag':
+    elif GD['flags']['mad-estimate'] == 'offdiag':
         if metadata.num_corrs == 4:
             mad_estimate_diag, mad_estimate_offdiag = False, True
         else:
             mad_estimate_diag, mad_estimate_offdiag = True, False
     else:
-        raise RuntimeError("invalid --flags-mad-estimate {} setting".format(sol_opts['mad-estimate']))
+        raise RuntimeError("invalid --flags-mad-estimate {} setting".format(GD['flags']['mad-estimate']))
 
     def get_mad_thresholds():
         """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
@@ -188,6 +191,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     stats.chunk.num_mad_flagged = 0
 
     # apply MAD flagging
+    global _madmax_plotnum
+    _madmax_plotnum = 0
+
     def beyond_thunderdome(max_label, threshold, med_threshold):
         """This function implements MAD-based flagging on residuals"""
         import cubical.kernels
@@ -213,14 +219,14 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                         for ic2,c2 in enumerate(metadata.feeds):
                             per_bl = [(mad[imod,p,q,ic1,ic2], p, q) for p in xrange(gm.n_ant)
                                       for q in xrange(p+1, gm.n_ant) if not mad.mask[imod,p,q,ic1,ic2]]
-                            per_bl = ["{}:{} ({}m) {:.2f}".format(p, q, int(metadata.baseline_length[p,q]), x)
+                            per_bl = ["{} ({}m): {:.2f}".format(metadata.baseline_name[p,q], int(metadata.baseline_length[p,q]), x)
                                       for x, p, q in sorted(per_bl)[::-1]]
                             print>>log(4),"{} model {} {}{} MADs are {}".format(label, imod,
                                                                                 c1.upper(), c2.upper(), ", ".join(per_bl))
                 else:
                     per_bl = [(mad[imod,p,q,], p, q) for p in xrange(gm.n_ant)
                               for q in xrange(p+1, gm.n_ant) if not mad.mask[imod,p,q]]
-                    per_bl = ["{}:{} ({}m) {:.2f}".format(p, q, int(metadata.baseline_length[p,q]), x)
+                    per_bl = ["{} ({}m) {:.2f}".format(metadata.baseline_name[p,q], int(metadata.baseline_length[p,q]), x)
                               for x, p, q in sorted(per_bl)[::-1]]
                     print>>log(4),"{} model {} MADs are {}".format(label, imod, ", ".join(per_bl))
 
@@ -259,36 +265,54 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                                 per_bl.append((n_flagged, p ,q))
                     per_bl = sorted(per_bl, reverse=True)
                     # print
-                    per_bl_str = ["{}:{} {}".format(p, q, n_flagged, n_flagged/total_elements)
-                               for n_flagged, p, q in per_bl]
+                    per_bl_str = ["{} ({}m): {} ({:.2%})".format(metadata.baseline_name[p,q],
+                                    int(metadata.baseline_length[p,q]), n_flagged, n_flagged/total_elements)
+                                  for n_flagged, p, q in per_bl]
                     print>> log(3), "{} of which per baseline: {}".format(label, ", ".join(per_bl_str))
                     # plot, if asked to
-                    if sol_opts["mad-plot"]:
+                    if GD['flags']['mad-plot']:
+                        if len(per_bl) < 3:
+                            baselines_to_plot = [ (0, "worst") ]
+                        else:
+                            baselines_to_plot = [ (0, "worst"), (len(per_bl)//2, "median") ]
                         import pylab
-                        n_flagged, p, q = per_bl[0]
-                        blname = metadata.baseline_name[p,q]
-                        bllen  = metadata.baseline_length[p,q]
-                        feeds =  metadata.feeds
-                        inv = invalid_2x2[0, :, :, p, q]
-                        pylab.figure(figsize=(16,10))
-                        resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
-                        resmask[:] = inv[...,np.newaxis,np.newaxis]
-                        res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
-                        vmin = 0
-                        vmax = res.max()
-                        for c1,x1 in enumerate(feeds.upper()):
-                            for c2,x2 in enumerate(feeds.upper()):
-                                pylab.subplot(2, 4, 1+c1*2+c2)
-                                pylab.imshow(res[...,c1,c2], vmin=vmin, vmax=vmax)
-                                pylab.title("{} ({}m) {}{} residuals".format(blname, int(bllen), x1, x2))
-                                pylab.colorbar()
-                        for c1,x1 in enumerate(feeds.upper()):
-                            for c2,x2 in enumerate(feeds.upper()):
-                                pylab.subplot(2, 4, 5+c1*2+c2)
-                                pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], inv|baddies[:, :, p, q]), vmin=vmin, vmax=vmax)
-                                pylab.title("{}{}: Mad Max kills {} ({:.2%})".format(x1,x2,n_flagged, n_flagged/total_elements))
-                                pylab.colorbar()
-                        pylab.show()
+                        for ibl, baseline_label in baselines_to_plot:
+                            n_flagged, p, q = per_bl[ibl]
+                            fraction = n_flagged / total_elements
+                            if fraction <= GD['flags']['mad-plot-thr']:
+                                continue
+                            blname = metadata.baseline_name[p,q]
+                            bllen  = int(metadata.baseline_length[p,q])
+                            feeds =  metadata.feeds
+                            inv = invalid_2x2[0, :, :, p, q]
+                            pylab.figure(figsize=(16,10))
+                            resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
+                            resmask[:] = inv[...,np.newaxis,np.newaxis]
+                            res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
+                            vmin = 0
+                            vmax = res.max()
+                            for c1,x1 in enumerate(feeds.upper()):
+                                for c2,x2 in enumerate(feeds.upper()):
+                                    pylab.subplot(2, 4, 1+c1*2+c2)
+                                    pylab.imshow(res[...,c1,c2], vmin=vmin, vmax=vmax)
+                                    pylab.title("{}{} residuals".format(x1, x2))
+                                    pylab.colorbar()
+                            for c1,x1 in enumerate(feeds.upper()):
+                                for c2,x2 in enumerate(feeds.upper()):
+                                    pylab.subplot(2, 4, 5+c1*2+c2)
+                                    pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], inv|baddies[:, :, p, q]), vmin=vmin, vmax=vmax)
+                                    pylab.title("{}{} flagged".format(x1, x2))
+                                    pylab.colorbar()
+                            pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({} case)".format(max_label,
+                                            method, blname, bllen, n_flagged, fraction, baseline_label))
+                            if GD['flags']['mad-plot'] == 'show':
+                                pylab.show()
+                            else:
+                                global _madmax_plotnum
+                                filename = '{}.{}.madmax.{}.png'.format(GD['out']['name'], label, _madmax_plotnum)
+                                pylab.savefig(filename, dpi=300)
+                                _madmax_plotnum += 1
+                                print>>log(1),"{}: saving Mad Max flagging plot to {}".format(label,filename)
                 # removed bad guys from goodies mask
                 goodies[:, baddies, :, :] = False
             else:

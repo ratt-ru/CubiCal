@@ -207,9 +207,6 @@ def main(debugging=False):
         else:
             solver_opts['diag-diag'] = all([jo['diag-diag'] for jo in jones_opts])
 
-        # solver options also get a copy of flagging options
-        solver_opts.update(GD["flags"])
-
         # set up data handler
 
         solver_type = GD['out']['mode']
@@ -315,6 +312,7 @@ def main(debugging=False):
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
 
+        solver.GD = GD
         solver.metadata = ms.metadata
 
         grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
