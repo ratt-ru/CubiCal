@@ -29,10 +29,12 @@ class FL(object):
     CHISQ    = dtype(1<<5)    # excessive chisq
     GOOB     = dtype(1<<6)    # gain solution out of bounds
     BOOM     = dtype(1<<7)    # gain solution exploded (i.e. went to inf/nan)
-    GNULL    = dtype(1<<8)    # gain solution gone to zero
+    GNULL    = dtype(1<<8)    # gain solution gone to zero.
     LOWSNR   = dtype(1<<9)    # prior SNR too low for gain solution
     GVAR     = dtype(1<<10)   # posterior variance too low for gain solution
-    MAD      = dtype(1<<11)   # residual exceeds MAD-based threshold
+    NULLDATA = dtype(1<<11)   # null data
+    NULLWGHT = dtype(1<<12)   # null weight
+    MAD      = dtype(1<<13)  # residual exceeds MAD-based threshold
     SKIPSOL  = dtype(1<<15)   # omit this data point from the solver
 
     @staticmethod

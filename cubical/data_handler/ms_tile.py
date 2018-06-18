@@ -789,19 +789,24 @@ class MSTile(object):
                                     model = loaded_models[model_source][cluster]
                                 # cluster of None signifies that this is a visibility column
                                 elif cluster is None:
-                                    print>> log(0), "  reading {} for model {} direction {}".format(model_source, imod,
-                                                                                                    idir)
-                                    model0 = self.dh.fetchslice(model_source, subset=table_subset)
-                                    if self.dh.do_freq_rebin or self.dh.do_time_rebin:
-                                        model = np.empty_like(obvis)
-                                        rebinning.rebin_model(model, model0, flag_arr0,
-                                                              weights0[imod], num_weights > 0,
-                                                              subset.rebin_row_map, subset.rebin_chan_map)
+                                    if model_source is 1:
+                                        print>> log(0), "  using 1.+0j for model {} direction {}".format(model_source,
+                                                                                                         imod, idir)
+                                        model = np.ones_like(obvis)
                                     else:
-                                        model0[subset.rebin_row_map < 0] = model0[subset.rebin_row_map < 0].conjugate()
-                                        model = model0
+                                        print>> log(0), "  reading {} for model {} direction {}".format(model_source, imod,
+                                                                                                        idir)
+                                        model0 = self.dh.fetchslice(model_source, subset=table_subset)
+                                        if self.dh.do_freq_rebin or self.dh.do_time_rebin:
+                                            model = np.empty_like(obvis)
+                                            rebinning.rebin_model(model, model0, flag_arr0,
+                                                                  weights0[imod], num_weights > 0,
+                                                                  subset.rebin_row_map, subset.rebin_chan_map)
+                                        else:
+                                            model0[subset.rebin_row_map < 0] = model0[subset.rebin_row_map < 0].conjugate()
+                                            model = model0
+                                        model0 = None
                                     loaded_models.setdefault(model_source, {})[None] = model
-                                    model0 = None
                                 # else evaluate a Tigger model with Montblanc
                                 else:
                                     model = subset.load_montblanc_models(uvwco, loaded_models, model_source, cluster, imod, idir)

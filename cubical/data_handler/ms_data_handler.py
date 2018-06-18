@@ -678,7 +678,11 @@ class MSDataHandler:
                     continue
                 idirtag = " dir{}".format(idir if use_ddes else 0)
                 for component in dirmodel.split("+"):
-                    if component.startswith("./") or component not in self.ms.colnames():
+                    # special case: "1" means unity visibilities
+                    if component == "1":
+                        dirmodels.setdefault(idirtag, []).append((1, None))
+                    # else check for an LSM component
+                    elif component.startswith("./") or component not in self.ms.colnames():
                         # check if LSM ends with @tag specification
                         if "@" in component:
                             component, tag = component.rsplit("@",1)
@@ -702,6 +706,7 @@ class MSDataHandler:
                                 dirmodels.setdefault(dirname, []).append((component, key))
                         else:
                             raise ValueError,"model component {} is neither a valid LSM nor an MS column".format(component)
+                    # else it is a visibility column component
                     else:
                         dirmodels.setdefault(idirtag, []).append((component, None))
             self.model_directions.update(dirmodels.iterkeys())
