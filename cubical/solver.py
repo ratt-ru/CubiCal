@@ -957,7 +957,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
         # Copy results back into tile.
         have_new_flags = stats and ( stats.chunk.num_sol_flagged > 0 or stats.chunk.num_mad_flagged > 0)
 
-        tile.set_chunk_cubes(corr_vis, have_new_flags and flags_arr, chunk_key)
+        tile.set_chunk_cubes(corr_vis, flags_arr if have_new_flags else None, chunk_key)
 
         # Ask the gain machine to store its solutions in the shared dict.
         gm_factory.export_solutions(vdm.gm, soldict)
