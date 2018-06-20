@@ -411,7 +411,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
                 solver.ifrgain_machine.accumulate(sd)
             if finalize:
                 solver.ifrgain_machine.save()
-                solver.gm_factory.set_metas(tile.handler)
+                solver.gm_factory.set_metas(tile.dh)
                 solver.gm_factory.close()
                 result['flagcounts'] = tile.dh.flagcounts
             tile.release()
