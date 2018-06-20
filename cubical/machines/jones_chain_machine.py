@@ -280,12 +280,13 @@ class JonesChain(MasterMachine):
         for term in self.jones_terms[::-1]:
             if not term.dd_term:
                 g, _, fc = term.get_inverse_gains()
+                g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
                     self.cykernel.cyright_multiply_gains(gains, g[:1,...], *term.gain_intervals)
                 else:
                     init = True
-                    gains[:] = g[:1,...]
+                    gains[:] = term._gainres_to_fullres(g[:1,...], tdim_ind=1)
 
         # compute conjugate gains
         gh = np.empty_like(gains)
