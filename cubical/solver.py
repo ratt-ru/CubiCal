@@ -105,8 +105,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         until the list is down to one element."""
         if not mad_flag:
             return 0, 0
-        return mad_threshold.pop(0) if len(mad_threshold)>2 else (mad_threshold[0] if mad_threshold else 0), \
-               medmad_threshold.pop(0) if len(medmad_threshold)>2 else (medmad_threshold[0] if medmad_threshold else 0)
+        return mad_threshold.pop(0) if len(mad_threshold)>1 else (mad_threshold[0] if mad_threshold else 0), \
+               medmad_threshold.pop(0) if len(medmad_threshold)>1 else (medmad_threshold[0] if medmad_threshold else 0)
 
     # Initialise stat object.
 
