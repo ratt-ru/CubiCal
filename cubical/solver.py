@@ -197,14 +197,14 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     def beyond_thunderdome(max_label, threshold, med_threshold):
         """This function implements MAD-based flagging on residuals"""
         import cubical.kernels
-        cygenerics = cubical.kernels.import_kernel("cygenerics")
+        cymadmax = cubical.kernels.import_kernel("cymadmax")
         # estimate MAD of off-diagonal elements
         absres = np.empty_like(resid_arr, dtype=np.float32)
         np.abs(resid_arr, out=absres)
         if mad_per_corr:
-            mad = cygenerics.cycompute_mad_per_corr(absres, flags_arr, diag=mad_estimate_diag, offdiag=mad_estimate_offdiag)
+            mad, goodies = cymadmax.compute_mad_per_corr(absres, flags_arr, diag=mad_estimate_diag, offdiag=mad_estimate_offdiag)
         else:
-            mad = cygenerics.cycompute_mad(absres, flags_arr, diag=mad_estimate_diag, offdiag=mad_estimate_offdiag)
+            mad, goodies = cymadmax.compute_mad(absres, flags_arr, diag=mad_estimate_diag, offdiag=mad_estimate_offdiag)
         # any of it non-zero?
         if mad.mask.all():
             return
@@ -231,20 +231,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                     print>>log(4),"{} model {} MADs are {}".format(label, imod, ", ".join(per_bl))
 
         def kill_the_bad_guys(baddies, method):
-            if not mad_diag:
-                baddies[...,(0,0),(1,1)] = False
-            if not mad_offdiag:
-                baddies[...,(0,1),(1,0)] = False
-            # mask of valid 2x2 entires
-            invalid_2x2 = ~goodies.any(axis=(-1, -2))
-            # any correlation bad -> flag all 4
-            baddies = baddies.any(axis=(-1,-2))
-            # residuals w.r.t. all (nonzero) models need to be flagged for a flag to be raised
-            baddies = (baddies|invalid_2x2).all(axis=0)
-            # but drop the flag if all models were zero to begin with
-            baddies[invalid_2x2.all(axis=0)] = False
-            # clear the ones already flagged
-            baddies[flags_arr!=0] = False
             nbad = int(baddies.sum())
             stats.chunk.num_mad_flagged += nbad
             if nbad:
@@ -254,7 +240,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                     warning, color = "WARNING: ", "red"
                 print>> log(1, color), "{}{} {} kills {} ({:.2%}) visibilities".format(warning, max_label, method, nbad,
                                         nbad/float(baddies.size))
-                flags_arr[baddies] |= FL.MAD
                 if log.verbosity() > 2:
                     per_bl = []
                     total_elements = float(gm.n_tim * gm.n_fre)
@@ -284,23 +269,26 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                             blname = metadata.baseline_name[p,q]
                             bllen  = int(metadata.baseline_length[p,q])
                             feeds =  metadata.feeds
-                            inv = invalid_2x2[0, :, :, p, q]
+                            inv = flags_arr[:, :, p, q]!=0
                             pylab.figure(figsize=(16,10))
                             resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
                             resmask[:] = inv[...,np.newaxis,np.newaxis]
                             res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
-                            vmin = 0
+                            vmin = res[res!=0].min()
                             vmax = res.max()
+                            from matplotlib.colors import LogNorm
+                            norm = LogNorm(vmin, vmax)
                             for c1,x1 in enumerate(feeds.upper()):
                                 for c2,x2 in enumerate(feeds.upper()):
                                     pylab.subplot(2, 4, 1+c1*2+c2)
-                                    pylab.imshow(res[...,c1,c2], vmin=vmin, vmax=vmax)
-                                    pylab.title("{}{} residuals".format(x1, x2))
+                                    pylab.imshow(res[...,c1,c2], norm=norm)
+                                    mm = mad[0,p,q,c1,c2] if mad_per_corr else mad[0,p,q]
+                                    pylab.title("{}{} residuals (MAD {:.2f})".format(x1, x2, mm))
                                     pylab.colorbar()
                             for c1,x1 in enumerate(feeds.upper()):
                                 for c2,x2 in enumerate(feeds.upper()):
                                     pylab.subplot(2, 4, 5+c1*2+c2)
-                                    pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], inv|baddies[:, :, p, q]), vmin=vmin, vmax=vmax)
+                                    pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], inv|baddies[:, :, p, q]), norm=norm)
                                     pylab.title("{}{} flagged".format(x1, x2))
                                     pylab.colorbar()
                             pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({} case)".format(max_label,
@@ -318,25 +306,24 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             else:
                 print>> log(2),"{} {} abides".format(max_label, method)
 
-        # make mask of non-zero, non-flagged residuals
-        goodies = (resid_arr != 0) & (flags_arr == 0)[np.newaxis, ..., np.newaxis, np.newaxis]
-
         # apply per-baseline MAD threshold
         if threshold:
             thr = threshold*mad/SIGMA_MAD
             if mad_per_corr:
-                baddies = goodies & (absres > thr[:,np.newaxis,np.newaxis,:,:,:,:])
+                thr = thr[:, np.newaxis, np.newaxis, :, :, :, :]
             else:
-                baddies = goodies & (absres > thr[:,np.newaxis,np.newaxis,:,:,np.newaxis,np.newaxis])
+                thr = thr[:, np.newaxis,np.newaxis,:,:,np.newaxis,np.newaxis]
+            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=mad_diag, offdiag=mad_offdiag)
             kill_the_bad_guys(baddies, "baseline-based Mad Max ({} sigma)".format(threshold))
 
         # apply global median MAD threshold
         if med_threshold:
             thr = (med_threshold * medmad / SIGMA_MAD)
             if mad_per_corr:
-                baddies = (absres > thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis,:,:])
+                thr = thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis,:,:]
             else:
-                baddies = (absres > thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis,np.newaxis,np.newaxis])
+                thr = thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis,np.newaxis,np.newaxis]
+            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=mad_diag, offdiag=mad_offdiag)
             kill_the_bad_guys(baddies, "global Mad Max ({} sigma)".format(med_threshold))
 
     # do mad max flagging, if requested

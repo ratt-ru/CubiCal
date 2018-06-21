@@ -89,7 +89,7 @@ class JonesChain(MasterMachine):
         # this list accumulates the per-term convergence status strings
         self._convergence_states = []
         # True when the last active term has had its convergence status queried
-        self._convergence_states_finalized = True
+        self._convergence_states_finalized = False
 
         self.cached_model_arr = self._r = self._m = None
 
@@ -409,6 +409,7 @@ class JonesChain(MasterMachine):
                 return True
             else:
                 print>> log(1), "skipping term {}: non-solvable".format(self.active_term.jones_label)
+
 
     def next_iteration(self):
         """
