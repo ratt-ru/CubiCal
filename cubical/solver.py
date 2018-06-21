@@ -269,12 +269,13 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                             blname = metadata.baseline_name[p,q]
                             bllen  = int(metadata.baseline_length[p,q])
                             feeds =  metadata.feeds
-                            inv = flags_arr[:, :, p, q]!=0
+                            # inv: data that was flagged prior to this mad max step
+                            fl_prior = (flags_arr[:,:,p,q]!=0)&~baddies[:,:,p,q]
                             pylab.figure(figsize=(16,10))
                             resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
-                            resmask[:] = inv[...,np.newaxis,np.newaxis]
+                            resmask[:] = fl_prior[...,np.newaxis,np.newaxis]
                             res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
-                            vmin = res[res!=0].min()
+                            vmin = res.min()
                             vmax = res.max()
                             from matplotlib.colors import LogNorm
                             norm = LogNorm(vmin, vmax)
@@ -288,7 +289,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                             for c1,x1 in enumerate(feeds.upper()):
                                 for c2,x2 in enumerate(feeds.upper()):
                                     pylab.subplot(2, 4, 5+c1*2+c2)
-                                    pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], inv|baddies[:, :, p, q]), norm=norm)
+                                    pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], fl_prior|baddies[:, :, p, q]), norm=norm)
                                     pylab.title("{}{} flagged".format(x1, x2))
                                     pylab.colorbar()
                             pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({} case)".format(max_label,
@@ -306,23 +307,22 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             else:
                 print>> log(2),"{} {} abides".format(max_label, method)
 
+        thr = np.zeros((gm.n_mod, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor), dtype=np.float32)
         # apply per-baseline MAD threshold
         if threshold:
-            thr = threshold*mad/SIGMA_MAD
             if mad_per_corr:
-                thr = thr[:, np.newaxis, np.newaxis, :, :, :, :]
+                thr[:] = threshold * mad / SIGMA_MAD
             else:
-                thr = thr[:, np.newaxis,np.newaxis,:,:,np.newaxis,np.newaxis]
+                thr[:] = threshold * mad[...,np.newaxis,np.newaxis] / SIGMA_MAD
             baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=mad_diag, offdiag=mad_offdiag)
             kill_the_bad_guys(baddies, "baseline-based Mad Max ({} sigma)".format(threshold))
 
         # apply global median MAD threshold
         if med_threshold:
-            thr = (med_threshold * medmad / SIGMA_MAD)
             if mad_per_corr:
-                thr = thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis,:,:]
+                thr[:] = med_threshold * medmad[:,np.newaxis,np.newaxis,:,:] / SIGMA_MAD
             else:
-                thr = thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis,np.newaxis,np.newaxis]
+                thr[:] = med_threshold * medmad[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis] / SIGMA_MAD
             baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=mad_diag, offdiag=mad_offdiag)
             kill_the_bad_guys(baddies, "global Mad Max ({} sigma)".format(med_threshold))
 

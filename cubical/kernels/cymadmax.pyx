@@ -136,14 +136,14 @@ def compute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,int dia
 
     absvals_arr = np.empty((num_threads or 1, n_cor*n_tim*n_fre), np.float32)
     mad_arr = np.zeros((n_mod, n_ant, n_ant), np.float32)
-    mad_arr_fl = np.zeros_like(mad_arr, np.int8)
+    mad_arr_fl = np.ones_like(mad_arr, np.uint8)
 
     valid_arr = np.ones((n_mod, n_tim, n_fre, n_ant, n_ant), np.uint8)
     cdef np.uint8_t   [:,:,:,:,:]  valid = valid_arr
 
     cdef np.float32_t [:,:] absvals = absvals_arr
     cdef np.float32_t [:,:,:] mad = mad_arr
-    cdef np.int8_t    [:,:,:] madfl = mad_arr_fl
+    cdef np.uint8_t    [:,:,:] madfl = mad_arr_fl
 
     with nogil, parallel(num_threads=num_threads):
         for bl in prange(n_bl, schedule='static'):
@@ -167,9 +167,7 @@ def compute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,int dia
                 # do quick-select
                 if nval:
                     mad[m, aa, ab] = mad[m, ab, aa] = quick_select(&(absvals[thread, 0]), nval)
-                # else no values -- flag entry
-                else:
-                    madfl[m, aa, ab] = madfl[m, ab, aa] = True
+                    madfl[m, aa, ab] = madfl[m, ab, aa] = False
 
     return np.ma.masked_array(mad_arr, mad_arr_fl), valid_arr
 
@@ -199,7 +197,7 @@ def compute_mad_per_corr(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flag
 
     absvals_arr = np.empty((num_threads or 1, n_tim*n_fre), np.float32)
     mad_arr = np.zeros((n_mod, n_ant, n_ant, 2, 2), np.float32)
-    mad_arr_fl = np.zeros_like(mad_arr, np.uint8)
+    mad_arr_fl = np.ones_like(mad_arr, np.uint8)
 
     valid_arr = np.ones((n_mod, n_tim, n_fre, n_ant, n_ant), np.uint8)
     cdef np.uint8_t   [:,:,:,:,:]  valid = valid_arr
@@ -230,9 +228,7 @@ def compute_mad_per_corr(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flag
                     # do quick-select
                     if nval:
                         mad[m, aa, ab, c1, c2] = mad[m, ab, aa, c2, c1] = quick_select(&(absvals[thread, 0]), nval)
-                    # else no values -- flag entry
-                    else:
-                        madfl[m, aa, ab, c1, c2] = madfl[m, ab, aa, c1, c2] = True
+                        madfl[m, aa, ab, c1, c2] = madfl[m, ab, aa, c1, c2] = False
 
     return np.ma.masked_array(mad_arr, mad_arr_fl), valid_arr
 
@@ -241,7 +237,7 @@ def compute_mad_per_corr(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flag
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def threshold_mad (float3264 [:,:,:,:,:,:,:] absres, float3264 [:,:,:,:,:,:,:] thr, flag_t [:,:,:,:] flags, flag_t flagbit, np.uint8_t [:,:,:,:,:] goodies,diag=1,offdiag=1):
+def threshold_mad (float3264 [:,:,:,:,:,:,:] absres, np.float32_t [:,:,:,:,:] thr, flag_t [:,:,:,:] flags, flag_t flagbit, np.uint8_t [:,:,:,:,:] goodies,diag=1,offdiag=1):
     cdef int n_mod, n_tim, n_fre, n_ant, bl, aa, ab, m, ic, c1, c2, t, f, thread, nval
     cdef np.float32_t x
 
@@ -278,7 +274,7 @@ def threshold_mad (float3264 [:,:,:,:,:,:,:] absres, float3264 [:,:,:,:,:,:,:] t
                             for ic in xrange(n_cor):
                                 c1 = corr[ic][0]
                                 c2 = corr[ic][1]
-                                if goodies[m,t,f,aa,ab] and absres[m,t,f,aa,ab,c1,c2] > thr[m,t,f,aa,ab,c1,c2]:
+                                if absres[m,t,f,aa,ab,c1,c2] > thr[m,aa,ab,c1,c2]:
                                     flagged = 1
                                     break
                     # raise flag only if we had a valid residual in at least one model to begin with
@@ -286,7 +282,7 @@ def threshold_mad (float3264 [:,:,:,:,:,:,:] absres, float3264 [:,:,:,:,:,:,:] t
                         baddies[t,f,aa,ab] = baddies[t,f,ab,aa] = 1
                         flags[t,f,aa,ab] = flags[t,f,ab,aa] = flags[t,f,ab,aa] | flagbit
                         for m in xrange(n_mod):
-                            goodies[m,t,f,aa,ab] = 0
+                            goodies[m,t,f,aa,ab] = goodies[m,t,f,ab,aa] = 0
 
     return baddies_arr
 
