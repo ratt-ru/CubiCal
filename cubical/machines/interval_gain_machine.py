@@ -142,9 +142,9 @@ class PerIntervalGains(MasterMachine):
 
     def get_new_jh(self, model_arr):
         if self._jh is None:
-            self._jh = np.zeros_like(model_arr)
-        else:
-            self._jh.fill(0)
+            self._jh = np.empty_like(model_arr)
+        # else:
+        #     self._jh.fill(0)
         return self._jh
 
     def get_new_jhr(self):

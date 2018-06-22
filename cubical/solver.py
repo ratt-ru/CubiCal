@@ -282,9 +282,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                             for c1,x1 in enumerate(feeds.upper()):
                                 for c2,x2 in enumerate(feeds.upper()):
                                     pylab.subplot(2, 4, 1+c1*2+c2)
-                                    pylab.imshow(res[...,c1,c2], norm=norm, aspect='auto)
+                                    pylab.imshow(res[...,c1,c2], norm=norm, aspect='auto')
                                     mm = mad[0,p,q,c1,c2] if mad_per_corr else mad[0,p,q]
-                                    pylab.title("{}{} residuals (MAD {:.2f})".format(x1, x2, mm)')
+                                    pylab.title("{}{} residuals (MAD {:.2f})".format(x1, x2, mm))
                                     pylab.colorbar()
                             for c1,x1 in enumerate(feeds.upper()):
                                 for c2,x2 in enumerate(feeds.upper()):
