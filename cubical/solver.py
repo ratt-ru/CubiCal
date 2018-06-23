@@ -30,7 +30,15 @@ ifrgain_machine = None
 # Conversion factor for sigma = SIGMA_MAD*mad
 SIGMA_MAD = 1.4826
 
-#@profile
+import __builtin__
+try:
+    __builtin__.profile
+except AttributeError:
+    # No line profiler, provide a pass-through version
+    def profile(func): return func
+    __builtin__.profile = profile#if 'profile' not in globals():
+
+@profile
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     Main body of the GN/LM method. Handles iterations and convergence tests.
@@ -194,6 +202,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     global _madmax_plotnum
     _madmax_plotnum = 0
 
+    @profile
     def beyond_thunderdome(max_label, threshold, med_threshold):
         """This function implements MAD-based flagging on residuals"""
         import cubical.kernels
@@ -230,6 +239,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                               for x, p, q in sorted(per_bl)[::-1]]
                     print>>log(4),"{} model {} MADs are {}".format(label, imod, ", ".join(per_bl))
 
+        @profile
         def kill_the_bad_guys(baddies, method):
             nbad = int(baddies.sum())
             stats.chunk.num_mad_flagged += nbad
