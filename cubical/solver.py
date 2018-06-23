@@ -250,7 +250,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                     warning, color = "WARNING: ", "red"
                 print>> log(1, color), "{}{} {} kills {} ({:.2%}) visibilities".format(warning, max_label, method, nbad,
                                         nbad/float(baddies.size))
-                if log.verbosity() > 2:
+                if log.verbosity() > 2 or GD['flags']['mad-plot']:
                     per_bl = []
                     total_elements = float(gm.n_tim * gm.n_fre)
                     for p in xrange(gm.n_ant):
