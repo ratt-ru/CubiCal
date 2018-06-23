@@ -7,8 +7,6 @@ import numpy as np
 from scipy import special
 from cubical.flagging import FL
 import cubical.kernels
-from scipy.optimize import fsolve
-import time
 
 from cubical.tools import logger
 log = logger.getLogger("complex_2x2")  #TODO check this
@@ -294,8 +292,6 @@ class ComplexW2x2Gains(PerIntervalGains):
         wn = w_nzero/norm
         m = len(wn)
         
-        if len(wn[np.where(wn<0)[0]]) is not 0 : print "negative weights ", wn[np.where(wn<0)[0]]
-
         vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
 
         v = _brute_solve_v(vfunc, 2., 100.)
