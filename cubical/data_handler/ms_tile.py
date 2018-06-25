@@ -673,7 +673,7 @@ class MSTile(object):
                     inactive.sum() - num_inactive)
                 num_inactive = inactive.sum()
             if num_inactive:
-                print>> log(0), "  {:.2%} visibilities have been deselected".format(num_inactive / float(inactive.size))
+                print>> log(0), "  {:.2%} visibilities deselected via specificed subset and/or baseline cutoffs".format(num_inactive / float(inactive.size))
                 flag_arr0[inactive] |= FL.SKIPSOL
 
             # Form up bitflag array, if needed.

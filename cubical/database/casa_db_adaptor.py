@@ -10,13 +10,14 @@ from pyrap.tables import table as tbl
 import os
 import shutil
 import numpy as np
-import copy
+import subprocess
 
 log = logger.getLogger("casa_db_adaptor")
 
 # to the tune of KATDAL :)
-BLANK_TABLE_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "blankcaltable.CASA")
+BLANK_TABLE_NAME = 'blankcaltable.CASA'
+BLANK_TABLE_TARBALL = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "{}.tgz".format(BLANK_TABLE_NAME))
 
 class casa_caltable_factory(object):
         """
@@ -47,7 +48,10 @@ class casa_caltable_factory(object):
                     log.info("Destination CASA gain table '%s' exists. Will overwrite." % filename)
                     shutil.rmtree(filename) # CASA convention is to overwrite
                     
-            shutil.copytree(BLANK_TABLE_TEMPLATE, filename)
+            basedir = os.path.dirname(filename)
+            subprocess.check_output(["tar", "zxvf", BLANK_TABLE_TARBALL, "-C", basedir])
+            os.rename(os.path.join(basedir, BLANK_TABLE_NAME), filename)
+
             antorder = [db.antnames.index(an) for an in solants]
             with tbl("%s::ANTENNA" % filename, ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.anttype))
