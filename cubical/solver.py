@@ -313,6 +313,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                                 pylab.savefig(filename, dpi=300)
                                 _madmax_plotnum += 1
                                 print>>log(1),"{}: saving Mad Max flagging plot to {}".format(label,filename)
+                                pylab.clf()
             else:
                 print>> log(2),"{} {} abides".format(max_label, method)
 
