@@ -24,18 +24,15 @@
 
 import os
 import sys
-import logging
 import glob
 
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.build_ext import build_ext
-
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
-log = logging.getLogger()
+from setuptools import Command
 
 with open('README.md') as f:
-	long_description = f.read()
+    long_description = f.read()
 
 # Try get location of numpy headers. Compilation requires these headers. 
 
@@ -66,44 +63,60 @@ link_args = []
 
 link_args_omp = link_args + ['-lgomp']
 
-if cythonize:
+class gocythonize(Command):
+    """ Cythonise CubiCal kernels. """
+    
+    description = 'Cythonise CubiCal kernels.'
 
-    log.info("Cython is available. Cythonizing...")
+    user_options = [('force', 'f', 'Force cythonisation.'),]
 
-    CCO.buffer_max_dims = 9
+    def initialize_options(self):
+        pass
 
+<<<<<<< HEAD
     extensions = []
     for source in glob.glob("cubical/kernels/*.pyx"):
         name, ext = os.path.splitext(source)
         omp = name.endswith("_omp")
         # identify which kernels need to go via the C++ compiler
         cpp = any([x in name for x in "cytf_plane", "cyf_slope", "cyt_slope", "rebinning"])
+=======
+    def finalize_options(self):
+        self.force = self.force or 0
+>>>>>>> origin/master
 
-        extensions.append(Extension(
-            name.replace("/","."), [source],
-            include_dirs=[include_path],
-            extra_compile_args=cmpl_args_omp if omp else cmpl_args,
-            extra_link_args=link_args_omp if omp else link_args,
-            language="c++" if cpp else "c"
-        ))
+    def run(self):
+        
+        CCO.buffer_max_dims = 9
 
-    extensions = cythonize(extensions, compiler_directives={'binding': True}, annotate=True)
+        extensions = []
+        
+        for source in glob.glob("cubical/kernels/*.pyx"):
+            name, ext = os.path.splitext(source)
+            omp = name.endswith("_omp")
+            # identify which kernels need to go via the C++ compiler
+            cpp = any([x in name for x in "cytf_plane", "cyf_slope", "cyt_slope"])
 
-else:
+            extensions.append(
+                Extension(name.replace("/","."), [source],
+                          include_dirs=[include_path],
+                          extra_compile_args=cmpl_args_omp if omp else cmpl_args,
+                          extra_link_args=link_args_omp if omp else link_args,
+                          language="c++" if cpp else "c"))
 
-    log.info("Cython unavailable. Using bundled .c and .cpp files.")
+        cythonize(extensions, compiler_directives={'binding': True}, annotate=True, force=self.force)
 
-    extensions = []
-    for source in glob.glob("cubical/kernels/*.c") + glob.glob("cubical/kernels/*.cpp"):
-        name, ext = os.path.splitext(source)
-        omp = name.endswith("_omp")
-        extensions.append(Extension(
-            name.replace("/","."), [source],
-            include_dirs=[include_path],
-            extra_compile_args=cmpl_args_omp if omp else cmpl_args,
-            extra_link_args=link_args_omp if omp else link_args
-        ))
+extensions = []
+for source in glob.glob("cubical/kernels/*.pyx"): 
+    name, _ = os.path.splitext(source)
+    is_cpp = any([s in name for s in "cytf_plane", "cyf_slope", "cyt_slope"])
+    is_omp = name.endswith("_omp")
 
+    extensions.append(
+        Extension(name.replace("/","."), [name + ".cpp" if is_cpp else name + ".c"],
+                  include_dirs=[include_path],
+                  extra_compile_args=cmpl_args_omp if is_omp else cmpl_args,
+                  extra_link_args=link_args_omp if is_omp else link_args))
 
 # Check for readthedocs environment variable.
 
@@ -141,7 +154,8 @@ setup(name='cubical',
       license='GNU GPL v3',
       long_description=long_description,
       long_description_content_type='text/markdown',
-      cmdclass={'build_ext': build_ext},
+      cmdclass={'build_ext': build_ext,
+                'gocythonize': gocythonize},
       packages=['cubical', 
                 'cubical.data_handler',
                 'cubical.machines',

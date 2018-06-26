@@ -9,11 +9,12 @@ Welcome to CubiCal's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    introduction
    installation
    usage
+   parset
    cubical
    performance
    licence
