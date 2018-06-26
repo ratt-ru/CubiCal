@@ -6,6 +6,7 @@
 Implements the solver loop.
 """
 import numpy as np
+import os, os.path
 import traceback
 from cubical.tools import logger, ModColor
 from cubical.flagging import FL
@@ -308,8 +309,16 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                             if GD['flags']['mad-plot'] == 'show':
                                 pylab.show()
                             else:
+                                plotdir = '{}-madmax.plots'.format(GD['out']['name'])
+                                if not os.path.exists(plotdir):
+                                    try:
+                                        os.mkdir(plotdir)
+                                    # allow a failure -- perhaps two workers got unlucky and both are trying to make the
+                                    # same directory. Let savefig() below fail instead
+                                    except OSError:
+                                        pass
                                 global _madmax_plotnum
-                                filename = '{}.{}.madmax.{}.png'.format(GD['out']['name'], label, _madmax_plotnum)
+                                filename = '{}/{}.{}.png'.format(plotdir, label, _madmax_plotnum)
                                 pylab.savefig(filename, dpi=300)
                                 _madmax_plotnum += 1
                                 print>>log(1),"{}: saving Mad Max flagging plot to {}".format(label,filename)
