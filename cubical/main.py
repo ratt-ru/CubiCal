@@ -165,7 +165,7 @@ def main(debugging=False):
             print>>log, "started " + " ".join(sys.argv)
 
         # disable matplotlib's tk backend if we're not going to be showing plots
-        if GD['out']['plots-show'] or GD['flags']['mad-plot'] == 'show':
+        if GD['out']['plots'] =='show' or GD['madmax']['plot'] == 'show':
             import pylab
             try:
                 pylab.figure()
@@ -174,7 +174,7 @@ def main(debugging=False):
                 import traceback
                 print>>log, ModColor.Str("Error initializing matplotlib: {}({})\n {}".format(type(exc).__name__,
                                                                                        exc, traceback.format_exc()))
-                raise UserInputError("matplotlib can't connect to X11. Suggest disabling --out-plots-show.")
+                raise UserInputError("matplotlib can't connect to X11. Can't use --out-plots show or --madmax-plots show.")
         else:
             matplotlib.use("Agg")
 
@@ -372,7 +372,7 @@ def main(debugging=False):
             st.save(filename)
             print>> log, "saved summary statistics to %s" % filename
 
-            if GD["flags"]["post-sol"]:
+            if GD["postmortem"]["enable"]:
                 # flag based on summary stats
                 flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid_actual)
 

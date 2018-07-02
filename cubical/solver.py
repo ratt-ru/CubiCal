@@ -79,35 +79,37 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # collect flagging options
 
     flag_warning_threshold = GD['flags']["warn-thr"]
-    mad_flag = GD['flags']["mad-flag"]
-    mad_threshold = GD['flags']["mad-thr"]
-    medmad_threshold = GD['flags']["mad-med-thr"]
+    
+    mad_flag = GD['madmax']['enable']
+    
+    mad_threshold = GD['madmax']['threshold']
+    medmad_threshold = GD['madmax']['global-threshold']
     if not isinstance(mad_threshold, list):
         mad_threshold = [mad_threshold]
     if not isinstance(medmad_threshold, list):
         medmad_threshold = [medmad_threshold]
-    mad_diag = GD['flags']['mad-diag']
-    mad_offdiag = metadata.num_corrs == 4 and GD['flags']['mad-offdiag']
+    mad_diag = GD['madmax']['diag']
+    mad_offdiag = metadata.num_corrs == 4 and GD['madmax']['offdiag']
     if not mad_diag and not mad_offdiag:
         mad_flag = False
 
     # setup MAD estimation settings
     mad_per_corr = False
-    if GD['flags']['mad-estimate'] == 'corr':
+    if GD['madmax']['estimate'] == 'corr':
         mad_per_corr = True
         mad_estimate_diag, mad_estimate_offdiag = mad_diag, mad_offdiag
-    elif GD['flags']['mad-estimate'] == 'all':
+    elif GD['madmax']['estimate'] == 'all':
         mad_estimate_diag = True
         mad_estimate_offdiag = metadata.num_corrs == 4
-    elif GD['flags']['mad-estimate'] == 'diag':
+    elif GD['madmax']['estimate'] == 'diag':
         mad_estimate_diag, mad_estimate_offdiag = True, False
-    elif GD['flags']['mad-estimate'] == 'offdiag':
+    elif GD['madmax']['estimate'] == 'offdiag':
         if metadata.num_corrs == 4:
             mad_estimate_diag, mad_estimate_offdiag = False, True
         else:
             mad_estimate_diag, mad_estimate_offdiag = True, False
     else:
-        raise RuntimeError("invalid --flags-mad-estimate {} setting".format(GD['flags']['mad-estimate']))
+        raise RuntimeError("invalid --madmax-estimate {} setting".format(GD['madmax']['estimate']))
 
     def get_mad_thresholds():
         """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
@@ -251,7 +253,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                     warning, color = "WARNING: ", "red"
                 print>> log(1, color), "{}{} {} kills {} ({:.2%}) visibilities".format(warning, max_label, method, nbad,
                                         nbad/float(baddies.size))
-                if log.verbosity() > 2 or GD['flags']['mad-plot']:
+                if log.verbosity() > 2 or GD['madmax']['plot']:
                     per_bl = []
                     total_elements = float(gm.n_tim * gm.n_fre)
                     for p in xrange(gm.n_ant):
@@ -266,7 +268,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                                   for n_flagged, p, q in per_bl]
                     print>> log(3), "{} of which per baseline: {}".format(label, ", ".join(per_bl_str))
                     # plot, if asked to
-                    if GD['flags']['mad-plot']:
+                    if GD['madmax']['plot']:
                         if len(per_bl) < 3:
                             baselines_to_plot = [ (0, "worst") ]
                         else:
@@ -275,7 +277,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                         for ibl, baseline_label in baselines_to_plot:
                             n_flagged, p, q = per_bl[ibl]
                             fraction = n_flagged / total_elements
-                            if fraction <= GD['flags']['mad-plot-thr']:
+                            if fraction <= GD['madmax']['plot-frac-above']:
                                 continue
                             blname = metadata.baseline_name[p,q]
                             bllen  = int(metadata.baseline_length[p,q])
@@ -306,7 +308,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                                     pylab.colorbar()
                             pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({} case)".format(max_label,
                                             method, blname, bllen, n_flagged, fraction, baseline_label))
-                            if GD['flags']['mad-plot'] == 'show':
+                            if ['madmax']['plot'] == 'show':
                                 pylab.show()
                             else:
                                 plotdir = '{}-madmax.plots'.format(GD['out']['name'])

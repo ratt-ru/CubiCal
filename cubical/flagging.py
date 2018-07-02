@@ -235,14 +235,14 @@ def flag_chisq (st, GD, basename, nddid):
     print>>log, "median chi2 value is {:.3} from {} valid t/f slots".format(median, total)
     print>>log, "median count per slot is {}".format(median_np)
 
-    chi_median_thresh = GD["flags"]["tf-chisq-median"]
-    np_median_thresh  = GD["flags"]["tf-np-median"]
-    time_density      = GD["flags"]["time-density"]
-    chan_density      = GD["flags"]["chan-density"]
-    ddid_density      = GD["flags"]["ddid-density"]
+    chi_median_thresh = GD["postmortem"]["tf-chisq-median"]
+    np_median_thresh  = GD["postmortem"]["tf-np-median"]
+    time_density      = GD["postmortem"]["time-density"]
+    chan_density      = GD["postmortem"]["chan-density"]
+    ddid_density      = GD["postmortem"]["ddid-density"]
 
     make_plots = GD["out"]["plots"]
-    show_plots = GD["out"]["plots-show"]
+    show_plots = make_plots == "show"
 
     if make_plots:
         import pylab

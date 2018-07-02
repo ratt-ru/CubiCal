@@ -983,13 +983,13 @@ class MSTile(object):
         for key in soldict.iterkeys():
             yield soldict[key]
 
-    def save(self, unlock=False):
+    def save(self, final=False):
         """
         Saves 'corrected' column, and any updated flags, back to MS.
 
         Args:
-            unlock (bool, optional):
-                If True, calls the unlock method on the handler.
+            final (bool, optional):
+                If True, tells the MS handler that this is the final tile.
         """
         data0 = shared_dict.attach(self._data_dict_name)
 
@@ -1096,7 +1096,8 @@ class MSTile(object):
                 table_subset.putcol("FLAG_ROW", flag_row)
                 print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum() / float(flag_row.size))
 
-            if unlock:
+            if final:
+                self.dh.finalize()
                 self.dh.unlock()
 
     def release(self):

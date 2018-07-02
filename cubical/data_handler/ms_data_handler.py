@@ -532,27 +532,44 @@ class MSDataHandler:
                     self._add_column(col)
                 self.reopen()
 
-        # figure out flagging situation
+        self._reinit_bitflags = flagopts["reinit-bitflags"]
+        apply_flags  = flagopts.get("apply")
+        save_bitflag = flagopts.get("save")
+        save_flags   = flagopts.get("save-legacy")
+        auto_init    = flagopts.get("auto-init")
+        see_no_evil  = flagopts.get("see-no-evil")
+
+        # figure out if we have a bitflag column
         if "BITFLAG" in self.ms.colnames():
-            if flagopts["reinit-bitflags"]:
+            if self._reinit_bitflags:
                 for kw in self.ms.colkeywordnames("BITFLAG"):
                     self.ms.removecolkeyword("BITFLAG", kw)
                 self.ms.removecols("BITFLAG")
                 if "BITFLAG_ROW" in self.ms.colnames():
                     self.ms.removecols("BITFLAG_ROW")
                 print>> log, ModColor.Str("Removing BITFLAG column, since --flags-reinit-bitflags is set.")
+                print>> log, ModColor.Str("WARNING: current state of FLAG column will be used to init bitflags!")
                 self.reopen()
                 bitflags = None
             else:
+                if "AUTOINIT_IN_PROGRESS" in self.ms.colkeywordnames("BITFLAG"):
+                    if auto_init:
+                        print>> log, ModColor.Str("WARNING: the BITFLAG column does not appear to be properly initialized. "
+                            "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
+                            "This is not fatal, and we'll attempt to refill it.")
+                    elif see_no_evil:
+                        print>> log, ModColor.Str("WARNING: the BITFLAG column does not appear to be properly initialized. "
+                            "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
+                            "Brace yourself for failure down the line.")
+                    else:
+                        raise ValueError("The BITFLAG column does not appear to be properly initialized, "
+                                         "and --flags-auto-init is off. If you really want to proceed, re-run "
+                                         "with --flags-see-no-evil 1.")
+
                 bitflags = flagging.Flagsets(self.ms)
         else:
             bitflags = None
-        apply_flags  = flagopts.get("apply")
-        save_bitflag = flagopts.get("save")
-        save_flags   = flagopts.get("save-legacy")
-        auto_init    = flagopts.get("auto-init")
 
-        self._reinit_bitflags = flagopts["reinit-bitflags"]
         self._apply_flags = self._apply_bitflags = self._save_bitflag = self._auto_fill_bitflag = None
         self._save_flags = bool(save_bitflag) if save_flags == "auto" else save_flags
 
@@ -569,6 +586,7 @@ class MSDataHandler:
                     raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
                 print>> log, ModColor.Str("  Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
+                self.ms.putcolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS", True)
             else:
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
                 print>> log, "  BITFLAG column found. Will auto-fill with '{}' ({}) from FLAG/FLAG_ROW if not filled".format(auto_init, self._auto_fill_bitflag)
@@ -1228,6 +1246,11 @@ class MSDataHandler:
             self.ms.addcols(desc, dminfo)
             return True
         return False
+
+    def finalize(self):
+        if self._auto_fill_bitflag:
+            self.ms.removecolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS")
+        self.unlock()
 
     def unlock(self):
         """ Unlocks the measurement set. """

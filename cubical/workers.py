@@ -391,7 +391,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
         load_model (bool, optional):
             If specified, loads model column from measurement set.
         finalize (bool, optional):
-            If True, save will call the unlock method on the handler.
+            If True, this is the last tile. Call the unlock method on the handler, and finalize everything else.
 
     Returns:
         bool:
