@@ -16,23 +16,25 @@ sections of the parset.
 
 Options pertaining to data selection and chunking strategy.
 
---data-ms=string                                         
+--data-ms=string
 	Name/path of input measurement set. Mandatory.
 --data-column=string
 	Name of measurement set column from which to read for input data 
 	(uncalibrated visibilities). Default: 'DATA'.
---data-time-chunk=int
+--data-time-chunk=string
 	Data will be cut up into blocks containing this many timeslots. 
 	This limits the amount of data processed at once. Smaller chunks 
 	allow for a smaller RAM footprint and greater parallelism, but this 
-	sets an upper limit on the solution intervals that may be employed. 
-	0 means use full time axis. Default: 32.
---data-freq-chunk=int
+	sets an upper limit on the solution intervals that may be employed.
+	Specify as an integer number of timeslots, or a value with a unit
+	(e.g. '300s'). 0 means use full time axis. Default: 32.
+--data-freq-chunk=string
 	Data will be cut up into blocks containing this many channels. 
 	This limits the amount of data processed at once. Smaller chunks 
 	allow for a smaller RAM footprint and greater parallelism, but this 
-	sets an upper limit on the solution intervals that may be employed. 
-	0 means use full frequency axis. Default: 32.
+	sets an upper limit on the solution intervals that may be employed.
+	Specify as an integer number of channels, or a value with a unit
+	(e.g. '128MHz'). 0 means use full frequency axis. Default: 32.
 --data-chunk-by=string
 	If set, then time chunks will be broken up whenever the value in the 
 	named column(s) jumps by ``--data-chunk-by-jump``. Multiple column names 
@@ -41,6 +43,12 @@ Options pertaining to data selection and chunking strategy.
 --data-chunk-by-jump=int
 	The jump size used in conjunction with ``--data-chunk-by``. If 0, then 
 	any change in value is a jump. If n, then the change must be >n.
+--data-rebin-time=string
+	Rebin data in time on the fly. Specify as a number of timeslots to average
+	together, or a value with a unit (e.g. '5s'). Default: 1
+--data-rebin-freq=string
+	Rebin data in frequency on the fly. Specify as a number of channels to average
+	together, or a value with a unit (e.g. '4MHz'). Default: 1
 --data-single-chunk=string
 	Each data chunk is assigned a unique identifier, e.g. 'D0T0F0'. If 
 	set, processes just one chunk of data matching the identifier. 
@@ -156,9 +164,17 @@ Options controlling how flags are applied and written to.
 --flags-save=string
 	Save flags to named flagset in BITFLAG. If none or 0, will not save.
 	Default: cubical.
+--flags-save-legacy=keyword
+        Controls whether output flags are written to FLAG/FLAG_ROW. Is set to 'auto', then
+        follows the --flag-save option. Default: auto
 --flags-reinit-bitflags=bool
-	If true, reninitializes BITFLAG column from scratch. Useful if the bitflag
-	column is damaged. Default: 0.
+        If true, reninitializes BITFLAG column from scratch. Useful if you ended up
+        with a botched one, but be careful what the state of the FLAG/FLAG_ROW column
+        is when you use this option. Default: 0.
+--flags-warn-thr=float
+        If more than this fraction of data is flagged by the solver, issues gentle warnings. Default: 0.3.
+--flags-see-no-evil=bool
+        Proceed even if flag columns appear to be botched or damaged. Default: 0.
 
 
 [madmax]
