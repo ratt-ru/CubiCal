@@ -60,6 +60,7 @@ class SolverStats (object):
         dtype = [ ('label', 'S32'), ('iters', 'i4'),
                   ('num_intervals', 'i4'), ('num_converged', 'i4'), ('num_stalled', 'i4'),
                   ('num_sol_flagged', 'i4'),
+                  ('num_mad_flagged', 'i4'),
                   ('init_chi2', 'f8'), ('init_noise', 'f8'), ('chi2', 'f8'), ('noise', 'f8') ]
         self.chunk = np.rec.array(np.zeros((), dtype))
 
@@ -203,8 +204,8 @@ class SolverStats (object):
         
         # Get lists of unique time and channel indices occurring in the dict.
         
-        times = sorted(set([key[0] for key in stats.iterkeys()]))
-        chans = sorted(set([key[1] for key in stats.iterkeys()]))
+        times = sorted(set([time for time, _ in stats.iterkeys()]))
+        chans = sorted(set([chan for _, chan in stats.iterkeys()]))
 
         # Concatenate and add up cumulative stats.
         

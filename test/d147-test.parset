@@ -37,6 +37,7 @@ tf-np-median = 0.5
 time-density = 0.5 
 chan-density = 0.5 
 ddid-density = 0.5 
+mad-flag = 0
 
 [sol]
 jones = G

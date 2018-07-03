@@ -69,7 +69,26 @@ DEFAULT_PARSET = "d147-test.parset"
 DEFAULT_OUTPUT_DIR = os.environ["HOME"]+"/tmp"
 DEFAULT_NCPU = None
 
+def _ensure_output_ms(ms):
+    logprint("*** output MS is {}".format(ms))
+    if not os.path.exists(ms):
+        tarball = ms + ".tgz"
+        logprint("*** MS {} does not exist, will look for tarball {}".format(ms, tarball))
+        if os.path.exists(tarball):
+            os.chdir(os.path.dirname(tarball))
+            cmd = "tar zxvf " + os.path.basename(tarball)
+            logprint("*** running '{}' in {}".format(cmd, os.path.dirname(tarball)))
+            if os.system(cmd):
+                logprint("*** tarball {} failed to xtract".format(tarball))
+                sys.exit(1)
+        else:
+            logprint("*** tarball {} doesn't exist either".format(tarball))
+            sys.exit(1)
+
+
 def d147_test(ms=DEFAULT_MS, refms=DEFAULT_REF_MS, parset=DEFAULT_PARSET, workdir=None, args=[], tests=d147_test_list):
+    if "/" not in ms:
+        _ensure_output_ms(os.path.join(basedir, ms))
     tester = SolverVerification(ms, refms, parset, workdir or DEFAULT_OUTPUT_DIR)
     for colname, opts in tests:
         if DEFAULT_NCPU:
@@ -101,6 +120,8 @@ if __name__ == '__main__':
         tests = [ (args.test, d147_test_dict[args.test]) ]
     else:
         tests = d147_test_list
+
+    _ensure_output_ms(args.ms)
 
     if args.genref:
         tester = SolverVerification(args.ms, args.refms, args.parset, args.dir)

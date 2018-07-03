@@ -4,19 +4,20 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 
 from cubical.database.pickled_db import PickledDatabase
-from cubical.data_handler import DataHandler
+from cubical.data_handler.ms_data_handler import MSDataHandler
 from cubical.tools import logger
 from pyrap.tables import table as tbl
 import os
 import shutil
 import numpy as np
-import copy
+import subprocess
 
 log = logger.getLogger("casa_db_adaptor")
 
 # to the tune of KATDAL :)
-BLANK_TABLE_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "blankcaltable.CASA")
+BLANK_TABLE_NAME = 'blankcaltable.CASA'
+BLANK_TABLE_TARBALL = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "{}.tgz".format(BLANK_TABLE_NAME))
 
 class casa_caltable_factory(object):
         """
@@ -47,7 +48,10 @@ class casa_caltable_factory(object):
                     log.info("Destination CASA gain table '%s' exists. Will overwrite." % filename)
                     shutil.rmtree(filename) # CASA convention is to overwrite
                     
-            shutil.copytree(BLANK_TABLE_TEMPLATE, filename)
+            basedir = os.path.dirname(filename)
+            subprocess.check_output(["tar", "zxvf", BLANK_TABLE_TARBALL, "-C", basedir])
+            os.rename(os.path.join(basedir, BLANK_TABLE_NAME), filename)
+
             antorder = [db.antnames.index(an) for an in solants]
             with tbl("%s::ANTENNA" % filename, ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.anttype))
@@ -371,7 +375,7 @@ class casa_db_adaptor(PickledDatabase):
             Args:
                 src: a cubical.data_handler instance
         """
-        if not isinstance(src, DataHandler):
+        if not isinstance(src, MSDataHandler):
             raise TypeError("src must be of type Cubical DataHandler")
         if self.export_enabled:
             self.antoffset = src._anttabcols["OFFSET"]

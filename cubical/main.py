@@ -33,8 +33,7 @@ logger.init("cc")
 import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
-import cubical.data_handler as data_handler
-from cubical.data_handler import DataHandler, Tile
+from cubical.data_handler.ms_data_handler import MSDataHandler
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine
@@ -166,15 +165,16 @@ def main(debugging=False):
             print>>log, "started " + " ".join(sys.argv)
 
         # disable matplotlib's tk backend if we're not going to be showing plots
-        if GD['out']['plots-show']:
+        if GD['out']['plots'] =='show' or GD['madmax']['plot'] == 'show':
             import pylab
             try:
                 pylab.figure()
+                pylab.close()
             except Exception, exc:
                 import traceback
                 print>>log, ModColor.Str("Error initializing matplotlib: {}({})\n {}".format(type(exc).__name__,
                                                                                        exc, traceback.format_exc()))
-                raise UserInputError("matplotlib can't connect to X11. Suggest disabling --out-plots-show.")
+                raise UserInputError("matplotlib can't connect to X11. Can't use --out-plots show or --madmax-plots show.")
         else:
             matplotlib.use("Agg")
 
@@ -221,7 +221,7 @@ def main(debugging=False):
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
 
-        ms = DataHandler(GD["data"]["ms"],
+        ms = MSDataHandler(GD["data"]["ms"],
                           GD["data"]["column"],
                           output_column=GD["out"]["column"],
                           output_model_column=GD["out"]["model-column"],
@@ -232,16 +232,15 @@ def main(debugging=False):
                           channels=GD["sel"]["chan"],
                           flagopts=GD["flags"],
                           diag=solver_opts["diag-diag"],
-                          double_precision=double_precision,
                           beam_pattern=GD["model"]["beam-pattern"],
                           beam_l_axis=GD["model"]["beam-l-axis"],
                           beam_m_axis=GD["model"]["beam-m-axis"],
                           active_subset=GD["sol"]["subset"],
                           min_baseline=GD["sol"]["min-bl"],
                           max_baseline=GD["sol"]["max-bl"],
+                          chunk_freq=GD["data"]["freq-chunk"],
+                          rebin_freq=GD["data"]["rebin-freq"],
                           do_load_CASA_kwtables = GD["out"]["casa-gaintables"])
-        
-        data_handler.global_handler = ms
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
@@ -265,7 +264,11 @@ def main(debugging=False):
         if dde_mode == 'always' and not have_dd_jones:
             raise UserInputError("we have '--model-ddes always', but no direction dependent Jones terms enabled")
 
-        ms.init_models(GD["model"]["list"].split(","),
+        # force floats in Montblanc calculations
+        mb_opts = GD["montblanc"]
+        mb_opts['dtype'] = 'float'
+
+        ms.init_models(str(GD["model"]["list"]).split(","),
                        GD["weight"]["column"].split(",") if GD["weight"]["column"] else None,
                        mb_opts=GD["montblanc"],
                        use_ddes=have_dd_jones and dde_mode != 'never')
@@ -309,6 +312,9 @@ def main(debugging=False):
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
 
+        solver.GD = GD
+        solver.metadata = ms.metadata
+
         grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,
                                                        apply_only=apply_only,
@@ -343,14 +349,15 @@ def main(debugging=False):
         print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
 
-        chunks_per_tile = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+        chunks_per_tile, tile_list = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["rebin-time"],
+                                            GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
 
         # run the main loop
 
         t0 = time()
-        stats_dict = workers.run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts)
+        stats_dict = workers.run_process_loop(ms, tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 
         print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
 
@@ -365,7 +372,7 @@ def main(debugging=False):
             st.save(filename)
             print>> log, "saved summary statistics to %s" % filename
 
-            if GD["flags"]["post-sol"]:
+            if GD["postmortem"]["enable"]:
                 # flag based on summary stats
                 flag3 = flagging.flag_chisq(st, GD, basename, ms.nddid_actual)
 

@@ -19,6 +19,15 @@ def _normalize(x, dtype):
         return x
 
 
+import __builtin__
+try:
+    __builtin__.profile
+except AttributeError:
+    # No line profiler, provide a pass-through version
+    def profile(func): return func
+    __builtin__.profile = profile
+
+
 class PhaseSlopeGains(ParameterisedGains):
     """
     This class implements the diagonal phase-only parameterised slope gain machine.
@@ -150,6 +159,7 @@ class PhaseSlopeGains(ParameterisedGains):
                                            self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
         
 
+    @profile
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the J\ :sup:`H`\R term of the GN/LM method. 
@@ -204,6 +214,7 @@ class PhaseSlopeGains(ParameterisedGains):
         elif self.slope_type=="t-slope":
             return 4
 
+    @profile
     def implement_update(self, jhr, jhjinv):
 
         # variance of slope parms is diagonal of jhjinv

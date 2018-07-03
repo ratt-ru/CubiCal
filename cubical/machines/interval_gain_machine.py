@@ -142,9 +142,9 @@ class PerIntervalGains(MasterMachine):
 
     def get_new_jh(self, model_arr):
         if self._jh is None:
-            self._jh = np.zeros_like(model_arr)
-        else:
-            self._jh.fill(0)
+            self._jh = np.empty_like(model_arr)
+        # else:
+        #     self._jh.fill(0)
         return self._jh
 
     def get_new_jhr(self):
@@ -537,7 +537,7 @@ class PerIntervalGains(MasterMachine):
 
 
     def num_gain_flags(self, mask=None):
-        return (self.gflags&(mask or ~FL.MISSING) != 0).sum(), self.gflags.size
+        return int((self.gflags&(mask or ~FL.MISSING) != 0).sum()), self.gflags.size
 
     @property
     def dof_per_antenna(self):
