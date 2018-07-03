@@ -63,6 +63,10 @@ link_args = []
 
 link_args_omp = link_args + ['-lgomp']
 
+# which extensions need to compile through C++ rather than C
+cpp_extensions = "cytf_plane", "cyf_slope", "cyt_slope", "rebinning"
+
+
 class gocythonize(Command):
     """ Cythonise CubiCal kernels. """
     
@@ -86,7 +90,7 @@ class gocythonize(Command):
             name, ext = os.path.splitext(source)
             omp = name.endswith("_omp")
             # identify which kernels need to go via the C++ compiler
-            cpp = any([x in name for x in "cytf_plane", "cyf_slope", "cyt_slope"])
+            cpp = any([x in name for x in cpp_extensions])
 
             extensions.append(
                 Extension(name.replace("/","."), [source],
@@ -97,10 +101,11 @@ class gocythonize(Command):
 
         cythonize(extensions, compiler_directives={'binding': True}, annotate=True, force=self.force)
 
+
 extensions = []
 for source in glob.glob("cubical/kernels/*.pyx"): 
     name, _ = os.path.splitext(source)
-    is_cpp = any([s in name for s in "cytf_plane", "cyf_slope", "cyt_slope"])
+    is_cpp = any([s in name for s in cpp_extensions])
     is_omp = name.endswith("_omp")
 
     extensions.append(
@@ -125,6 +130,7 @@ else:
                     'python-casacore>=2.1.2', 
                     'sharedarray', 
                     'matplotlib',
+                    'cython',
                     'scipy',
                     'astro-tigger-lsm']
 
@@ -147,7 +153,8 @@ setup(name='cubical',
       cmdclass={'build_ext': build_ext,
                 'gocythonize': gocythonize},
       packages=['cubical', 
-                'cubical.machines', 
+                'cubical.data_handler',
+                'cubical.machines',
                 'cubical.tools', 
                 'cubical.kernels', 
                 'cubical.plots',

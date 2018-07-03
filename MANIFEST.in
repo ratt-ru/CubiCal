@@ -1,9 +1,4 @@
 include cubical/DefaultParset.cfg
+include cubical/database/blankcaltable.CASA.tgz
 recursive-include cython *
 include cubical/bin/gocubical
-recursive-include cubical/database/blankcaltable.CASA *
-recursive-include cubical/database/blankcaltable.CASA/ANTENNA/ *
-recursive-include cubical/database/blankcaltable.CASA/HISTORY/ *
-recursive-include cubical/database/blankcaltable.CASA/SPECTRAL_WINDOW/ *
-recursive-include cubical/database/blankcaltable.CASA/FIELD/ *
-recursive-include cubical/database/blankcaltable.CASA/OBSERVATION/ *

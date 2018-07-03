@@ -16,23 +16,25 @@ sections of the parset.
 
 Options pertaining to data selection and chunking strategy.
 
---data-ms=string                                         
+--data-ms=string
 	Name/path of input measurement set. Mandatory.
 --data-column=string
 	Name of measurement set column from which to read for input data 
 	(uncalibrated visibilities). Default: 'DATA'.
---data-time-chunk=int
+--data-time-chunk=string
 	Data will be cut up into blocks containing this many timeslots. 
 	This limits the amount of data processed at once. Smaller chunks 
 	allow for a smaller RAM footprint and greater parallelism, but this 
-	sets an upper limit on the solution intervals that may be employed. 
-	0 means use full time axis. Default: 32.
---data-freq-chunk=int
+	sets an upper limit on the solution intervals that may be employed.
+	Specify as an integer number of timeslots, or a value with a unit
+	(e.g. '300s'). 0 means use full time axis. Default: 32.
+--data-freq-chunk=string
 	Data will be cut up into blocks containing this many channels. 
 	This limits the amount of data processed at once. Smaller chunks 
 	allow for a smaller RAM footprint and greater parallelism, but this 
-	sets an upper limit on the solution intervals that may be employed. 
-	0 means use full frequency axis. Default: 32.
+	sets an upper limit on the solution intervals that may be employed.
+	Specify as an integer number of channels, or a value with a unit
+	(e.g. '128MHz'). 0 means use full frequency axis. Default: 32.
 --data-chunk-by=string
 	If set, then time chunks will be broken up whenever the value in the 
 	named column(s) jumps by ``--data-chunk-by-jump``. Multiple column names 
@@ -41,6 +43,12 @@ Options pertaining to data selection and chunking strategy.
 --data-chunk-by-jump=int
 	The jump size used in conjunction with ``--data-chunk-by``. If 0, then 
 	any change in value is a jump. If n, then the change must be >n.
+--data-rebin-time=string
+	Rebin data in time on the fly. Specify as a number of timeslots to average
+	together, or a value with a unit (e.g. '5s'). Default: 1
+--data-rebin-freq=string
+	Rebin data in frequency on the fly. Specify as a number of channels to average
+	together, or a value with a unit (e.g. '4MHz'). Default: 1
 --data-single-chunk=string
 	Each data chunk is assigned a unique identifier, e.g. 'D0T0F0'. If 
 	set, processes just one chunk of data matching the identifier. 
@@ -73,22 +81,33 @@ Options related to model selection and prediction.
 
 --model-list=multi
 	Predict model visibilities from MS column/s and LSM/s (using 
-	Montblanc). Multiple model columns can be specified using colons e.g.
-	``MODEL_DATA_1:MODEL_DATA_2``. Models can also be added using +, e.g. 
-	``MODEL_DATA_1+MODEL_DATA_2``. MS columns can also be combined with 
-	visibilities predicted from a sky model using 
-	``MODEL_DATA+skymodel.lsm.html`` or ``MODEL_DATA:skymodel.lsm.html``. 
-	If multiple	models are specified using colons, they are treated as 
-	different directions. Direction-dependent prediction is supported using 
-	tags, e.g. ``skymodel.lsm.html@dE`` will use the dE tag in the skymodel to 
-	generate and predict source visibilities for several directions. This 
-	in turn can be combined with MS columns or other skymodels as above. 
-	This is a complex option but the logging can be used to verify the 
-	behaviour that is in use. No default. Mandatory.
+	Montblanc). The simplest usage is to specify a column, e.g.
+	``MODEL_DATA``, or a Tigger LSM, e.g. ``skymodel.lsm.html``,
+	or, as a special case, ``1`` simply uses unity visibilities.
+	(The LSM option is only available if Montblanc is installed).
+	Use @TAG, e.g. ``skymodel.lsm.html@dE`` to group sources in the LSM
+	by direction, according to the specified tag. You can also specify models
+	for different directions by means of a colon. For example,
+	``MODEL_DATA_1:MODEL_DATA_2`` defines two directions, while
+	``MODEL_DATA:skymodel.lsm.html@dE`` defines a direction modelled
+	by the ``MODEL_DATA`` column, and other directions as
+	defined by the LSM. By contrast, the plus sign adds model visibilities
+	together without splitting them into directions, e.g.
+	``MODEL_DATA_1+MODEL_DATA_2:skymodel.lsm.html@dE`` will define
+	one direction modelled by a sum of columns, and other directions as
+	defined by the LSM. Finally, a comma separates *model sets*. Each model
+	set defines a separate minimization problem, weighted differently
+	(in which case the --weight-column option must specify the same number
+	of comma-separated *weight sets*). The priority of the separators is
+	as follows: first, commas split up model sets. Within each set, colons
+	split up directions. Finally, within each direction, plus signs split
+	up its additive components.
+	This can be quite a complex option, so check the log to make sure it is
+	being interpreted correctly. No default.
 --model-ddes=keyword
 	Enables direction-dependent models. If auto, this is determined 
 	by ``--sol-jones`` and ``--model-list``, otherwise, enable/disable 
-	explicitly. Keywords: never, auto, always. Deafault: auto.
+	explicitly. Keywords: never, auto, always. Default: auto.
 --model-beam-pattern=string
 	Apply beams from specified .fits files eg. "beam_$(corr)_$(reim).fits" 
 	or "beam_$(CORR)_$(REIM).fits". No default.
@@ -98,6 +117,15 @@ Options related to model selection and prediction.
 --model-beam-m-axis=keyword
 	Specify which axis in the .fits file is associated with the m axis.
 	Keywords: X, Y, -X, -Y. No default.
+
+[weight]
+########
+
+Options related to weights.
+
+--weight-column=string
+	Column/s to read weights from. Weights are applied by default. Specify an
+	empty string or None to disable. Default: WEIGHT_SPECTRUM.
 
 [montblanc]
 ###########
@@ -121,19 +149,10 @@ Options which will be used during model prediction (using Montblanc.)
 	overrides this, if set. If 0, uses Montblanc's insternal default (all).
 	Default: 0.
 
-[weight]
-########
-
-Options related to weights.
-
---weight-column=string
-	Column to read weights from. Weights are applied by default. Specify an
-	empty string or None to disable. Default: WEIGHT_SPECTRUM. 
-
 [flags]
 #######
 
-Options controlling flags, both their application and generation.
+Options controlling how flags are applied and written to.
 
 --flags-apply=string
 	Which flagsets will be applied prior to calibration. Use "-FLAGSET" 
@@ -145,27 +164,77 @@ Options controlling flags, both their application and generation.
 --flags-save=string
 	Save flags to named flagset in BITFLAG. If none or 0, will not save.
 	Default: cubical.
+--flags-save-legacy=keyword
+        Controls whether output flags are written to FLAG/FLAG_ROW. Is set to 'auto', then
+        follows the --flag-save option. Default: auto
 --flags-reinit-bitflags=bool
-	If true, reninitializes BITFLAG column from scratch. Useful if the bitflag
-	column is damaged. Default: 0.
---flags-post-sol=bool
+        If true, reninitializes BITFLAG column from scratch. Useful if you ended up
+        with a botched one, but be careful what the state of the FLAG/FLAG_ROW column
+        is when you use this option. Default: 0.
+--flags-warn-thr=float
+        If more than this fraction of data is flagged by the solver, issues gentle warnings. Default: 0.3.
+--flags-see-no-evil=bool
+        Proceed even if flag columns appear to be botched or damaged. Default: 0.
+
+
+[madmax]
+########
+
+"Mad Max" flags visibilities on-the-fly inside the solution loop, by using a MAD filter.
+This computes the median absolute residual (i.e. median absolute deviation from zero), and
+flags visibilities exceeding the thresholds set below.
+
+--madmax-enable=bool
+	Enable Mad Max flagging. Default: 0
+--madmax-estimate=keyword
+	MAD estimation mode. Use 'corr' for a separate estimate per each baseline and
+	correlation. Otherwise, a single estimate per baseline is computed using 'all' correlations,
+	or only the 'diag' or 'offdiag' correlations. Default: 'corr'
+--madmax-diag=bool
+	Flag on on-diagonal (parallel-hand) residuals. Default: 1.
+--madmax-offdiag=bool
+	Flag on off-diagonal (cross-hand) residuals. Default: 1
+--madmax-threshold=list
+	Threshold for MAD flagging per baseline (specified in sigmas). Residuals exceeding
+	S*MAD/1.428 (where S is the given threshold) will be flagged. MAD is computed per baseline.
+	This can be specified as a list e.g. N1,N2,N3,... The first value is used to flag
+	residuals before a solution starts (use 0 to disable), the next value is used when the residuals
+	are first recomputed during the solution several iteratins later (see -chi-int), etc.
+	A final pass may be done at the end of the solution. The last value in the list is reused
+	if necessary. Using a list with gradually decreasing values may be sensible. Default: 0,10.
+--madmax-global-threshold=list
+	Threshold for global MMAD flagging. MMAD is computed as the median of the
+	per-baseline MADs. Residuals exceeding S*MMAD/1.428 (where S is the given threshold) will be
+	flagged.Can be specified as a list, with the same semantics as --madmax-threshold. Default: 0,12.
+--madmax-plot=keyword
+	Enable plots for Mad Max flagging. Use 'show' to show figures interactively, or '1'
+	to save plots to files instead. Plots will show the worst flagged baseline, and a median flagged
+	baseline, provided the fraction of flagged visibilities is above some threshold. Default: 0
+--madmax-plot-frac-above=float
+	Threshold (in terms of fraction of visibilities flagged) above which Mad Max plots will be generated.
+	Default: 0.01.
+
+
+[postmortem]
+############
+
+Postmortem flagging is done on things like chi-square statistics after a solutionis finished.
+
+--postmortem-enable=bool
 	If True, will do an extra round of flagging at the end (post-solution)
 	based on solution statistics, as per the following options. Default: 0.
---flags-tf-chisq-median=float
-	Intervals with chi-squared values larger than this value times the median 
-	will be flagged. Default: 1.2.
---flags-tf-np-median=float
-	Minimum percentage of unflagged visibilities per time/frequncy slot 
-	required to prevent flagging. Default: 0.5.
---flags-time-density=float
-	Minimum percentage of unflagged visibilities along the time axis required
-	to prevent flagging. Default: 0.5.
---flags-chan-density=float
-	Minimum percentage of unflagged visibilities along the frequency axis
-	required to prevent flagging. Default: 0.5.
---flags-ddid-density=float
-	Minimum percentage of unflagged visibilities along the DDID axis
-	required to prevent flagging. Default: 0.5.
+--postmortem-tf-chisq-median=float
+	Intervals with chi-squared values larger than X times the median
+	chi-square value will be flagged. Default: 1.2.
+--postmortem-tf-np-median=float
+	Intervals with a number of valid point less than X times the median number
+	of valid points will be flagged. Default: 0.5.
+--postmortem-time-density=float
+	If more than the given fraction of data in a timeslot is flagged, flag entire timeslot. Default: 0.5.
+--postmortem-chan-density=float
+	If more than the given fraction of data in a timeslot is flagged, flag entire channel. Default: 0.5.
+--postmortem-ddid-density=float
+	If more than the given fraction of data in a DDID is flagged, flag entire DDID. Default: 0.5.
  
 [sol]
 #####

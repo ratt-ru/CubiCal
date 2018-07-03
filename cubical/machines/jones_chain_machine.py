@@ -89,7 +89,7 @@ class JonesChain(MasterMachine):
         # this list accumulates the per-term convergence status strings
         self._convergence_states = []
         # True when the last active term has had its convergence status queried
-        self._convergence_states_finalized = True
+        self._convergence_states_finalized = False
 
         self.cached_model_arr = self._r = self._m = None
 
@@ -249,7 +249,7 @@ class JonesChain(MasterMachine):
         ndir = self.n_dir if dd else 1
         gains = self.cykernel.allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
                                                   self.dtype)
-        g0 = self.jones_terms[0].gains
+        g0 = self.jones_terms[0]._gainres_to_fullres(self.jones_terms[0].gains, tdim_ind=1)
         if ndir > 1 and g0.shape[0] == 1:
             g0 = g0.reshape(g0.shape[1:])[np.newaxis,...]
         elif ndir == 1 and g0.shape[0] > 1:
@@ -280,12 +280,13 @@ class JonesChain(MasterMachine):
         for term in self.jones_terms[::-1]:
             if not term.dd_term:
                 g, _, fc = term.get_inverse_gains()
+                g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
                     self.cykernel.cyright_multiply_gains(gains, g[:1,...], *term.gain_intervals)
                 else:
                     init = True
-                    gains[:] = g[:1,...]
+                    gains[:] = term._gainres_to_fullres(g[:1,...], tdim_ind=1)
 
         # compute conjugate gains
         gh = np.empty_like(gains)
@@ -408,6 +409,7 @@ class JonesChain(MasterMachine):
                 return True
             else:
                 print>> log(1), "skipping term {}: non-solvable".format(self.active_term.jones_label)
+
 
     def next_iteration(self):
         """

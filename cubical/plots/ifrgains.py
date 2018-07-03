@@ -57,7 +57,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         filename = "{}.{}.png".format(basename, name)
         pylab.savefig(filename, dpi=DPI)
         print>> log, "saved plot " + filename
-        if GD["out"]["plots-show"]:
+        if GD["out"]["plots"] == "show":
             pylab.show()
         pylab.figure()
 
