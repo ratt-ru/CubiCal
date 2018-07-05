@@ -405,7 +405,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
             tile = tile_list[save]
             itile = range(len(tile_list))[save]
             print>>log(0, "blue"),"saving {}".format(tile.label)
-            tile.save(unlock=finalize)
+            tile.save(final=finalize)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
                 solver.ifrgain_machine.accumulate(sd)
