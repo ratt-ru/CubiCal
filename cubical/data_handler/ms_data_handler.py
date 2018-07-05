@@ -1249,7 +1249,8 @@ class MSDataHandler:
 
     def finalize(self):
         if self._auto_fill_bitflag:
-            self.ms.removecolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS")
+            if "AUTOINIT_IN_PROGRESS" in self.ms.colkeywordnames("BITFLAG"):
+                self.ms.removecolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS")
         self.unlock()
 
     def unlock(self):

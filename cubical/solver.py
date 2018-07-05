@@ -308,7 +308,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                                     pylab.colorbar()
                             pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({} case)".format(max_label,
                                             method, blname, bllen, n_flagged, fraction, baseline_label))
-                            if ['madmax']['plot'] == 'show':
+                            if GD['madmax']['plot'] == 'show':
                                 pylab.show()
                             else:
                                 plotdir = '{}-madmax.plots'.format(GD['out']['name'])
