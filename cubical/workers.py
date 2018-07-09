@@ -4,7 +4,6 @@ import re
 
 
 import cubical.kernels
-from cubical.data_handler import Tile
 from cubical.tools import logger
 from cubical import solver
 
@@ -178,7 +177,9 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
                 core += corestep
     return True
 
-def run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+
+def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+
     """
     Runs the main loop. If debugging is set, or single_chunk mode is on, forces serial mode.
     Otherwise selects serial or parallel depending on previous call to setup_parallelism().
@@ -197,6 +198,12 @@ def run_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, deb
     Returns:
         Stats dictionary
     """
+
+    # if worker processes are launched, this global is inherited and will be accessed
+    # by the I/O worker
+    global tile_list
+    tile_list = _tile_list
+    
     if num_workers:
         return _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts)
     else:
@@ -220,6 +227,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
     Returns:
         Stats dictionary
     """
+    global tile_list
 
     # this accumulates SolverStats objects from each chunk, for summarizing later
     stats_dict = {}
@@ -239,7 +247,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
         # (Montblanc is finicky about affinities apparently, so we don't do it before)
         _init_worker(main=True)
 
-        for itile, tile in enumerate(Tile.tile_list):
+        for itile, tile in enumerate(tile_list):
             # wait for I/O job on current tile to finish
             print>> log(0), "waiting for I/O on {}".format(tile.label)
             done, not_done = cf.wait([io_futures[itile]])
@@ -248,7 +256,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
             del io_futures[itile]
 
             # immediately schedule I/O job to save previous/load next tile
-            load_next = itile + 1 if itile < len(Tile.tile_list) - 1 else None
+            load_next = itile + 1 if itile < len(tile_list) - 1 else None
             save_prev = itile - 1 if itile else None
             io_futures[itile + 1] = io_executor.submit(_io_handler, load=load_next,
                                                        save=save_prev, load_model=load_model)
@@ -302,11 +310,11 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
     Returns:
         Stats dictionary
     """
-    import cubical.kernels
+    global tile_list
 
     stats_dict = {}
 
-    for itile, tile in enumerate(Tile.tile_list):
+    for itile, tile in enumerate(tile_list):
         tile.load(load_model=load_model)
         processed = False
         for key in tile.get_chunk_keys():
@@ -358,18 +366,18 @@ def _init_worker(main=False):
 
         taskset = props.get("taskset")
         if taskset is not None:
-            print>>log(0,"blue"),"pid {}, setting CPU affinity to {} with taskset".format(os.getpid(), taskset)
+            print>>log(1,"blue"),"pid {}, setting CPU affinity to {} with taskset".format(os.getpid(), taskset)
             os.system("taskset -pc {} {} >/dev/null".format(taskset, os.getpid()))
 
         environ = props.get("environ")
         if environ:
             os.environ.update(environ)
             for key, value in environ.iteritems():
-                print>>log(0,"blue"),"setting {}={}".format(key, value)
+                print>>log(1,"blue"),"setting {}={}".format(key, value)
 
         num_omp_threads = props.get("num_omp_threads")
         if num_omp_threads is not None:
-            print>> log(0,"blue"), "enabling {} OMP threads".format(num_omp_threads)
+            print>> log(1,"blue"), "enabling {} OMP threads".format(num_omp_threads)
             import cubical.kernels
             cubical.kernels.num_omp_threads = num_omp_threads
 
@@ -386,31 +394,34 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
         load_model (bool, optional):
             If specified, loads model column from measurement set.
         finalize (bool, optional):
-            If True, save will call the unlock method on the handler.
+            If True, this is the last tile. Call the unlock method on the handler, and finalize everything else.
 
     Returns:
         bool:
             True if load/save was successful.
     """
+    global tile_list
     try:
         _init_worker()
         result = {'success': True}
         if save is not None:
-            tile = Tile.tile_list[save]
-            itile = range(len(Tile.tile_list))[save]
+            tile = tile_list[save]
+            itile = range(len(tile_list))[save]
             print>>log(0, "blue"),"saving {}".format(tile.label)
-            tile.save(unlock=finalize)
+            tile.save(final=finalize)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
                 solver.ifrgain_machine.accumulate(sd)
             if finalize:
                 solver.ifrgain_machine.save()
-                solver.gm_factory.set_metas(tile.handler)
+
+                solver.gm_factory.set_metas(tile.dh)
+
                 solver.gm_factory.close()
-                result['flagcounts'] = tile.handler.flagcounts
+                result['flagcounts'] = tile.dh.flagcounts
             tile.release()
         if load is not None:
-            tile = Tile.tile_list[load]
+            tile = tile_list[load]
             print>>log(0, "blue"),"loading {}".format(tile.label)
             tile.load(load_model=load_model)
         print>> log(0, "blue"), "I/O job(s) complete"

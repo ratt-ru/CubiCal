@@ -4,19 +4,20 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 
 from cubical.database.pickled_db import PickledDatabase
-from cubical.data_handler import DataHandler
+from cubical.data_handler.ms_data_handler import MSDataHandler
 from cubical.tools import logger
 from pyrap.tables import table as tbl
 import os
 import shutil
 import numpy as np
-import copy
+import subprocess
 
 log = logger.getLogger("casa_db_adaptor")
 
 # to the tune of KATDAL :)
-BLANK_TABLE_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                    "blankcaltable.CASA")
+BLANK_TABLE_NAME = 'blankcaltable.CASA'
+BLANK_TABLE_TARBALL = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "{}.tgz".format(BLANK_TABLE_NAME))
 
 class casa_caltable_factory(object):
         """
@@ -47,7 +48,10 @@ class casa_caltable_factory(object):
                     log.info("Destination CASA gain table '%s' exists. Will overwrite." % filename)
                     shutil.rmtree(filename) # CASA convention is to overwrite
                     
-            shutil.copytree(BLANK_TABLE_TEMPLATE, filename)
+            basedir = os.path.dirname(filename)
+            subprocess.check_output(["tar", "zxvf", BLANK_TABLE_TARBALL, "-C", basedir])
+            os.rename(os.path.join(basedir, BLANK_TABLE_NAME), filename)
+
             antorder = [db.antnames.index(an) for an in solants]
             with tbl("%s::ANTENNA" % filename, ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.anttype))
@@ -371,54 +375,58 @@ class casa_db_adaptor(PickledDatabase):
             Args:
                 src: a cubical.data_handler instance
         """
-        if not isinstance(src, DataHandler):
+        if not isinstance(src, MSDataHandler):
             raise TypeError("src must be of type Cubical DataHandler")
-        
-        self.antoffset = src._anttabcols["OFFSET"]
-        self.antpos = src._anttabcols["POSITION"]
-        self.anttype = src._anttabcols["TYPE"]
-        self.antdishdiam = src._anttabcols["DISH_DIAMETER"]
-        self.antflagrow = src._anttabcols["FLAG_ROW"]
-        self.antmount = src._anttabcols["MOUNT"]
-        self.antnames = src._anttabcols["NAME"]
-        self.antstation = src._anttabcols["STATION"]
-        self.fielddelaydirs = src._fldtabcols["DELAY_DIR"]
-        self.fieldphasedirs = src._fldtabcols["PHASE_DIR"]
-        self.fieldrefdir = src._fldtabcols["REFERENCE_DIR"]
-        self.fieldcode = src._fldtabcols["CODE"]
-        self.fieldflagrow = src._fldtabcols["FLAG_ROW"]
-        self.fieldname = src._fldtabcols["NAME"]
-        self.fieldnumpoly = src._fldtabcols["NUM_POLY"]
-        self.fieldsrcid = src._fldtabcols["SOURCE_ID"]
-        self.fieldtime = src._fldtabcols["TIME"]
-        self.obstimerange = src._obstabcols["TIME_RANGE"]
-        self.obslog = src._obstabcols["LOG"]
-        self.obsschedule = src._obstabcols["SCHEDULE"]
-        self.obsflagrow = src._obstabcols["FLAG_ROW"]
-        self.obsobserver = src._obstabcols["OBSERVER"]
-        self.obsproject = src._obstabcols["PROJECT"]
-        self.obsreleasedate = src._obstabcols["RELEASE_DATE"]
-        self.obsscheduletype = src._obstabcols["SCHEDULE_TYPE"]
-        self.obstelescopename = src._obstabcols["TELESCOPE_NAME"]
-        self.spwmeasfreq = src._spwtabcols["MEAS_FREQ_REF"]
-        self.spwchanfreq = src._spwtabcols["CHAN_FREQ"]
-        self.spwreffreq = src._spwtabcols["REF_FREQUENCY"]
-        self.spwchanwidth = src._spwtabcols["CHAN_WIDTH"]
-        self.spweffbw = src._spwtabcols["EFFECTIVE_BW"]
-        self.spwresolution = src._spwtabcols["RESOLUTION"]
-        self.spwflagrow = src._spwtabcols["FLAG_ROW"]
-        self.spwfreqgroup = src._spwtabcols["FREQ_GROUP"]
-        self.spwfreqgroupname = src._spwtabcols["FREQ_GROUP_NAME"]
-        self.spwifconvchain = src._spwtabcols["IF_CONV_CHAIN"]
-        self.spwname = src._spwtabcols["NAME"]
-        self.spwnetsideband = src._spwtabcols["NET_SIDEBAND"]
-        self.spwnumchan = src._spwtabcols["NUM_CHAN"]
-        self.spwtotalbandwidth = src._spwtabcols["TOTAL_BANDWIDTH"]
-        self.ddid_spw_map = src._ddid_spw
-        self.sel_ddids = src._ddids
-        self.do_write_casatbl = True
-        self.meta_avail = True
-    
+
+        if self.export_enabled:
+            self.antoffset = src._anttabcols["OFFSET"]
+            self.antpos = src._anttabcols["POSITION"]
+            self.anttype = src._anttabcols["TYPE"]
+            self.antdishdiam = src._anttabcols["DISH_DIAMETER"]
+            self.antflagrow = src._anttabcols["FLAG_ROW"]
+            self.antmount = src._anttabcols["MOUNT"]
+            self.antnames = src._anttabcols["NAME"]
+            self.antstation = src._anttabcols["STATION"]
+            self.fielddelaydirs = src._fldtabcols["DELAY_DIR"]
+            self.fieldphasedirs = src._fldtabcols["PHASE_DIR"]
+            self.fieldrefdir = src._fldtabcols["REFERENCE_DIR"]
+            self.fieldcode = src._fldtabcols["CODE"]
+            self.fieldflagrow = src._fldtabcols["FLAG_ROW"]
+            self.fieldname = src._fldtabcols["NAME"]
+            self.fieldnumpoly = src._fldtabcols["NUM_POLY"]
+            self.fieldsrcid = src._fldtabcols["SOURCE_ID"]
+            self.fieldtime = src._fldtabcols["TIME"]
+            self.obstimerange = src._obstabcols["TIME_RANGE"]
+            self.obslog = src._obstabcols["LOG"]
+            self.obsschedule = src._obstabcols["SCHEDULE"]
+            self.obsflagrow = src._obstabcols["FLAG_ROW"]
+            self.obsobserver = src._obstabcols["OBSERVER"]
+            self.obsproject = src._obstabcols["PROJECT"]
+            self.obsreleasedate = src._obstabcols["RELEASE_DATE"]
+            self.obsscheduletype = src._obstabcols["SCHEDULE_TYPE"]
+            self.obstelescopename = src._obstabcols["TELESCOPE_NAME"]
+            self.spwmeasfreq = src._spwtabcols["MEAS_FREQ_REF"]
+            self.spwchanfreq = src._spwtabcols["CHAN_FREQ"]
+            self.spwreffreq = src._spwtabcols["REF_FREQUENCY"]
+            self.spwchanwidth = src._spwtabcols["CHAN_WIDTH"]
+            self.spweffbw = src._spwtabcols["EFFECTIVE_BW"]
+            self.spwresolution = src._spwtabcols["RESOLUTION"]
+            self.spwflagrow = src._spwtabcols["FLAG_ROW"]
+            self.spwfreqgroup = src._spwtabcols["FREQ_GROUP"]
+            self.spwfreqgroupname = src._spwtabcols["FREQ_GROUP_NAME"]
+            self.spwifconvchain = src._spwtabcols["IF_CONV_CHAIN"]
+            self.spwname = src._spwtabcols["NAME"]
+            self.spwnetsideband = src._spwtabcols["NET_SIDEBAND"]
+            self.spwnumchan = src._spwtabcols["NUM_CHAN"]
+            self.spwtotalbandwidth = src._spwtabcols["TOTAL_BANDWIDTH"]
+            self.ddid_spw_map = src._ddid_spw
+            self.sel_ddids = src._ddids
+            self.do_write_casatbl = True
+            self.meta_avail = True
+        else:
+            self.meta_avail = False
+            
+
     def __export(self):
         """ exports the database to CASA gaintables """
         self._load(self.filename)

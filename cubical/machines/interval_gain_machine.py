@@ -142,9 +142,9 @@ class PerIntervalGains(MasterMachine):
 
     def get_new_jh(self, model_arr):
         if self._jh is None:
-            self._jh = np.zeros_like(model_arr)
-        else:
-            self._jh.fill(0)
+            self._jh = np.empty_like(model_arr)
+        # else:
+        #     self._jh.fill(0)
         return self._jh
 
     def get_new_jhr(self):
@@ -482,34 +482,35 @@ class PerIntervalGains(MasterMachine):
                 self.gflags[goob&~flagged] |= FL.GOOB
                 flagged |= goob
 
-        # else final flagging -- check the posterior error estimate
-        if self.posterior_gain_error is not None:
-            # reset to 0 for fixed directions
-            if self.dd_term:
-                self.posterior_gain_error[self.fix_directions, ...] = 0
-            # flag gains on max error
-            # the last axis is correlation -- we flag if any correlation is flagged
-            bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=(-1,-2))  # dir,time,freq,ant
+        else:
+            # else final flagging -- check the posterior error estimate
+            if self.posterior_gain_error is not None:
+                # reset to 0 for fixed directions
+                if self.dd_term:
+                    self.posterior_gain_error[self.fix_directions, ...] = 0
+                # flag gains on max error
+                # the last axis is correlation -- we flag if any correlation is flagged
+                bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=(-1,-2))  # dir,time,freq,ant
 
-            # mask high-variance gains that are not already otherwise flagged
-            mask = self._interval_to_gainres(bad_gain_intervals, 1)&~flagged
+                # mask high-variance gains that are not already otherwise flagged
+                mask = self._interval_to_gainres(bad_gain_intervals, 1)&~flagged
 
-            # raise FL.GVAR flag on these gains (and clear on all others!)
-            self.gflags &= ~FL.GVAR
-            self.gflags[mask] |= FL.GVAR
-            flagged[mask] = True
+                # raise FL.GVAR flag on these gains (and clear on all others!)
+                self.gflags &= ~FL.GVAR
+                self.gflags[mask] |= FL.GVAR
+                flagged[mask] = True
 
-            self._n_flagged_on_max_posterior_error = mask.sum(axis=(1, 2, 3)) if mask.any() else None
+                self._n_flagged_on_max_posterior_error = mask.sum(axis=(1, 2, 3)) if mask.any() else None
 
-            # if bad_gain_intervals.any():
-            #     # (n_dir,) array showing how many were flagged per direction
-            #     self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1, 2, 3))
-            #     # raised corresponding gain flags
-            #     mask = self._interval_to_gainres(bad_gain_intervals, 1)
-            #     self.gflags[mask] |= FL.GVAR
-            #     flagged[mask] = True
-            # else:
-            #     self._n_flagged_on_max_posterior_error = None
+                # if bad_gain_intervals.any():
+                #     # (n_dir,) array showing how many were flagged per direction
+                #     self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1, 2, 3))
+                #     # raised corresponding gain flags
+                #     mask = self._interval_to_gainres(bad_gain_intervals, 1)
+                #     self.gflags[mask] |= FL.GVAR
+                #     flagged[mask] = True
+                # else:
+                #     self._n_flagged_on_max_posterior_error = None
 
         # Count the gain flags, excluding those set a priori due to missing data.
 
@@ -536,7 +537,7 @@ class PerIntervalGains(MasterMachine):
 
 
     def num_gain_flags(self, mask=None):
-        return (self.gflags&(mask or ~FL.MISSING) != 0).sum(), self.gflags.size
+        return int((self.gflags&(mask or ~FL.MISSING) != 0).sum()), self.gflags.size
 
     @property
     def dof_per_antenna(self):

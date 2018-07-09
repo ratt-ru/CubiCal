@@ -30,7 +30,7 @@
 ######################
 .DS_Store
 .DS_Store?
-._*
+# ._*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
@@ -74,10 +74,9 @@ cubical.egg-info/*
 examples/.ipynb_checkpoints/
 test/SUBSET-D147-output.MS/table.*
 
-
 # Folders #
 ###########
-docs/_static/
+#docs/_static/
 docs/_build/
 docs/_templates/
 

@@ -24,15 +24,15 @@
 
 import os
 import sys
-import logging
 import glob
 
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.build_ext import build_ext
+from setuptools import Command
 
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
-log = logging.getLogger()
+with open('README.md') as f:
+    long_description = f.read()
 
 with open('README.md') as f:
 	long_description = f.read()
@@ -66,44 +66,56 @@ link_args = []
 
 link_args_omp = link_args + ['-lgomp']
 
-if cythonize:
+# which extensions need to compile through C++ rather than C
+cpp_extensions = "cytf_plane", "cyf_slope", "cyt_slope", "rebinning"
 
-    log.info("Cython is available. Cythonizing...")
 
-    CCO.buffer_max_dims = 9
+class gocythonize(Command):
+    """ Cythonise CubiCal kernels. """
+    
+    description = 'Cythonise CubiCal kernels.'
 
-    extensions = []
-    for source in glob.glob("cubical/kernels/*.pyx"):
-        name, ext = os.path.splitext(source)
-        omp = name.endswith("_omp")
-        # identify which kernels need to go via the C++ compiler
-        cpp = any([x in name for x in "cytf_plane", "cyf_slope", "cyt_slope"])
+    user_options = [('force', 'f', 'Force cythonisation.'),]
 
-        extensions.append(Extension(
-            name.replace("/","."), [source],
-            include_dirs=[include_path],
-            extra_compile_args=cmpl_args_omp if omp else cmpl_args,
-            extra_link_args=link_args_omp if omp else link_args,
-            language="c++" if cpp else "c"
-        ))
+    def initialize_options(self):
+        pass
 
-    extensions = cythonize(extensions, compiler_directives={'binding': True}, annotate=True)
+    def finalize_options(self):
+        self.force = self.force or 0
 
-else:
+    def run(self):
+        
+        CCO.buffer_max_dims = 9
 
-    log.info("Cython unavailable. Using bundled .c and .cpp files.")
+        extensions = []
+        
+        for source in glob.glob("cubical/kernels/*.pyx"):
+            name, ext = os.path.splitext(source)
+            omp = name.endswith("_omp")
+            # identify which kernels need to go via the C++ compiler
+            cpp = any([x in name for x in cpp_extensions])
 
-    extensions = []
-    for source in glob.glob("cubical/kernels/*.c") + glob.glob("cubical/kernels/*.cpp"):
-        name, ext = os.path.splitext(source)
-        omp = name.endswith("_omp")
-        extensions.append(Extension(
-            name.replace("/","."), [source],
-            include_dirs=[include_path],
-            extra_compile_args=cmpl_args_omp if omp else cmpl_args,
-            extra_link_args=link_args_omp if omp else link_args
-        ))
+            extensions.append(
+                Extension(name.replace("/","."), [source],
+                          include_dirs=[include_path],
+                          extra_compile_args=cmpl_args_omp if omp else cmpl_args,
+                          extra_link_args=link_args_omp if omp else link_args,
+                          language="c++" if cpp else "c"))
 
+        cythonize(extensions, compiler_directives={'binding': True}, annotate=True, force=self.force)
+
+
+extensions = []
+for source in glob.glob("cubical/kernels/*.pyx"): 
+    name, _ = os.path.splitext(source)
+    is_cpp = any([s in name for s in cpp_extensions])
+    is_omp = name.endswith("_omp")
+
+    extensions.append(
+        Extension(name.replace("/","."), [name + ".cpp" if is_cpp else name + ".c"],
+                  include_dirs=[include_path],
+                  extra_compile_args=cmpl_args_omp if is_omp else cmpl_args,
+                  extra_link_args=link_args_omp if is_omp else link_args))
 
 # Check for readthedocs environment variable.
 
@@ -121,11 +133,14 @@ else:
                     'python-casacore>=2.1.2', 
                     'sharedarray', 
                     'matplotlib',
+                    'cython',
                     'scipy',
                     'astro-tigger-lsm']
 
 setup(name='cubical',
-      version='1.1.1',
+
+      version='1.2.1',
+
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/JSKenyon/phd-code',
       classifiers=[
@@ -140,9 +155,13 @@ setup(name='cubical',
       license='GNU GPL v3',
       long_description=long_description,
       long_description_content_type='text/markdown',
-      cmdclass={'build_ext': build_ext},
+
+      cmdclass={'build_ext': build_ext,
+                'gocythonize': gocythonize},
+
       packages=['cubical', 
-                'cubical.machines', 
+                'cubical.data_handler',
+                'cubical.machines',
                 'cubical.tools', 
                 'cubical.kernels', 
                 'cubical.plots',

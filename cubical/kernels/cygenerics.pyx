@@ -28,14 +28,25 @@ Cython kernels for various generic operations. Common dimensions of arrays are:
 """
 
 import numpy as np
+import numpy.ma
 cimport numpy as np
 import cython
-from cython.parallel import parallel, prange
+from cython.parallel import parallel, prange, threadid
 import cubical.kernels
 
+ctypedef np.complex64_t fcomplex
+ctypedef np.complex128_t dcomplex
+
+ctypedef fused float3264:
+    np.float32_t
+    np.float64_t
+
 ctypedef fused complex3264:
-    np.complex64_t
-    np.complex128_t
+    fcomplex
+    dcomplex
+
+ctypedef np.uint16_t flag_t
+
 
 @cython.cdivision(True)
 @cython.wraparound(False)
@@ -240,4 +251,6 @@ def cycompute_chisq(complex3264 [:,:,:,:,:,:,:] resid,np.float64_t [:,:,:] chisq
                             for c1 in xrange(2):
                                 for c2 in xrange(2):
                                     chisq[t,f,aa] += resid[i,t,f,aa,ab,c1,c2].real**2 + resid[i,t,f,aa,ab,c1,c2].imag**2
+
+
 

@@ -6,16 +6,21 @@
 Implements the solver loop.
 """
 import numpy as np
+import os, os.path
 import traceback
 from cubical.tools import logger, ModColor
-from cubical.data_handler import Tile
 from cubical.flagging import FL
 from cubical.statistics import SolverStats
 from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code
-import cubical.kernels
 
 log = logger.getLogger("solver")
 #log.verbosity(2)
+
+# global defaults dict
+GD = None
+
+# MS metadata
+metadata = None
 
 # gain machine factory to use
 gm_factory = None
@@ -23,8 +28,18 @@ gm_factory = None
 # IFR-based gain machine to use
 ifrgain_machine = None
 
+# Conversion factor for sigma = SIGMA_MAD*mad
+SIGMA_MAD = 1.4826
 
-#@profile
+import __builtin__
+try:
+    __builtin__.profile
+except AttributeError:
+    # No line profiler, provide a pass-through version
+    def profile(func): return func
+    __builtin__.profile = profile#if 'profile' not in globals():
+
+@profile
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     Main body of the GN/LM method. Handles iterations and convergence tests.
@@ -59,6 +74,50 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     chi_tol      = sol_opts["delta-chi"]
     chi_interval = sol_opts["chi-int"]
     stall_quorum = sol_opts["stall-quorum"]
+
+
+    # collect flagging options
+
+    flag_warning_threshold = GD['flags']["warn-thr"]
+    
+    mad_flag = GD['madmax']['enable']
+    
+    mad_threshold = GD['madmax']['threshold']
+    medmad_threshold = GD['madmax']['global-threshold']
+    if not isinstance(mad_threshold, list):
+        mad_threshold = [mad_threshold]
+    if not isinstance(medmad_threshold, list):
+        medmad_threshold = [medmad_threshold]
+    mad_diag = GD['madmax']['diag']
+    mad_offdiag = metadata.num_corrs == 4 and GD['madmax']['offdiag']
+    if not mad_diag and not mad_offdiag:
+        mad_flag = False
+
+    # setup MAD estimation settings
+    mad_per_corr = False
+    if GD['madmax']['estimate'] == 'corr':
+        mad_per_corr = True
+        mad_estimate_diag, mad_estimate_offdiag = mad_diag, mad_offdiag
+    elif GD['madmax']['estimate'] == 'all':
+        mad_estimate_diag = True
+        mad_estimate_offdiag = metadata.num_corrs == 4
+    elif GD['madmax']['estimate'] == 'diag':
+        mad_estimate_diag, mad_estimate_offdiag = True, False
+    elif GD['madmax']['estimate'] == 'offdiag':
+        if metadata.num_corrs == 4:
+            mad_estimate_diag, mad_estimate_offdiag = False, True
+        else:
+            mad_estimate_diag, mad_estimate_offdiag = True, False
+    else:
+        raise RuntimeError("invalid --madmax-estimate {} setting".format(GD['madmax']['estimate']))
+
+    def get_mad_thresholds():
+        """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
+        until the list is down to one element."""
+        if not mad_flag:
+            return 0, 0
+        return mad_threshold.pop(0) if len(mad_threshold)>1 else (mad_threshold[0] if mad_threshold else 0), \
+               medmad_threshold.pop(0) if len(medmad_threshold)>1 else (medmad_threshold[0] if medmad_threshold else 0)
 
     # Initialise stat object.
 
@@ -139,6 +198,159 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # This flag is set to True when we have an up-to-date residual in resid_arr.
     
     have_residuals = True
+
+    stats.chunk.num_mad_flagged = 0
+
+    # apply MAD flagging
+    global _madmax_plotnum
+    _madmax_plotnum = 0
+
+    @profile
+    def beyond_thunderdome(max_label, threshold, med_threshold):
+        """This function implements MAD-based flagging on residuals"""
+        import cubical.kernels
+        cymadmax = cubical.kernels.import_kernel("cymadmax")
+        # estimate MAD of off-diagonal elements
+        absres = np.empty_like(resid_arr, dtype=np.float32)
+        np.abs(resid_arr, out=absres)
+        if mad_per_corr:
+            mad, goodies = cymadmax.compute_mad_per_corr(absres, flags_arr, diag=mad_estimate_diag, offdiag=mad_estimate_offdiag)
+        else:
+            mad, goodies = cymadmax.compute_mad(absres, flags_arr, diag=mad_estimate_diag, offdiag=mad_estimate_offdiag)
+        # any of it non-zero?
+        if mad.mask.all():
+            return
+        # estimate median MAD
+        medmad = np.ma.median(mad, axis=(1,2))
+        # all this was worth it, just so I could type "mad.max()" as legit code
+        print>>log(2),"{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f}".format(max_label, mad.min(), mad.max(), np.ma.median(medmad))
+        if log.verbosity() > 4:
+            for imod in xrange(gm.n_mod):
+                if mad_per_corr:
+                    for ic1,c1 in enumerate(metadata.feeds):
+                        for ic2,c2 in enumerate(metadata.feeds):
+                            per_bl = [(mad[imod,p,q,ic1,ic2], p, q) for p in xrange(gm.n_ant)
+                                      for q in xrange(p+1, gm.n_ant) if not mad.mask[imod,p,q,ic1,ic2]]
+                            per_bl = ["{} ({}m): {:.2f}".format(metadata.baseline_name[p,q], int(metadata.baseline_length[p,q]), x)
+                                      for x, p, q in sorted(per_bl)[::-1]]
+                            print>>log(4),"{} model {} {}{} MADs are {}".format(label, imod,
+                                                                                c1.upper(), c2.upper(), ", ".join(per_bl))
+                else:
+                    per_bl = [(mad[imod,p,q,], p, q) for p in xrange(gm.n_ant)
+                              for q in xrange(p+1, gm.n_ant) if not mad.mask[imod,p,q]]
+                    per_bl = ["{} ({}m) {:.2f}".format(metadata.baseline_name[p,q], int(metadata.baseline_length[p,q]), x)
+                              for x, p, q in sorted(per_bl)[::-1]]
+                    print>>log(4),"{} model {} MADs are {}".format(label, imod, ", ".join(per_bl))
+
+        @profile
+        def kill_the_bad_guys(baddies, method):
+            nbad = int(baddies.sum())
+            stats.chunk.num_mad_flagged += nbad
+            if nbad:
+                if nbad < flags_arr.size * flag_warning_threshold:
+                    warning, color = "", "blue"
+                else:
+                    warning, color = "WARNING: ", "red"
+                print>> log(1, color), "{}{} {} kills {} ({:.2%}) visibilities".format(warning, max_label, method, nbad,
+                                        nbad/float(baddies.size))
+                if log.verbosity() > 2 or GD['madmax']['plot']:
+                    per_bl = []
+                    total_elements = float(gm.n_tim * gm.n_fre)
+                    for p in xrange(gm.n_ant):
+                        for q in xrange(p + 1, gm.n_ant):
+                            n_flagged = baddies[:, :, p, q].sum()
+                            if n_flagged:
+                                per_bl.append((n_flagged, p ,q))
+                    per_bl = sorted(per_bl, reverse=True)
+                    # print
+                    per_bl_str = ["{} ({}m): {} ({:.2%})".format(metadata.baseline_name[p,q],
+                                    int(metadata.baseline_length[p,q]), n_flagged, n_flagged/total_elements)
+                                  for n_flagged, p, q in per_bl]
+                    print>> log(3), "{} of which per baseline: {}".format(label, ", ".join(per_bl_str))
+                    # plot, if asked to
+                    if GD['madmax']['plot']:
+                        if len(per_bl) < 3:
+                            baselines_to_plot = [ (0, "worst") ]
+                        else:
+                            baselines_to_plot = [ (0, "worst"), (len(per_bl)//2, "median") ]
+                        import pylab
+                        for ibl, baseline_label in baselines_to_plot:
+                            n_flagged, p, q = per_bl[ibl]
+                            fraction = n_flagged / total_elements
+                            if fraction <= GD['madmax']['plot-frac-above']:
+                                continue
+                            blname = metadata.baseline_name[p,q]
+                            bllen  = int(metadata.baseline_length[p,q])
+                            feeds =  metadata.feeds
+                            # inv: data that was flagged prior to this mad max step
+                            fl_prior = (flags_arr[:,:,p,q]!=0)&~baddies[:,:,p,q]
+                            pylab.figure(figsize=(16,10))
+                            resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
+                            resmask[:] = fl_prior[...,np.newaxis,np.newaxis]
+                            res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
+                            vmin = res.min()
+                            vmax = res.max()
+                            from matplotlib.colors import LogNorm
+                            norm = LogNorm(vmin, vmax)
+                            for c1,x1 in enumerate(feeds.upper()):
+                                for c2,x2 in enumerate(feeds.upper()):
+                                    pylab.subplot(2, 4, 1+c1*2+c2)
+                                    pylab.imshow(res[...,c1,c2], norm=norm, aspect='auto')
+                                    mm = mad[0,p,q,c1,c2] if mad_per_corr else mad[0,p,q]
+                                    pylab.title("{}{} residuals (MAD {:.2f})".format(x1, x2, mm))
+                                    pylab.colorbar()
+                            for c1,x1 in enumerate(feeds.upper()):
+                                for c2,x2 in enumerate(feeds.upper()):
+                                    pylab.subplot(2, 4, 5+c1*2+c2)
+                                    pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], fl_prior|baddies[:, :, p, q]),
+                                                 norm=norm, aspect='auto')
+                                    pylab.title("{}{} flagged".format(x1, x2))
+                                    pylab.colorbar()
+                            pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({} case)".format(max_label,
+                                            method, blname, bllen, n_flagged, fraction, baseline_label))
+                            if GD['madmax']['plot'] == 'show':
+                                pylab.show()
+                            else:
+                                plotdir = '{}-madmax.plots'.format(GD['out']['name'])
+                                if not os.path.exists(plotdir):
+                                    try:
+                                        os.mkdir(plotdir)
+                                    # allow a failure -- perhaps two workers got unlucky and both are trying to make the
+                                    # same directory. Let savefig() below fail instead
+                                    except OSError:
+                                        pass
+                                global _madmax_plotnum
+                                filename = '{}/{}.{}.png'.format(plotdir, label, _madmax_plotnum)
+                                pylab.savefig(filename, dpi=300)
+                                _madmax_plotnum += 1
+                                print>>log(1),"{}: saving Mad Max flagging plot to {}".format(label,filename)
+                                pylab.clf()
+            else:
+                print>> log(2),"{} {} abides".format(max_label, method)
+
+        thr = np.zeros((gm.n_mod, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor), dtype=np.float32)
+        # apply per-baseline MAD threshold
+        if threshold:
+            if mad_per_corr:
+                thr[:] = threshold * mad / SIGMA_MAD
+            else:
+                thr[:] = threshold * mad[...,np.newaxis,np.newaxis] / SIGMA_MAD
+            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=mad_diag, offdiag=mad_offdiag)
+            kill_the_bad_guys(baddies, "baseline-based Mad Max ({} sigma)".format(threshold))
+
+        # apply global median MAD threshold
+        if med_threshold:
+            if mad_per_corr:
+                thr[:] = med_threshold * medmad[:,np.newaxis,np.newaxis,:,:] / SIGMA_MAD
+            else:
+                thr[:] = med_threshold * medmad[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis] / SIGMA_MAD
+            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=mad_diag, offdiag=mad_offdiag)
+            kill_the_bad_guys(baddies, "global Mad Max ({} sigma)".format(med_threshold))
+
+    # do mad max flagging, if requested
+    thr1, thr2 = get_mad_thresholds()
+    if thr1 or thr2:
+        beyond_thunderdome("{} initial".format(label), thr1, thr2)
 
     def compute_chisq(statfield=None):
         """
@@ -222,6 +434,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             gm.compute_residual(obser_arr, model_arr, resid_arr)
             resid_arr[:,flags_arr!=0] = 0
 
+            # do mad max flagging, if requested
+            thr1, thr2 = get_mad_thresholds()
+            if thr1 or thr2:
+                beyond_thunderdome("{} iter {}".format(label, num_iter), thr1, thr2)
+
             chi, mean_chi = compute_chisq()
 
             have_residuals = True
@@ -247,6 +464,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     if gm.has_valid_solutions:
         # Final round of flagging
         flagged = gm.flag_solutions(flags_arr, True)
+    else:
+        flagged = None
         
     # check this again, because final round of flagging could have killed us
     if gm.has_valid_solutions:
@@ -254,6 +473,12 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         if (sol_opts['last-rites'] or compute_residuals) and (not have_residuals or flagged):
             gm.compute_residual(obser_arr, model_arr, resid_arr)
             resid_arr[:,flags_arr!=0] = 0
+
+            # do mad max flagging, if requested
+            thr1, thr2 = get_mad_thresholds()
+            if thr1 or thr2:
+                beyond_thunderdome("{} final".format(label), thr1, thr2)
+
             if sol_opts['last-rites']:
                 # Recompute chi-squared based on original noise statistics.
                 chi, mean_chi = compute_chisq(statfield='chi2')
@@ -283,7 +508,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     else:
         
-        print>>log(0, "red"), "{} {}: completely flagged".format(label, gm.final_convergence_status_string)
+        print>>log(0, "red"), "{} {}: completely flagged?".format(label, gm.final_convergence_status_string)
 
         stats.chunk.chi2 = 0
         resid_arr = obser_arr
@@ -292,7 +517,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     stats.chunk.num_converged = gm.num_converged_solutions
     stats.chunk.num_stalled = n_stall
 
-    # copy out flags, if we raised any
+    # collect messages from various flagging sources, and print to log if any
+    flagstatus = []
+
     stats.chunk.num_sol_flagged, _ = gm.num_gain_flags()
     if stats.chunk.num_sol_flagged:
         # also for up message with flagging stats
@@ -302,9 +529,22 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                 n_flag, n_tot = gm.num_gain_flags(mask)
                 if n_flag:
                     fstats += "{}:{}({:.2%}) ".format(flagname, n_flag, n_flag/float(n_tot))
+
+        flagstatus.append("solver flags {}".format(fstats))
+
+    if stats.chunk.num_mad_flagged:
+        flagstatus.append("Mad Max took out {} visibilities".format(stats.chunk.num_mad_flagged))
+
+    if flagstatus:
         n_new_flags = (flags_arr&~(FL.PRIOR | FL.MISSING) != 0).sum() - n_original_flags
-        print>> log, ModColor.Str("{} solver flags raised: {}-> {:.2%} data flags".format(
-            label, fstats, n_new_flags / float(flags_arr.size)))
+        if n_new_flags < flags_arr.size*flag_warning_threshold:
+            warning, color = "", "blue"
+        else:
+            warning, color = "WARNING: ", "red"
+        print>> log(0, color), "{}{} {}: {} ({:.2%}) new data flags".format(
+            warning, label, ", ".join(flagstatus),
+            n_new_flags, n_new_flags / float(flags_arr.size))
+
 
     return (resid_arr if compute_residuals else None), stats
 
@@ -374,7 +614,7 @@ class _VisDataManager(object):
                 self._wmod_arr = self.model_arr.copy()
                 # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
                 # as they will already get zero weight in data_handler
-                self._wmod_arr[:, self.flags_arr!=0, :, :] = 0
+                self._wmod_arr[:, :, self.flags_arr!=0, :, :] = 0
         return self._wmod_arr
 
     @property
@@ -672,7 +912,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
     label = None
     try:
-        tile = Tile.tile_list[itile]
+        tile = cubical.workers.tile_list[itile]
         label = chunk_key
         solver = SOLVERS[solver_type]
         # initialize the gain machine for this chunk
@@ -686,6 +926,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
         kernel = gm_factory.get_kernel()
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key,
+                                 gm_factory.ctype,
                                  allocator=kernel.allocate_vis_array,
                                  flag_allocator=kernel.allocate_flag_array)
         
@@ -722,8 +963,9 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
                     raise RuntimeError("excessive amplitude in chunk {}".format(label))
 
         # Copy results back into tile.
+        have_new_flags = stats and ( stats.chunk.num_sol_flagged > 0 or stats.chunk.num_mad_flagged > 0)
 
-        tile.set_chunk_cubes(corr_vis, flags_arr if (stats and stats.chunk.num_sol_flagged) else None, chunk_key)
+        tile.set_chunk_cubes(corr_vis, flags_arr if have_new_flags else None, chunk_key)
 
         # Ask the gain machine to store its solutions in the shared dict.
         gm_factory.export_solutions(vdm.gm, soldict)

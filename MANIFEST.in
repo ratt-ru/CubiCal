@@ -1,3 +1,4 @@
 include cubical/DefaultParset.cfg
+include cubical/database/blankcaltable.CASA.tgz
 recursive-include cython *
 include cubical/bin/gocubical
