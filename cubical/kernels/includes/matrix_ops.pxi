@@ -41,6 +41,31 @@ cdef inline void weight_upd_product(complex3264 *out, const complex3264 *r, cons
 
     out[0] = (v+2*npol)/(v + 2*denom)
 
+cdef inline void cov_upd_product(complex3264 *out, const complex3264 *r, const complex3264 *w) nogil:
+    """
+    Multiplies 4X1 vector with 1x4 vector and 1x1 vector : out = r.conj().w.r
+    """
+
+    out[0] += r[0].conjugate()*w[0].real*r[0]
+    out[1] += r[0].conjugate()*w[0].real*r[1]
+    out[2] += r[0].conjugate()*w[0].real*r[2]
+    out[3] += r[0].conjugate()*w[0].real*r[3]
+
+    out[4] += r[1].conjugate()*w[0].real*r[0]
+    out[5] += r[1].conjugate()*w[0].real*r[1]
+    out[6] += r[1].conjugate()*w[0].real*r[2]
+    out[7] += r[1].conjugate()*w[0].real*r[3]
+
+    out[8] += r[2].conjugate()*w[0].real*r[0]
+    out[9] += r[2].conjugate()*w[0].real*r[1]
+    out[10] += r[2].conjugate()*w[0].real*r[2]
+    out[11] += r[2].conjugate()*w[0].real*r[3]
+
+    out[12] += r[3].conjugate()*w[0].real*r[0]
+    out[13] += r[3].conjugate()*w[0].real*r[1]
+    out[14] += r[3].conjugate()*w[0].real*r[2]
+    out[15] += r[3].conjugate()*w[0].real*r[3]
+
 
 cdef inline void mat_product_diag(complex3264 * out,const complex3264 *a,const complex3264 *b) nogil:
     """

@@ -396,6 +396,45 @@ def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
+def cycompute_cov(complex3264 [:,:,:,:,:,:,:] r,
+                     complex3264 [:,:] cov,
+                     complex3264[:,:,:,:,:,:] w
+                     ):
+    """
+    This function computes the un normlaised weighted covariance matrix of 
+    the visibilities using the  
+    expression Cov = r.conj()*w.r
+    r: the reisudals
+    cov : the weigted covariance matrix inverse
+    w : weights
+    """
+
+    cdef int i, d, t, f, aa, ab = 0
+    cdef int n_mod, n_tim, n_fre, n_ant
+    
+    n_mod = r.shape[0]
+    n_tim = r.shape[1]
+    n_fre = r.shape[2]
+    n_ant = r.shape[3]
+
+    cdef int[:,:] half_baselines = cygenerics.half_baselines(n_ant)
+    cdef int ibl, n_bl = half_baselines.shape[0]
+    cdef int num_threads = cubical.kernels.num_omp_threads
+
+    
+    with nogil, parallel(num_threads=num_threads):
+        for ibl in prange(n_bl, schedule='static'):
+            aa, ab = half_baselines[ibl][0], half_baselines[ibl][1]   
+            for i in xrange(n_mod):
+                for t in xrange(n_tim):
+                    for f in xrange(n_fre):
+                        cov_upd_product(&cov[0,0], &r[i,t,f,aa,ab,0,0], &w[i,t,f,aa,ab,0])
+
+
+@cython.cdivision(True)
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
 def cyapply_gains_slow(complex3264 [:,:,:,:,:,:,:,:] m,
                   complex3264 [:,:,:,:,:,:] g,
                   complex3264 [:,:,:,:,:,:] gh,

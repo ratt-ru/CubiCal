@@ -11,7 +11,6 @@ import cubical.kernels
 from cubical.tools import logger
 log = logger.getLogger("complex_2x2")  #TODO check this
 
-
 class ComplexW2x2Gains(PerIntervalGains):
     """
     This class implements the weighted full complex 2x2 gain machine based on the Complex T-distribution
@@ -69,6 +68,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.npol = options.get("robust-npol", 2) #testing if the number of polarizations really have huge effects
 
+        self.v_int = options.get("robust-int", 5)
     
 
     @staticmethod
@@ -126,7 +126,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         # jhjinv is 2x2 block-diagonal, with Hermitian blocks. TODO: what's the variance on the off-diagonals?
         # variance of gain is diagonal of jhjinv
-        # not sure if the weights affects the posterior variance. here we actually pass jhwj, not jhj
+        # not sure about how the  weights affects the posterior variance. here we actually pass jhwj, not jhj
 
         if self.posterior_gain_error is None:
             self.posterior_gain_error = np.zeros_like(jhjinv.real)
@@ -173,7 +173,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
-        covinv = self.compute_covinv() #maybe you should optimize this
+        covinv = self.compute_covinv()
 
         self.weights, self.v = self.update_weights(covinv, self.weights, self.v)
 
@@ -208,36 +208,34 @@ class ComplexW2x2Gains(PerIntervalGains):
             covinv = np.eye(4, dtype=self.dtype)
         
         else:
-        
-            N = self.n_tim*self.n_fre*self.n_ant*self.n_ant
 
-            res_reshaped = np.reshape(self.residuals,(4, N))  
+            Nvis = (self.n_tim*self.n_fre*self.n_ant*self.n_ant - self.n_tim*self.n_fre*self.n_ant)/2
 
-            w = np.reshape(self.weights.real, (N))
+            ompstd = np.zeros((4,4), dtype=self.dtype)
 
-            std = np.cov(res_reshaped, aweights=w)/2 #Don't know why the 1/2 but it improves the results
-            
-            try: 
-                stdinv = np.linalg.inv(std)
-            except:
-                stdinv = np.linalg.pinv(std)
+            self.cykernel.cycompute_cov(self.residuals, ompstd, self.weights)
+
+            std = ompstd/Nvis
 
             covinv = np.eye(4, dtype=self.dtype)
 
             if self.cov_type == "hybrid":
-                if np.max(std) < 1:
-                    covinv = np.array(stdinv, dtype=self.dtype)
+                if np.max(std2) < 1:
+                    covinv *= 1/np.max(std) 
                    
 
             elif self.cov_type == "compute":
-                covinv = np.array(stdinv, dtype=self.dtype)
+                covinv *= 1/np.max(std) 
 
             else:
                 raise RuntimeError("unknown robust-cov setting")
 
         
         if self.npol == 2:
-            covinv[(0,0,1,1,1,1,2,2,2,2,3,3), (1,2,0,1,2,3,0,1,2,3,1,2)] = 0  
+            covinv[(1,2), (1,2)] = 0
+            #For non polarised visibilities, the xx(ll) and yy(rr) are almost identical
+            #Thus they have a strong covariance
+            covinv[(0,3), (3,0)] = covinv[0,0]  
 
         return covinv
     
@@ -261,19 +259,20 @@ class ComplexW2x2Gains(PerIntervalGains):
                 v (float) : new value for v
         """
 
-        def  _brute_solve_v(f, low, high):
-            """Finds a root for the function f constraint between low and high
+        def  _brute_solve_v(wn):
+            """Finds a root for the function f constraint between low (2) and high (50)
             Args:
-                f (callable) : function
-                low (float): lower bound, 2.
-                high (float): upper bound, 100.
-
+                wn : the weights flaten in to a 1D array
             Returns:
                 root (float) : The root of f or minimum point    
             """
 
-            vvals = np.linspace(low, high, 100)
-            fvals = f(vvals)
+            m = len(wn)
+        
+            vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
+
+            vvals = np.arange(2, 51, 1, dtype=float)
+            fvals = vfunc(vvals)
             root = vvals[np.argmin(np.abs(fvals))]
             
             return root
@@ -282,19 +281,20 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         w[:,:,:,(range(self.n_ant),range(self.n_ant)),0] = 0  #setting the weights for the autocorrelations 0
 
-        #---------normalising the weights to mean 1 --------------------------#
-        w_real = np.real(w.flatten())
-        w_nzero = w_real[np.where(w_real!=0)[0]]  #removing the autocorrelatios zero weights
-        norm = np.average(w_nzero)
-        w = w/norm           
-
+        #---------normalising the weights to mean 1 using only half the weights--------------------------#
+        aa, ab = np.tril_indices(self.n_ant, -1)
+        w_real = np.real(w[:,:,:,aa,ab,0].flatten())
+        w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
+        norm = np.average(w_nzero) 
+        w /=norm  
         #-----------computing the v parameter---------------------#
-        wn = w_nzero/norm
-        m = len(wn)
-        
-        vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
-
-        v = _brute_solve_v(vfunc, 2., 100.)
+        #This computation is only done after a certain number of iterations. Default is 5
+        if self.iters % self.v_int == 0 or self.iters == 1:
+            
+            wn = w_nzero/norm 
+            v = _brute_solve_v(wn)
+        else:
+            v = self.v
         
         return w, v 
 
