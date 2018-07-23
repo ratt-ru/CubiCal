@@ -220,7 +220,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             covinv = np.eye(4, dtype=self.dtype)
 
             if self.cov_type == "hybrid":
-                if np.max(std2) < 1:
+                if np.max(std) < 1:
                     covinv *= 1/np.max(std) 
                    
 
