@@ -7,6 +7,7 @@ import numpy as np
 from scipy import special
 from cubical.flagging import FL
 import cubical.kernels
+import time
 
 from cubical.tools import logger
 log = logger.getLogger("complex_2x2")  #TODO check this
@@ -56,9 +57,6 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.weights[:,:,:,(range(self.n_ant),range(self.n_ant)),0] = 0 #setting the initial weights for the autocorrelations 0
         
         self.v = 2.
-        self.weight_dict = {}
-        self.weight_dict["weights"] = {}
-        self.weight_dict["vvals"] = {}
 
         self.save_weights = options.get("robust-save-weights", False)
         
@@ -178,11 +176,17 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.weights, self.v = self.update_weights(covinv, self.weights, self.v)
 
         if self.save_weights:
-            self.weight_dict["weights"][self.iters] = self.weights
+
+            tw0 = time.time()
+            self.weight_dict = {}
+
+            self.weight_dict["weights"] = self.weights
             
-            self.weight_dict["vvals"][self.iters] = self.v
+            self.weight_dict["vvals"] = self.v
             
-            np.savez(self.label + "_weights_dict.npz", **self.weight_dict)
+            np.savez("./weights/"+self.label + "_weights_dict.npz", **self.weight_dict)
+            tw1 = time.time()
+            print "time saving weights %f"%(tw1-tw0)
 
         return flag_count
 
@@ -220,7 +224,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             covinv = np.eye(4, dtype=self.dtype)
 
             if self.cov_type == "hybrid":
-                if np.max(std2) < 1:
+                if np.max(std) < 1:
                     covinv *= 1/np.max(std) 
                    
 

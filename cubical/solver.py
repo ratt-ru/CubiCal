@@ -78,47 +78,48 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     # collect flagging options
 
-    flag_warning_threshold = GD['flags']["warn-thr"]
+    flag_warning_threshold = 50 #GD['flags']["warn-thr"]
     
-    mad_flag = GD['madmax']['enable']
+    mad_flag =  False #GD['madmax']['enable']
     
-    mad_threshold = GD['madmax']['threshold']
-    medmad_threshold = GD['madmax']['global-threshold']
-    if not isinstance(mad_threshold, list):
-        mad_threshold = [mad_threshold]
-    if not isinstance(medmad_threshold, list):
-        medmad_threshold = [medmad_threshold]
-    mad_diag = GD['madmax']['diag']
-    mad_offdiag = metadata.num_corrs == 4 and GD['madmax']['offdiag']
-    if not mad_diag and not mad_offdiag:
-        mad_flag = False
+    mad_threshold = False #GD['madmax']['threshold']
+    # medmad_threshold = GD['madmax']['global-threshold']
+    # if not isinstance(mad_threshold, list):
+    #     mad_threshold = [mad_threshold]
+    # if not isinstance(medmad_threshold, list):
+    #     medmad_threshold = [medmad_threshold]
+    # mad_diag = GD['madmax']['diag']
+    # mad_offdiag = metadata.num_corrs == 4 and GD['madmax']['offdiag']
+    # if not mad_diag and not mad_offdiag:
+    #     mad_flag = False
 
-    # setup MAD estimation settings
-    mad_per_corr = False
-    if GD['madmax']['estimate'] == 'corr':
-        mad_per_corr = True
-        mad_estimate_diag, mad_estimate_offdiag = mad_diag, mad_offdiag
-    elif GD['madmax']['estimate'] == 'all':
-        mad_estimate_diag = True
-        mad_estimate_offdiag = metadata.num_corrs == 4
-    elif GD['madmax']['estimate'] == 'diag':
-        mad_estimate_diag, mad_estimate_offdiag = True, False
-    elif GD['madmax']['estimate'] == 'offdiag':
-        if metadata.num_corrs == 4:
-            mad_estimate_diag, mad_estimate_offdiag = False, True
-        else:
-            mad_estimate_diag, mad_estimate_offdiag = True, False
-    else:
-        raise RuntimeError("invalid --madmax-estimate {} setting".format(GD['madmax']['estimate']))
+    # # setup MAD estimation settings
+    # mad_per_corr = False
+    # if GD['madmax']['estimate'] == 'corr':
+    #     mad_per_corr = True
+    #     mad_estimate_diag, mad_estimate_offdiag = mad_diag, mad_offdiag
+    # elif GD['madmax']['estimate'] == 'all':
+    #     mad_estimate_diag = True
+    #     mad_estimate_offdiag = metadata.num_corrs == 4
+    # elif GD['madmax']['estimate'] == 'diag':
+    #     mad_estimate_diag, mad_estimate_offdiag = True, False
+    # elif GD['madmax']['estimate'] == 'offdiag':
+    #     if metadata.num_corrs == 4:
+    #         mad_estimate_diag, mad_estimate_offdiag = False, True
+    #     else:
+    #         mad_estimate_diag, mad_estimate_offdiag = True, False
+    # else:
+    #     raise RuntimeError("invalid --madmax-estimate {} setting".format(GD['madmax']['estimate']))
 
     def get_mad_thresholds():
         """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
         until the list is down to one element."""
-        if not mad_flag:
-            return 0, 0
-        return mad_threshold.pop(0) if len(mad_threshold)>1 else (mad_threshold[0] if mad_threshold else 0), \
-               medmad_threshold.pop(0) if len(medmad_threshold)>1 else (medmad_threshold[0] if medmad_threshold else 0)
+        #if not mad_flag:
+        #    return 0, 0
+        #return mad_threshold.pop(0) if len(mad_threshold)>1 else (mad_threshold[0] if mad_threshold else 0), \
+        #       medmad_threshold.pop(0) if len(medmad_threshold)>1 else (medmad_threshold[0] if medmad_threshold else 0)
 
+        return 0, 0
     # Initialise stat object.
 
     stats = SolverStats(obser_arr)
