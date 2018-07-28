@@ -202,8 +202,22 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     stats.chunk.num_mad_flagged = 0
 
     # apply MAD flagging
+
     global _madmax_plotnum
     _madmax_plotnum = 0
+    def get_plot_filename(kind=''):
+        plotdir = '{}-madmax.plots'.format(GD['out']['name'])
+        if not os.path.exists(plotdir):
+            try:
+                os.mkdir(plotdir)
+            # allow a failure -- perhaps two workers got unlucky and both are trying to make the
+            # same directory. Let savefig() below fail instead
+            except OSError:
+                pass
+        if kind:
+            return '{}/{}.{}.{}.png'.format(plotdir, label, _madmax_plotnum, kind)
+        else:
+            return '{}/{}.{}.png'.format(plotdir, label, _madmax_plotnum)
 
     @profile
     def beyond_thunderdome(max_label, threshold, med_threshold):
@@ -244,6 +258,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         @profile
         def kill_the_bad_guys(baddies, method):
+            made_plots = False
             nbad = int(baddies.sum())
             stats.chunk.num_mad_flagged += nbad
             if nbad:
@@ -311,23 +326,16 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                             if GD['madmax']['plot'] == 'show':
                                 pylab.show()
                             else:
-                                plotdir = '{}-madmax.plots'.format(GD['out']['name'])
-                                if not os.path.exists(plotdir):
-                                    try:
-                                        os.mkdir(plotdir)
-                                    # allow a failure -- perhaps two workers got unlucky and both are trying to make the
-                                    # same directory. Let savefig() below fail instead
-                                    except OSError:
-                                        pass
-                                global _madmax_plotnum
-                                filename = '{}/{}.{}.png'.format(plotdir, label, _madmax_plotnum)
+                                filename = get_plot_filename()
                                 pylab.savefig(filename, dpi=300)
-                                _madmax_plotnum += 1
                                 print>>log(1),"{}: saving Mad Max flagging plot to {}".format(label,filename)
                                 pylab.clf()
+                            made_plots = True
             else:
                 print>> log(2),"{} {} abides".format(max_label, method)
+            return made_plots
 
+        made_plots = False
         thr = np.zeros((gm.n_mod, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor), dtype=np.float32)
         # apply per-baseline MAD threshold
         if threshold:
@@ -336,7 +344,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             else:
                 thr[:] = threshold * mad[...,np.newaxis,np.newaxis] / SIGMA_MAD
             baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=mad_diag, offdiag=mad_offdiag)
-            kill_the_bad_guys(baddies, "baseline-based Mad Max ({} sigma)".format(threshold))
+            made_plots = kill_the_bad_guys(baddies, "baseline-based Mad Max ({} sigma)".format(threshold))
 
         # apply global median MAD threshold
         if med_threshold:
@@ -345,7 +353,56 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             else:
                 thr[:] = med_threshold * medmad[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis] / SIGMA_MAD
             baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=mad_diag, offdiag=mad_offdiag)
-            kill_the_bad_guys(baddies, "global Mad Max ({} sigma)".format(med_threshold))
+            made_plots = made_plots or \
+                kill_the_bad_guys(baddies, "global Mad Max ({} sigma)".format(med_threshold))
+
+        # generate overview plot
+        if made_plots:
+            colors = [["black", "red"],["green", "blue"]]
+            import pylab
+            pylab.figure(figsize=(6, 4))
+            xlim = [0,0]
+            ylim = [0,0]
+            for imod in xrange(gm.n_mod):
+                for p in xrange(gm.n_ant):
+                    for q in xrange(p + 1, gm.n_ant):
+                        if not mad.mask[imod, p, q].all():
+                            uvdist = metadata.baseline_length[p,q]
+                            xlim[1] = max(xlim[1], uvdist)
+                            if mad_per_corr:
+                                for ic1, c1 in enumerate(metadata.feeds):
+                                    for ic2, c2 in enumerate(metadata.feeds):
+                                        y = mad[imod,p,q,ic1,ic2]
+                                        pylab.text(uvdist, y, metadata.baseline_name[p, q],
+                                                   color=colors[ic1][ic2],
+                                                   horizontalalignment = 'center', verticalalignment = 'center')
+                                        ylim[0] = min(ylim[0], y)
+                                        ylim[1] = max(ylim[1], y)
+                            else:
+                                y = mad[imod, p, q]
+                                pylab.text(uvdist, y, metadata.baseline_name[p,q],
+                                           horizontalalignment='center', verticalalignment='center')
+                                ylim[0] = min(ylim[0], y)
+                                ylim[1] = max(ylim[1], y)
+            if mad_per_corr:
+                handles = []
+                import matplotlib.lines as mlines
+                for ic1, c1 in enumerate(metadata.feeds):
+                    for ic2, c2 in enumerate(metadata.feeds):
+                        handles.append(mlines.Line2D([], [], color=colors[ic1][ic2], label="{}{}".format(c1, c2).upper()))
+                pylab.legend(handles=handles)
+            pylab.xlim(*xlim)
+            pylab.ylim(*ylim)
+            pylab.xlabel("Baseline, m.")
+            pylab.ylabel("MAD residuals")
+            pylab.title("MAD residuals, {}, iter {}".format(label, num_iter))
+            if GD['madmax']['plot'] == 'show':
+                pylab.show()
+            else:
+                filename = get_plot_filename('mads')
+                print>>log(1),"{}: saving MAD distribution plot to {}".format(label,filename)
+                pylab.savefig(filename, dpi=300)
+                pylab.clf()
 
     # do mad max flagging, if requested
     thr1, thr2 = get_mad_thresholds()
