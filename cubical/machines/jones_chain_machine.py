@@ -441,6 +441,10 @@ class JonesChain(MasterMachine):
         return all([term.has_valid_solutions for term in self.jones_terms if term.solvable])
 
     @property
+    def jones_label(self):
+        return self.active_term.jones_label
+
+    @property
     def num_converged_solutions(self):
         """Gives corresponding property of the active chain term"""
         return self.active_term.num_converged_solutions

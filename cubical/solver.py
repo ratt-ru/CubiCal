@@ -206,6 +206,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     global _madmax_plotnum
     _madmax_plotnum = 0
     def get_plot_filename(kind=''):
+        global _madmax_plotnum
         plotdir = '{}-madmax.plots'.format(GD['out']['name'])
         if not os.path.exists(plotdir):
             try:
@@ -215,9 +216,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             except OSError:
                 pass
         if kind:
-            return '{}/{}.{}.{}.png'.format(plotdir, label, _madmax_plotnum, kind)
+            filename = '{}/{}.{}.{}.png'.format(plotdir, label, _madmax_plotnum, kind)
         else:
-            return '{}/{}.{}.png'.format(plotdir, label, _madmax_plotnum)
+            filename = '{}/{}.{}.png'.format(plotdir, label, _madmax_plotnum)
+        _madmax_plotnum += 1
+        return filename
 
     @profile
     def beyond_thunderdome(max_label, threshold, med_threshold):
@@ -271,11 +274,15 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                 if log.verbosity() > 2 or GD['madmax']['plot']:
                     per_bl = []
                     total_elements = float(gm.n_tim * gm.n_fre)
+                    interesting_fraction = GD['madmax']['plot-frac-above']*total_elements
+                    plot_explicit_baseline = None
                     for p in xrange(gm.n_ant):
                         for q in xrange(p + 1, gm.n_ant):
                             n_flagged = baddies[:, :, p, q].sum()
-                            if n_flagged:
-                                per_bl.append((n_flagged, p ,q))
+                            if n_flagged and n_flagged >= interesting_fraction:
+                                per_bl.append((n_flagged, p, q))
+                            if GD['madmax']['plot-bl'] == metadata.baseline_name[p,q]:
+                                plot_explicit_baseline = (n_flagged, p ,q)
                     per_bl = sorted(per_bl, reverse=True)
                     # print
                     per_bl_str = ["{} ({}m): {} ({:.2%})".format(metadata.baseline_name[p,q],
@@ -284,16 +291,16 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                     print>> log(3), "{} of which per baseline: {}".format(label, ", ".join(per_bl_str))
                     # plot, if asked to
                     if GD['madmax']['plot']:
-                        if len(per_bl) < 3:
-                            baselines_to_plot = [ (0, "worst") ]
-                        else:
-                            baselines_to_plot = [ (0, "worst"), (len(per_bl)//2, "median") ]
+                        baselines_to_plot = []
+                        if len(per_bl):
+                            baselines_to_plot.append((per_bl[0], "worst baseline"))
+                        if len(per_bl)>2:
+                            baselines_to_plot.append((per_bl[len(per_bl)//2], "median baseline"))
+                        if plot_explicit_baseline:
+                            baselines_to_plot.append((plot_explicit_baseline,"--madmax-plot-bl"))
                         import pylab
-                        for ibl, baseline_label in baselines_to_plot:
-                            n_flagged, p, q = per_bl[ibl]
+                        for (n_flagged, p, q), baseline_label in baselines_to_plot:
                             fraction = n_flagged / total_elements
-                            if fraction <= GD['madmax']['plot-frac-above']:
-                                continue
                             blname = metadata.baseline_name[p,q]
                             bllen  = int(metadata.baseline_length[p,q])
                             feeds =  metadata.feeds
@@ -310,18 +317,20 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                             for c1,x1 in enumerate(feeds.upper()):
                                 for c2,x2 in enumerate(feeds.upper()):
                                     pylab.subplot(2, 4, 1+c1*2+c2)
-                                    pylab.imshow(res[...,c1,c2], norm=norm, aspect='auto')
+                                    if (res[...,c1,c2]>0).any():
+                                        pylab.imshow(res[...,c1,c2], norm=norm, aspect='auto')
                                     mm = mad[0,p,q,c1,c2] if mad_per_corr else mad[0,p,q]
                                     pylab.title("{}{} residuals (MAD {:.2f})".format(x1, x2, mm))
                                     pylab.colorbar()
                             for c1,x1 in enumerate(feeds.upper()):
                                 for c2,x2 in enumerate(feeds.upper()):
                                     pylab.subplot(2, 4, 5+c1*2+c2)
-                                    pylab.imshow(np.ma.masked_array(absres[0, :, :, p, q, c1, c2], fl_prior|baddies[:, :, p, q]),
-                                                 norm=norm, aspect='auto')
+                                    res1 = np.ma.masked_array(absres[0, :, :, p, q, c1, c2], fl_prior | baddies[:, :, p, q])
+                                    if (res1>0).any():
+                                        pylab.imshow(res1, norm=norm, aspect='auto')
                                     pylab.title("{}{} flagged".format(x1, x2))
                                     pylab.colorbar()
-                            pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({} case)".format(max_label,
+                            pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({})".format(max_label,
                                             method, blname, bllen, n_flagged, fraction, baseline_label))
                             if GD['madmax']['plot'] == 'show':
                                 pylab.show()
@@ -395,7 +404,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             pylab.ylim(*ylim)
             pylab.xlabel("Baseline, m.")
             pylab.ylabel("MAD residuals")
-            pylab.title("MAD residuals, {}, iter {}".format(label, num_iter))
+            pylab.title("{}: MAD residuals".format(max_label))
             if GD['madmax']['plot'] == 'show':
                 pylab.show()
             else:
@@ -494,7 +503,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             # do mad max flagging, if requested
             thr1, thr2 = get_mad_thresholds()
             if thr1 or thr2:
-                beyond_thunderdome("{} iter {}".format(label, num_iter), thr1, thr2)
+                beyond_thunderdome("{} iter {} ({})".format(label, num_iter, gm.jones_label), thr1, thr2)
 
             chi, mean_chi = compute_chisq()
 
