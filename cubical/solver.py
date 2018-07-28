@@ -369,7 +369,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         if made_plots:
             colors = [["black", "red"],["green", "blue"]]
             import pylab
-            pylab.figure(figsize=(6, 4))
+            pylab.figure(figsize=(12, 8))
             xlim = [0,0]
             ylim = [0,0]
             for imod in xrange(gm.n_mod):
