@@ -225,6 +225,8 @@ class Flagger(object):
             made_plots = made_plots or \
                 self.report_carnage(absres, mad, baddies, flags_arr,
                                        "global Mad Max ({} sigma)".format(med_threshold), max_label)
+        else:
+            med_thr = None
 
         # generate overview plot
         if made_plots:
