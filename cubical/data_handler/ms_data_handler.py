@@ -258,10 +258,10 @@ class MSDataHandler:
         # strip common prefix from antenna names
         minlength = min([len(name) for name in antnames])
         prefix_length = 0
-        while prefix_length < minlength and (set([name[:prefix_length+1] for name in antnames])) == 1:
+        while prefix_length < minlength and len(set([name[:prefix_length+1] for name in antnames])) == 1:
             prefix_length += 1
         if prefix_length:
-            antnames = [name[:minlength] for name in antnames]
+            antnames = [name[prefix_length:] for name in antnames]
 
         self.metadata.antenna_name = antnames
         self.metadata.baseline_name = { (p,q): "{}-{}".format(antnames[p], antnames[q])
