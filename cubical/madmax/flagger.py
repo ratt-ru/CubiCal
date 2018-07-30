@@ -240,4 +240,4 @@ class Flagger(object):
                 import cPickle
                 pickle_file = filename+".cp"
                 cPickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "w"), 2)
-            print>>log(1),"{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file)
+                print>>log(1),"{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file)
