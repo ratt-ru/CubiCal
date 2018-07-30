@@ -174,7 +174,7 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label=""):
         for thr,color in thresholds:
             pylab.axhline(np.ma.median(medant)+thr*SIGMA_MAD*madmed, color=color)
         for p in xrange(n_ant):
-            if not antnum.mask[p]:
+            if antnum.mask is np.ma.nomask or not antnum.mask[p]:
                 pylab.axvline(antnum[p], color="0.9")
                 color = "black"
                 for thr, col in thresholds:
