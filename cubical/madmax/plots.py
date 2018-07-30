@@ -1,5 +1,4 @@
 import numpy as np
-import pylab
 
 from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
@@ -7,6 +6,7 @@ from cubical.tools import logger
 log = logger.getLogger("madmax")
 
 def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titles={}):
+    import pylab
     feeds = metadata.feeds
     # inv: data that was flagged prior to this mad max step
     fl_prior = fl_prior[:, :, p, q] & ~fl_new[:, :, p, q]
@@ -37,6 +37,7 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
 
 
 def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label=""):
+    import pylab
     colors = [["black", "red"], ["green", "blue"]]
     n_mod = mad.shape[0]
     n_ant = mad.shape[1]
@@ -80,7 +81,6 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label=""):
     lmmad_madmad = np.ma.median(lmmad_ad)
     print>>log(3),"make_baseline_mad_plot: plotting"
 
-    import pylab
     pylab.figure(figsize=(16, 5))
     xlim = [0, 0]
     ylim = [0, 0]
