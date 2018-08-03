@@ -139,7 +139,7 @@ class Flagger(object):
                             for c2,x2 in enumerate(self.metadata.feeds.upper()):
                                 mm = mad[0,p,q,c1,c2] if self.mad_per_corr else mad[0,p,q]
                                 subplot_titles[x1,x2] = "{}{} residuals (MAD {:.2f})".format(x1, x2, mm)
-                        plots.make_dual_absres_plot(absres, flags_arr!=0, baddies, p, q, self.metadata, subplot_titles)
+                        figure = plots.make_dual_absres_plot(absres, flags_arr!=0, baddies, p, q, self.metadata, subplot_titles)
                         # make plot title with some info
                         fraction = n_flagged / total_elements
                         blname = self.metadata.baseline_name[p,q]
@@ -151,9 +151,10 @@ class Flagger(object):
                             pylab.show()
                         else:
                             filename = self.get_plot_filename()
-                            pylab.savefig(filename, dpi=300)
+                            figure.savefig(filename, dpi=300)
                             print>>log(1),"{}: saving Mad Max flagging plot to {}".format(self.chunk_label,filename)
-                            pylab.clf()
+                        pylab.close(figure)
+                        del figure
                         made_plots = True
         else:
             print>> log(2),"{} {} abides".format(max_label, method)
@@ -229,15 +230,27 @@ class Flagger(object):
         # generate overview plot
         if made_plots:
             import pylab
-            plots.make_baseline_mad_plot(mad, medmad, med_thr, metadata=self.metadata, max_label=max_label)
+            outflags, figure = plots.make_baseline_mad_plot(mad, medmad, med_thr, metadata=self.metadata,
+                                max_label=max_label,
+                                antenna_mad_threshold=self.GD['madmax']['flag-ant-thr'])
+            if outflags.any():
+                if self.mad_per_corr:
+                    outflags = outflags.any(axis=(-1,-2))
+                if self.GD['madmax']['flag-ant']:
+                    print>>log(0, "red"),"{} baselines flagged on mad residuals".format(outflags.sum()/2)
+                    flags_arr[:,:,outflags] |= FL.MAD
+                else:
+                    print>>log(0, "red"),"{} baselines have mad residuals. Run with --madmax-flag-ant 1 to flag them".format(outflags.sum()/2)
+
             if self.GD['madmax']['plot'] == 'show':
                 pylab.show()
             else:
                 filename = self.get_plot_filename('mads')
                 print>>log(1),"{}: saving MAD distribution plot to {}".format(self.chunk_label,filename)
-                pylab.savefig(filename, dpi=300)
-                pylab.clf()
+                figure.savefig(filename, dpi=300)
                 import cPickle
                 pickle_file = filename+".cp"
                 cPickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "w"), 2)
                 print>>log(1),"{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file)
+            pylab.close(figure)
+            del figure
