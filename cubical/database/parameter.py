@@ -600,7 +600,7 @@ class Parameter(object):
                 print>> log(2), "  interpolated onto {} grid".format("x".join(map(str, interp_shape)))
                 output_array[out_slicer] = result[tuple(interp_broadcast)]
         # return array, throwing out unneeded axes
-        output_array = output_array[output_reduction]
+        output_array = output_array[tuple(output_reduction)]
         # also, mask missing values from the interpolator with the fill value
         missing = np.isnan(output_array)
         output_array[missing] = self.empty
