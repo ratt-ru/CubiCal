@@ -312,10 +312,10 @@ class MSTile(object):
 
             corr_slice = slice(None) if self.ncorr == 4 else slice(None, None, 3)
 
-            col_selections = [[dirs, mods, rows, freqs, slice(None)][-col_ndim:]
+            col_selections = [tuple([dirs, mods, rows, freqs, slice(None)][-col_ndim:])
                               for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
 
-            cub_selections = [[dirs, mods, tchunk, slice(None), achunk, bchunk, corr_slice][-(reqdims - 1):]
+            cub_selections = [tuple([dirs, mods, tchunk, slice(None), achunk, bchunk, corr_slice][-(reqdims - 1):])
                               for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
 
             # The following takes the arbitrarily ordered data from the MS and places it into a N-D
