@@ -564,7 +564,8 @@ class MSDataHandler:
                     if auto_init:
                         print>> log, ModColor.Str("WARNING: the BITFLAG column does not appear to be properly initialized. "
                             "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
-                            "This is not fatal, and we'll attempt to refill it.")
+                            "This is not fatal, but we'll attempt to refill it from the FLAG/FLAG_ROW column.")
+                        self._reinit_bitflags = True
                     elif see_no_evil:
                         print>> log, ModColor.Str("WARNING: the BITFLAG column does not appear to be properly initialized. "
                             "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
@@ -593,6 +594,7 @@ class MSDataHandler:
                 if type(auto_init) is not str:
                     raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
                 self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
+                self._reinit_bitflags = True
                 print>> log, ModColor.Str("  Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
                 self.ms.putcolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS", True)
             else:

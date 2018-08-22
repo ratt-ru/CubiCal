@@ -642,7 +642,7 @@ class MSTile(object):
             self._flagcol_sum = 0
             self.dh.flagcounts["TOTAL"] += flag_arr0.size
 
-            if self.dh._apply_flags or self.dh._auto_fill_bitflag:
+            if self.dh._apply_flags or self.dh._auto_fill_bitflag or self.dh._reinit_bitflags:
                 flagcol = self.dh.fetchslice("FLAG", subset=table_subset)
                 flagrow = table_subset.getcol("FLAG_ROW")
                 flagcol[flagrow, :, :] = True
@@ -701,11 +701,12 @@ class MSTile(object):
                 if not read_bitflags:
                     self.bflagcol = np.zeros(flagcol.shape, np.int32)
                     self.bflagrow = np.zeros(flagrow.shape, np.int32)
-                    if self.dh._auto_fill_bitflag:
-                        self.bflagcol[flagcol] = self.dh._auto_fill_bitflag
-                        self.bflagrow[flagrow] = self.dh._auto_fill_bitflag
-                        print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s" % str(self.bflagcol.shape)
-                        self._auto_filled_bitflag = True
+                # fill them from legacy flags, if auto-fill is enabled, or if we're reinitializing
+                if (not read_bitflags and self.dh._auto_fill_bitflag) or self.dh._reinit_bitflags:
+                    self.bflagcol[flagcol] = self.dh._auto_fill_bitflag
+                    self.bflagrow[flagrow] = self.dh._auto_fill_bitflag
+                    print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s from FLAG/FLAG_ROW" % str(self.bflagcol.shape)
+                    self._auto_filled_bitflag = True
                 # compute stats
                 for flagset, bitmask in self.dh.bitflags.iteritems():
                     flagged = self.bflagcol & bitmask != 0
