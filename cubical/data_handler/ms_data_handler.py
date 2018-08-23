@@ -671,6 +671,7 @@ class MSDataHandler:
 
             self.bitflags = {}
 
+        self.flagcounts['DESEL'] = 0
         self.flagcounts['IN'] = 0
         self.flagcounts['NEW'] = 0
         self.flagcounts['OUT'] = 0
