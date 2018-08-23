@@ -105,11 +105,11 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", antenna
         if per_corr:
             indices = [(bl,p,q,c1,c2) for bl,p,q in indices_pq for c1 in xrange(n_cor) for c2 in xrange(n_cor)]
             mask = [mad.mask[0,p,q,c1,c2] for _,p,q,c1,c2 in indices]
-            blmad = np.ma.masked_array([mad[0,p,q,c1,c2] for _,p,q,c1,c2 in indices],mask)
+            blmad = np.ma.masked_array([(mad[0,p,q,c1,c2] or 0) for _,p,q,c1,c2 in indices],mask)
         else:
             indices = [(bl,p,q,None,None) for bl,p,q in indices_pq]
             mask = [mad.mask[0,p,q] for _,p,q in indices_pq]
-            blmad = np.ma.masked_array([mad[0,p,q] for _,p,q in indices_pq],mask)
+            blmad = np.ma.masked_array([(mad[0,p,q] or 0) for _,p,q in indices_pq],mask)
 
         bllen = np.ma.masked_array([bl for bl,_,_,_,_ in indices],mask)
         # N,2 array of pq indices for each entry
@@ -130,9 +130,9 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", antenna
         lmmad_threshold = 3
         lmmad_mask = [((p,q) not in lmmad) for _,p,q in indices_pq]
         lmmad_bllen = np.ma.masked_array([bl for bl,_,_ in indices_pq], lmmad_mask)
-        lmmad_mad   = np.ma.masked_array([lmmad.get((p,q), 0) for _,p,q in indices_pq], lmmad_mask)
+        lmmad_mad   = np.ma.masked_array([(lmmad.get((p,q), 0) or 0) for _,p,q in indices_pq], lmmad_mask)
 
-        lmmad_ad = np.ma.masked_array([abs(blmad1 - lmmad.get((p,q), 0)) for (_,p,q,_,_),blmad1 in zip(indices,blmad)], blmad.mask)
+        lmmad_ad = np.ma.masked_array([abs((blmad1 or 0)- lmmad.get((p,q), 0)) for (_,p,q,_,_),blmad1 in zip(indices,blmad)], blmad.mask)
         lmmad_madmad = np.ma.median(lmmad_ad)
         print>>log(3),"make_baseline_mad_plot: plotting baselines"
 

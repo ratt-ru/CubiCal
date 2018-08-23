@@ -169,7 +169,7 @@ def compute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,int dia
                     mad[m, aa, ab] = mad[m, ab, aa] = quick_select(&(absvals[thread, 0]), nval)
                     madfl[m, aa, ab] = madfl[m, ab, aa] = False
 
-    return np.ma.masked_array(mad_arr, mad_arr_fl), valid_arr
+    return np.ma.masked_array(mad_arr, mad_arr_fl, fill_value=0), valid_arr
 
 
 
@@ -230,7 +230,7 @@ def compute_mad_per_corr(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flag
                         mad[m, aa, ab, c1, c2] = mad[m, ab, aa, c2, c1] = quick_select(&(absvals[thread, 0]), nval)
                         madfl[m, aa, ab, c1, c2] = madfl[m, ab, aa, c1, c2] = False
 
-    return np.ma.masked_array(mad_arr, mad_arr_fl), valid_arr
+    return np.ma.masked_array(mad_arr, mad_arr_fl, fill_value=0), valid_arr
 
 
 @cython.cdivision(True)
