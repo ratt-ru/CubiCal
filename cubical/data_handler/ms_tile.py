@@ -675,10 +675,7 @@ class MSTile(object):
             if num_inactive:
                 print>> log(0), "  {:.2%} visibilities deselected via specificed subset and/or baseline cutoffs".format(num_inactive / float(inactive.size))
                 flag_arr0[inactive] |= FL.SKIPSOL
-                self.dh.flagcounts["DESEL"] = self.dh.flagcounts.get("DESEL",
-                                                                     np.zeros_like(num_inactive,
-                                                                                   dtype=num_inactive.dtype)) + \
-                                              num_inactive
+                self.dh.flagcounts["DESEL"] += num_inactive
 
             # Form up bitflag array, if needed.
             if self.dh._apply_bitflags or self.dh._save_bitflag or self.dh._auto_fill_bitflag:
