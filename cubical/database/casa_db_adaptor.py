@@ -147,7 +147,7 @@ class casa_caltable_factory(object):
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
-            assert db[gname].shape == db[gname + ".err"].shape, "PARAM err shape does not match PARAM shape, this is a bug"
+            paramerrs = cls.__check_param_err(db, gname)
             assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr'), "DB table in unrecognized format"
             
             ddids = db.sel_ddids
@@ -177,7 +177,7 @@ class casa_caltable_factory(object):
                                                                db[gname].grid[db[gname].ax.freq] <= maxfreq))
                     params = np.swapaxes(db[gname].get_cube()[:, :, ddsolfreqindx, :, :],
                                          2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) 
-                    paramerrs = np.swapaxes(db[gname + ".err"].get_cube()[:, :, ddsolfreqindx, :, :],
+                    paramerrs = np.swapaxes(paramerrs.get_cube()[:, :, ddsolfreqindx, :, :],
                                             2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) 
                     flags = np.ma.getmaskarray(params)
                     fieldid = np.repeat(np.arange(ndir), ntime * nant) # dir (marked as field) is slowest varying
@@ -198,7 +198,14 @@ class casa_caltable_factory(object):
                     t.putcol("FLAG", flags, startrow=nrowsdd * iddid)
                     t.putcol("SNR", np.ones(params.shape) * np.inf, startrow=nrowsdd * iddid) #TODO this is not available @oms
                     t.putcol("WEIGHT", np.ones(params.shape), startrow=nrowsdd * iddid) #TODO this is not available @oms
-                    
+        @classmethod
+        def __check_param_err(cls, db, gname):
+            if db[gname].shape != db[gname + ".err"].shape:
+                log.warn("PARAM err shape %s does not match PARAM shape %s. This is a solver bug so we will assume infinite errors on all solutions." %
+                         (",".join(map(str, db[gname].shape)),
+                          ",".join(map(str, db[gname + ".err"].shape))))
+                return np.zeros_like(db[gname].get_cube(), dtype=db[gname + ".err"].get_cube().dtype) * np.inf
+            return db[gname + ".err"].get_cube()
         @classmethod
         def create_B_table(cls, db, gname, outname = "B", diag=True):
             """
@@ -213,7 +220,7 @@ class casa_caltable_factory(object):
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
-            assert db[gname].shape == db[gname + ".err"].shape, "PARAM err shape does not match PARAM shape, this is a bug"
+            paramerrs = cls.__check_param_err(db, gname)
             assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr1', 'corr2'), "DB table in unrecognized format"
             
             ddids = db.sel_ddids
@@ -246,7 +253,7 @@ class casa_caltable_factory(object):
                     jones_entries = [0, 3] if diag else [1, 2] # diagonal or crosshands
                     params = np.swapaxes(db[gname].get_cube()[:, :, ddsolfreqindx, :, :], 
                                          2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr1 * ncorr2)[:, :, jones_entries]
-                    paramerrs = np.swapaxes(db[gname + ".err"].get_cube()[:, :, ddsolfreqindx, :, :],
+                    paramerrs = np.swapaxes(paramerrs[:, :, ddsolfreqindx, :, :],
                                             2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr1 * ncorr2)[:, :, jones_entries]
                     flags = np.ma.getmaskarray(params)
                     fieldid = np.repeat(np.arange(ndir), ntime * nant) # dir (marked as field) is slowest varying
@@ -293,7 +300,7 @@ class casa_caltable_factory(object):
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
-            assert db[gname].shape == db[gname + ".err"].shape, "PARAM err shape does not match PARAM shape, this is a bug"
+            paramerrs = cls.__check_param_err(db, gname)
             assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr'), "DB table in unrecognized format"
             
             ddids = db.sel_ddids
@@ -325,7 +332,7 @@ class casa_caltable_factory(object):
                     # note -- CASA K table delays are in nanoseconds. This presumes delays in the cubical tables are already denormalized into seconds
                     params = np.swapaxes(db[gname].get_cube()[:, :, ddsolfreqindx, :, :],
                                          2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) * 1.0e9
-                    paramerrs = np.swapaxes(db[gname + ".err"].get_cube()[:, :, ddsolfreqindx, :, :],
+                    paramerrs = np.swapaxes(paramerrs[:, :, ddsolfreqindx, :, :],
                                             2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) * 1.0e9
                     flags = np.ma.getmaskarray(params)
                     fieldid = np.repeat(np.arange(ndir), ntime * nant) # dir (marked as field) is slowest varying
