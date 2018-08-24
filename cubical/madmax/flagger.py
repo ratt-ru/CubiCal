@@ -31,7 +31,19 @@ class Flagger(object):
 
         self.flag_warning_threshold = GD['flags']["warn-thr"]
 
-        self.mad_flag = GD['madmax']['enable']
+        self._mode = GD['madmax']['enable']
+        self._pretend = self._mode == "pretend"
+        self.trial_mode = self._trial = self._mode == "trial"
+        if self._pretend:
+            self.desc_mode = "Pretend-Mad Max"
+        elif self._mode == "trial":
+            self.desc_mode = "Trial-Mad Max"
+        elif self._mode:
+            self.desc_mode = "Mad Max"
+        else:
+            self.desc_mode = "No Max"
+
+        self.flagbit = 0 if self._pretend else FL.MAD
 
         self.mad_threshold = GD['madmax']['threshold']
         self.medmad_threshold = GD['madmax']['global-threshold']
@@ -42,7 +54,7 @@ class Flagger(object):
         self.mad_diag = GD['madmax']['diag']
         self.mad_offdiag = self.metadata.num_corrs == 4 and GD['madmax']['offdiag']
         if not self.mad_diag and not self.mad_offdiag:
-            self.mad_flag = False
+            self._mode = False
 
         # setup MAD estimation settings
         self.mad_per_corr = False
@@ -67,7 +79,7 @@ class Flagger(object):
     def get_mad_thresholds(self):
         """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
         until the list is down to one element."""
-        if not self.mad_flag:
+        if not self._mode:
             return 0, 0
         return self.mad_threshold.pop(0) if len(self.mad_threshold) > 1 else \
                    (self.mad_threshold[0] if self.mad_threshold else 0), \
@@ -102,8 +114,10 @@ class Flagger(object):
                 warning, color = "", "blue"
             else:
                 warning, color = "WARNING: ", "red"
-            print>> log(1, color), "{}{} {} kills {} ({:.2%}) visibilities".format(warning, max_label, method, nbad,
-                                    nbad/float(baddies.size))
+            frac = nbad / float(baddies.size)
+            mode = "trial-" if self._trial else ("pretend-" if self._pretend else "")
+            print>> log(1, color), \
+                "{warning}{max_label} {method} {mode}flags {nbad} ({frac:.2%}) visibilities".format(**locals())
             if log.verbosity() > 2 or self.GD['madmax']['plot']:
                 per_bl = []
                 total_elements = float(n_tim * n_fre)
@@ -138,7 +152,7 @@ class Flagger(object):
                         for c1,x1 in enumerate(self.metadata.feeds.upper()):
                             for c2,x2 in enumerate(self.metadata.feeds.upper()):
                                 mm = mad[0,p,q,c1,c2] if self.mad_per_corr else mad[0,p,q]
-                                subplot_titles[x1,x2] = "{}{} residuals (MAD {:.2f})".format(x1, x2, mm)
+                                subplot_titles[c1,c2] = "{}{} residuals (MAD {:.2f})".format(x1, x2, mm)
                         figure = plots.make_dual_absres_plot(absres, flags_arr!=0, baddies, p, q, self.metadata, subplot_titles)
                         # make plot title with some info
                         fraction = n_flagged / total_elements
@@ -162,7 +176,7 @@ class Flagger(object):
 
 
     @profile
-    def beyond_thunderdome(self, resid_arr, flags_arr, threshold, med_threshold, max_label):
+    def beyond_thunderdome(self, resid_arr, data_arr, model_arr, flags_arr, threshold, med_threshold, max_label):
         """This function implements MAD-based flagging on residuals"""
         if not threshold and not med_threshold:
             return False
@@ -211,9 +225,14 @@ class Flagger(object):
                 thr[:] = threshold * mad / SIGMA_MAD
             else:
                 thr[:] = threshold * mad[...,np.newaxis,np.newaxis] / SIGMA_MAD
-            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=self.mad_diag, offdiag=self.mad_offdiag)
+            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, self.flagbit, goodies,
+                                             diag=self.mad_diag, offdiag=self.mad_offdiag)
             made_plots = self.report_carnage(absres, mad, baddies, flags_arr,
                                                 "baseline-based Mad Max ({} sigma)".format(threshold), max_label)
+            if not self._pretend:
+                baddies = baddies.astype(bool)
+                model_arr[:,:,baddies,:,:] = 0
+                data_arr[:,baddies,:,:] = 0
 
         # apply global median MAD threshold
         if med_threshold:
@@ -222,10 +241,15 @@ class Flagger(object):
                 thr[:] = med_thr[:,np.newaxis,np.newaxis,:,:]
             else:
                 thr[:] = med_thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis]
-            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, FL.MAD, goodies, diag=self.mad_diag, offdiag=self.mad_offdiag)
+            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, self.flagbit, goodies,
+                                             diag=self.mad_diag, offdiag=self.mad_offdiag)
             made_plots = made_plots or \
                 self.report_carnage(absres, mad, baddies, flags_arr,
                                        "global Mad Max ({} sigma)".format(med_threshold), max_label)
+            if not self._pretend:
+                baddies = baddies.astype(bool)
+                model_arr[:, :, baddies, :, :] = 0
+                data_arr[:, baddies, :, :] = 0
         else:
             med_thr = None
 
@@ -238,11 +262,14 @@ class Flagger(object):
             if outflags.any():
                 if self.mad_per_corr:
                     outflags = outflags.any(axis=(-1,-2))
-                if self.GD['madmax']['flag-ant']:
-                    print>>log(0, "red"),"{} baselines flagged on mad residuals".format(outflags.sum()/2)
-                    flags_arr[:,:,outflags] |= FL.MAD
+                if self.GD['madmax']['flag-ant'] and not self._pretend:
+                    print>>log(0, "red"),"{} baselines {}flagged on mad residuals (--madmax-flag-ant 1)".format(
+                                            outflags.sum()/2, "trial-" if self._trial else "")
+                    flags_arr[:,:,outflags] |= self.flagbit
+                    model_arr[:,:,:,:,outflags,:,:] = 0
+                    data_arr[:,:,:,outflags,:,:] = 0
                 else:
-                    print>>log(0, "red"),"{} baselines have mad residuals. Run with --madmax-flag-ant 1 to flag them".format(outflags.sum()/2)
+                    print>>log(0, "red"),"{} baselines would have been flagged due to mad residuals (use --madmax-flag-ant)".format(outflags.sum()/2)
 
             if self.GD['madmax']['plot'] == 'show':
                 pylab.show()

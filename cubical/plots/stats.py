@@ -12,26 +12,9 @@ log = logger.getLogger("plots")
 
 from cubical.plots import DPI, ZOOM
 
-def _make_antenna_xaxis(nant):
-    import pylab
-    """Helper function. Sets up a plot X axis that shows antenna numbers nicely"""
-    # make a tick at every antenna, but label only the originally labelled ones
-    locs = np.arange(nant)
-    labels = [''] * nant
-    pylab.xlim(-1, nant)
-    for x, lbl in zip(*pylab.xticks()):
-        x = int(x)
-        if x >= 0 and x < nant:
-            labels[x] = str(x)
-    pylab.xticks(locs, labels)
-    # draw vertical guides for antennas -- thicker line every 5 antennas
-    for x in range(0, nant):
-        pylab.axvline(x, c="grey", lw=0.5 if x%5 else 1, ls=':' if x%5 else '-')
-    pylab.xlabel("antenna")
+def make_stats_plots(st, GD, basename, metadata):
+    from cubical.plots import make_antenna_xaxis
 
-
-
-def make_stats_plots(st, GD, basename):
     def save_figure(name, width, height):
         import pylab
         pylab.gcf().set_size_inches(min(width, 10000 / DPI), min(height, 10000 / DPI))
@@ -93,7 +76,7 @@ def make_stats_plots(st, GD, basename):
     pylab.xlabel("channel")
     pylab.ylabel("noise")
     pylab.subplot(122)
-    _make_antenna_xaxis(nant)
+    make_antenna_xaxis(metadata.antenna_name)
     for chan in xrange(nf):
         pylab.plot(noise[chan, :], 'o-')
     pylab.title("Noise (colour: channel)")
@@ -113,7 +96,7 @@ def make_stats_plots(st, GD, basename):
     pylab.xlabel("channel")
     pylab.ylabel("$\chi^2$")
     pylab.subplot(122)
-    _make_antenna_xaxis(nant)
+    make_antenna_xaxis(metadata.antenna_name)
     for chan in xrange(nf):
         pylab.plot(chi2[chan, :], 'o-')
     pylab.title("Chi-sq (colour: channel)")
