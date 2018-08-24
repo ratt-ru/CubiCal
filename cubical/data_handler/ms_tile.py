@@ -1075,6 +1075,15 @@ class MSTile(object):
                 if self._auto_filled_bitflag:
                     bflag_col = True
 
+            if self.dh._save_flags_apply:
+                prior_flags = subset.upsample((data['flags'] & FL.PRIOR) != 0)
+                if flag_col is None:
+                    flag_col = prior_flags
+                else:
+                    flag_col |= prior_flags
+                ratio = prior_flags.sum() / float(prior_flags.size)
+                print>> log, "  also transferring {:.2%} input flags (--flags-save-legacy apply)".format(ratio)
+
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
             if bflag_col is not None:

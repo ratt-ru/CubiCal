@@ -173,7 +173,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # do mad max flagging, if requested
     thr1, thr2 = madmax.get_mad_thresholds()
     if thr1 or thr2:
-        madmax.beyond_thunderdome(resid_arr, flags_arr, thr1, thr2, "{} initial".format(label))
+        madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2, "{} initial".format(label))
 
     def compute_chisq(statfield=None):
         """
@@ -260,7 +260,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             # do mad max flagging, if requested
             thr1, thr2 = madmax.get_mad_thresholds()
             if thr1 or thr2:
-                madmax.beyond_thunderdome(resid_arr, flags_arr, thr1, thr2, "{} iter {} ({})".format(label, num_iter, gm.jones_label))
+                madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2, "{} iter {} ({})".format(label, num_iter, gm.jones_label))
 
             chi, mean_chi = compute_chisq()
 
@@ -300,7 +300,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             # do mad max flagging, if requested
             thr1, thr2 = madmax.get_mad_thresholds()
             if thr1 or thr2:
-                madmax.beyond_thunderdome(resid_arr, flags_arr, thr1, thr2, "{} final".format(label))
+                madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2, "{} final".format(label))
 
             if sol_opts['last-rites']:
                 # Recompute chi-squared based on original noise statistics.
@@ -346,19 +346,22 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     stats.chunk.num_sol_flagged, _ = gm.num_gain_flags()
     if stats.chunk.num_sol_flagged:
         # also for up message with flagging stats
-        fstats = ""
+        fstats = []
         for flagname, mask in FL.categories().iteritems():
             if mask != FL.MISSING:
                 n_flag, n_tot = gm.num_gain_flags(mask)
                 if n_flag:
-                    fstats += "{}:{}({:.2%}) ".format(flagname, n_flag, n_flag/float(n_tot))
+                    fstats.append("{}:{}({:.2%})".format(flagname, n_flag, n_flag/float(n_tot)))
 
-        flagstatus.append("solver flags {}".format(fstats))
+        flagstatus.append("solver flags {}".format(" ".join(fstats)))
 
     if stats.chunk.num_mad_flagged:
-        flagstatus.append("Mad Max took out {} visibilities".format(stats.chunk.num_mad_flagged))
+        flagstatus.append("{} took out {} visibilities".format(madmax.desc_mode, stats.chunk.num_mad_flagged))
 
     if flagstatus:
+        # clear Mad Max flags if in trial mode
+        if madmax.trial_mode:
+            flags_arr &= ~FL.MAD
         n_new_flags = (flags_arr&~(FL.PRIOR | FL.MISSING) != 0).sum() - n_original_flags
         if n_new_flags < flags_arr.size*flag_warning_threshold:
             warning, color = "", "blue"
