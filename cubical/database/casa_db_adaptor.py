@@ -177,7 +177,7 @@ class casa_caltable_factory(object):
                                                                db[gname].grid[db[gname].ax.freq] <= maxfreq))
                     params = np.swapaxes(db[gname].get_cube()[:, :, ddsolfreqindx, :, :],
                                          2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) 
-                    paramerrs = np.swapaxes(paramerrs.get_cube()[:, :, ddsolfreqindx, :, :],
+                    paramerrs = np.swapaxes(paramerrs[:, :, ddsolfreqindx, :, :],
                                             2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) 
                     flags = np.ma.getmaskarray(params)
                     fieldid = np.repeat(np.arange(ndir), ntime * nant) # dir (marked as field) is slowest varying
