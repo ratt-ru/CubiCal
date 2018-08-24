@@ -15,6 +15,7 @@ ADD LICENSE.md /src/cubical/LICENSE.md
 ADD MANIFEST.in /src/cubical/MANIFEST.in
 ADD README.md /src/cubical/README.md
 ADD requirements.txt /src/cubical/requirements.txt
+ADD requirements.test.txt /src/cubical/requirements.test.txt
 ADD rtd_requirements.txt /src/cubical/rtd_requirements.txt
 ADD setup.py /src/cubical/setup.py
 
