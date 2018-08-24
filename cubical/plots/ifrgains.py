@@ -3,7 +3,7 @@ import numpy as np
 from cubical.tools import logger
 log = logger.getLogger("plots")
 
-from cubical.plots import DPI, ZOOM
+from cubical.plots import DPI, ZOOM, make_antenna_xaxis
 
 def _cmp_antenna (sa, sb):
     """Helper function to sort antenna names. Try numeric compare first, fall back to text compare if failed""";
@@ -50,6 +50,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
     """Makes a set of ifrgain plots from the specified saved file."""
     print>>log(0),"generating plots for suggested baseline-based corrections (BBCs)"
 
+    metadata = ms.metadata
     import pylab
     def save_figure(name, width, height):
         import pylab
@@ -64,10 +65,9 @@ def make_ifrgain_plots(ig, ms, GD, basename):
     # load baseline info, if MS is available
     antpos = zip(ms.antnames, ms.antpos)
     # make dictionary of IFR name: baseline length
-    baseline = {
-        "%s-%s"%(p,q): math.sqrt(((ppos - qpos) ** 2).sum()) for p, ppos in antpos for q, qpos in antpos
-    }
-    feeds = [ (x+y).upper() for x in ms.feeds for y in ms.feeds ]
+    baseline = { metadata.baseline_name[p,q]: metadata.baseline_length[p,q] 
+                 for p in range(ms.nants) for q in range(p+1, ms.nants) }
+    feeds = [ (x+y).upper() for x in metadata.feeds for y in metadata.feeds ]
 
     def plot_xy(content, title):
         """Plots x vs y"""
@@ -157,14 +157,14 @@ def make_ifrgain_plots(ig, ms, GD, basename):
     def plot_ants(content, title):
         """Plots x vs y"""
         # plot labels
-        for i, (p, gainlist) in enumerate(content):
+        for p, gainlist in content:
             for label, color, (value, std) in gainlist:
                 if value:
-                    pylab.plot(i, value, 'w.')
-                    pylab.text(i, value, label, horizontalalignment='center', verticalalignment='center', size=8,
+                    pylab.plot(p, value, 'w.')
+                    pylab.text(p, value, label, horizontalalignment='center', verticalalignment='center', size=8,
                                color=color)
-        pylab.xlim(-1, len(content))
-        pylab.xticks(range(len(content)), [p for p, gainlist in content])
+        pylab.xlim(-1, len(ms.antnames))
+        make_antenna_xaxis(ms.antnames)
         pylab.title(title)
 
     nfreq, nant, _, _, _ = ig.shape
@@ -185,13 +185,13 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         valid_igs = []
         ifr_pairs = {}
         for p in xrange(nant):
-            for q in xrange(p, nant):
-                ifrname = "%s-%s" % (ms.antnames[p], ms.antnames[q])
+            for q in xrange(p+1, nant):
+                ifrname = ms.metadata.baseline_name[p,q]
                 rr = ig[:, p, q, i1, j1]
                 ll = ig[:, p, q, i2, j2]
                 if not _is_unity(rr, ll):
                     valid_igs.append((ifrname, rr, ll))
-                    ifr_pairs[ifrname] = ms.antnames[p], ms.antnames[q]
+                    ifr_pairs[ifrname] = p,q
         if not valid_igs:
             continue
         FEEDS = (ms.feeds[i1]+ms.feeds[j1]).upper(), (ms.feeds[i2]+ms.feeds[j2]).upper()
@@ -222,41 +222,40 @@ def make_ifrgain_plots(ig, ms, GD, basename):
                 igpa0.setdefault(p, {})[q] = rr0, ll0
                 igpa0.setdefault(q, {})[p] = rr0, ll0
             rr, ll = _normifrgain(rr), _normifrgain(ll)
-            igpa.setdefault(p, []).append(("%s:%s" % (q, FEEDS[0]), 'blue', rr))
-            igpa.setdefault(q, []).append(("%s:%s" % (p, FEEDS[0]), 'blue', rr))
-            igpa.setdefault(p, []).append(("%s:%s" % (q, FEEDS[1]), 'red', ll))
-            igpa.setdefault(q, []).append(("%s:%s" % (p, FEEDS[1]), 'red', ll))
-        content = [(p, igpa[p]) for p in sorted(igpa.keys(), cmp=_cmp_antenna)]
+            igpa.setdefault(p, []).append(("%s:%s" % (ms.antnames[q], FEEDS[0]), 'blue', rr))
+            igpa.setdefault(q, []).append(("%s:%s" % (ms.antnames[p], FEEDS[0]), 'blue', rr))
+            igpa.setdefault(p, []).append(("%s:%s" % (ms.antnames[q], FEEDS[1]), 'red', ll))
+            igpa.setdefault(q, []).append(("%s:%s" % (ms.antnames[p], FEEDS[1]), 'red', ll))
+        antennas = sorted(igpa.keys())
         pylab.subplot(NR, NC, 2)
-        plot_ants(content, "IFR %s %s gain amplitudes per antenna" % FEEDS)
+        plot_ants([(p, igpa[p]) for p in antennas], "IFR %s %s gain amplitudes per antenna" % FEEDS)
         if baseline:
             pylab.subplot(NR, NC/2, 3)
             plot_baseline(norm_igs, baseline, "IFR gain amplitude vs. baseline length", FEEDS)
         save_figure("bbc-{}".format(label), width*NC, height*NR)
 
         # make per-antenna figure
-        antennas = sorted(igpa0.keys(), _cmp_antenna)
         NC = 4
         NR = int(math.ceil(len(antennas) / float(NC)))
         offset = np.median(igpa0_means)
         for iant, pant in enumerate(antennas):
             pylab.subplot(NR, NC, iant + 1)
             igains = igpa0[pant]
-            ants1 = sorted(igains.keys(), _cmp_antenna)
+            ants1 = sorted(igains.keys())
             for i, qant in enumerate(ants1):
                 rr, ll = igains[qant]
                 if rr.count() > 1:
                     a1, a2 = np.ma.flatnotmasked_edges(rr)
                     line, = pylab.plot(rr + i * offset, '-')
-                    pylab.text(a1, rr[a1] + i * offset, "%s:%s" % (qant, feeds[0]), horizontalalignment='left',
+                    pylab.text(a1, rr[a1] + i * offset, "%s:%s" % (ms.antnames[qant], feeds[0]), horizontalalignment='left',
                                verticalalignment='center', size=8,
                                color=line.get_color())
                 if ll.count() > 1:
                     a1, a2 = np.ma.flatnotmasked_edges(ll)
                     line, = pylab.plot(ll + i * offset, '-')
-                    pylab.text(a2, ll[a2] + i * offset, "%s:%s" % (qant, feeds[3]), horizontalalignment='right',
+                    pylab.text(a2, ll[a2] + i * offset, "%s:%s" % (ms.antnames[qant], feeds[3]), horizontalalignment='right',
                                verticalalignment='center', size=8,
                                color=line.get_color())
-            pylab.title("antenna %s" % pant)
+            pylab.title("antenna %s" % ms.antnames[pant])
         save_figure("bbc-{}-ant".format(label), 8 * NC, 6 * NR)
 
