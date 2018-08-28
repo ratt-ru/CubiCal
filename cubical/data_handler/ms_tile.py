@@ -312,7 +312,7 @@ class MSTile(object):
 
             corr_slice = slice(None) if self.ncorr == 4 else slice(None, None, 3)
 
-            col_selections = [[dirs, mods, rows, freqs, slice(None)][-col_ndim:]
+            col_selections = [tuple([dirs, mods, rows, freqs, slice(None)][-col_ndim:])
                               for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
 
             cub_selections = [[dirs, mods, tchunk, slice(None), achunk, bchunk, corr_slice][-(reqdims - 1):]
@@ -324,28 +324,28 @@ class MSTile(object):
             for col_selection, cub_selection in zip(col_selections, cub_selections):
 
                 if self.ncorr == 4:
-                    out_arr[cub_selection] = colsel = column[col_selection]
+                    out_arr[tuple(cub_selection)] = colsel = column[col_selection]
                     cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
                     if np.iscomplexobj(out_arr):
-                        out_arr[cub_selection] = colsel.conj()[..., (0, 2, 1, 3)]
+                        out_arr[tuple(cub_selection)] = colsel.conj()[..., (0, 2, 1, 3)]
                     else:
-                        out_arr[cub_selection] = colsel[..., (0, 2, 1, 3)]
+                        out_arr[tuple(cub_selection)] = colsel[..., (0, 2, 1, 3)]
 
                 elif self.ncorr == 2:
-                    out_arr[cub_selection] = colsel = column[col_selection]
+                    out_arr[tuple(cub_selection)] = colsel = column[col_selection]
                     cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
                     if np.iscomplexobj(out_arr):
-                        out_arr[cub_selection] = colsel.conj()
+                        out_arr[tuple(cub_selection)] = colsel.conj()
                     else:
-                        out_arr[cub_selection] = colsel
+                        out_arr[tuple(cub_selection)] = colsel
 
                 elif self.ncorr == 1:
-                    out_arr[cub_selection] = colsel = column[col_selection][..., (0, 0)]
+                    out_arr[tuple(cub_selection)] = colsel = column[col_selection][..., (0, 0)]
                     cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
                     if np.iscomplexobj(out_arr):
-                        out_arr[cub_selection] = colsel.conj()
+                        out_arr[tuple(cub_selection)] = colsel.conj()
                     else:
-                        out_arr[cub_selection] = colsel
+                        out_arr[tuple(cub_selection)] = colsel
 
             # This zeros the diagonal elements in the "baseline" plane. This is purely a precaution -
             # we do not want autocorrelations on the diagonal.

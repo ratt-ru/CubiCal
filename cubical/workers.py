@@ -235,7 +235,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
         # this will be a dict of tile number: future loading that tile
         io_futures = {}
         # schedule I/O job to load tile 0
-        io_futures[0] = io_executor.submit(_io_handler, load=0, save=None)
+        io_futures[0] = io_executor.submit(_io_handler, load=0, save=None, load_model=load_model)
         # all I/O will be done by the I/O thread, so we need to close the MS in the main process
         # and reopen it afterwards
         ms.close()
