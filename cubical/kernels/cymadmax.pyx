@@ -143,7 +143,7 @@ def compute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,int dia
 
     cdef np.float32_t [:,:] absvals = absvals_arr
     cdef np.float32_t [:,:,:] mad = mad_arr
-    cdef np.uint8_t    [:,:,:] madfl = mad_arr_fl
+    cdef np.uint8_t  [:,:,:] madfl = mad_arr_fl
 
     with nogil, parallel(num_threads=num_threads):
         for bl in prange(n_bl, schedule='static'):
@@ -169,7 +169,7 @@ def compute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,int dia
                     mad[m, aa, ab] = mad[m, ab, aa] = quick_select(&(absvals[thread, 0]), nval)
                     madfl[m, aa, ab] = madfl[m, ab, aa] = False
 
-    return np.ma.masked_array(mad_arr, mad_arr_fl), valid_arr
+    return np.ma.masked_array(mad_arr, mad_arr_fl, fill_value=0), valid_arr
 
 
 
@@ -230,14 +230,14 @@ def compute_mad_per_corr(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flag
                         mad[m, aa, ab, c1, c2] = mad[m, ab, aa, c2, c1] = quick_select(&(absvals[thread, 0]), nval)
                         madfl[m, aa, ab, c1, c2] = madfl[m, ab, aa, c1, c2] = False
 
-    return np.ma.masked_array(mad_arr, mad_arr_fl), valid_arr
+    return np.ma.masked_array(mad_arr, mad_arr_fl, fill_value=0), valid_arr
 
 
 @cython.cdivision(True)
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
-def threshold_mad (float3264 [:,:,:,:,:,:,:] absres, np.float32_t [:,:,:,:,:] thr, flag_t [:,:,:,:] flags, flag_t flagbit, np.uint8_t [:,:,:,:,:] goodies,diag=1,offdiag=1):
+def threshold_mad (float3264 [:,:,:,:,:,:,:] absres, np.float32_t [:,:,:,:,:] thr, flag_t [:,:,:,:] flags, flag_t flagbit, np.uint8_t [:,:,:,:,:] goodies,int diag=1,int offdiag=1):
     cdef int n_mod, n_tim, n_fre, n_ant, bl, aa, ab, m, ic, c1, c2, t, f, thread, nval
     cdef np.float32_t x
 

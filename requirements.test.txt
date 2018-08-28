@@ -1,0 +1,2 @@
+git+https://github.com/ska-sa/montblanc.git@ddfacet
+nose >= 1.3.7

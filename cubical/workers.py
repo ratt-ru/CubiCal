@@ -255,8 +255,9 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
             # immediately schedule I/O job to save previous/load next tile
             load_next = itile + 1 if itile < len(tile_list) - 1 else None
             save_prev = itile - 1 if itile else None
-            io_futures[itile + 1] = io_executor.submit(_io_handler, load=load_next,
-                                                       save=save_prev, load_model=load_model)
+            if load_next is not None or save_prev is not None:
+                io_futures[itile + 1] = io_executor.submit(_io_handler, load=load_next,
+                                                           save=save_prev, load_model=load_model)
 
             # submit solver jobs
             solver_futures = {}
