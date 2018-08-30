@@ -1,2 +1,3 @@
-
 table.dat filter=lfs diff=lfs merge=lfs -crlf
+.gitattributes export-ignore  
+.gitignore export-ignore
