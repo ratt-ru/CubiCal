@@ -47,16 +47,10 @@ class ComplexW2x2Gains(PerIntervalGains):
         # are forked off), so we import it only in here
 
         
-        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options, self.get_kernel(options))
-                          
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, 
+                                    options, self.get_kernel(options))
+
         self.residuals = np.empty_like(data_arr)
-        
-        self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
-        
-        self.weights = np.ones(self.weights_shape, dtype=self.dtype)
-        self.weights[:,:,:,(range(self.n_ant),range(self.n_ant)),0] = 0 #setting the initial weights for the autocorrelations 0
-        
-        self.v = 2.
 
         self.save_weights = options.get("robust-save-weights", False)
         
@@ -175,19 +169,6 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.weights, self.v = self.update_weights(covinv, self.weights, self.v)
 
-        if self.save_weights:
-
-            tw0 = time.time()
-            self.weight_dict = {}
-
-            self.weight_dict["weights"] = self.weights
-            
-            self.weight_dict["vvals"] = self.v
-            
-            np.savez("./weights/"+self.label + "_weights_dict.npz", **self.weight_dict)
-            tw1 = time.time()
-            print "time saving weights %f"%(tw1-tw0)
-
         return flag_count
 
     def compute_covinv(self):
@@ -213,7 +194,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         else:
 
-            Nvis = (self.n_tim*self.n_fre*self.n_ant*self.n_ant - self.n_tim*self.n_fre*self.n_ant)/2
+            Nvis = self.num_init_unflaged_eqs/2. #only half of the visibilties are used for covariance computation
 
             ompstd = np.zeros((4,4), dtype=self.dtype)
 
@@ -273,7 +254,8 @@ class ComplexW2x2Gains(PerIntervalGains):
 
             m = len(wn)
         
-            vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
+            vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - \
+                                     special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
 
             vvals = np.arange(2, 51, 1, dtype=float)
             fvals = vfunc(vvals)
@@ -281,20 +263,21 @@ class ComplexW2x2Gains(PerIntervalGains):
             
             return root
 
-        self.cykernel.cycompute_weights(self.residuals,covinv,w,v,self.npol)
+        self.cykernel.cycompute_weights(self.residuals, covinv, w, v, self.npol)
 
-        w[:,:,:,(range(self.n_ant),range(self.n_ant)),0] = 0  #setting the weights for the autocorrelations 0
-
+        #re-set weights for visibillities flagged from start to 0
+        self.weights[:,self._init_flags!=0] = 0
+    
         #---------normalising the weights to mean 1 using only half the weights--------------------------#
         aa, ab = np.tril_indices(self.n_ant, -1)
         w_real = np.real(w[:,:,:,aa,ab,0].flatten())
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
         norm = np.average(w_nzero) 
         w /=norm  
+        
         #-----------computing the v parameter---------------------#
         #This computation is only done after a certain number of iterations. Default is 5
         if self.iters % self.v_int == 0 or self.iters == 1:
-            
             wn = w_nzero/norm 
             v = _brute_solve_v(wn)
         else:
@@ -309,3 +292,29 @@ class ComplexW2x2Gains(PerIntervalGains):
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
             self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]
+
+
+
+    def precompute_attributes(self, model_arr, flags_arr, noise):
+        """
+        Set the initial weights to 1 and set the weights of the flags data points to 0
+
+        Args:
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities.
+            flags_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing  flags
+        """
+        PerIntervalGains.precompute_attributes(self, model_arr, flags_arr, noise)
+
+        self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
+        
+        self.weights = np.ones(self.weights_shape, dtype=self.dtype)
+        self.weights[:,flags_arr!=0] = 0
+        self._init_flags = flags_arr    
+
+        unflagged = flags_arr==0
+        
+        self.num_init_unflaged_eqs = np.sum(unflagged)
+        self.v = 2.   #t-distribution number of degrees of freedom

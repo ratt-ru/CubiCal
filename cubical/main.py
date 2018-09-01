@@ -225,6 +225,7 @@ def main(debugging=False):
                           GD["data"]["column"],
                           output_column=GD["out"]["column"],
                           output_model_column=GD["out"]["model-column"],
+                          output_weight_column=GD["out"]["weight-column"],
                           reinit_output_column=GD["out"]["reinit-column"],
                           taql=GD["sel"]["taql"],
                           fid=GD["sel"]["field"],

@@ -149,7 +149,7 @@ class MSDataHandler:
     """ Main data handler. Interfaces with the measurement set. """
 
     def __init__(self, ms_name, data_column, output_column=None, output_model_column=None,
-                 reinit_output_column=False,
+                 output_weight_column=None, reinit_output_column=False,
                  taql=None, fid=None, ddid=None, channels=None,
                  flagopts={}, diag=False,
                  beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
@@ -522,6 +522,7 @@ class MSDataHandler:
         self.data_column = data_column
         self.output_column = output_column
         self.output_model_column = output_model_column
+        self.output_weight_column = output_weight_column
         if reinit_output_column:
             reinit_columns = [col for col in [output_column, output_model_column]
                                if col and col in self.ms.colnames()]
@@ -530,6 +531,13 @@ class MSDataHandler:
                 self.ms.removecols(reinit_columns)
                 for col in reinit_columns:
                     self._add_column(col)
+                if output_weight_column is not None:
+                    print>>log(0),"reinitializing output weight column {}".format(output_weight_column)
+                    try:
+                        self.ms.removecols(output_weight_column) #Just remove column will be added later
+                    except:
+                        print>>log(0),"No output weight column {}, will just proceed".format(output_weight_column)
+
                 self.reopen()
 
         self._reinit_bitflags = flagopts["reinit-bitflags"]

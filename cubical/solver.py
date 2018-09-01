@@ -17,7 +17,7 @@ log = logger.getLogger("solver")
 #log.verbosity(2)
 
 # global defaults dict
-GD = None
+GD = None 
 
 # MS metadata
 metadata = None
@@ -78,48 +78,47 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     # collect flagging options
 
-    flag_warning_threshold = 50 #GD['flags']["warn-thr"]
+    flag_warning_threshold = GD['flags']["warn-thr"]
     
-    mad_flag =  False #GD['madmax']['enable']
+    mad_flag =  GD['madmax']['enable']
     
-    mad_threshold = False #GD['madmax']['threshold']
-    # medmad_threshold = GD['madmax']['global-threshold']
-    # if not isinstance(mad_threshold, list):
-    #     mad_threshold = [mad_threshold]
-    # if not isinstance(medmad_threshold, list):
-    #     medmad_threshold = [medmad_threshold]
-    # mad_diag = GD['madmax']['diag']
-    # mad_offdiag = metadata.num_corrs == 4 and GD['madmax']['offdiag']
-    # if not mad_diag and not mad_offdiag:
-    #     mad_flag = False
+    mad_threshold = GD['madmax']['threshold']
+    medmad_threshold = GD['madmax']['global-threshold']
+    if not isinstance(mad_threshold, list):
+        mad_threshold = [mad_threshold]
+    if not isinstance(medmad_threshold, list):
+        medmad_threshold = [medmad_threshold]
+    mad_diag = GD['madmax']['diag']
+    mad_offdiag = metadata.num_corrs == 4 and GD['madmax']['offdiag']
+    if not mad_diag and not mad_offdiag:
+        mad_flag = False
 
-    # # setup MAD estimation settings
-    # mad_per_corr = False
-    # if GD['madmax']['estimate'] == 'corr':
-    #     mad_per_corr = True
-    #     mad_estimate_diag, mad_estimate_offdiag = mad_diag, mad_offdiag
-    # elif GD['madmax']['estimate'] == 'all':
-    #     mad_estimate_diag = True
-    #     mad_estimate_offdiag = metadata.num_corrs == 4
-    # elif GD['madmax']['estimate'] == 'diag':
-    #     mad_estimate_diag, mad_estimate_offdiag = True, False
-    # elif GD['madmax']['estimate'] == 'offdiag':
-    #     if metadata.num_corrs == 4:
-    #         mad_estimate_diag, mad_estimate_offdiag = False, True
-    #     else:
-    #         mad_estimate_diag, mad_estimate_offdiag = True, False
-    # else:
-    #     raise RuntimeError("invalid --madmax-estimate {} setting".format(GD['madmax']['estimate']))
+    # setup MAD estimation settings
+    mad_per_corr = False
+    if GD['madmax']['estimate'] == 'corr':
+        mad_per_corr = True
+        mad_estimate_diag, mad_estimate_offdiag = mad_diag, mad_offdiag
+    elif GD['madmax']['estimate'] == 'all':
+        mad_estimate_diag = True
+        mad_estimate_offdiag = metadata.num_corrs == 4
+    elif GD['madmax']['estimate'] == 'diag':
+        mad_estimate_diag, mad_estimate_offdiag = True, False
+    elif GD['madmax']['estimate'] == 'offdiag':
+        if metadata.num_corrs == 4:
+            mad_estimate_diag, mad_estimate_offdiag = False, True
+        else:
+            mad_estimate_diag, mad_estimate_offdiag = True, False
+    else:
+        raise RuntimeError("invalid --madmax-estimate {} setting".format(GD['madmax']['estimate']))
 
     def get_mad_thresholds():
         """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
         until the list is down to one element."""
-        #if not mad_flag:
-        #    return 0, 0
-        #return mad_threshold.pop(0) if len(mad_threshold)>1 else (mad_threshold[0] if mad_threshold else 0), \
-        #       medmad_threshold.pop(0) if len(medmad_threshold)>1 else (medmad_threshold[0] if medmad_threshold else 0)
+        if not mad_flag:
+           return 0, 0
+        return mad_threshold.pop(0) if len(mad_threshold)>1 else (mad_threshold[0] if mad_threshold else 0), \
+              medmad_threshold.pop(0) if len(medmad_threshold)>1 else (medmad_threshold[0] if medmad_threshold else 0)
 
-        return 0, 0
     # Initialise stat object.
 
     stats = SolverStats(obser_arr)
@@ -186,7 +185,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         print>> log, ModColor.Str("{} no solutions: {}; flags {}".format(label,
                         gm.conditioning_status_string, get_flagging_stats()))
-        return (obser_arr if compute_residuals else None), stats
+        return (obser_arr if compute_residuals else None), stats, None 
 
     # Initialize a residual array.
 
@@ -394,6 +393,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # properties more complicated on the chain. This should allow for fairly easy substitution 
         # between the various machines.
 
+
         gm.compute_update(model_arr, obser_arr)
         
         # flag solutions. This returns True if any flags have been propagated out to the data.
@@ -546,8 +546,15 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             warning, label, ", ".join(flagstatus),
             n_new_flags, n_new_flags / float(flags_arr.size))
 
-
-    return (resid_arr if compute_residuals else None), stats
+    robust_weights = None
+    if hasattr(gm, 'save_weights'):
+        if gm.save_weights:
+            newshape = gm.weights.shape[1:-1] + (2,2)
+            robust_weights = np.repeat(gm.weights.real, 4, axis=-1)
+            robust_weights = np.reshape(robust_weights, newshape) 
+ 
+    
+    return (resid_arr if compute_residuals else None), stats, robust_weights
 
 
 class _VisDataManager(object):
@@ -692,11 +699,11 @@ def solve_only(vdm, soldict, label, sol_opts):
                 An object containing solver statistics.
     """
 
-    _, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
+    _, stats, outweights = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
     if ifrgain_machine.is_computing():
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-    return None, stats
+    return None, stats, outweights
 
 
 def solve_and_correct(vdm, soldict, label, sol_opts):
@@ -725,7 +732,7 @@ def solve_and_correct(vdm, soldict, label, sol_opts):
                 An object containing solver statistics.
     """
 
-    _, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
+    _, stats, outweights = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
 
     # for corrected visibilities, take the first data/model pair only
     corr_vis = np.zeros_like(vdm.obser_arr)
@@ -734,7 +741,7 @@ def solve_and_correct(vdm, soldict, label, sol_opts):
     if ifrgain_machine.is_computing():
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-    return corr_vis, stats
+    return corr_vis, stats, outweights
 
 
 def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
@@ -767,7 +774,7 @@ def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
 
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
-    resid_vis, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr,
+    resid_vis, stats, outweights = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr,
                                         sol_opts, label=label, compute_residuals=False)
 
     # compute IFR gains, if needed. Note that this computes corrupt models, so it makes sense
@@ -782,9 +789,9 @@ def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
     if correct:
         corr_vis = np.zeros_like(resid_vis)
         vdm.gm.apply_inv_gains(resid_vis, corr_vis)
-        return corr_vis, stats
+        return corr_vis, stats, outweights
     else:
-        return resid_vis, stats
+        return resid_vis, stats, outweights
 
 def solve_and_subtract(*args, **kw):
     """
@@ -824,7 +831,7 @@ def correct_only(vdm, soldict, label, sol_opts):
     if vdm.model_arr is not None and ifrgain_machine.is_computing():
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-    return corr_vis, None
+    return corr_vis, None, None
 
 
 def correct_residuals(vdm, soldict, label, sol_opts, correct=True):
@@ -863,9 +870,9 @@ def correct_residuals(vdm, soldict, label, sol_opts, correct=True):
     if correct:
         corr_vis = np.zeros_like(resid_vis)
         vdm.gm.apply_inv_gains(resid_vis, corr_vis)
-        return corr_vis, None
+        return corr_vis, None, None
     else:
-        return resid_vis, None
+        return resid_vis, None, None
 
 def subtract_only(*args, **kw):
     """
@@ -953,7 +960,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
             import pdb
             pdb.set_trace()
 
-        corr_vis, stats = solver(vdm, soldict, label, sol_opts)
+        corr_vis, stats, outweights = solver(vdm, soldict, label, sol_opts)
         
         # Panic if amplitude has gone crazy
         
@@ -966,7 +973,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
         # Copy results back into tile.
         have_new_flags = stats and ( stats.chunk.num_sol_flagged > 0 or stats.chunk.num_mad_flagged > 0)
 
-        tile.set_chunk_cubes(corr_vis, flags_arr if have_new_flags else None, chunk_key)
+        tile.set_chunk_cubes(corr_vis, flags_arr if have_new_flags else None, outweights, chunk_key)
 
         # Ask the gain machine to store its solutions in the shared dict.
         gm_factory.export_solutions(vdm.gm, soldict)
