@@ -14,8 +14,9 @@ from cubical.statistics import SolverStats
 from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code
 
 ## uncomment this to make UserWarnings (from e.g. numpy.ma) into full-blown exceptions
-# import warnings
-# warnings.simplefilter('error', UserWarning)
+#import warnings
+#warnings.simplefilter('error', UserWarning)
+#warnings.simplefilter('error', RuntimeWarning)
 
 from madmax.flagger import Flagger
 

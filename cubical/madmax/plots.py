@@ -128,9 +128,11 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", antenna
             if (p,q) not in lmmad:
                 bllen0 = metadata.baseline_length[p,q]
                 selection = (bllen>0.8*bllen0)&(bllen<1.2*bllen0)&((p!=blpq[:,0])|(q!=blpq[:,1]))
-                med = np.ma.median(blmad[selection&~blmad.mask])
-                if med is not np.ma.masked:
-                    lmmad[p,q] = med
+                selection = selection&~blmad.mask
+                if selection.any():
+                    med = np.ma.median(blmad[selection&~blmad.mask])
+                    if med is not np.ma.masked:
+                        lmmad[p,q] = med
 
         lmmad_threshold = 3
         lmmad_mask = [((p,q) not in lmmad) for _,p,q in indices_pq]
