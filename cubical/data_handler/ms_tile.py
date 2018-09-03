@@ -725,8 +725,10 @@ class MSTile(object):
 
             flagged = flag_arr0 != 0
 
-            # check for invalid or null data
-            invalid = ((obvis0==0) | ~np.isfinite(obvis0)) & ~flagged
+            # check for invalid or null-diagonal data
+            invalid = ~np.isfinite(obvis0)
+            invalid[...,(0,1),(0,1)] |= (obvis[...,(0,1),(0,1)]==0)
+            invalid &= ~flagged
             ninv = invalid.sum()
             if ninv:
                 flagged |= invalid
@@ -849,7 +851,7 @@ class MSTile(object):
 
                 # check for a null model (all directions)
                 invmodel = (~np.isfinite(movis)).any(axis=(0,1))
-                invmodel |= (movis==0).all(axis=(0,1))
+                invmodel[...,(0,1),(0,1)] |= (movis[...,(0,1),(0,1)]==0).all(axis=(0,1))
                 invmodel &= ~flagged
 
                 ninv = invmodel.sum()
