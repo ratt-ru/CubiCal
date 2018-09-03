@@ -724,6 +724,29 @@ class MSTile(object):
                 self._flagcol = flagcol
 
             flagged = flag_arr0 != 0
+
+            # check for invalid or null data
+            invalid = ((obvis0==0) | ~np.isfinite(obvis0)) & ~flagged
+            ninv = invalid.sum()
+            if ninv:
+                flagged |= invalid
+                flag_arr[invalid] |= FL.INVALID
+                self.dh.flagcounts["INVALID"].setdefault(0)
+                self.dh.flagcounts["INVALID"]  += nfl
+                print>> log(0,"red"), "  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size))
+
+            # check for invalid weights
+            if self.dh.has_weights and load_model:
+                invalid = (~(np.isfinite(weights0).all(axis=0))) & ~flagged
+                ninv = invalid.sum()
+                if ninv:
+                    flagged |= invalid
+                    flag_arr[invalid] |= FL.INVWGHT
+                    self.dh.flagcounts["INVWGHT"].setdefault(0)
+                    self.dh.flagcounts["INVWGHT"] += nfl
+                    print>> log(0, "red"), "  {:.2%} input visibilities flagged due to inf/nan weights".format(
+                        ninv / float(flagged.size))
+
             nfl = flagged.sum()
             self.dh.flagcounts["IN"] += nfl
             print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
@@ -754,13 +777,14 @@ class MSTile(object):
 
                 del obvis0, uvw0
                 # we'll need flag_arr0 and weights0 for load_models below so don't delete
+                flagged = flag_arr != 0
             # else copy arrays to shm directly
             else:
                 # still need to adjust conjugate rows
                 obvis0[subset.rebin_row_map<0] = obvis0[subset.rebin_row_map<0].conjugate()
                 nrows = nrows0
                 obvis = data['obvis'] = obvis0
-                data['flags'] = flag_arr0
+                data['flags'] = flag_arr = flag_arr0
                 uvwco = data['uvwco'] = uvw0
                 if num_weights:
                     data['weigh'] = weights0
@@ -822,6 +846,18 @@ class MSTile(object):
                 del loaded_models
                 import gc
                 gc.collect()
+
+                # check for a null model (all directions)
+                invmodel = (~np.isfinite(movis)).any(axis=(0,1))
+                invmodel |= (movis==0).all(axis=(0,1))
+                invmodel &= ~flagged
+
+                ninv = invmodel.sum()
+                if ninv:
+                    flag_arr[invmodel] |= FL.INVMODEL
+                    print>> log(0, "red"), "  {:.2%} visibilities flagged due to 0/inf/nan model".format(
+                        ninv / float(flagged.size))
+
 
             data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
 

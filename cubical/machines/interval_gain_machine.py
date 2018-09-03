@@ -347,10 +347,12 @@ class PerIntervalGains(MasterMachine):
         """Precomputes various stats before starting a solution"""
         unflagged = MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
 
-        # Pre-flag gain solution intervals that are completely flagged in the input data
-        # (i.e. MISSING|PRIOR). This has shape (n_timint, n_freint, n_ant).
+        ## NB: not sure why I used to apply MISSING|PRIOR here. Surely other input flags must be honoured
+        ## (SKIPSOL, NULLDATA, etc.)?
+        ### Pre-flag gain solution intervals that are completely flagged in the input data
+        ### (i.e. MISSING|PRIOR). This has shape (n_timint, n_freint, n_ant).
 
-        missing_intervals = self.interval_and((flags_arr&(FL.MISSING|FL.PRIOR) != 0).all(axis=-1))
+        missing_intervals = self.interval_and((flags_arr!=0).all(axis=-1))
 
         self.missing_gain_fraction = missing_intervals.sum() / float(missing_intervals.size)
 
