@@ -727,14 +727,14 @@ class MSTile(object):
 
             # check for invalid or null-diagonal data
             invalid = ~np.isfinite(obvis0)
-            invalid[...,(0,1),(0,1)] |= (obvis[...,(0,1),(0,1)]==0)
+            invalid[...,(0,1),(0,1)] |= (obvis0[...,(0,1),(0,1)]==0)
             invalid &= ~flagged
             ninv = invalid.sum()
             if ninv:
                 flagged |= invalid
                 flag_arr[invalid] |= FL.INVALID
                 self.dh.flagcounts["INVALID"].setdefault(0)
-                self.dh.flagcounts["INVALID"]  += nfl
+                self.dh.flagcounts["INVALID"] += ninv
                 print>> log(0,"red"), "  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size))
 
             # check for invalid weights
@@ -745,7 +745,7 @@ class MSTile(object):
                     flagged |= invalid
                     flag_arr[invalid] |= FL.INVWGHT
                     self.dh.flagcounts["INVWGHT"].setdefault(0)
-                    self.dh.flagcounts["INVWGHT"] += nfl
+                    self.dh.flagcounts["INVWGHT"] += ninv
                     print>> log(0, "red"), "  {:.2%} input visibilities flagged due to inf/nan weights".format(
                         ninv / float(flagged.size))
 
@@ -761,8 +761,8 @@ class MSTile(object):
 
                 import cubical.kernels
                 rebinning = cubical.kernels.import_kernel("rebinning")
-
                 obvis = data.addSharedArray('obvis', [nrows, nchan, self.dh.ncorr], obvis0.dtype)
+                rebin_factor = obvis0.size / float(obvis.size)
                 flag_arr = data.addSharedArray('flags', obvis.shape, FL.dtype)
                 flag_arr.fill(-1)
                 uvwco = data.addSharedArray('uvwco', [nrows, 3], float)
@@ -782,6 +782,7 @@ class MSTile(object):
                 flagged = flag_arr != 0
             # else copy arrays to shm directly
             else:
+                rebin_factor = 1
                 # still need to adjust conjugate rows
                 obvis0[subset.rebin_row_map<0] = obvis0[subset.rebin_row_map<0].conjugate()
                 nrows = nrows0
@@ -857,6 +858,8 @@ class MSTile(object):
                 ninv = invmodel.sum()
                 if ninv:
                     flag_arr[invmodel] |= FL.INVMODEL
+                    self.dh.flagcounts["INVMODEL"].setdefault(0)
+                    self.dh.flagcounts["INVMODEL"] += ninv*rebin_factor
                     print>> log(0, "red"), "  {:.2%} visibilities flagged due to 0/inf/nan model".format(
                         ninv / float(flagged.size))
 
@@ -927,28 +930,12 @@ class MSTile(object):
         else:
             mod_arr = None
 
-        # flag invalid data or zero weights
-        unflagged = flags==0
-
-        mask = (~np.isfinite(obs_arr)).any(axis=(-2, -1))
-        mask &= unflagged
-        flags[mask] = FL.INVALID
-        # flag null data
-        mask = obs_arr[...,0,0]==0
-        mask |= obs_arr[...,1,1]==0
-        mask &= unflagged
-        flags[mask] |= FL.NULLDATA
-
         if 'weigh' in data:
             wgt_2x2 = subset._column_to_cube(data['weigh'], t_dim, f_dim, rows, freq_slice, self.dh.wtype,
                                            allocator=allocator)
             wgt_arr = flag_allocator(wgt_2x2.shape[:-2], wgt_2x2.dtype)
             np.mean(wgt_2x2, axis=(-1, -2), out=wgt_arr)
             #            wgt_arr = np.sqrt(wgt_2x2.sum(axis=(-1,-2)))    # this is wrong
-            mask = wgt_arr==0
-            mask &= unflagged
-            flags[mask] |= FL.NULLWGHT
-            del mask,unflagged
             wgt_arr[flags!=0] = 0
             wgt_arr = wgt_arr.reshape([1, t_dim, f_dim, nants, nants])
         else:

@@ -321,7 +321,7 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
                 stats_dict[tile.get_chunk_indices(key)] = \
                     solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
         if processed:
-            tile.save()
+            tile.save(final=tile is tile_list[-1])
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
                 solver.ifrgain_machine.accumulate(sd)
