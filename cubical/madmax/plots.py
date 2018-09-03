@@ -57,7 +57,12 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", antenna
         print>>log(3),"make_baseline_mad_plot: plotting antennas"
         # compute per-antenna MAD
         if per_corr:
-            medant = np.ma.median(mad[0,...], axis=(1,2,3))
+            ## again, wanted to do this
+            # medant = np.ma.median(mad[0,...], axis=(1,2,3))
+            ## but not all numpys like it, so being defensive:
+            shape1 = mad[0,...].shape
+            shape1 = [shape1[0], shape1[1]*shape1[2]*shape1[3]] + list(shape1[4:])
+            medant = np.ma.median(mad[0,...].reshape(shape1), axis=1)
         else:
             medant = np.ma.median(mad[0,...], axis=1)
         antnum = np.ma.masked_array(xrange(n_ant), medant.mask)

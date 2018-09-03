@@ -725,15 +725,15 @@ class MSTile(object):
 
             flagged = flag_arr0 != 0
 
-            # check for invalid or null-diagonal data
+            # check for invalid or null-diagonal (diagonal being 0th and last correlation) data
             invalid = ~np.isfinite(obvis0)
-            invalid[...,(0,1),(0,1)] |= (obvis0[...,(0,1),(0,1)]==0)
+            invalid[...,(0,-1)] |= (obvis0[...,(0,-1)]==0)
             invalid &= ~flagged
             ninv = invalid.sum()
             if ninv:
                 flagged |= invalid
                 flag_arr[invalid] |= FL.INVALID
-                self.dh.flagcounts["INVALID"].setdefault(0)
+                self.dh.flagcounts.setdefault("INVALID", 0)
                 self.dh.flagcounts["INVALID"] += ninv
                 print>> log(0,"red"), "  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size))
 
@@ -744,7 +744,7 @@ class MSTile(object):
                 if ninv:
                     flagged |= invalid
                     flag_arr[invalid] |= FL.INVWGHT
-                    self.dh.flagcounts["INVWGHT"].setdefault(0)
+                    self.dh.flagcounts.setdefault("INVWGHT", 0)
                     self.dh.flagcounts["INVWGHT"] += ninv
                     print>> log(0, "red"), "  {:.2%} input visibilities flagged due to inf/nan weights".format(
                         ninv / float(flagged.size))
@@ -787,7 +787,8 @@ class MSTile(object):
                 obvis0[subset.rebin_row_map<0] = obvis0[subset.rebin_row_map<0].conjugate()
                 nrows = nrows0
                 obvis = data['obvis'] = obvis0
-                data['flags'] = flag_arr = flag_arr0
+                data['flags'] = flag_arr0
+                flag_arr = data['flags']
                 uvwco = data['uvwco'] = uvw0
                 if num_weights:
                     data['weigh'] = weights0
@@ -852,17 +853,16 @@ class MSTile(object):
 
                 # check for a null model (all directions)
                 invmodel = (~np.isfinite(movis)).any(axis=(0,1))
-                invmodel[...,(0,1),(0,1)] |= (movis[...,(0,1),(0,1)]==0).all(axis=(0,1))
+                invmodel[...,(0,-1)] |= (movis[...,(0,-1)]==0).all(axis=(0,1))
                 invmodel &= ~flagged
 
                 ninv = invmodel.sum()
                 if ninv:
                     flag_arr[invmodel] |= FL.INVMODEL
-                    self.dh.flagcounts["INVMODEL"].setdefault(0)
+                    self.dh.flagcounts.setdefault("INVMODEL", 0)
                     self.dh.flagcounts["INVMODEL"] += ninv*rebin_factor
                     print>> log(0, "red"), "  {:.2%} visibilities flagged due to 0/inf/nan model".format(
                         ninv / float(flagged.size))
-
 
             data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
 

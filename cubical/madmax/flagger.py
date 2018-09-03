@@ -195,9 +195,13 @@ class Flagger(object):
         if mad.mask.all():
             return
         # estimate median MAD
-        medmad = np.ma.median(mad, axis=(1,2))
+        ### want to do this:
+        ## medmad = np.ma.median(mad, axis=(1,2))
+        ### but this seems to thrown an error on earlier numpys (1.11?), so let's be defensive and reshape into one axis:
+        shape1 = [mad.shape[0], mad.shape[1]*mad.shape[2]] + list(mad.shape[3:])
+        medmad = np.ma.median(mad.reshape(shape1), axis=1)
         # all this was worth it, just so I could type "mad.max()" as legit code
-        print>>log(2),"{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f}".format(max_label, mad.min(), mad.max(), np.ma.median(medmad))
+        print>>log(2),"{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f} to {:.2f}".format(max_label, mad.min(), mad.max(), medmad.min(), medmad.max())
         if log.verbosity() > 4:
             for imod in xrange(n_mod):
                 if self.mad_per_corr:
