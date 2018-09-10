@@ -732,7 +732,7 @@ class MSTile(object):
             ninv = invalid.sum()
             if ninv:
                 flagged |= invalid
-                flag_arr[invalid] |= FL.INVALID
+                flag_arr0[invalid] |= FL.INVALID
                 self.dh.flagcounts.setdefault("INVALID", 0)
                 self.dh.flagcounts["INVALID"] += ninv
                 print>> log(0,"red"), "  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size))
@@ -743,7 +743,7 @@ class MSTile(object):
                 ninv = invalid.sum()
                 if ninv:
                     flagged |= invalid
-                    flag_arr[invalid] |= FL.INVWGHT
+                    flag_arr0[invalid] |= FL.INVWGHT
                     self.dh.flagcounts.setdefault("INVWGHT", 0)
                     self.dh.flagcounts["INVWGHT"] += ninv
                     print>> log(0, "red"), "  {:.2%} input visibilities flagged due to inf/nan weights".format(
