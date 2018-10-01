@@ -151,7 +151,7 @@ class MSDataHandler:
     def __init__(self, ms_name, data_column, output_column=None, output_model_column=None,
                  reinit_output_column=False,
                  taql=None, fid=None, ddid=None, channels=None,
-                 flagopts={}, diag=False,
+                 diag=False,
                  beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
                  active_subset=None, min_baseline=0, max_baseline=0,
                  chunk_freq=None, rebin_freq=None,
@@ -541,153 +541,8 @@ class MSDataHandler:
                     self._add_column(col)
                 self.reopen()
 
-        self._reinit_bitflags = flagopts["reinit-bitflags"]
-        apply_flags  = flagopts.get("apply")
-        save_bitflag = flagopts.get("save")
-        save_flags   = flagopts.get("save-legacy")
-        auto_init    = flagopts.get("auto-init")
-        see_no_evil  = flagopts.get("see-no-evil")
-
-        # figure out if we have a bitflag column
-        if "BITFLAG" in self.ms.colnames():
-            if self._reinit_bitflags:
-                for kw in self.ms.colkeywordnames("BITFLAG"):
-                    self.ms.removecolkeyword("BITFLAG", kw)
-                self.ms.removecols("BITFLAG")
-                if "BITFLAG_ROW" in self.ms.colnames():
-                    self.ms.removecols("BITFLAG_ROW")
-                print>> log, ModColor.Str("Removing BITFLAG column, since --flags-reinit-bitflags is set.")
-                print>> log, ModColor.Str("WARNING: current state of FLAG column will be used to init bitflags!")
-                self.reopen()
-                bitflags = None
-            else:
-                if "AUTOINIT_IN_PROGRESS" in self.ms.colkeywordnames("BITFLAG"):
-                    if auto_init:
-                        print>> log, ModColor.Str("WARNING: the BITFLAG column does not appear to be properly initialized. "
-                            "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
-                            "This is not fatal, but we'll attempt to refill it from the FLAG/FLAG_ROW column.")
-                        self._reinit_bitflags = True
-                    elif see_no_evil:
-                        print>> log, ModColor.Str("WARNING: the BITFLAG column does not appear to be properly initialized. "
-                            "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
-                            "Brace yourself for failure down the line.")
-                    else:
-                        raise ValueError("The BITFLAG column does not appear to be properly initialized, "
-                                         "and --flags-auto-init is off. If you really want to proceed, re-run "
-                                         "with --flags-see-no-evil 1.")
-
-                bitflags = flagging.Flagsets(self.ms)
-        else:
-            bitflags = None
-
-        self._apply_flags = self._apply_bitflags = self._save_bitflag = self._auto_fill_bitflag = None
-        self._save_flags = bool(save_bitflag) if save_flags == "auto" else save_flags
-        self._save_flags_apply = save_flags == 'apply'
-
-        # no BITFLAG. Should we auto-init it?
-
-        if auto_init:
-            if bitflags is None:
-                self._add_column("BITFLAG", like_type='int')
-                if "BITFLAG_ROW" not in self.ms.colnames():
-                    self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int')
-                self.reopen()
-                bitflags = flagging.Flagsets(self.ms)
-                if type(auto_init) is not str:
-                    raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
-                self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
-                self._reinit_bitflags = True
-                print>> log, ModColor.Str("  Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
-                self.ms.putcolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS", True)
-            else:
-                self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
-                print>> log, "  BITFLAG column found. Will auto-fill with '{}' ({}) from FLAG/FLAG_ROW if not filled".format(auto_init, self._auto_fill_bitflag)
-
-        # OK, we have BITFLAG somehow -- use these
-
-        self.flagcounts = OrderedDict(TOTAL=0, FLAG=0)
-
-        if bitflags:
-            self._apply_flags = None
-            self._apply_bitflags = 0
-            if apply_flags:
-                if type(apply_flags) is list:
-                    apply_flags = ",".join(apply_flags)
-                # --flags-apply specified as a bitmask, or a single string, or a single negated string, or a list of strings
-                if type(apply_flags) is int:
-                    self._apply_bitflags = apply_flags
-                elif type(apply_flags) is not str:
-                    raise ValueError("Illegal --flags-apply setting -- string or bitmask values expected")
-                else:
-                    print>>log,"    BITFLAG column defines the following flagsets: {}".format(
-                        " ".join(['{}:{}'.format(name, bitflags.bits[name]) for name in bitflags.names()]))
-                    if apply_flags == "FLAG":
-                        self._apply_flags = True
-                    elif apply_flags[0] == '-':
-                        flagset = apply_flags[1:]
-                        print>> log(0), "    Excluding flagset {}".format(flagset)
-                        if flagset not in bitflags.bits:
-                            print>>log(0,"red"),"    flagset '{}' not found -- ignoring".format(flagset)
-                        self._apply_bitflags = sum([bitmask for fset, bitmask in bitflags.bits.iteritems() if fset != flagset])
-                    else:
-                        print>> log(0), "    Applying flagset(s) {}".format(apply_flags)
-                        apply_flags = apply_flags.split(",")
-                        for flagset in apply_flags:
-                            if flagset not in bitflags.bits:
-                                print>>log(0,"red"),"    flagset '{}' not found -- ignoring".format(flagset)
-                            else:
-                                self._apply_bitflags |= bitflags.bits[flagset]
-            if self._apply_flags:
-                print>> log, ModColor.Str("  Using flags from FLAG/FLAG_ROW columns")
-            if self._apply_bitflags:
-                print>> log(0, "blue"), "  Applying BITFLAG mask {} to input data".format(self._apply_bitflags)
-            elif not self._apply_flags:
-                print>> log(0, "red"), "  No input flags will be applied!"
-            if save_bitflag:
-                self._save_bitflag = bitflags.flagmask(save_bitflag, create=True)
-                if self._save_flags:
-                    if self._save_flags_apply:
-                        print>> log(0,"blue"), "  Will save output flags into BITFLAG '{}' ({}), and all flags (including input) FLAG/FLAG_ROW".format(
-                            save_bitflag, self._save_bitflag)
-                    else:
-                        print>> log(0,"blue"), "  Will save output flags into BITFLAG '{}' ({}), and into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
-                else:
-                    print>> log(0,"red"), "  Will save output flags into BITFLAG '{}' ({}), but not into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
-            else:
-                if self._save_flags:
-                    if self._save_flags_apply:
-                        print>> log(0, "blue"), "  Will save all flags (including input) into FLAG/FLAG_ROW"
-                    else:
-                        print>> log(0, "blue"), "  Will save output flags into FLAG/FLAG_ROW"
-
-            for flagset in bitflags.names():
-                self.flagcounts[flagset] = 0
-            self.bitflags = bitflags.bits
-
-        # else no BITFLAG -- fall back to using FLAG/FLAG_ROW if asked, but definitely can't save
-
-        else:
-            if save_bitflag:
-                raise RuntimeError("No BITFLAG column in this MS. Either use --flags-auto-init to insert one, or disable --flags-save.")
-            self._apply_flags = bool(apply_flags)
-            self._apply_bitflags = 0
-            if self._apply_flags:
-                print>> log, ModColor.Str("  No BITFLAG column in this MS. Using flags from FLAG/FLAG_ROW columns")
-            else:
-                print>> log, ModColor.Str("  No flags will be read, since --flags-apply was not set")
-            if self._save_flags:
-                print>> log(0, "blue"), "  Will save output flags into into FLAG/FLAG_ROW"
-            self._save_flags_apply = False   # no point in saving input flags, as nothing would change
-            self.bitflags = {}
-
-        self.flagcounts['DESEL'] = 0
-        self.flagcounts['IN'] = 0
-        self.flagcounts['NEW'] = 0
-        self.flagcounts['OUT'] = 0
-
         self.gain_dict = {}
 
-        # now parse the model composition
 
     def init_models(self, models, weights, mb_opts={}, use_ddes=False):
         """Parses the model list and initializes internal structures"""
@@ -816,22 +671,26 @@ class MSDataHandler:
 
         return " && ".join(taqls)
 
-    def fetch(self, *args, **kwargs):
+    def fetch(self, colname, first_row=0, nrows=-1, subset=None):
         """
         Convenience function which mimics pyrap.tables.table.getcol().
 
         Args:
-            args (tuple): 
-                Variable length argument list.
-            kwargs (dict): 
-                Arbitrary keyword arguments.
+            colname (str):
+                column name
+            first_row (int):
+                starting row
+            nrows (int):
+                number of rows to fetch
+            subset:
+                table to fetch from, else uses self.data
 
         Returns:
             np.ndarray:
                 Result of getcol(\*args, \*\*kwargs).
         """
 
-        return self.data.getcol(*args, **kwargs)
+        return (subset or self.data).getcol(colname, first_row, nrows)
 
     def fetchslice(self, column, startrow=0, nrows=-1, subset=None):
         """
@@ -1158,6 +1017,162 @@ class MSDataHandler:
 
         return max_chunks, tile_list
 
+    def define_flags(self, tile_list, flagopts):
+
+        reinit_bitflags = flagopts.get("reinit-bitflags")
+        apply_flags  = flagopts.get("apply")
+        save_bitflag = flagopts.get("save")
+        save_flags   = flagopts.get("save-legacy")
+        auto_init    = flagopts.get("auto-init") or reinit_bitflags
+
+        # Do we have a proper bitflag column?
+        bitflags = None
+        if "BITFLAG" in self.ms.colnames():
+            print>> log(1), "checking MS BITFLAG column"
+            # asked to re-initialize: blow it away
+            if reinit_bitflags:
+                print>> log(0, "red"), "will re-initialize BITFLAG column, since --flags-reinit-bitflags is set."
+                print>> log(0, "red"), "WARNING: current state of FLAG column will be used to init bitflags!"
+            # check for consistency: BITFLAG_ROW must be present too
+            elif "BITFLAG_ROW" not in self.ms.colnames():
+                print>> log(0, "red"), "WARNING: the BITFLAG_ROW column does not appear to be properly initialized. " \
+                                       "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
+            # auto-fill keyword must be cleared (otherwise a filling loop was interrupted)
+            elif "AUTOINIT_IN_PROGRESS" in self.ms.colkeywordnames("BITFLAG"):
+                print>> log(0, "red"), "WARNING: the BITFLAG column does not appear to be properly initialized. " \
+                                       "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
+            # all cells must be defined
+            elif not all([self.data.iscelldefined("BITFLAG", i) for i in xrange(self.data.nrows())]):
+                print>> log(0, "red"), "WARNING: the BITFLAG column appears to have missing cells. " \
+                                       "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
+            # OK, it's valid as best as we can tell
+            else:
+                print>> log(0), "the MS appears to have a properly formed BITFLAG column"
+                bitflags = flagging.Flagsets(self.ms)
+
+            # If no bitflags at this stage (though the column exists), then blow it away if auto_init is enabled.
+            # Note that this arises only if (a) the column is malformed, or (b) --flags-reinit-bitflags was
+            # explicitly set (which implies auto_init is set)
+            if not bitflags and auto_init:
+                for kw in self.ms.colkeywordnames("BITFLAG"):
+                    self.ms.removecolkeyword("BITFLAG", kw)
+                self.ms.removecols("BITFLAG")
+                if "BITFLAG_ROW" in self.ms.colnames():
+                    self.ms.removecols("BITFLAG_ROW")
+                print>> log(0, "red"), "removing current BITFLAG/BITFLAG_ROW columns"
+                self.reopen()
+
+        self._apply_flags = self._apply_bitflags = self._save_bitflag = self._auto_fill_bitflag = None
+        self._save_flags = bool(save_bitflag) if save_flags == "auto" else save_flags
+        self._save_flags_apply = save_flags == 'apply'
+
+        # Insert BITFLAG column, if so specified (note it may have been blown away above)
+        if not bitflags and auto_init:
+            self._add_column("BITFLAG", like_type='int')
+            if "BITFLAG_ROW" not in self.ms.colnames():
+                self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int')
+            self.reopen()
+            bitflags = flagging.Flagsets(self.ms)
+
+        if auto_init:
+            if type(auto_init) is not str:
+                raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
+            if auto_init in bitflags.names():
+                print>>log(0), "  bitflag '{}' already exists, will not auto-fill".format(auto_init)
+            else:
+                print>>log(0, "blue"), "  auto-filling bitflag '{}' from FLAG/FLAG_ROW column. Please do not interrupt this process!".format(auto_init)
+                print>>log(0), "    note that all other bitflags will be cleared by this"
+                self.ms.putcolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS", True)
+                self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
+
+                for itile, tile in enumerate(tile_list):
+                    tile.fill_bitflags(self._auto_fill_bitflag)
+
+                self.ms.removecolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS")
+                print>>log(0, "blue"), "  auto-fill complete"
+
+
+        # init flagcounts dict
+        self.flagcounts = OrderedDict(TOTAL=0, FLAG=0)
+
+        if bitflags:
+            self._apply_flags = None
+            self._apply_bitflags = 0
+            if apply_flags:
+                if type(apply_flags) is list:
+                    apply_flags = ",".join(apply_flags)
+                # --flags-apply specified as a bitmask, or a single string, or a single negated string, or a list of strings
+                if type(apply_flags) is int:
+                    self._apply_bitflags = apply_flags
+                elif type(apply_flags) is not str:
+                    raise ValueError("Illegal --flags-apply setting -- string or bitmask values expected")
+                else:
+                    print>>log,"  BITFLAG column defines the following flagsets: {}".format(
+                        " ".join(['{}:{}'.format(name, bitflags.bits[name]) for name in bitflags.names()]))
+                    if apply_flags == "FLAG":
+                        self._apply_flags = True
+                    elif apply_flags[0] == '-':
+                        flagset = apply_flags[1:]
+                        print>> log(0), "  will exclude flagset {}".format(flagset)
+                        if flagset not in bitflags.bits:
+                            print>>log(0,"red"),"    flagset '{}' not found -- ignoring".format(flagset)
+                        self._apply_bitflags = sum([bitmask for fset, bitmask in bitflags.bits.iteritems() if fset != flagset])
+                    else:
+                        print>> log(0), "  will apply flagset(s) {}".format(apply_flags)
+                        apply_flags = apply_flags.split(",")
+                        for flagset in apply_flags:
+                            if flagset not in bitflags.bits:
+                                print>>log(0,"red"),"    flagset '{}' not found -- ignoring".format(flagset)
+                            else:
+                                self._apply_bitflags |= bitflags.bits[flagset]
+            if self._apply_flags:
+                print>> log, "  using flags from FLAG/FLAG_ROW columns"
+            if self._apply_bitflags:
+                print>> log(0, "blue"), "  applying BITFLAG mask {} to input data".format(self._apply_bitflags)
+            elif not self._apply_flags:
+                print>> log(0, "red"), "  no input flags will be applied!"
+            if save_bitflag:
+                self._save_bitflag = bitflags.flagmask(save_bitflag, create=True)
+                if self._save_flags:
+                    if self._save_flags_apply:
+                        print>> log(0,"blue"), "  will save output flags into BITFLAG '{}' ({}), and all flags (including input) FLAG/FLAG_ROW".format(
+                            save_bitflag, self._save_bitflag)
+                    else:
+                        print>> log(0,"blue"), "  will save output flags into BITFLAG '{}' ({}), and into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
+                else:
+                    print>> log(0,"red"), "  will save output flags into BITFLAG '{}' ({}), but not into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
+            else:
+                if self._save_flags:
+                    if self._save_flags_apply:
+                        print>> log(0, "blue"), "  will save all flags (including input) into FLAG/FLAG_ROW"
+                    else:
+                        print>> log(0, "blue"), "  will save output flags into FLAG/FLAG_ROW"
+
+            for flagset in bitflags.names():
+                self.flagcounts[flagset] = 0
+            self.bitflags = bitflags.bits
+
+        # else no BITFLAG -- fall back to using FLAG/FLAG_ROW if asked, but definitely can't save
+
+        else:
+            if save_bitflag:
+                raise RuntimeError("No BITFLAG column in this MS. Either use --flags-auto-init to insert one, or disable --flags-save.")
+            self._apply_flags = bool(apply_flags)
+            self._apply_bitflags = 0
+            if self._apply_flags:
+                print>> log, ModColor.Str("  no BITFLAG column in this MS. Using flags from FLAG/FLAG_ROW columns")
+            else:
+                print>> log, ModColor.Str("  no flags will be read, since --flags-apply was not set")
+            if self._save_flags:
+                print>> log(0, "blue"), "  will save output flags into into FLAG/FLAG_ROW"
+            self._save_flags_apply = False   # no point in saving input flags, as nothing would change
+            self.bitflags = {}
+
+        self.flagcounts['DESEL'] = 0
+        self.flagcounts['IN'] = 0
+        self.flagcounts['NEW'] = 0
+        self.flagcounts['OUT'] = 0
+
 
     def update_flag_counts(self, counts):
         self.flagcounts.update(counts)
@@ -1268,9 +1283,6 @@ class MSDataHandler:
         return False
 
     def finalize(self):
-        if self._auto_fill_bitflag:
-            if "AUTOINIT_IN_PROGRESS" in self.ms.colkeywordnames("BITFLAG"):
-                self.ms.removecolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS")
         self.unlock()
 
     def unlock(self):

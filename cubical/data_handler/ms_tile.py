@@ -552,6 +552,26 @@ class MSTile(object):
                rowchunk.timeslice, \
                slice(chan_offset + chan0, chan_offset + chan1)
 
+    def fill_bitflags(self, flagbit):
+        for subset in self._subsets:
+            if subset.label is None:
+                print>> log(1), "    {}: filling bitflags, MS rows {}~{}".format(self.label, self.first_row0, self.last_row0)
+            else:
+                print>> log(1), "    {}: filling bitflags, MS rows {}~{}, {} ({} rows)".format(self.label, self.first_row0,
+                                                                                          self.last_row0, subset.label,
+                                                                                          len(subset.rows0))
+            table_subset = self.dh.data.selectrows(subset.rows0)
+            flagcol = table_subset.getcol("FLAG")
+            flagrow = table_subset.getcol("FLAG_ROW")
+
+            bflagcol = np.zeros(flagcol.shape, np.int32)
+            bflagrow = np.zeros(flagrow.shape, np.int32)
+            bflagcol[flagcol] = flagbit
+            bflagrow[flagrow] = flagbit
+
+            table_subset.putcol("BITFLAG", bflagcol)
+            table_subset.putcol("BITFLAG_ROW", bflagrow)
+
     def load(self, load_model=True):
         """
         Fetches data from MS into tile data shared dict. This is meant to be called in the main
@@ -580,7 +600,6 @@ class MSTile(object):
         # Thus, we create an array for the two "updated" variables.)
 
         data0['updated'] = np.array([False, False])
-        self._auto_filled_bitflag = False
 
         # now run over the subsets of the tile set up above. Each subset is a chunk of rows with the same
         # channel shape. If all DDIDs have the same shape, this will be just the one
@@ -642,7 +661,7 @@ class MSTile(object):
             self._flagcol_sum = 0
             self.dh.flagcounts["TOTAL"] += flag_arr0.size
 
-            if self.dh._apply_flags or self.dh._auto_fill_bitflag or self.dh._reinit_bitflags:
+            if self.dh._apply_flags:
                 flagcol = self.dh.fetchslice("FLAG", subset=table_subset)
                 flagrow = table_subset.getcol("FLAG_ROW")
                 flagcol[flagrow, :, :] = True
@@ -678,36 +697,14 @@ class MSTile(object):
                 self.dh.flagcounts["DESEL"] += num_inactive*flag_arr0[0].size
 
             # Form up bitflag array, if needed.
-            if self.dh._apply_bitflags or self.dh._save_bitflag or self.dh._auto_fill_bitflag:
-                read_bitflags = False
+            if self.dh._apply_bitflags or self.dh._save_bitflag:
                 # If not explicitly re-initializing, try to read column.
-                if not self.dh._reinit_bitflags:
-                    self.bflagrow = table_subset.getcol("BITFLAG_ROW")
-                    # If there's an error reading BITFLAG, it must be unfilled. This is a common
-                    # occurrence so we may as well deal with it. In this case, if auto-fill is set,
-                    # fill BITFLAG from FLAG/FLAG_ROW.
-                    try:
-                        self.bflagcol = self.dh.fetchslice("BITFLAG", subset=table_subset)
-                        print>> log(2), "  read BITFLAG/BITFLAG_ROW"
-                        read_bitflags = True
-                    except Exception:
-                        if not self.dh._auto_fill_bitflag:
-                            print>> log, ModColor.Str(traceback.format_exc().strip())
-                            print>> log, ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set.")
-                            raise
-                        print>> log, "  error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
-                        for line in traceback.format_exc().strip().split("\n"):
-                            print>> log, "    " + line
-                # If column wasn't read, create arrays.
-                if not read_bitflags:
-                    self.bflagcol = np.zeros(flagcol.shape, np.int32)
-                    self.bflagrow = np.zeros(flagrow.shape, np.int32)
-                # fill them from legacy flags, if auto-fill is enabled, or if we're reinitializing
-                if (not read_bitflags and self.dh._auto_fill_bitflag) or self.dh._reinit_bitflags:
-                    self.bflagcol[flagcol] = self.dh._auto_fill_bitflag
-                    self.bflagrow[flagrow] = self.dh._auto_fill_bitflag
-                    print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s from FLAG/FLAG_ROW" % str(self.bflagcol.shape)
-                    self._auto_filled_bitflag = True
+                self.bflagrow = table_subset.getcol("BITFLAG_ROW")
+                # If there's an error reading BITFLAG, it must be unfilled. This is a common
+                # occurrence so we may as well deal with it. In this case, if auto-fill is set,
+                # fill BITFLAG from FLAG/FLAG_ROW.
+                self.bflagcol = self.dh.fetchslice("BITFLAG", subset=table_subset)
+                print>> log(2), "  read BITFLAG/BITFLAG_ROW"
                 # compute stats
                 for flagset, bitmask in self.dh.bitflags.iteritems():
                     flagged = self.bflagcol & bitmask != 0
@@ -1097,8 +1094,6 @@ class MSTile(object):
                     print>> log, "  {:.2%} visibilities flagged by solver, but we're not saving flags".format(ratio)
             else:
                 print>> log, "  no new flags were generated"
-                if self._auto_filled_bitflag:
-                    bflag_col = True
 
             if self.dh._save_flags_apply:
                 prior_flags = subset.upsample((data['flags'] & FL.PRIOR) != 0)

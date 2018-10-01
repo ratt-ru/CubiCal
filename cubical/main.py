@@ -230,7 +230,6 @@ def main(debugging=False):
                           fid=GD["sel"]["field"],
                           ddid=GD["sel"]["ddid"],
                           channels=GD["sel"]["chan"],
-                          flagopts=GD["flags"],
                           diag=solver_opts["diag-diag"],
                           beam_pattern=GD["model"]["beam-pattern"],
                           beam_l_axis=GD["model"]["beam-l-axis"],
@@ -353,6 +352,11 @@ def main(debugging=False):
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
+
+        # now that we have tiles, define the flagging situation (since this may involve a one-off iteration through the
+        # MS to populate the column)
+        ms.define_flags(tile_list, flagopts=GD["flags"])
+
 
         # run the main loop
 
