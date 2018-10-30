@@ -6,36 +6,68 @@ from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 from scipy import special
 from cubical.flagging import FL
+import cubical.kernels
+import time
 
+from cubical.tools import logger
+log = logger.getLogger("complex_2x2")  #TODO check this
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
-    This class implements the weighted full complex 2x2 gain machine
+    This class implements the weighted full complex 2x2 gain machine based on the Complex T-distribution
     """
     
-    def __init__(self, label, model_arr, ndir, nmod,
+    def __init__(self, label, data_arr, ndir, nmod,
                  chunk_ts, chunk_fs, chunk_label, options):
+
+        """
+        Initialises a weighted complex 2x2 gain machine.
+        
+        Args:
+            label (str):
+                Label identifying the Jones term.
+            data_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities. 
+            ndir (int):
+                Number of directions.
+            nmod (nmod):
+                Number of models.
+            chunk_ts (np.ndarray):
+                Times for the data being processed.
+            chunk_fs (np.ndarray):
+                Frequencies for the data being processsed.
+            options (dict): 
+                Dictionary of options. 
+        """
+        
+        
+
         # clumsy but necessary: can't import at top level (OMP must not be touched before worker processes
         # are forked off), so we import it only in here
-        import cubical.kernels.cyfull_W_complex
-        global cyfull
-        cyfull = cubical.kernels.cyfull_W_complex
 
-        PerIntervalGains.__init__(self, label, model_arr, ndir, nmod, chunk_ts, chunk_fs,
-                                  chunk_label, options)
         
-        self.gains     = np.empty(self.gain_shape, dtype=self.dtype)
-        
-        self.gains[:]  = np.eye(self.n_cor)
-        
-        self.old_gains = self.gains.copy()
-        
-        self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
-        
-        self.weights = np.ones(self.weights_shape, dtype=self.dtype)
-        
-        self.v = 2.
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, 
+                                    options, self.get_kernel(options))
 
+        self.residuals = np.empty_like(data_arr)
+
+        self.save_weights = options.get("robust-save-weights", False)
+        
+        self.label = label
+
+        self.cov_type = options.get("robust-cov", "hybrid") #adding an option to compute residuals covariance or just assume 1 as in Robust-t paper
+
+        self.npol = options.get("robust-npol", 2) #testing if the number of polarizations really have huge effects
+
+        self.v_int = options.get("robust-int", 5)
+    
+
+    @staticmethod
+    def get_kernel(options):
+        """Returns kernel approriate to Jones options"""
+        return cubical.kernels.import_kernel('cyfull_W_complex') #TODO : check this import 
+        
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J^H)WR term of the weighted GN/LM method for the
@@ -43,111 +75,108 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         Args:
             obser_arr (np.array): Array containing the observed visibilities.
+            
             model_arr (np.array): Array containing the model visibilities.
+            
             gains (np.array): Array containing the current gain estimates.
 
         Returns:
             Returns:
+            
             jhwr (np.array): Array containing the result of computing (J^H)WR.
+            
             jhwjinv (np.array): Array containing the result of computing (J^HW.J)^-1
+            
             flag_count:     Number of flagged (ill-conditioned) elements
         """
         w = self.weights
         
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
 
-        jh = np.zeros_like(model_arr)
+        jh = self.get_new_jh(model_arr)
 
-        cyfull.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.cykernel.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
-        jhwr_shape = [n_dir, n_tim, n_fre, n_ant, n_cor, n_cor]
+        jhwr = self.get_new_jhr()
 
-        jhwr = np.zeros(jhwr_shape, dtype=obser_arr.dtype)
+        if self.iters == 1:
+            self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
-        # TODO: This breaks with the new compute residual code for n_dir > 1. Will need a fix.
-        
-        if n_dir > 1:
-            res_arr = np.empty_like(obser_arr)
-            r = self.compute_residual(obser_arr, model_arr, res_arr)
-        else:
-            r = obser_arr
+        self.cykernel.cycompute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
 
-        cyfull.cycompute_jhwr(jh, r, w, jhwr, self.t_int, self.f_int)
+        jhwj, jhwjinv = self.get_new_jhj()
 
-        jhwj = np.zeros(jhwr_shape, dtype=obser_arr.dtype)
+        self.cykernel.cycompute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
 
-        cyfull.cycompute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
-
-        jhwjinv = np.empty(jhwr_shape, dtype=obser_arr.dtype)
-
-        flag_count = cyfull.cycompute_jhwjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
+        flag_count = self.cykernel.cycompute_jhjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhwr, jhwjinv, flag_count
 
-    def compute_update(self, model_arr, obser_arr):
-        """
-        This function computes the update step of the weighted GN/LM method. This is
-        equivalent to the complete (((J^H)WJ)^-1)(J^H)WR.
+    
+    #@profile
+    def implement_update(self, jhr, jhjinv):
 
-        Args:
-            obser_arr (np.array): Array containing the observed visibilities.
-            model_arr (np.array): Array containing the model visibilities.
-            gains (np.array): Array containing the current gain estimates.
-            jhwjinv (np.array): Array containing (J^H)WJ)^-1. (Invariant)
+        # jhjinv is 2x2 block-diagonal, with Hermitian blocks. TODO: what's the variance on the off-diagonals?
+        # variance of gain is diagonal of jhjinv
+        # not sure about how the  weights affects the posterior variance. here we actually pass jhwj, not jhj
 
-        Returns:
-            update (np.array): Array containing the result of computing
-                (((J^H)WJ)^-1)(J^H)WR
-        """
-        flag_count = PerIntervalGains.compute_update(model_arr, obser_arr)
-        
-        #Computing the weights
-        resid_arr = np.empty_like(obser_arr)
-        residuals = self.compute_residual(obser_arr, model_arr, resid_arr)
+        if self.posterior_gain_error is None:
+            self.posterior_gain_error = np.zeros_like(jhjinv.real)
+        diag = jhjinv[..., (0, 1), (0, 1)].real
+        self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
+        self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
-        covinv = self.compute_covinv(residuals)
-        
-        self.weights, self.v = self.update_weights(residuals, covinv, self.weights, self.v)
+        update = self.init_update(jhr)
+        self.cykernel.cycompute_update(jhr, jhjinv, update)
+
+        #if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
+        update += self.gains
+
+        if self.iters % 2 == 0 or self.n_dir > 1:
+            self.gains += update
+            self.gains *= 0.5
+        else:
+            np.copyto(self.gains, update)
 
         self.restrict_solution()
 
-        return flag_count
-
-
-    def compute_residual(self, obser_arr, model_arr, resid_arr):
-        
+    def compute_update(self, model_arr, obser_arr):
         """
-        This function computes the residual. This is the difference between the
-        observed data, and the model data with the gains applied to it.
+        This method is expected to compute the parameter update. 
+        
+        The standard implementation simply calls compute_js() and implement_update(), here we are
+        overriding it because we need to update weights as well. 
 
         Args:
-            resid_arr (np.array): Array which will receive residuals.
-                              Shape is n_dir, n_tim, n_fre, n_ant, a_ant, n_cor, n_cor
-            obser_arr (np.array): Array containing the observed visibilities.
-                              Same shape
-            model_arr (np.array): Array containing the model visibilities.
-                              Same shape
-            gains (np.array): Array containing the current gain estimates.
-                              Shape of n_dir, n_timint, n_freint, n_ant, n_cor, n_cor
-                              Where n_timint = ceil(n_tim/t_int), n_fre = ceil(n_fre/t_int)
-
-        Returns:
-            residual (np.array): Array containing the result of computing D-GMG^H.
+            model_arr (np.ndarray): 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities. 
+            
+            obser_arr (np.ndarray): 
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                visibilities. 
         """
+        
+        jhwr, jhwjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
-        gains_h = self.gains.transpose(0,1,2,3,5,4).conj()
+        self.implement_update(jhwr, jhwjinv)
 
-        resid_arr[:] = obser_arr
+        #Computing the weights
+        
+        self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
-        cyfull.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, self.t_int, self.f_int)
+        covinv = self.compute_covinv()
 
-        return resid_arr
+        self.weights, self.v = self.update_weights(covinv, self.weights, self.v)
 
-    def compute_covinv(self, residuals):
+        return flag_count
+
+    def compute_covinv(self):
         
         """
         This functions computes the 4x4 covariance matrix of the residuals visibilities, 
-        and it approximtes it inverse
+        and it approximtes it inverse. I self.cov_type is set to 1, the covariance maxtrix is 
+        assumed to be the Identity matrix as in the Robust-t paper.
 
         Args:
             residuals (np.array) : Array containing the residuals.
@@ -156,26 +185,52 @@ class ComplexW2x2Gains(PerIntervalGains):
         Returns:
             covinv (np.array) : Shape is ncor*n_cor x ncor*n_cor (4x4)
             Array containing the inverse covariance matrix
+
         """
 
-        N = self.n_tim*self.n_fre*self.n_ant*self.n_ant
+        if self.cov_type == "identity":
+            
+            covinv = np.eye(4, dtype=self.dtype)
+        
+        else:
 
-        res_reshaped = np.reshape(residuals,(N, 4))
+            Nvis = self.num_init_unflaged_eqs/2. #only half of the visibilties are used for covariance computation
 
-        w = np.reshape(self.weights, (N,1))
+            ompstd = np.zeros((4,4), dtype=self.dtype)
 
-        cov = res_reshaped.T.conjugate().dot(w*res_reshaped)/N
+            self.cykernel.cycompute_cov(self.residuals, ompstd, self.weights)
 
-        covinv = np.linalg.pinv(cov)
+            std = ompstd/Nvis
 
-        return np.array(covinv, dtype=self.dtype)
+            covinv = np.eye(4, dtype=self.dtype)
+
+            if self.cov_type == "hybrid":
+                if np.max(std) < 1:
+                    covinv *= 1/np.max(std) 
+                   
+
+            elif self.cov_type == "compute":
+                covinv *= 1/np.max(std) 
+
+            else:
+                raise RuntimeError("unknown robust-cov setting")
+
+        
+        if self.npol == 2:
+            covinv[(1,2), (1,2)] = 0
+            #For non polarised visibilities, the xx(ll) and yy(rr) are almost identical
+            #Thus they have a strong covariance
+            covinv[(0,3), (3,0)] = covinv[0,0]  
+
+        return covinv
+    
 
 
-    def update_weights(self, r, covinv, w, v):
+    def update_weights(self, covinv, w, v):
         
         """
             This computes the weights, given the latest residual visibilities and the v parameter.
-            w[i] = (v+8)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
+            w[i] = (v+2*npol)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
         
             Args:
                 r (np.array): Array of the residual visibilities.
@@ -187,79 +242,48 @@ class ComplexW2x2Gains(PerIntervalGains):
             Returns:
                 w (np.array) : new weights
                 v (float) : new value for v
-	   """
-        
-        def  _brute_solve_v(f, low, high):
-            """Finds a root for the function f constraint between low and high
-            Args:
-                f (callable) : function
-                low (float): lower bound
-                high (float): upper bound
+        """
 
+        def  _brute_solve_v(wn):
+            """Finds a root for the function f constraint between low (2) and high (50)
+            Args:
+                wn : the weights flaten in to a 1D array
             Returns:
                 root (float) : The root of f or minimum point    
             """
-            root = None  # Initialization
-            x = np.linspace(low, high, 100) #constraint the root to be between 2 and 30
-            y = f(x)
+
+            m = len(wn)
+        
+            vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - \
+                                     special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
+
+            vvals = np.arange(2, 51, 1, dtype=float)
+            fvals = vfunc(vvals)
+            root = vvals[np.argmin(np.abs(fvals))]
+            
+            return root
+
+        self.cykernel.cycompute_weights(self.residuals, covinv, w, v, self.npol)
+
+        #re-set weights for visibillities flagged from start to 0
+        self.weights[:,self._init_flags!=0] = 0
     
-            for i in range(len(x)-1):
-                if y[i]*y[i+1] < 0:
-                    root = x[i] - (x[i+1] - x[i])/(y[i+1] - y[i])*y[i]
-                    break  # Jump out of loop
-                elif y[i] == 0:       
-                    root = x[i]
-                    break  # Jump out of loop
-
-            if root is None:
-                dist = np.abs(y)
-                root = x[np.argmin(dist)]
-                return root
-            else:
-                return root
-
-        cyfull.cycompute_weights(r,covinv,w,v)
-
-        #---------normalising the weights to mean 1 --------------------------#
-
-        norm = np.average(np.real(w.flatten()))
-        w = w/norm              
-
+        #---------normalising the weights to mean 1 using only half the weights--------------------------#
+        aa, ab = np.tril_indices(self.n_ant, -1)
+        w_real = np.real(w[:,:,:,aa,ab,0].flatten())
+        w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
+        norm = np.average(w_nzero) 
+        w /=norm  
+        
         #-----------computing the v parameter---------------------#
-       
-        wn = np.real(w.flatten())
-        m = len(wn)
-
-        vfunc = lambda a: special.digamma(0.5*(a+8)) - np.log(0.5*(a+8)) - special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
-
-        v = _brute_solve_v(vfunc, 2, 30)
+        #This computation is only done after a certain number of iterations. Default is 5
+        if self.iters % self.v_int == 0 or self.iters == 1:
+            wn = w_nzero/norm 
+            v = _brute_solve_v(wn)
+        else:
+            v = self.v
         
         return w, v 
-
-    def apply_inv_gains(self, obser_arr, corr_vis=None):
-        """
-        Applies the inverse of the gain estimates to the observed data matrix.
-
-        Args:
-            obser_arr (np.array): Array of the observed visibilities.
-            gains (np.array): Array of the gain estimates.
-
-        Returns:
-            inv_gdgh (np.array): Array containing (G^-1)D(G^-H).
-        """
-
-        g_inv = np.empty_like(self.gains)
-
-        flag_count = cyfull.cycompute_jhwjinv(self.gains, g_inv, self.gflags, self.eps, FL.ILLCOND) # Function can invert G.
-
-        gh_inv = g_inv.transpose(0,1,2,3,5,4).conj()
-
-        if corr_vis is None:
-            corr_vis = np.empty_like(obser_arr)
-
-        cyfull.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, self.t_int, self.f_int)
-
-        return corr_vis, flag_count
 
     def restrict_solution(self):
         
@@ -268,3 +292,29 @@ class ComplexW2x2Gains(PerIntervalGains):
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
             self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]
+
+
+
+    def precompute_attributes(self, model_arr, flags_arr, noise):
+        """
+        Set the initial weights to 1 and set the weights of the flags data points to 0
+
+        Args:
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                model visibilities.
+            flags_arr (np.ndarray):
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing  flags
+        """
+        PerIntervalGains.precompute_attributes(self, model_arr, flags_arr, noise)
+
+        self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
+        
+        self.weights = np.ones(self.weights_shape, dtype=self.dtype)
+        self.weights[:,flags_arr!=0] = 0
+        self._init_flags = flags_arr    
+
+        unflagged = flags_arr==0
+        
+        self.num_init_unflaged_eqs = np.sum(unflagged)
+        self.v = 2.   #t-distribution number of degrees of freedom
