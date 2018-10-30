@@ -174,7 +174,7 @@ def main(debugging=False):
                 import traceback
                 print>>log, ModColor.Str("Error initializing matplotlib: {}({})\n {}".format(type(exc).__name__,
                                                                                        exc, traceback.format_exc()))
-                raise UserInputError("matplotlib can't connect to X11. Can't use --out-plots show or --madmax-plots show.")
+                raise UserInputError("matplotlib can't connect to X11. Can't use --out-plots show or --madmax-plot show.")
         else:
             matplotlib.use("Agg")
 

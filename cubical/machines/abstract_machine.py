@@ -68,7 +68,7 @@ class MasterMachine(object):
         import cubical.kernels
         self.cygenerics = cubical.kernels.import_kernel('cygenerics')
 
-        self.jones_label = jones_label
+        self._jones_label = jones_label
         self.chunk_label = chunk_label
         self.times = times
         self.freqs = freqs
@@ -87,6 +87,10 @@ class MasterMachine(object):
         self.ftype = data_arr.real.dtype
 
         self._iters = 0
+
+    @property
+    def jones_label(self):
+        return self._jones_label
 
     @staticmethod
     def get_kernel(options):

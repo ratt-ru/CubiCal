@@ -441,6 +441,10 @@ class JonesChain(MasterMachine):
         return all([term.has_valid_solutions for term in self.jones_terms if term.solvable])
 
     @property
+    def jones_label(self):
+        return self.active_term.jones_label
+
+    @property
     def num_converged_solutions(self):
         """Gives corresponding property of the active chain term"""
         return self.active_term.num_converged_solutions
@@ -522,8 +526,8 @@ class JonesChain(MasterMachine):
             for opts in self.chain_options:
                 label = opts["label"]
                 self._init_solutions(label,
-                                     self.make_filename(opts["xfer-from"]) or
-                                     self.make_filename(opts["load-from"]),
+                                     self.make_filename(opts["xfer-from"], label) or
+                                     self.make_filename(opts["load-from"], label),
                                      bool(opts["xfer-from"]),
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
                                      Complex2x2Gains.exportable_solutions())
