@@ -23,7 +23,7 @@ log = logger.getLogger("solver")
 #log.verbosity(2)
 
 # global defaults dict
-GD = None
+GD = None 
 
 # MS metadata
 metadata = None
@@ -151,7 +151,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         print>> log, ModColor.Str("{} no solutions: {}; flags {}".format(label,
                         gm.conditioning_status_string, get_flagging_stats()))
-        return (obser_arr if compute_residuals else None), stats
+        return (obser_arr if compute_residuals else None), stats, None 
 
     # Initialize a residual array.
 
@@ -215,6 +215,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # individual machines be aware of their own stalled/converged status, and make those
         # properties more complicated on the chain. This should allow for fairly easy substitution 
         # between the various machines.
+
 
         gm.compute_update(model_arr, obser_arr)
         
@@ -371,8 +372,15 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             warning, label, ", ".join(flagstatus),
             n_new_flags, n_new_flags / float(flags_arr.size))
 
-
-    return (resid_arr if compute_residuals else None), stats
+    robust_weights = None
+    if hasattr(gm, 'save_weights'):
+        if gm.save_weights:
+            newshape = gm.weights.shape[1:-1] + (2,2)
+            robust_weights = np.repeat(gm.weights.real, 4, axis=-1)
+            robust_weights = np.reshape(robust_weights, newshape) 
+ 
+    
+    return (resid_arr if compute_residuals else None), stats, robust_weights
 
 
 class _VisDataManager(object):
@@ -517,11 +525,11 @@ def solve_only(vdm, soldict, label, sol_opts):
                 An object containing solver statistics.
     """
 
-    _, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
+    _, stats, outweights = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
     if ifrgain_machine.is_computing():
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-    return None, stats
+    return None, stats, outweights
 
 
 def solve_and_correct(vdm, soldict, label, sol_opts):
@@ -550,7 +558,7 @@ def solve_and_correct(vdm, soldict, label, sol_opts):
                 An object containing solver statistics.
     """
 
-    _, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
+    _, stats, outweights = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr, sol_opts, label=label)
 
     # for corrected visibilities, take the first data/model pair only
     corr_vis = np.zeros_like(vdm.obser_arr)
@@ -559,7 +567,7 @@ def solve_and_correct(vdm, soldict, label, sol_opts):
     if ifrgain_machine.is_computing():
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-    return corr_vis, stats
+    return corr_vis, stats, outweights
 
 
 def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
@@ -592,7 +600,7 @@ def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
 
     # use the residuals computed in solve_gains() only if no weights. Otherwise need
     # to recompute them from unweighted versions
-    resid_vis, stats = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr,
+    resid_vis, stats, outweights = _solve_gains(vdm.gm, vdm.weighted_obser, vdm.weighted_model, vdm.flags_arr,
                                         sol_opts, label=label, compute_residuals=False)
 
     # compute IFR gains, if needed. Note that this computes corrupt models, so it makes sense
@@ -607,9 +615,9 @@ def solve_and_correct_residuals(vdm, soldict, label, sol_opts, correct=True):
     if correct:
         corr_vis = np.zeros_like(resid_vis)
         vdm.gm.apply_inv_gains(resid_vis, corr_vis)
-        return corr_vis, stats
+        return corr_vis, stats, outweights
     else:
-        return resid_vis, stats
+        return resid_vis, stats, outweights
 
 def solve_and_subtract(*args, **kw):
     """
@@ -649,7 +657,7 @@ def correct_only(vdm, soldict, label, sol_opts):
     if vdm.model_arr is not None and ifrgain_machine.is_computing():
         ifrgain_machine.update(vdm.weighted_obser, vdm.corrupt_weighted_model, vdm.flags_arr, vdm.freq_slice, soldict)
 
-    return corr_vis, None
+    return corr_vis, None, None
 
 
 def correct_residuals(vdm, soldict, label, sol_opts, correct=True):
@@ -688,9 +696,9 @@ def correct_residuals(vdm, soldict, label, sol_opts, correct=True):
     if correct:
         corr_vis = np.zeros_like(resid_vis)
         vdm.gm.apply_inv_gains(resid_vis, corr_vis)
-        return corr_vis, None
+        return corr_vis, None, None
     else:
-        return resid_vis, None
+        return resid_vis, None, None
 
 def subtract_only(*args, **kw):
     """
@@ -778,7 +786,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
             import pdb
             pdb.set_trace()
 
-        corr_vis, stats = solver(vdm, soldict, label, sol_opts)
+        corr_vis, stats, outweights = solver(vdm, soldict, label, sol_opts)
         
         # Panic if amplitude has gone crazy
         
@@ -791,7 +799,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
         # Copy results back into tile.
         have_new_flags = stats and ( stats.chunk.num_sol_flagged > 0 or stats.chunk.num_mad_flagged > 0)
 
-        tile.set_chunk_cubes(corr_vis, flags_arr if have_new_flags else None, chunk_key)
+        tile.set_chunk_cubes(corr_vis, flags_arr if have_new_flags else None, outweights, chunk_key)
 
         # Ask the gain machine to store its solutions in the shared dict.
         gm_factory.export_solutions(vdm.gm, soldict)

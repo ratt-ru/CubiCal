@@ -36,6 +36,9 @@ from setuptools import Command
 with open('README.md') as f:
     long_description = f.read()
 
+with open('README.md') as f:
+	long_description = f.read()
+
 # Try get location of numpy headers. Compilation requires these headers. 
 
 try:
@@ -152,8 +155,10 @@ setup(name='cubical',
       license='GNU GPL v3',
       long_description=long_description,
       long_description_content_type='text/markdown',
+
       cmdclass={'build_ext': build_ext,
                 'gocythonize': gocythonize},
+
       packages=['cubical', 
                 'cubical.data_handler',
                 'cubical.machines',

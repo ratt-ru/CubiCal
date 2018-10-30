@@ -177,7 +177,9 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
                 core += corestep
     return True
 
+
 def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+
     """
     Runs the main loop. If debugging is set, or single_chunk mode is on, forces serial mode.
     Otherwise selects serial or parallel depending on previous call to setup_parallelism().
@@ -196,6 +198,7 @@ def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solv
     Returns:
         Stats dictionary
     """
+
     # if worker processes are launched, this global is inherited and will be accessed
     # by the I/O worker
     global tile_list
@@ -412,7 +415,9 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
                 solver.ifrgain_machine.accumulate(sd)
             if finalize:
                 solver.ifrgain_machine.save()
+
                 solver.gm_factory.set_metas(tile.dh)
+
                 solver.gm_factory.close()
                 result['flagcounts'] = tile.dh.flagcounts
             tile.release()
