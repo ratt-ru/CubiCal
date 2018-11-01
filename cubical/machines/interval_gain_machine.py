@@ -321,6 +321,8 @@ class PerIntervalGains(MasterMachine):
 
         if self.posterior_gain_error is not None:
             sols["gain.err"] = (masked_array(self.posterior_gain_error, mask), self.gain_grid)
+        else:
+            sols["gain.err"] = (masked_array(np.zeros(self.gain_shape, float), np.ones(self.gain_shape, bool)), self.gain_grid)
 
         return sols
 

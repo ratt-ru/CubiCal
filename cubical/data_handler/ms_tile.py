@@ -312,7 +312,7 @@ class MSTile(object):
 
             corr_slice = slice(None) if self.ncorr == 4 else slice(None, None, 3)
 
-            col_selections = [[dirs, mods, rows, freqs, slice(None)][-col_ndim:]
+            col_selections = [tuple([dirs, mods, rows, freqs, slice(None)][-col_ndim:])
                               for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
 
             cub_selections = [[dirs, mods, tchunk, slice(None), achunk, bchunk, corr_slice][-(reqdims - 1):]
@@ -324,28 +324,28 @@ class MSTile(object):
             for col_selection, cub_selection in zip(col_selections, cub_selections):
 
                 if self.ncorr == 4:
-                    out_arr[cub_selection] = colsel = column[col_selection]
+                    out_arr[tuple(cub_selection)] = colsel = column[col_selection]
                     cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
                     if np.iscomplexobj(out_arr):
-                        out_arr[cub_selection] = colsel.conj()[..., (0, 2, 1, 3)]
+                        out_arr[tuple(cub_selection)] = colsel.conj()[..., (0, 2, 1, 3)]
                     else:
-                        out_arr[cub_selection] = colsel[..., (0, 2, 1, 3)]
+                        out_arr[tuple(cub_selection)] = colsel[..., (0, 2, 1, 3)]
 
                 elif self.ncorr == 2:
-                    out_arr[cub_selection] = colsel = column[col_selection]
+                    out_arr[tuple(cub_selection)] = colsel = column[col_selection]
                     cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
                     if np.iscomplexobj(out_arr):
-                        out_arr[cub_selection] = colsel.conj()
+                        out_arr[tuple(cub_selection)] = colsel.conj()
                     else:
-                        out_arr[cub_selection] = colsel
+                        out_arr[tuple(cub_selection)] = colsel
 
                 elif self.ncorr == 1:
-                    out_arr[cub_selection] = colsel = column[col_selection][..., (0, 0)]
+                    out_arr[tuple(cub_selection)] = colsel = column[col_selection][..., (0, 0)]
                     cub_selection[-3], cub_selection[-2] = cub_selection[-2], cub_selection[-3]
                     if np.iscomplexobj(out_arr):
-                        out_arr[cub_selection] = colsel.conj()
+                        out_arr[tuple(cub_selection)] = colsel.conj()
                     else:
-                        out_arr[cub_selection] = colsel
+                        out_arr[tuple(cub_selection)] = colsel
 
             # This zeros the diagonal elements in the "baseline" plane. This is purely a precaution -
             # we do not want autocorrelations on the diagonal.
@@ -642,7 +642,7 @@ class MSTile(object):
             self._flagcol_sum = 0
             self.dh.flagcounts["TOTAL"] += flag_arr0.size
 
-            if self.dh._apply_flags or self.dh._auto_fill_bitflag:
+            if self.dh._apply_flags or self.dh._auto_fill_bitflag or self.dh._reinit_bitflags:
                 flagcol = self.dh.fetchslice("FLAG", subset=table_subset)
                 flagrow = table_subset.getcol("FLAG_ROW")
                 flagcol[flagrow, :, :] = True
@@ -675,6 +675,7 @@ class MSTile(object):
             if num_inactive:
                 print>> log(0), "  {:.2%} visibilities deselected via specificed subset and/or baseline cutoffs".format(num_inactive / float(inactive.size))
                 flag_arr0[inactive] |= FL.SKIPSOL
+                self.dh.flagcounts["DESEL"] += num_inactive*flag_arr0[0].size
 
             # Form up bitflag array, if needed.
             if self.dh._apply_bitflags or self.dh._save_bitflag or self.dh._auto_fill_bitflag:
@@ -701,11 +702,12 @@ class MSTile(object):
                 if not read_bitflags:
                     self.bflagcol = np.zeros(flagcol.shape, np.int32)
                     self.bflagrow = np.zeros(flagrow.shape, np.int32)
-                    if self.dh._auto_fill_bitflag:
-                        self.bflagcol[flagcol] = self.dh._auto_fill_bitflag
-                        self.bflagrow[flagrow] = self.dh._auto_fill_bitflag
-                        print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s" % str(self.bflagcol.shape)
-                        self._auto_filled_bitflag = True
+                # fill them from legacy flags, if auto-fill is enabled, or if we're reinitializing
+                if (not read_bitflags and self.dh._auto_fill_bitflag) or self.dh._reinit_bitflags:
+                    self.bflagcol[flagcol] = self.dh._auto_fill_bitflag
+                    self.bflagrow[flagrow] = self.dh._auto_fill_bitflag
+                    print>> log, "  auto-filling BITFLAG/BITFLAG_ROW of shape %s from FLAG/FLAG_ROW" % str(self.bflagcol.shape)
+                    self._auto_filled_bitflag = True
                 # compute stats
                 for flagset, bitmask in self.dh.bitflags.iteritems():
                     flagged = self.bflagcol & bitmask != 0
@@ -1089,6 +1091,15 @@ class MSTile(object):
                 print>> log, "  no new flags were generated"
                 if self._auto_filled_bitflag:
                     bflag_col = True
+
+            if self.dh._save_flags_apply:
+                prior_flags = subset.upsample((data['flags'] & FL.PRIOR) != 0)
+                if flag_col is None:
+                    flag_col = prior_flags
+                else:
+                    flag_col |= prior_flags
+                ratio = prior_flags.sum() / float(prior_flags.size)
+                print>> log, "  also transferring {:.2%} input flags (--flags-save-legacy apply)".format(ratio)
 
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
