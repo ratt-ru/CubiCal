@@ -26,6 +26,8 @@ import os
 import sys
 import glob
 
+import cubical
+
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.build_ext import build_ext
@@ -138,9 +140,7 @@ else:
                     'astro-tigger-lsm']
 
 setup(name='cubical',
-
-      version='1.2.1',
-
+      version=cubical.VERSION,
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/JSKenyon/phd-code',
       classifiers=[
