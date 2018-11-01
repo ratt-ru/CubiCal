@@ -1020,9 +1020,9 @@ class MSTile(object):
                 if self.dh.output_column and data0['updated'][0]:
                     added = self.dh._add_column(self.dh.output_column)
                 if self.dh.output_model_column and 'movis' in data:
-                    added = added or self.dh._add_column(self.dh.output_model_column)
+                    added = self.dh._add_column(self.dh.output_model_column) or added
                 if self.dh.output_weight_column and data0['updated'][2]:
-                    added = self.dh._add_column(self.dh.output_weight_column, like_type='float')
+                    added = self.dh._add_column(self.dh.output_weight_column, like_type='float') or added
                 if added:
                     self.dh.reopen()
                 added = True

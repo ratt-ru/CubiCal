@@ -56,11 +56,11 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.label = label
 
-        self.cov_type = options.get("robust-cov", "hybrid") #adding an option to compute residuals covariance or just assume 1 as in Robust-t paper
+        self.cov_type = options.get("robust-cov", "compute") #adding an option to compute residuals covariance or just assume 1 as in Robust-t paper
 
-        self.npol = options.get("robust-npol", 2) #testing if the number of polarizations really have huge effects
+        self.npol = options.get("robust-npol", 2.) #testing if the number of polarizations really have huge effects
 
-        self.v_int = options.get("robust-int", 5)
+        self.v_int = options.get("robust-int", 1)
     
 
     @staticmethod
@@ -257,11 +257,13 @@ class ComplexW2x2Gains(PerIntervalGains):
             vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - \
                                      special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
 
-            vvals = np.arange(2, 51, 1, dtype=float)
+            vvals = np.arange(2, 51, 1, dtype=float) #search for v in the range (2,50)
             fvals = vfunc(vvals)
             root = vvals[np.argmin(np.abs(fvals))]
             
             return root
+
+        #import pdb; pdb.set_trace()
 
         self.cykernel.cycompute_weights(self.residuals, covinv, w, v, self.npol)
 

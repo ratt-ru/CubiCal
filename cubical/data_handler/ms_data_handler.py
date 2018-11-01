@@ -537,6 +537,7 @@ class MSDataHandler:
                         self.ms.removecols(output_weight_column) #Just remove column will be added later
                     except:
                         print>>log(0),"No output weight column {}, will just proceed".format(output_weight_column)
+                        self._add_column(output_weight_column, like_type='float')
 
                 self.reopen()
 
