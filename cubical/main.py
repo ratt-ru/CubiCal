@@ -85,6 +85,7 @@ def main(debugging=False):
     custom_parset_file = None
     # "GD" is a global defaults dict, containing options set up from parset + command line
     global GD, enable_pdb
+    import traceback
 
     try:
         if debugging:
@@ -388,22 +389,39 @@ def main(debugging=False):
 
             # make plots
             if GD["out"]["plots"]:
-                import cubical.plots as plots
-                plots.make_summary_plots(st, ms, GD, basename)
+                import cubical.plots
+                try:
+                    cubical.plots.make_summary_plots(st, ms, GD, basename)
+                except Exception, exc:
+                    if GD["debug"]["escalate-warnings"]:
+                        raise
+                    print>> ModColor.Str("An error has occurred while making summary plots: {}({})\n {}".format(type(exc).__name__,
+                                                                                           exc,
+                                                                                           traceback.format_exc()))
+                    print>>log, ModColor.Str("This is not fatal, but should be reported (and your plots have gone missing!)")
 
         # make BBC plots
-        if solver.ifrgain_machine and solver.ifrgain_machine.is_computing() and GD["out"]["plots"]:
+        if solver.ifrgain_machine and solver.ifrgain_machine.is_computing() and GD["bbc"]["plot"] and GD["out"]["plots"]:
             import cubical.plots.ifrgains
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", np.ComplexWarning)
-                cubical.plots.ifrgains.make_ifrgain_plots(solver.ifrgain_machine.reload(), ms, GD, basename)
+            if GD["debug"]["escalate-warnings"]:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", np.ComplexWarning)
+                    cubical.plots.ifrgains.make_ifrgain_plots(solver.ifrgain_machine.reload(), ms, GD, basename)
+            else:
+                try:
+                    cubical.plots.ifrgains.make_ifrgain_plots(solver.ifrgain_machine.reload(), ms, GD, basename)
+                except Exception, exc:
+                    import traceback
+                    print>> ModColor.Str("An error has occurred while making BBC plots: {}({})\n {}".format(type(exc).__name__,
+                                                                                           exc,
+                                                                                           traceback.format_exc()))
+                    print>>log, ModColor.Str("This is not fatal, but should be reported (and your plots have gone missing!)")
 
         ms.close()
 
         print>>log, ModColor.Str("completed successfully", col="green")
 
     except Exception, exc:
-        import traceback
         if type(exc) is UserInputError:
             print>> log, ModColor.Str(exc)
         else:
