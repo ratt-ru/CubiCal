@@ -89,6 +89,7 @@ def _ensure_output_ms(ms):
 def d147_test(ms=DEFAULT_MS, refms=DEFAULT_REF_MS, parset=DEFAULT_PARSET, workdir=None, args=[], tests=d147_test_list):
     if "/" not in ms:
         _ensure_output_ms(os.path.join(basedir, ms))
+
     tester = SolverVerification(ms, refms, parset, workdir or DEFAULT_OUTPUT_DIR)
     for colname, opts in tests:
         if DEFAULT_NCPU:
