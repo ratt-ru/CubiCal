@@ -1096,6 +1096,9 @@ class MSTile(object):
                 print>> log, "  updated BITFLAG_ROW column ({:.2%} rows flagged)".format(
                     (self.bflagrow!=0).sum()/float(self.bflagrow.size))
 
+            #prevents memory leak by clearing
+            self.bflagcol = self.bflagrow = None
+
             # this is set if FLAG/FLAG_ROW is to be written out
             if flag_col is not None:
                 self.dh.putslice("FLAG", flag_col, subset=table_subset)
