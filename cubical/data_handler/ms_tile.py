@@ -599,7 +599,8 @@ class MSTile(object):
         # (Gotcha for shared_dict users! The only truly shared objects are arrays.
         # Thus, we create an array for the two "updated" variables.)
 
-        data0['updated'] = np.array([False, False])
+        data0['updated'] = np.array([False, False, False])
+        self._auto_filled_bitflag = False
 
         # now run over the subsets of the tile set up above. Each subset is a chunk of rows with the same
         # channel shape. If all DDIDs have the same shape, this will be just the one
@@ -863,6 +864,10 @@ class MSTile(object):
 
             data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
 
+            # Create a placeholder if using the Robust solver with save weights activated
+            if self.dh.output_weight_column is not None:
+                data.addSharedArray('outweights', data['obvis'].shape, self.dh.wtype)
+
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
 
@@ -945,7 +950,7 @@ class MSTile(object):
 
         return obs_arr, mod_arr, flags, wgt_arr
 
-    def set_chunk_cubes(self, cube, flag_cube, key, column='covis'):
+    def set_chunk_cubes(self, cube, flag_cube, weight_cube, key, column='covis'):
         """
         Copies a visibility cube, and an optional flag cube, back to tile column.
 
@@ -954,6 +959,8 @@ class MSTile(object):
                 Cube containing visibilities.
             flag_cube (np.ndarray):
                 Cube containing flags.
+            weight_cube (np.ndarray):
+                Cube containing weights
             key (str):
                 The label corresponding to the chunk of interest.
             column (str, optional):
@@ -970,6 +977,9 @@ class MSTile(object):
         if flag_cube is not None:
             data['updated'][1] = True
             subset._cube_to_column(data['flags'], flag_cube, rows, freq_slice, flags=True)
+        if weight_cube is not None:
+           data['updated'][2] = True
+           subset._cube_to_column(data['outweights'], weight_cube, rows, freq_slice) 
 
     def create_solutions_chunk_dict(self, key):
         """
@@ -1036,6 +1046,8 @@ class MSTile(object):
                     added = self.dh._add_column(self.dh.output_column)
                 if self.dh.output_model_column and 'movis' in data:
                     added = added or self.dh._add_column(self.dh.output_model_column)
+                if self.dh.output_weight_column and data0['updated'][2]:
+                    added = self.dh._add_column(self.dh.output_weight_column, like_type='float')
                 if added:
                     self.dh.reopen()
                 added = True
@@ -1057,6 +1069,12 @@ class MSTile(object):
                 model = subset.upsample(model)
                 print>> log, "  writing {} column".format(self.dh.output_model_column)
                 self.dh.putslice(self.dh.output_model_column, model, subset=table_subset)
+
+            #writing outputs weights if any
+            if self.dh.output_weight_column and data0['updated'][2]:
+                outweights = subset.upsample(data['outweights'])
+                print>> log, "  writing {} weight column".format(self.dh.output_weight_column)
+                self.dh.putslice(self.dh.output_weight_column, outweights, subset=table_subset)
 
             # write flags if (a) solver has generated flags, and we're saving them, (b) always, if auto-filling BITFLAG column
             #
@@ -1115,6 +1133,9 @@ class MSTile(object):
                 table_subset.putcol("BITFLAG_ROW", self.bflagrow)
                 print>> log, "  updated BITFLAG_ROW column ({:.2%} rows flagged)".format(
                     (self.bflagrow!=0).sum()/float(self.bflagrow.size))
+
+            #prevents memory leak by clearing
+            self.bflagcol = self.bflagrow = None
 
             # this is set if FLAG/FLAG_ROW is to be written out
             if flag_col is not None:

@@ -384,6 +384,7 @@ class casa_db_adaptor(PickledDatabase):
         """
         if not isinstance(src, MSDataHandler):
             raise TypeError("src must be of type Cubical DataHandler")
+
         if self.export_enabled:
             self.antoffset = src._anttabcols["OFFSET"]
             self.antpos = src._anttabcols["POSITION"]
@@ -432,6 +433,7 @@ class casa_db_adaptor(PickledDatabase):
         else:
             self.meta_avail = False
             
+
     def __export(self):
         """ exports the database to CASA gaintables """
         self._load(self.filename)

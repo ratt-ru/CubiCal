@@ -26,6 +26,8 @@ import os
 import sys
 import glob
 
+import cubical
+
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.build_ext import build_ext
@@ -33,6 +35,9 @@ from setuptools import Command
 
 with open('README.md') as f:
     long_description = f.read()
+
+with open('README.md') as f:
+	long_description = f.read()
 
 # Try get location of numpy headers. Compilation requires these headers. 
 
@@ -135,7 +140,7 @@ else:
                     'astro-tigger-lsm']
 
 setup(name='cubical',
-      version='1.2.1',
+      version=cubical.VERSION,
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/JSKenyon/phd-code',
       classifiers=[
@@ -150,8 +155,10 @@ setup(name='cubical',
       license='GNU GPL v3',
       long_description=long_description,
       long_description_content_type='text/markdown',
+
       cmdclass={'build_ext': build_ext,
                 'gocythonize': gocythonize},
+
       packages=['cubical', 
                 'cubical.data_handler',
                 'cubical.machines',

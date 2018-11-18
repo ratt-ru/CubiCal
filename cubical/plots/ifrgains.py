@@ -18,7 +18,7 @@ def _normifrgain(rr):
     if type(rr) in (float, complex):
         return abs(rr), 0
     else:
-        offset = abs(rr[rr != 1])
+        offset = np.abs(rr[rr != 1])
         if offset.count():
             return float(offset.mean()), float(offset.std())
         else:
@@ -210,8 +210,8 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         igpa0_means = []
         for pq, rr, ll in valid_igs:
             p,q = ifr_pairs[pq]
-            rr0 = np.ma.masked_array(abs(rr - 1).data, rr.mask)
-            ll0 = np.ma.masked_array(abs(ll - 1).data, ll.mask)
+            rr0 = np.ma.masked_array(np.abs(rr - 1).data, rr.mask)
+            ll0 = np.ma.masked_array(np.abs(ll - 1).data, ll.mask)
             rr0.mask |= (rr0 == 0)
             ll0.mask |= (ll0 == 0)
             if not rr0.mask.all():
