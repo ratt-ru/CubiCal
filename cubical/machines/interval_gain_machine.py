@@ -635,10 +635,10 @@ class PerIntervalGains(MasterMachine):
                 Array at full resolution.
         """
         if out is not None:
-            out[:] = arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
+            out[:] = arr[tuple([slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping])]
             return out
         else:
-            return arr[[slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping]]
+            return arr[tuple([slice(None)] * tdim_ind + [self.t_mapping, self.f_mapping])]
 
     def interval_sum(self, arr, tdim_ind=0, out=None):
         """

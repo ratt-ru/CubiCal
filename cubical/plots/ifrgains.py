@@ -1,9 +1,22 @@
 import math,cmath
 import numpy as np
+import numpy.ma as ma
 from cubical.tools import logger
 log = logger.getLogger("plots")
 
 from cubical.plots import DPI, ZOOM, make_antenna_xaxis
+
+def _abs(x):
+    """
+    Works around numpy bug with abs() of masked arrays producing a 
+    ComplexWarning(Casting complex values to real discards the imaginary part)
+    """
+    if ma.isMA(x):
+        return ma.masked_array(np.abs(x.data), x.mask)
+    else:
+        return ma.masked_array(np.abs(x))
+    
+
 
 def _cmp_antenna (sa, sb):
     """Helper function to sort antenna names. Try numeric compare first, fall back to text compare if failed""";
@@ -18,7 +31,10 @@ def _normifrgain(rr):
     if type(rr) in (float, complex):
         return abs(rr), 0
     else:
-        offset = np.abs(rr[rr != 1])
+        ## some np versions produce a ComplexWarning here because the fill_value stays complex
+        # offset = np.abs(rr[rr != 1])
+        offset = _abs(rr)
+        offset[rr==1] = ma.masked
         if offset.count():
             return float(offset.mean()), float(offset.std())
         else:
@@ -32,10 +48,10 @@ def _complexifrgain(rr):
     else:
         vals = rr[rr != 1]
         if vals.count():
-            offset = float(abs(vals).mean())
+            offset = float(_abs(vals).mean())
             mean = vals.mean().ravel()[0]
             mean = cmath.rect(offset, cmath.phase(mean))
-            return mean, abs(vals - mean).std()
+            return mean, _abs(vals - mean).std()
         else:
             return 1,0
 
@@ -131,7 +147,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
             fmt="none", ecolor="lightgrey"
         )
         # max plot amplitude -- max point plus 1/4th of the error bar
-        maxa = max([max(abs(x), abs(y)) for l1, l2, (x, xe), (y, ye) in content])
+        maxa = max([max(_abs(x), _abs(y)) for l1, l2, (x, xe), (y, ye) in content])
         # plotlim = max([ abs(np.array([
         #                  getattr(v,attr)+sign*e/4 for v,e in (x,xe),(y,ye) for attr in 'real','imag' for sign in 1,-1
         #                ])).max()
@@ -210,10 +226,10 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         igpa0_means = []
         for pq, rr, ll in valid_igs:
             p,q = ifr_pairs[pq]
-            rr0 = np.ma.masked_array(np.abs(rr - 1).data, rr.mask)
-            ll0 = np.ma.masked_array(np.abs(ll - 1).data, ll.mask)
-            rr0.mask |= (rr0 == 0)
-            ll0.mask |= (ll0 == 0)
+            rr0 = _abs(rr - 1)
+            ll0 = _abs(ll - 1)
+            rr0[rr0 == 0] = ma.masked
+            ll0[ll0 == 0] = ma.masked
             if not rr0.mask.all():
                 igpa0_means += [rr0.mean()]
             if not ll0.mask.all():
