@@ -295,7 +295,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
 
 
-    def precompute_attributes(self, model_arr, flags_arr, noise):
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
         """
         Set the initial weights to 1 and set the weights of the flags data points to 0
 
@@ -306,7 +306,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             flags_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing  flags
         """
-        PerIntervalGains.precompute_attributes(self, model_arr, flags_arr, noise)
+        PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
 
         self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
         

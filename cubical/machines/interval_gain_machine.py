@@ -343,9 +343,9 @@ class PerIntervalGains(MasterMachine):
             self._gains_loaded = True
             self.restrict_solution()
 
-    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """Precomputes various stats before starting a solution"""
-        unflagged = MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
+        unflagged = MasterMachine.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
 
         ## NB: not sure why I used to apply MISSING|PRIOR here. Surely other input flags must be honoured
         ## (SKIPSOL, NULLDATA, etc.)?

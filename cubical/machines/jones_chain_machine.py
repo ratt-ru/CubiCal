@@ -101,12 +101,12 @@ class JonesChain(MasterMachine):
         else:
             return cubical.kernels.import_kernel("cyfull_complex")
 
-    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """Precomputes various stats before starting a solution"""
-        MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
+        MasterMachine.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
         for term in self.jones_terms:
             if term.solvable:
-                term.precompute_attributes(model_arr, flags_arr, inv_var_chan)
+                term.precompute_attributes(data_arr, model_arr, flags_arr, inv_var_chan)
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """

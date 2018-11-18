@@ -332,7 +332,7 @@ class MasterMachine(object):
 
         return chisq, chisq_per_tf_slot, chisq_tot
 
-    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """
         This method is called before starting a solution. The base version computes a variety of useful 
         parameters regarding the conditioning and degrees of freedom of the current time-frequency chunk. 
@@ -340,6 +340,8 @@ class MasterMachine(object):
         iteration).
 
         Args:
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed visibilities.
             model_arr (np.ndarray):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model visibilities.
             flags_arr (np.ndarray):

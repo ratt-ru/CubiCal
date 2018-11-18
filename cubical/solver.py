@@ -113,7 +113,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # This works out the conditioning of the solution, sets up various chi-sq normalization
     # factors etc, and does any other precomputation required by the current gain machine.
 
-    gm.precompute_attributes(model_arr, flags_arr, inv_var_chan)
+    gm.precompute_attributes(obser_arr, model_arr, flags_arr, inv_var_chan)
 
     def get_flagging_stats():
         """Returns a string describing per-flagset statistics"""

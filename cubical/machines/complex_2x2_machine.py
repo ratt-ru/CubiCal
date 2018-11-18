@@ -39,9 +39,11 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options,
                                   self.get_kernel(options))
-        # try setting the PZD back by 180deg
-        if label == "D":
-            self.gains[:,:,:,:,1,1] = -1
+
+        # try guesstimating the PZD
+        self._estimate_pzd = options["estimate-pzd"]
+#        if label == "D":
+#            self.gains[:,:,:,:,1,1] = -1
 
     @staticmethod
     def get_kernel(options):
@@ -54,6 +56,32 @@ class Complex2x2Gains(PerIntervalGains):
             return cubical.kernels.import_kernel('cydiag_complex')
         else:
             raise RuntimeError("unknown machine type '{}'".format(options['type']))
+
+
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
+        """
+        """
+        PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
+
+        if self._estimate_pzd:
+            marr = model_arr[...,(0,1),(1,0)][:,0].sum(0)
+            darr = data_arr[...,(0,1),(1,0)][0]
+            mask = (flags_arr[...,np.newaxis]!=0)|(marr==0)
+            dm = darr*(np.conj(marr)/abs(marr))
+            dabs = np.abs(darr)
+            dm[mask] = 0
+            dabs[mask] = 0
+            # collapse time/freq axis into intervals and sum antenna axes
+            dm_sum = self.interval_sum(dm).sum(axis=(2,3))
+            dabs_sum = self.interval_sum(dabs).sum(axis=(2,3))
+            # sum off-diagonal terms
+            dm_sum = dm_sum[...,0] + np.conj(dm_sum[...,1])
+            dabs_sum = dabs_sum[...,0] + np.conj(dabs_sum[...,1])
+            pzd = np.angle(dm_sum/dabs_sum)
+            pzd[dabs_sum==0] = 0
+
+            print>>log(2),"{}: PZD estimate {}".format(self.chunk_label, pzd)
+            self.gains[:,:,:,:,1,1] = np.exp(-1j*pzd)[np.newaxis,:,:,np.newaxis]
 
 
     def compute_js(self, obser_arr, model_arr):

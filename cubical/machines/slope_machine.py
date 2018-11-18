@@ -265,7 +265,7 @@ class PhaseSlopeGains(ParameterisedGains):
         for idir in self.fix_directions:
             self.slope_params[idir, ...] = 0
 
-    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """
         Precompute (J\ :sup:`H`\J)\ :sup:`-1`, which does not vary with iteration.
 
@@ -274,7 +274,7 @@ class PhaseSlopeGains(ParameterisedGains):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
                 model visibilities.
         """
-        ParameterisedGains.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
+        ParameterisedGains.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
 
         jhj1_shape = [self.n_dir, self.n_tim, self.n_fre, self.n_ant, 2, 2]
 
