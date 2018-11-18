@@ -129,7 +129,7 @@ else:
                     'futures', 
                     'python-casacore>=2.1.2', 
                     'sharedarray', 
-                    'matplotlib',
+                    'matplotlib<3.0',
                     'cython',
                     'scipy',
                     'astro-tigger-lsm']

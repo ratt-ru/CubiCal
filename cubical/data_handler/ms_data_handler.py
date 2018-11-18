@@ -108,7 +108,7 @@ def _parse_range(arg, nmax):
     elif "," in arg:
         return map(int,','.split(arg))
 
-    return fullrange[_parse_range(arg, "range or slice")]
+    return fullrange[_parse_slice(arg, "range or slice")]
 
 _prefixes = dict(m=1e-3, k=1e+3, M=1e+6, G=1e+9, T=1e+12)
 

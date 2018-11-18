@@ -252,7 +252,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # Check residual behaviour after a number of iterations equal to chi_interval. This is
         # expensive, so we do it as infrequently as possible.
 
-        if (num_iter % chi_interval) == 0:
+        if (num_iter % chi_interval) == 0 or num_iter <= 1:
 
             old_chi, old_mean_chi = chi, mean_chi
 

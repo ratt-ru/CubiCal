@@ -714,8 +714,8 @@ class MasterMachine(object):
                 selfield = self.global_options["sel"]["field"]
                 assert type(selfield) is int, "Currently only supports single field data selection"
                 selddid = self.global_options["sel"]["ddid"]
-                assert ((type(selddid) is list) and (all([type(t) is int for t in selddid]))) or \
-                       (type(selddid) is int) or selddid is None, "SPW should be a list of ints or int or None. This is a bug"
+                #assert ((type(selddid) is list) and (all([type(t) is int for t in selddid]))) or \
+                #       (type(selddid) is int) or selddid is None, "SPW should be a list of ints or int or None. This is a bug"
                 meta = {"field": selfield}
                 self._save_sols_byname[save_to] = db = param_db.create(save_to, metadata=meta, backup=True)
             self._save_sols[name] = db

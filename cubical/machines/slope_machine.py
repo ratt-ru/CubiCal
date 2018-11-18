@@ -261,7 +261,7 @@ class PhaseSlopeGains(ParameterisedGains):
         ParameterisedGains.restrict_solution(self)
         
         if self.ref_ant is not None:
-            self.slope_params -= self.slope_params[:,:,:,self.ref_ant,:,:,:][:,:,:,np.newaxis,:,:,:]
+            self.slope_params -= self.slope_params[:,:,:,self.ref_ant,:,:,:][:,:,:,np.newaxis,:,0,0]
         for idir in self.fix_directions:
             self.slope_params[idir, ...] = 0
 

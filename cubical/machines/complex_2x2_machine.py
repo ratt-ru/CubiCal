@@ -39,6 +39,9 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options,
                                   self.get_kernel(options))
+        # try setting the PZD back by 180deg
+        if label == "D":
+            self.gains[:,:,:,:,1,1] = -1
 
     @staticmethod
     def get_kernel(options):
@@ -128,5 +131,6 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:
-            phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
-            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]
+            phase = np.angle(self.gains[...,self.ref_ant,0,0])
+            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis,np.newaxis]
+                        
