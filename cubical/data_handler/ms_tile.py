@@ -224,6 +224,7 @@ class MSTile(object):
 
             for direction in xrange(ndirs):
                 tigger_source.set_direction(direction)
+                tigger_source.set_frequency(self._freqs)
                 column_snk.set_direction(direction)
                 MBTiggerSim.simulate(srcs, snks, self.tile.dh.mb_opts)
 
@@ -956,7 +957,7 @@ class MSTile(object):
             subset._cube_to_column(data['flags'], flag_cube, rows, freq_slice, flags=True)
         if weight_cube is not None:
            data['updated'][2] = True
-           subset._cube_to_column(data['outweights'], weight_cube, rows, freq_slice) 
+           subset._cube_to_column(data['outweights'], weight_cube, rows, freq_slice)
 
     def create_solutions_chunk_dict(self, key):
         """
