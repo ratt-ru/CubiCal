@@ -16,9 +16,10 @@ from montblanc.impl.rime.tensorflow.sources import SourceProvider
 import Tigger
 import pyrap.tables as pt
 
+
 class TiggerSourceProvider(SourceProvider):
     """
-    A Montblanc-compatible source provider that returns source information from a Tigger sky model. 
+    A Montblanc-compatible source provider that returns source information from a Tigger sky model.
     """
     def __init__(self, lsm, phase_center, dde_tag='dE'):
         """
@@ -31,7 +32,7 @@ class TiggerSourceProvider(SourceProvider):
                 Observation phase centre, as a RA, Dec tuple
             dde_tag (str or None):
                 If set, sources are grouped into multiple directions using the specified tag.
-            
+
         """
 
         self.filename = lsm
@@ -39,6 +40,8 @@ class TiggerSourceProvider(SourceProvider):
         self._phase_center = phase_center
         self._use_ddes = bool(dde_tag)
         self._dde_tag = dde_tag
+
+        self._freqs = None
 
         self._clusters = cluster_sources(self._sm, dde_tag)
         self._cluster_keys = self._clusters.keys()
@@ -53,8 +56,8 @@ class TiggerSourceProvider(SourceProvider):
         self._ngsrc = len(self._gau_sources)
 
     def set_direction(self, idir):
-        """Sets current direction being simulated. 
-        
+        """Sets current direction being simulated.
+
         Args:
             idir (int):
                 Direction number, from 0 to n_dir-1
@@ -66,6 +69,15 @@ class TiggerSourceProvider(SourceProvider):
         self._npsrc = len(self._pnt_sources)
         self._gau_sources = self._clusters[self._target_cluster]["gau"]
         self._ngsrc = len(self._gau_sources)
+
+    def set_frequency(self, frequency):
+        """Sets simulated frequencies
+
+        Args:
+            frequency (ndarray):
+                Array of frequencies associated with a DDID
+        """
+        self._freqs = frequency
 
     def name(self):
         """ Returns name of assosciated source provider. This is just the filename, in this case."""
@@ -96,48 +108,30 @@ class TiggerSourceProvider(SourceProvider):
         """ Returns a stokes parameter array to Montblanc. """
 
         # Get the extents of the time, baseline and chan dimension
-        (lt, ut), (lp, up) = context.dim_extents('ntime', 'npsrc')
-
+        (lp, up), (lt, ut), (lc, uc) = context.dim_extents('npsrc',
+                                                           'ntime',
+                                                           'nchan')
+        # (npsrc, ntime, nchan, 4)
         stokes = np.empty(context.shape, context.dtype)
 
+        f = self._freqs[None, lc:uc]
+
         for ind, source in enumerate(self._pnt_sources[lp:up]):
-            stokes[ind,:,0] = source.flux.I
-            stokes[ind,:,1] = source.flux.Q
-            stokes[ind,:,2] = source.flux.U
-            stokes[ind,:,3] = source.flux.V
+            try:
+                rf = source.spectrum.freq0
+            except AttributeError:
+                # TODO(jkenyon, osmirnov)
+                # I think this should be "or 1"
+                rf = self._sm.freq0 or 0
+
+            a = source.spectrum.spi
+
+            stokes[ind, :, :, 0] = source.flux.I[None, None]*(f/rf)**a
+            stokes[ind, :, :, 1] = source.flux.Q[None, None]*(f/rf)**a
+            stokes[ind, :, :, 2] = source.flux.U[None, None]*(f/rf)**a
+            stokes[ind, :, :, 3] = source.flux.V[None, None]*(f/rf)**a
 
         return stokes
-
-    def point_alpha(self, context):
-        """ Returns a spectral index (alpha) array to Montblanc. """
-
-        alpha = np.empty(context.shape, context.dtype)
-
-        (lp, up) = context.dim_extents('npsrc')
-
-        for ind, source in enumerate(self._pnt_sources[lp:up]):
-            try:
-                alpha[ind] = source.spectrum.spi
-            except:
-                alpha[ind] = 0
-
-        return alpha
-
-    def point_ref_freq(self, context):
-        """ Returns a reference frequency per source array to Montblanc. """
-        
-        pt_ref_freq = np.empty(context.shape, context.dtype)
-
-        (lp, up) = context.dim_extents('npsrc')
-        
-        for ind, source in enumerate(self._pnt_sources[lp:up]):
-            try:
-                pt_ref_freq[ind] = source.spectrum.freq0
-            except:
-                pt_ref_freq[ind] = self._sm.freq0 or 0
-
-        return pt_ref_freq
-
 
     def gaussian_lm(self, context):
         """ Returns an lm coordinate array to Montblanc. """
@@ -150,42 +144,38 @@ class TiggerSourceProvider(SourceProvider):
         for ind, source in enumerate(self._gau_sources[lg:ug]):
 
             ra, dec = source.pos.ra, source.pos.dec
-            lm[ind,0], lm[ind,1] = radec_to_lm(ra, dec, self._phase_center)
+            lm[ind, 0], lm[ind, 1] = radec_to_lm(ra, dec, self._phase_center)
 
         return lm
 
     def gaussian_stokes(self, context):
         """ Return a stokes parameter array to Montblanc """
 
-        # Get the extents of the time, baseline and chan dimension
-        (lt, ut), (lg, ug) = context.dim_extents('ntime', 'ngsrc')
-
+        # Get the extents of the source, time and channel dims
+        (lg, ug), (lt, ut), (lc, uc) = context.dim_extents('ngsrc',
+                                                           'ntime',
+                                                           'nchan')
+        # (npsrc, ntime, nchan, 4)
         stokes = np.empty(context.shape, context.dtype)
 
-        for ind, source in enumerate(self._gau_sources[lg:ug]):
-            stokes[ind,:,0] = source.flux.I
-            stokes[ind,:,1] = source.flux.Q
-            stokes[ind,:,2] = source.flux.U
-            stokes[ind,:,3] = source.flux.V
-
-        return stokes
-
-
-    def gaussian_alpha(self, context):
-        """ Returns a spectral index (alpha) array to Montblanc """
-
-        alpha = np.empty(context.shape, context.dtype)
-
-        (lg, ug) = context.dim_extents('ngsrc')
+        f = self._freqs[None, lc:uc]
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
             try:
-                alpha[ind] = source.spectrum.spi
-            except:
-                alpha[ind] = 0
+                rf = source.spectrum.freq0
+            except AttributeError:
+                # TODO(jkenyon, osmirnov)
+                # I think this should be "or 1"
+                rf = self._sm.freq0 or 0
 
-        return alpha
+            a = source.spectrum.spi
 
+            stokes[ind, :, :, 0] = source.flux.I[None, None]*(f/rf)**a
+            stokes[ind, :, :, 1] = source.flux.Q[None, None]*(f/rf)**a
+            stokes[ind, :, :, 2] = source.flux.U[None, None]*(f/rf)**a
+            stokes[ind, :, :, 3] = source.flux.V[None, None]*(f/rf)**a
+
+        return stokes
 
     def gaussian_shape(self, context):
         """ Returns a Gaussian shape array to Montblanc """
@@ -200,21 +190,6 @@ class TiggerSourceProvider(SourceProvider):
             shapes[2, ind] = source.shape.ey/source.shape.ex
 
         return shapes
-
-    def gaussian_ref_freq(self, context):
-        """ Returns a reference frequency per source array to Montblanc """
-
-        gau_ref_freq = np.empty(context.shape, context.dtype)
-
-        (lg, ug) = context.dim_extents('ngsrc')
-        
-        for ind, source in enumerate(self._gau_sources[lg:ug]):
-            try:
-                gau_ref_freq[ind] = source.spectrum.freq0
-            except:
-                gau_ref_freq[ind] = self._sm.freq0 or 0
-
-        return gau_ref_freq
 
     def updated_dimensions(self):
         """ Informs Montblanc of updated dimension sizes. """
@@ -271,7 +246,7 @@ def radec_to_lm(ra, dec, phase_center):
             The coordinates of the phase center.
 
     Returns:
-        tuple: 
+        tuple:
             l and m coordinates.
 
     """
