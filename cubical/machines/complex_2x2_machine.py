@@ -42,6 +42,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         # try guesstimating the PZD
         self._estimate_pzd = options["estimate-pzd"]
+        self._offdiag_only = options["offdiag-only"]
 #        if label == "D":
 #            self.gains[:,:,:,:,1,1] = -1
 
@@ -110,9 +111,14 @@ class Complex2x2Gains(PerIntervalGains):
         jh = self.get_new_jh(model_arr)
 
         self.cykernel.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        if self._offdiag_only:
+            jh[...,(0,1),(0,1)] = 0
 
         jhr = self.get_new_jhr()
         r = self.get_obs_or_res(obser_arr, model_arr)
+
+        if self._offdiag_only:
+            r[...,(0,1),(0,1)] = 0
 
         self.cykernel.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
 
@@ -136,10 +142,14 @@ class Complex2x2Gains(PerIntervalGains):
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
         update = self.init_update(jhr)
+
         self.cykernel.cycompute_update(jhr, jhjinv, update)
 
         if self.dd_term and self.n_dir > 1:
             update += self.gains
+
+        if self._offdiag_only:
+            update[...,(0,1),(0,1)] = 1
 
         if self.iters % 2 == 0 or self.n_dir > 1:
             self.gains += update
@@ -160,5 +170,4 @@ class Complex2x2Gains(PerIntervalGains):
 
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
-            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis,np.newaxis]
-                        
+            self.gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
