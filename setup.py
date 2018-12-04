@@ -86,6 +86,9 @@ class gocythonize(Command):
         self.force = self.force or 0
 
     def run(self):
+
+        if not cythonize:
+            raise Exception("Cython not available, please install first.")
         
         CCO.buffer_max_dims = 9
 
