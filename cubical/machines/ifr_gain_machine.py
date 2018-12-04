@@ -27,7 +27,7 @@ class IfrGainMachine(object):
         Args:
             gmfactory:      a GainMachine Factory is used to manage the solution databases
             ifrgain_opts:   dict of options
-            compute:	    if False, gains are not computed even if options ask them to
+            compute:        if False, gains are not computed even if options ask them to
         """
         self.gmfactory = gmfactory
         load_from = ifrgain_opts['load-from']
