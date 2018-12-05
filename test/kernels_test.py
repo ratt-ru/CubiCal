@@ -1,19 +1,23 @@
-import os, sys, os.path
+from __future__ import absolute_import
+from __future__ import print_function
+from sys import stderr
+from test.benchmark.kernel_timings import main
 
-def logprint(arg):
-    print>>sys.stderr,arg
+
+cmd = "cy{kernel} cy{kernel}_omp --reference cy{kernel}_reference " \
+      "--omp 4 --diag --nd 1 --nd 5 --nf 50 --nt 50 --ti {interval} --fi {interval}"
+
+
+def logprint(*args, **kwargs):
+    print(*args, file=stderr, **kwargs)
 
 
 def kernels_test():
-    command = os.path.join(os.path.dirname(__file__),"benchmark/kernel_timings.py") 
-
     for kernel in "phase_only", "f_slope", "t_slope", "tf_plane":
         for interval in 1, 10:
-            cmd = "python {command} cy{kernel} cy{kernel}_omp --reference cy{kernel}_reference " \
-                   "--omp 4 --diag --nd 1 --nd 5 --nf 50 --nt 50 --ti {interval} --fi {interval}".format(**locals())
-            logprint("Running {}".format(cmd))
-            if os.system(cmd):
-                sys.exit(1)
+            args = cmd.format(kernel=kernel, interval=interval).split(' ')
+            logprint("Running cubical with arguments '{}'".format(' '.join(args)))
+            main(args)
 
 
 if __name__ == '__main__':

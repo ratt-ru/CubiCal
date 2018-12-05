@@ -146,7 +146,7 @@ def benchmark_all(module, function_name, arguments, setup=None, check=None, note
             nfailed += 1
 
 
-if __name__ == "__main__":
+def main(args=None):
     import argparse
     parser = argparse.ArgumentParser(description='Runs cubical kernel timings')
     parser.add_argument('kernels', type=str, nargs='*', help='kernel(s) to be tested')
@@ -163,7 +163,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--reference', type=str, default='cyfull_complex_reference', help='reference kernel')
 
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     import cubical.kernels
     refkern_name = args.reference
@@ -469,5 +469,9 @@ if __name__ == "__main__":
 
             args.pdb and nfailed and pdb.set_trace()
 
-
         assert(not nfailed)
+
+
+if __name__ == "__main__":
+    import sys
+    main(args=sys.argv[1:])
