@@ -52,6 +52,12 @@ CubiCal can now be installed from PyPI by running the following:
 
 		python path/to/repo/setup.py gocythonize -f
 
+	For a development setup you might want to build the modules also inside the source tree:
+	
+	.. code:: bash
+	
+		python setup.py build_ext --inplace
+
 
 Ubuntu 14.04
 ~~~~~~~~~~~~
