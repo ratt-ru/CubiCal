@@ -1,8 +1,14 @@
 #!/usr/bin/python
 
-import os, os.path, sys
+import os
+import os.path
+import sys
+from test.util import logprint
 from casacore.tables import table
-from collections import OrderedDict
+from cubical.main import main
+
+basedir = os.path.dirname(__file__)
+
 
 def kw_to_args(**kw):
     """Converts a dict of keywords to a cubical command line. Makes sure --sol-jones comes first."""
@@ -14,41 +20,32 @@ def kw_to_args(**kw):
     return cmd
 
 
-basedir = os.path.dirname(__file__)
-
-def logprint(arg):
-    print>>sys.stderr,arg
-
 class SolverVerification(object):
     def __init__(self, msname, refmsname, parset, workdir="."):
-        self.msname = os.path.abspath(msname if "/" in msname else os.path.join(basedir,msname))
-        self.refmsname = os.path.abspath(refmsname if "/" in refmsname else os.path.join(basedir,refmsname))
-        self.parset = os.path.abspath(parset if "/" in parset else os.path.join(basedir,parset))
+        self.msname = os.path.abspath(msname if "/" in msname else os.path.join(basedir, msname))
+        self.refmsname = os.path.abspath(refmsname if "/" in refmsname else os.path.join(basedir, refmsname))
+        self.parset = os.path.abspath(parset if "/" in parset else os.path.join(basedir, parset))
         self.cmdline = "gocubical {} ".format(self.parset)
         os.chdir(workdir)
         logprint("*** Working directory is {}".format(os.getcwd()))
 
     def generate_reference(self, colname, args=[], **kw):
-        cmd = self.cmdline + kw_to_args(data_ms=self.refmsname, out_column=colname, out_name="ref_"+colname, **kw) + \
-                " " + " ".join(args)
-        logprint("*** running {}".format(cmd))
-        retcode = os.system(cmd)
-        if retcode:
-            raise RuntimeError("gocubical failed, return code {}".format(retcode))
+        formatted = kw_to_args(data_ms=self.refmsname, out_column=colname, out_name="ref_" + colname, **kw) + " " + \
+                    " ".join(args)
+        main(args=formatted.split(' '))
 
     def verify(self, refcolname, args=[], tolerance=1e-6, **kw):
-        cmd = self.cmdline + kw_to_args(data_ms=self.msname, out_column="CORRECTED_DATA", out_name="test_"+refcolname, **kw) + \
-                " " + " ".join(args)
-        logprint("*** running {}".format(cmd))
-        retcode = os.system(cmd)
-        if retcode:
-            raise RuntimeError("{}: return code {}".format(cmd, retcode))
+        formatted = kw_to_args(data_ms=self.msname, out_column="CORRECTED_DATA", out_name="test_" + refcolname, **kw) + \
+                    " " + " ".join(args)
+        main(args=formatted.split(' '))
+        logprint("*** running cubical with args {}".format(sys.argv))
         cd = table(self.msname).getcol("CORRECTED_DATA")
         c0 = table(self.refmsname).getcol(refcolname)
-        diff = abs(cd-c0).max()
+        diff = abs(cd - c0).max()
         logprint("*** max diff between CORRECTED_DATA and {} is {}".format(refcolname, diff))
         if diff > tolerance:
-            raise RuntimeError("{}: diff {} exceeds tolerance of {}".format(cmd, diff, tolerance))
+            raise RuntimeError("{}: diff {} exceeds tolerance of {}".format(sys.argv, diff, tolerance))
+
 
 d147_test_list = [
     ("GSOL_DATA", dict()),
@@ -58,7 +55,7 @@ d147_test_list = [
     ("TS_DATA", dict(g_type='t-slope', g_time_int=0, g_freq_int=1)),
     ("TFP_DATA", dict(g_type='tf-plane', g_time_int=0, g_freq_int=0)),
     ("DE_DATA", dict(model_list=os.path.abspath(os.path.join(basedir, '3C147-dE-apparent.lsm.html@dE')),
-        sol_jones="G,dE", g_time_int=1, g_freq_int=1, de_time_int=60, de_freq_int=32))
+                     sol_jones="G,dE", g_time_int=1, g_freq_int=1, de_time_int=60, de_freq_int=32))
 ]
 
 d147_test_dict = dict(d147_test_list)
@@ -66,8 +63,9 @@ d147_test_dict = dict(d147_test_list)
 DEFAULT_REF_MS = "SUBSET-D147.MS"
 DEFAULT_MS = "SUBSET-D147-output.MS"
 DEFAULT_PARSET = "d147-test.parset"
-DEFAULT_OUTPUT_DIR = os.environ["HOME"]+"/tmp"
+DEFAULT_OUTPUT_DIR = os.environ["HOME"] + "/tmp"
 DEFAULT_NCPU = None
+
 
 def _ensure_output_ms(ms):
     logprint("*** output MS is {}".format(ms))
@@ -96,8 +94,10 @@ def d147_test(ms=DEFAULT_MS, refms=DEFAULT_REF_MS, parset=DEFAULT_PARSET, workdi
             opts["dist_ncpu"] = DEFAULT_NCPU
         tester.verify(colname, args=args, **opts)
 
+
 if __name__ == '__main__':
     import argparse
+
     parser = argparse.ArgumentParser(description='Runs cubical D147 tests')
     parser.add_argument('test', type=str, nargs="?", help='test to be run. Default is to run all.')
     parser.add_argument('args', nargs=argparse.REMAINDER, help='Optional extra arguments to gocubical.')
@@ -106,7 +106,7 @@ if __name__ == '__main__':
     parser.add_argument('--refms', type=str, default=DEFAULT_REF_MS, help='reference MS name')
     parser.add_argument('--parset', type=str, default=DEFAULT_PARSET, help='base parset for tests')
     parser.add_argument('--genref', action='store_true', help='generate reference data. Default is to run tests')
-    parser.add_argument('--dir', type=str, default=os.environ['HOME']+"/tmp", help='Directory for output')
+    parser.add_argument('--dir', type=str, default=os.environ['HOME'] + "/tmp", help='Directory for output')
     parser.add_argument('-j', '--ncpu', type=int, default=None, help='Number of cores to use')
 
     args = parser.parse_args()
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     DEFAULT_NCPU = args.ncpu
 
     if args.test is not None:
-        tests = [ (args.test, d147_test_dict[args.test]) ]
+        tests = [(args.test, d147_test_dict[args.test])]
     else:
         tests = d147_test_list
 

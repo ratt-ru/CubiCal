@@ -1,15 +1,9 @@
-from __future__ import absolute_import
-from __future__ import print_function
-from sys import stderr
+from test.util import logprint
 from test.benchmark.kernel_timings import main
 
 
 cmd = "cy{kernel} cy{kernel}_omp --reference cy{kernel}_reference " \
       "--omp 4 --diag --nd 1 --nd 5 --nf 50 --nt 50 --ti {interval} --fi {interval}"
-
-
-def logprint(*args, **kwargs):
-    print(*args, file=stderr, **kwargs)
 
 
 def kernels_test():

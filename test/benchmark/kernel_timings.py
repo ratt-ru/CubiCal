@@ -6,17 +6,20 @@ import pdb
 
 import cubical.kernels
 
+
 def fillrand(x):
     """Fills a complex array with random values using numpy.random.rand"""
     x.real = numpy.random.rand(*x.shape)
     x.imag = numpy.random.rand(*x.shape)
-    
-def conj2x2(x,y):
+
+
+def conj2x2(x, y):
     """Sets X=Y^H, where the last two axes of X and Y are [2,2]"""
-    x[...,0,0] = y[...,0,0].conjugate()
-    x[...,0,1] = y[...,1,0].conjugate()
-    x[...,1,0] = y[...,0,1].conjugate()
-    x[...,1,1] = y[...,1,1].conjugate()
+    x[..., 0, 0] = y[..., 0, 0].conjugate()
+    x[..., 0, 1] = y[..., 1, 0].conjugate()
+    x[..., 1, 0] = y[..., 0, 1].conjugate()
+    x[..., 1, 1] = y[..., 1, 1].conjugate()
+
 
 def reroll_array(arr, axes):
     """Returns array where the axes are stored in a specific order"""
@@ -24,25 +27,27 @@ def reroll_array(arr, axes):
     realarray = arr.transpose(axes).copy(order='C')
     return realarray.transpose(np.argsort(axes))
 
+
 class UnorderedArrays(object):
     """Creates a set of test arrays for testing the cubical kernels. These are in C order."""
+
     def __init__(self, nd=10, nm=1, nt=60, nf=32, na=28, t_int=1, f_int=1,
                  dtype=np.complex128,
                  ptype=np.complex128, pshape=None, jhrshape=None,
                  diaggain=False, diagmodel=False,
-                 allocate=True,kernel=None):
+                 allocate=True, kernel=None):
         self._dtype = dtype
         self._ptype = ptype
         self.t_int, self.f_int = t_int, f_int
         if allocate:
-            self.o = np.zeros((nt,nf,na,na,2,2), dtype)
-            self.m = np.zeros((nd,nm,nt,nf,na,na,2,2), dtype)
-            self.r = np.zeros((nm,nt,nf,na,na,2,2), dtype)
+            self.o = np.zeros((nt, nf, na, na, 2, 2), dtype)
+            self.m = np.zeros((nd, nm, nt, nf, na, na, 2, 2), dtype)
+            self.r = np.zeros((nm, nt, nf, na, na, 2, 2), dtype)
         # intervals?
-        nt1 = nt/t_int + (1 if nt%t_int else 0)
-        nf1 = nf/f_int + (1 if nf%f_int else 0)
-        self._intshape = [nd,nt1,nf1,na,2,2]
-        self._fullshape = [nd,nt,nf,na,2,2]
+        nt1 = nt / t_int + (1 if nt % t_int else 0)
+        nf1 = nf / f_int + (1 if nf % f_int else 0)
+        self._intshape = [nd, nt1, nf1, na, 2, 2]
+        self._fullshape = [nd, nt, nf, na, 2, 2]
         self._paramgain = (pshape is not None)
         if self._paramgain:
             self._gshape = self._fullshape
@@ -60,13 +65,18 @@ class UnorderedArrays(object):
         if allocate:
             self.g = np.zeros(self._gshape, dtype)
             self.p = np.zeros(self._pshape, ptype)
-        self._kernel_name = refkern.__name__
+
+        if kernel:
+            self._kernel_name = kernel.__name__
+        else:
+            self._kernel_name = None
+
         self.na = na
         self.baselines = [(p, q) for p in xrange(self.na) for q in xrange(self.na) if p < q]
         if allocate:
             for p, q in self.baselines:
                 if diagmodel:
-                    for c in 0,1:
+                    for c in 0, 1:
                         fillrand(self.o[..., p, q, c, c])
                         fillrand(self.m[..., p, q, c, c])
                 else:
@@ -76,7 +86,7 @@ class UnorderedArrays(object):
                 conj2x2(self.m[..., q, p, :, :], self.m[..., p, q, :, :])
             for p in xrange(self.na):
                 if diaggain:
-                    for c in 0,1:
+                    for c in 0, 1:
                         fillrand(self.g[..., p, c, c])
                 else:
                     fillrand(self.g[..., p, :, :])
@@ -97,19 +107,22 @@ class UnorderedArrays(object):
             if type(value) is np.ndarray:
                 print("   .{}: {}".format(name, value.shape))
 
+
 class OrderedArrays(UnorderedArrays):
     """Creates a set of test arrays for testing the cubical kernels. 
     These are reodered in a specific way, as given by the kernel argument"""
+
     def __init__(self, other, kernel, pshape=None, jhrshape=None):
-        nd,nm,nt,nf,na = other.m.shape[:5]
-        UnorderedArrays.__init__(self,nd,nm,nt,nf,na, other.t_int, other.f_int, other._dtype, other._ptype, pshape, jhrshape, allocate=False)
+        nd, nm, nt, nf, na = other.m.shape[:5]
+        UnorderedArrays.__init__(self, nd, nm, nt, nf, na, other.t_int, other.f_int, other._dtype, other._ptype, pshape,
+                                 jhrshape, allocate=False)
         # allocate arrays using preferred kernel ordering
-        self.o = getattr(kernel,'allocate_vis_array')(other.o.shape, other._dtype)
-        self.m = getattr(kernel,'allocate_vis_array')(other.m.shape, other._dtype)
-        self.r = getattr(kernel,'allocate_vis_array')(other.r.shape, other._dtype)
-        self.g = getattr(kernel,'allocate_gain_array')(other.g.shape, other._dtype)
-        self.f = getattr(kernel,'allocate_gain_array')(other.f.shape, other.f.dtype)
-        self.p = getattr(kernel,'allocate_param_array')(other.p.shape, other.p.dtype)
+        self.o = getattr(kernel, 'allocate_vis_array')(other.o.shape, other._dtype)
+        self.m = getattr(kernel, 'allocate_vis_array')(other.m.shape, other._dtype)
+        self.r = getattr(kernel, 'allocate_vis_array')(other.r.shape, other._dtype)
+        self.g = getattr(kernel, 'allocate_gain_array')(other.g.shape, other._dtype)
+        self.f = getattr(kernel, 'allocate_gain_array')(other.f.shape, other.f.dtype)
+        self.p = getattr(kernel, 'allocate_param_array')(other.p.shape, other.p.dtype)
         # copy array content
         for arr in "omrgfp":
             np.copyto(getattr(self, arr), getattr(other, arr))
@@ -119,27 +132,32 @@ class OrderedArrays(UnorderedArrays):
         self.printshapes()
 
 
-class threads():
+class threads:
     def __init__(self, nt):
         self.nt = nt
+
     def __enter__(self):
         cubical.kernels.num_omp_threads = self.nt
+
     def __exit__(self, type, value, traceback):
         cubical.kernels.num_omp_threads = 1
 
+
 nfailed = 0
+
 
 def benchmark(code, name, n=3):
     res = timeit.repeat(code, repeat=n, number=1)
-    print "{:70}: {:.2f}ms (best of {})".format(name, min(res)*1000, n)
+    print "{:70}: {:.2f}ms (best of {})".format(name, min(res) * 1000, n)
+
 
 def benchmark_all(module, function_name, arguments, setup=None, check=None, notes=''):
     modname = module.__name__.split('.')[-1]
     # find all other variations of this function in the module
-    for funcname in [function_name] + [n for n in dir(module) if n.startswith(function_name+"_") ]:
+    for funcname in [function_name] + [n for n in dir(module) if n.startswith(function_name + "_")]:
         if setup is not None:
             setup()
-        benchmark(lambda:getattr(module, funcname)(*arguments), "{}.{} ({})".format(modname, funcname, notes))
+        benchmark(lambda: getattr(module, funcname)(*arguments), "{}.{} ({})".format(modname, funcname, notes))
         if check is not None and not check():
             print "*** FAIL ***"
             global nfailed
@@ -163,13 +181,16 @@ def main(args=None):
 
     parser.add_argument('--reference', type=str, default='cyfull_complex_reference', help='reference kernel')
 
+    if not args:
+        args = sys.args[1:]
+
     args = parser.parse_args(args)
 
     import cubical.kernels
     refkern_name = args.reference
     kernel_names = args.kernels or ['cyfull_complex']
 
-    kernels = { name: cubical.kernels.import_kernel(name) for name in kernel_names }
+    kernels = {name: cubical.kernels.import_kernel(name) for name in kernel_names}
 
     if 'cyfull_experimental' in kernel_names:
         cyfull_exp = kernels['cyfull_experimental']
@@ -177,10 +198,10 @@ def main(args=None):
         cyfull_exp = None
 
     refkern = cubical.kernels.import_kernel(refkern_name)
-    testkerns = [ kernels[name] for name in kernel_names ]
+    testkerns = [kernels[name] for name in kernel_names]
 
     print "\n### Reference kernel:", refkern_name
-    print "### Test kernels:"," ".join(kernel_names)
+    print "### Test kernels:", " ".join(kernel_names)
 
     nt, nf, na = args.nt, args.nf, args.na,
 
@@ -189,7 +210,8 @@ def main(args=None):
     THREADS = [1] if not args.omp else [1, args.omp]
     NDIRS = [1] if not args.nd else args.nd
 
-    print "### {} threads, {} dirs, {} times, {} freqs, {} antennas, intervals {} {}\n".format(THREADS,NDIRS,nt,nf,na,t_int,f_int)
+    print "### {} threads, {} dirs, {} times, {} freqs, {} antennas, intervals {} {}\n".format(THREADS, NDIRS, nt, nf,
+                                                                                               na, t_int, f_int)
     print "### ordered memory layout determined by {} kernel".format(kernel_names[0])
 
     def benchmark_function(function, arguments, setup=None, check=None):
@@ -198,13 +220,12 @@ def main(args=None):
                 for nthr in THREADS:
                     with threads(nthr):
                         benchmark_all(kern, function, arguments,
-                                        setup=setup, check=check,
-                                        notes="OMP {}T AAMTFD view".format(nthr))
+                                      setup=setup, check=check,
+                                      notes="OMP {}T AAMTFD view".format(nthr))
             else:
                 benchmark_all(kern, function, arguments,
-                                setup=setup, check=check,
-                                notes="AAMTFD view")
-
+                              setup=setup, check=check,
+                              notes="AAMTFD view")
 
     for nd in NDIRS:
         ### testing for phase-slope kernels
@@ -214,42 +235,44 @@ def main(args=None):
             ts = np.linspace(0, 1, nt)
             fs = np.linspace(0, 1, nf)
             if "tf_plane" in refkern_name:
-                JHJAXIS = (3,4,1,5,2,0)       # scramble NEW JHJ axes into that order (w.r.t reference)
-                JHRAXIS = (1,2,0,3,4,5)
-                UPDAXIS = (1,2,0)
+                JHJAXIS = (3, 4, 1, 5, 2, 0)  # scramble NEW JHJ axes into that order (w.r.t reference)
+                JHRAXIS = (1, 2, 0, 3, 4, 5)
+                UPDAXIS = (1, 2, 0)
                 nb, nparm = 6, 3
             elif "f_slope" in refkern_name or "t_slope" in refkern_name:
-                JHJAXIS = (2,1,0)
-                JHRAXIS = (1,0,2)
-                UPDAXIS = (1,0)
+                JHJAXIS = (2, 1, 0)
+                JHRAXIS = (1, 0, 2)
+                UPDAXIS = (1, 0)
             nb = len(JHJAXIS)
             nparm = len(UPDAXIS)
             dtype = np.complex128
             ftype = np.float64
 
             u = UnorderedArrays(nd=nd, nt=nt, nf=nf, na=na, t_int=t_int, f_int=f_int,
-                                ptype=ftype, pshape=[nparm,2,2], jhrshape=[nb,2,2], diaggain=True,
+                                ptype=ftype, pshape=[nparm, 2, 2], jhrshape=[nb, 2, 2], diaggain=True,
                                 diagmodel=args.diagmodel, kernel=refkern)
-            o = OrderedArrays(u, testkerns[0], pshape=[nparm,2,2], jhrshape=[nb,2,2])
+            o = OrderedArrays(u, testkerns[0], pshape=[nparm, 2, 2], jhrshape=[nb, 2, 2])
 
             print "\n### Testing {} directions, model shape is {}\n".format(nd, u.m.shape)
 
             print('*** RES')
 
-            benchmark(lambda:refkern.cycompute_residual(u.m, u.g, u.gh, u.r, t_int, f_int), "{}.compute_residual (DMTFAA order, native)".format(refkern_name))
+            benchmark(lambda: refkern.cycompute_residual(u.m, u.g, u.gh, u.r, t_int, f_int),
+                      "{}.compute_residual (DMTFAA order, native)".format(refkern_name))
             r0 = u.r.copy()
 
-            benchmark_function('cycompute_residual',(o.m, o.g, o.gh, o.r, t_int, f_int),
-                            setup=lambda:o.r.fill(0), check=lambda:abs(o.r-r0).max()<1e-8)
+            benchmark_function('cycompute_residual', (o.m, o.g, o.gh, o.r, t_int, f_int),
+                               setup=lambda: o.r.fill(0), check=lambda: abs(o.r - r0).max() < 1e-8)
             args.pdb and nfailed and pdb.set_trace()
 
             print('*** JH')
 
-            benchmark(lambda:refkern.cycompute_jh(u.m, u.g, u.jh, t_int, f_int), "{}.compute_jh (DMTFAA order, native)".format(refkern_name))
+            benchmark(lambda: refkern.cycompute_jh(u.m, u.g, u.jh, t_int, f_int),
+                      "{}.compute_jh (DMTFAA order, native)".format(refkern_name))
             jh0 = u.jh.copy()
 
             benchmark_function('cycompute_jh', (o.m, o.g, o.jh, t_int, f_int),
-                          setup=lambda: o.jh.fill(0), check=lambda: abs(o.jh - jh0).max() < 1e-8)
+                               setup=lambda: o.jh.fill(0), check=lambda: abs(o.jh - jh0).max() < 1e-8)
             args.pdb and nfailed and pdb.set_trace()
 
             print('*** JHR')
@@ -262,15 +285,15 @@ def main(args=None):
                       "{}.compute_tmp_jhr (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cycompute_inner_jhr', (o.gh, o.jh, o.r, ojhr1),
-                               setup=lambda: ojhr1.fill(0),check=lambda:abs(ujhr1-ojhr1).max()<1e-9)
+                               setup=lambda: ojhr1.fill(0), check=lambda: abs(ujhr1 - ojhr1).max() < 1e-9)
 
-            benchmark(lambda: refkern.cycompute_jhr(ujhr1.real, u.jhr, ts, fs,  t_int, f_int),
+            benchmark(lambda: refkern.cycompute_jhr(ujhr1.real, u.jhr, ts, fs, t_int, f_int),
                       "{}.compute_jhr (DMTFAA order, native)".format(refkern_name))
 
             # skipping J^H.R check as order of parameters has scrambled the blocks. Update should come right anyway.
             benchmark_function('cycompute_jhr', (ojhr1.real, o.jhr, ts, fs, t_int, f_int),
-                               setup=lambda:o.jhr.fill(0),
-                               check=lambda:abs(u.jhr-o.jhr[...,JHRAXIS,:,:]).max()<1e-6)
+                               setup=lambda: o.jhr.fill(0),
+                               check=lambda: abs(u.jhr - o.jhr[..., JHRAXIS, :, :]).max() < 1e-6)
 
             args.pdb and nfailed and pdb.set_trace()
 
@@ -282,16 +305,19 @@ def main(args=None):
             del ujhj1shape[1]  # omit model axis for new-style kernels (it was there in error)
             ojhj1 = np.zeros(ujhj1shape, dtype)
 
-            benchmark(lambda: refkern.cycompute_tmp_jhj(u.m, ujhj1),"{}.compute_tmp_jhj (DMTFAA order, native)".format(refkern_name))
+            benchmark(lambda: refkern.cycompute_tmp_jhj(u.m, ujhj1),
+                      "{}.compute_tmp_jhj (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cycompute_inner_jhj', (o.m, ojhj1),
-                               setup=lambda:ojhj1.fill(0), check=lambda:abs(ujhj1[:,0,...]-ojhj1).max()<1e-9)
+                               setup=lambda: ojhj1.fill(0), check=lambda: abs(ujhj1[:, 0, ...] - ojhj1).max() < 1e-9)
 
             u.jhj.fill(0)
-            benchmark(lambda: refkern.cycompute_jhj(ujhj1.real, u.jhj, ts, fs, t_int, f_int),"{}.compute_jhj (DMTFAA order, native)".format(refkern_name))
+            benchmark(lambda: refkern.cycompute_jhj(ujhj1.real, u.jhj, ts, fs, t_int, f_int),
+                      "{}.compute_jhj (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cycompute_jhj', (ojhj1.real, o.jhj, ts, fs, t_int, f_int),
-                               setup=lambda:o.jhj.fill(0), check=lambda:abs(u.jhj-o.jhj[...,JHJAXIS,:,:]).max()<1e-6)
+                               setup=lambda: o.jhj.fill(0),
+                               check=lambda: abs(u.jhj - o.jhj[..., JHJAXIS, :, :]).max() < 1e-6)
 
             args.pdb and nfailed and pdb.set_trace()
 
@@ -301,7 +327,7 @@ def main(args=None):
                       "{}.compute_jhjinv (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cycompute_jhjinv', (o.jhj, o.jhjinv, 1e-6),
-                               check=lambda: abs(u.jhjinv - o.jhjinv[...,JHJAXIS,:,:]).max() < 1e-8)
+                               check=lambda: abs(u.jhjinv - o.jhjinv[..., JHJAXIS, :, :]).max() < 1e-8)
             args.pdb and nfailed and pdb.set_trace()
 
             print('*** Update')
@@ -309,7 +335,7 @@ def main(args=None):
                       "{}.compute_update (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cycompute_update', (o.jhr, o.jhjinv, o.p),
-                               check=lambda: abs(o.p[...,UPDAXIS,:,:] - u.p).max() < 1e-8)
+                               check=lambda: abs(o.p[..., UPDAXIS, :, :] - u.p).max() < 1e-8)
             args.pdb and nfailed and pdb.set_trace()
 
             print('*** Construct gains')
@@ -320,7 +346,7 @@ def main(args=None):
                       "{}.construct_gains (DMTFAA order, native)".format(refkern_name))
 
             benchmark_function('cyconstruct_gains', (o.p, og, ts, fs, t_int, f_int),
-                               check=lambda: abs(og-ug).max() < 1e-8)
+                               check=lambda: abs(og - ug).max() < 1e-8)
             args.pdb and nfailed and pdb.set_trace()
 
         ### testing for normal gain and phase-only kernels
@@ -336,39 +362,44 @@ def main(args=None):
 
             print('*** RES')
 
-            benchmark(lambda:refkern.cycompute_residual(u.m, u.g, u.gh, u.r, t_int, f_int), "{}.compute_residual (DMTFAA order, native)".format(refkern_name))
+            benchmark(lambda: refkern.cycompute_residual(u.m, u.g, u.gh, u.r, t_int, f_int),
+                      "{}.compute_residual (DMTFAA order, native)".format(refkern_name))
             r0 = u.r.copy()
 
-            benchmark_function('cycompute_residual',(o.m, o.g, o.gh, o.r, t_int, f_int),
-                            setup=lambda:o.r.fill(0), check=lambda:abs(o.r-r0).max()<1e-8)
+            benchmark_function('cycompute_residual', (o.m, o.g, o.gh, o.r, t_int, f_int),
+                               setup=lambda: o.r.fill(0), check=lambda: abs(o.r - r0).max() < 1e-8)
             args.pdb and nfailed and pdb.set_trace()
 
             # some one-off experimental tests, if the experimental kernel is being tested
             if cyfull_exp:
                 u.r.fill(0)
-                benchmark(lambda:cyfull_exp.cycompute_residual_dmtfaa_xdir(u.m, u.g, u.gh, u.r, t_int, f_int), "exp.compute_residual inner dir (DMTFAA order, native)")
-                assert((u.r-r0).max()<1e-8)
+                benchmark(lambda: cyfull_exp.cycompute_residual_dmtfaa_xdir(u.m, u.g, u.gh, u.r, t_int, f_int),
+                          "exp.compute_residual inner dir (DMTFAA order, native)")
+                assert ((u.r - r0).max() < 1e-8)
 
                 u.r.fill(0)
-                benchmark(lambda:cyfull_exp.cycompute_residual_dmtfaa_conj(u.m, u.g, u.gh, u.r, t_int, f_int), "exp.compute_residual conj (DMTFAA order, native)")
-                assert((u.r-r0).max()<1e-8)
+                benchmark(lambda: cyfull_exp.cycompute_residual_dmtfaa_conj(u.m, u.g, u.gh, u.r, t_int, f_int),
+                          "exp.compute_residual conj (DMTFAA order, native)")
+                assert ((u.r - r0).max() < 1e-8)
 
                 o.r.fill(0)
-                benchmark(lambda:refkern.cycompute_residual(o.m, o.g, o.gh, o.r, t_int, f_int), "exp.compute_residual (*wrong* AAMTFD order, view)")
-                assert((o.r-r0).max()<1e-8)
+                benchmark(lambda: refkern.cycompute_residual(o.m, o.g, o.gh, o.r, t_int, f_int),
+                          "exp.compute_residual (*wrong* AAMTFD order, view)")
+                assert ((o.r - r0).max() < 1e-8)
 
                 u.r.fill(0)
-                benchmark(lambda:cyfull_exp.cycompute_residual(u.m, u.g, u.gh, u.r, t_int, f_int), "exp.compute_residual new (OMP, *wrong* DMTFAA order, native)")
-                assert((o.r-r0).max()<1e-8)
-
+                benchmark(lambda: cyfull_exp.cycompute_residual(u.m, u.g, u.gh, u.r, t_int, f_int),
+                          "exp.compute_residual new (OMP, *wrong* DMTFAA order, native)")
+                assert ((o.r - r0).max() < 1e-8)
 
             print('*** JH')
 
-            benchmark(lambda:refkern.cycompute_jh(u.m, u.g, u.jh, t_int, f_int), "{}.compute_jh (DMTFAA order, native)".format(refkern_name))
+            benchmark(lambda: refkern.cycompute_jh(u.m, u.g, u.jh, t_int, f_int),
+                      "{}.compute_jh (DMTFAA order, native)".format(refkern_name))
             jh0 = u.jh.copy()
 
             benchmark_function('cycompute_jh', (o.m, o.g, o.jh, t_int, f_int),
-                          setup=lambda: o.jh.fill(0), check=lambda: abs(o.jh - jh0).max() < 1e-8)
+                               setup=lambda: o.jh.fill(0), check=lambda: abs(o.jh - jh0).max() < 1e-8)
 
             print('*** JHR')
 
@@ -383,11 +414,13 @@ def main(args=None):
                                    check=lambda: abs(o.jh - jh0).max() < 1e-8)
             else:
                 u.r[:] = r0
-                benchmark(lambda:refkern.cycompute_jhr(u.jh, u.r, u.jhr, t_int, f_int), "{}.compute_jhr (DMTFAA order, native)".format(refkern_name))
+                benchmark(lambda: refkern.cycompute_jhr(u.jh, u.r, u.jhr, t_int, f_int),
+                          "{}.compute_jhr (DMTFAA order, native)".format(refkern_name))
                 jhr0 = u.jhr.copy()
 
                 benchmark_function('cycompute_jhr', (o.jh, o.r, o.jhr, t_int, f_int),
-                              setup=lambda: (np.copyto(o.r,r0),np.copyto(o.jh,jh0),o.jhr.fill(0)), check=lambda: abs(o.jh-jh0).max()<1e-8)
+                                   setup=lambda: (np.copyto(o.r, r0), np.copyto(o.jh, jh0), o.jhr.fill(0)),
+                                   check=lambda: abs(o.jh - jh0).max() < 1e-8)
 
             args.pdb and nfailed and pdb.set_trace()
 
@@ -406,23 +439,26 @@ def main(args=None):
             else:
                 u.jh[:] = jh0
                 u.jhj.fill(0)
-                benchmark(lambda:refkern.cycompute_jhj(u.jh, u.jhj, t_int, f_int), "{}.compute_jhj (DMTFAA order, native)".format(refkern_name))
+                benchmark(lambda: refkern.cycompute_jhj(u.jh, u.jhj, t_int, f_int),
+                          "{}.compute_jhj (DMTFAA order, native)".format(refkern_name))
                 jhj0 = u.jhj.copy()
 
                 benchmark_function('cycompute_jhj', (o.jh, o.jhj, t_int, f_int),
-                              setup=lambda: (np.copyto(o.jh,jh0),o.jhj.fill(0)), check=lambda: abs(o.jhj-jhj0).max()<1e-8)
+                                   setup=lambda: (np.copyto(o.jh, jh0), o.jhj.fill(0)),
+                                   check=lambda: abs(o.jhj - jhj0).max() < 1e-8)
 
             args.pdb and nfailed and pdb.set_trace()
 
             print('*** JHJinv')
 
             u.jhj[:] = jhj0
-            benchmark(lambda:refkern.cycompute_jhjinv(u.jhj, u.jhjinv, u.f, 1e-6, 0), "{}.compute_jhjinv (DMTFAA order, native)".format(refkern_name))
+            benchmark(lambda: refkern.cycompute_jhjinv(u.jhj, u.jhjinv, u.f, 1e-6, 0),
+                      "{}.compute_jhjinv (DMTFAA order, native)".format(refkern_name))
             jhjinv0 = u.jhjinv.copy()
 
             benchmark_function('cycompute_jhjinv', (o.jhj, o.jhjinv, o.f, 1e-6, 0),
-                          setup=lambda: (np.copyto(o.jhj,jhj0),o.jhjinv.fill(0)), check=lambda: abs(o.jhjinv-jhjinv0).max()<1e-8)
-
+                               setup=lambda: (np.copyto(o.jhj, jhj0), o.jhjinv.fill(0)),
+                               check=lambda: abs(o.jhjinv - jhjinv0).max() < 1e-8)
 
             args.pdb and nfailed and pdb.set_trace()
 
@@ -431,18 +467,20 @@ def main(args=None):
             if "cyphase_only" in refkern_name:
                 uupd = np.zeros_like(u.p, u.o.real.dtype)
                 oupd = np.zeros_like(o.p, o.o.real.dtype)
-                benchmark(lambda:refkern.cycompute_update(u.jhr.real, u.jhjinv.real, uupd), "{}.compute_update (DMTFAA order, native)".format(refkern_name))
+                benchmark(lambda: refkern.cycompute_update(u.jhr.real, u.jhjinv.real, uupd),
+                          "{}.compute_update (DMTFAA order, native)".format(refkern_name))
                 upd0 = u.p.copy()
 
                 benchmark_function('cycompute_update', (o.jhr.real, o.jhjinv.real, oupd),
-                              setup=lambda: (np.copyto(o.jhr, jhr0), np.copyto(o.jhjinv, jhjinv0), o.p.fill(0)),
-                              check=lambda: abs(oupd - uupd).max() < 1e-8)
+                                   setup=lambda: (np.copyto(o.jhr, jhr0), np.copyto(o.jhjinv, jhjinv0), o.p.fill(0)),
+                                   check=lambda: abs(oupd - uupd).max() < 1e-8)
             else:
-                benchmark(lambda:refkern.cycompute_update(u.jhr, u.jhjinv, u.p), "{}.compute_update (DMTFAA order, native)".format(refkern_name))
+                benchmark(lambda: refkern.cycompute_update(u.jhr, u.jhjinv, u.p),
+                          "{}.compute_update (DMTFAA order, native)".format(refkern_name))
 
                 benchmark_function('cycompute_update', (o.jhr, o.jhjinv, o.p),
-                              setup=lambda: (np.copyto(o.jhr, jhr0), np.copyto(o.jhjinv, jhjinv0), o.p.fill(0)),
-                              check=lambda: abs(o.p - o.p).max() < 1e-8)
+                                   setup=lambda: (np.copyto(o.jhr, jhr0), np.copyto(o.jhjinv, jhjinv0), o.p.fill(0)),
+                                   check=lambda: abs(o.p - o.p).max() < 1e-8)
 
             args.pdb and nfailed and pdb.set_trace()
 
@@ -450,28 +488,31 @@ def main(args=None):
                 print('*** Corrected')
 
                 u.corr.fill(0)
-                benchmark(lambda:refkern.cycompute_corrected(u.o, u.g, u.gh, u.corr, t_int, f_int), "{}.compute_corrected (DMTFAA order, native)".format(refkern_name))
+                benchmark(lambda: refkern.cycompute_corrected(u.o, u.g, u.gh, u.corr, t_int, f_int),
+                          "{}.compute_corrected (DMTFAA order, native)".format(refkern_name))
                 corr0 = u.corr.copy()
 
                 benchmark_function('cycompute_corrected', (o.o, o.g, o.gh, o.corr, t_int, f_int),
-                              setup=lambda: o.corr.fill(0), check=lambda: abs(o.corr - corr0).max() < 1e-8)
+                                   setup=lambda: o.corr.fill(0), check=lambda: abs(o.corr - corr0).max() < 1e-8)
 
                 print('*** Apply ')
 
                 mod = u.m.copy()
-                benchmark(lambda:refkern.cyapply_gains(mod, u.g, u.gh, t_int, f_int), "{}.apply_gains (DMTFAA order, native)".format(refkern_name))
+                benchmark(lambda: refkern.cyapply_gains(mod, u.g, u.gh, t_int, f_int),
+                          "{}.apply_gains (DMTFAA order, native)".format(refkern_name))
                 mod0 = mod.copy()
 
                 mod = o.m.copy()
 
                 benchmark_function('cyapply_gains', (mod, o.g, o.gh, t_int, f_int),
-                              setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
+                                   setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod - mod0).max() < 1e-8)
 
             args.pdb and nfailed and pdb.set_trace()
 
-        assert(not nfailed)
+        assert (not nfailed)
 
 
 if __name__ == "__main__":
     import sys
+
     main(args=sys.argv[1:])
