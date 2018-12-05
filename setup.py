@@ -2,7 +2,7 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
-#!/usr/bin/python
+# !/usr/bin/python
 # -*- coding: utf-8 -*-
 #
 # Copyright (c) 2017 SKA South Africa
@@ -23,12 +23,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
-import sys
+from sys import version_info
 import glob
 
 import cubical
 
-from setuptools import setup, find_packages
+from setuptools import setup
 from setuptools.extension import Extension
 from setuptools.command.build_ext import build_ext
 from setuptools import Command
@@ -36,11 +36,8 @@ from setuptools import Command
 with open('README.md') as f:
     long_description = f.read()
 
-with open('README.md') as f:
-    long_description = f.read()
 
-# Try get location of numpy headers. Compilation requires these headers. 
-
+# Try get location of numpy headers. Compilation requires these headers.
 try:
     import numpy as np
 except ImportError:
@@ -48,8 +45,8 @@ except ImportError:
 else:
     include_path = np.get_include()
 
-# Use Cython if available.
 
+# Use Cython if available.
 try:
     from Cython.Build import cythonize
     import Cython.Compiler.Options as CCO
@@ -57,10 +54,10 @@ except ImportError:
     cythonize = None
 
 cmpl_args = ['-ffast-math',
-             '-O2', 
-             '-march=native',  
-             '-mtune=native', 
-             '-ftree-vectorize' ]
+             '-O2',
+             '-march=native',
+             '-mtune=native',
+             '-ftree-vectorize']
 
 cmpl_args_omp = cmpl_args + ['-fopenmp']
 
@@ -74,10 +71,10 @@ cpp_extensions = "cytf_plane", "cyf_slope", "cyt_slope", "rebinning"
 
 class gocythonize(Command):
     """ Cythonise CubiCal kernels. """
-    
+
     description = 'Cythonise CubiCal kernels.'
 
-    user_options = [('force', 'f', 'Force cythonisation.'),]
+    user_options = [('force', 'f', 'Force cythonisation.'), ]
 
     def initialize_options(self):
         pass
@@ -89,11 +86,11 @@ class gocythonize(Command):
 
         if not cythonize:
             raise Exception("Cython not available, please install first.")
-        
+
         CCO.buffer_max_dims = 9
 
         extensions = []
-        
+
         for source in glob.glob("cubical/kernels/*.pyx"):
             name, ext = os.path.splitext(source)
             omp = name.endswith("_omp")
@@ -101,23 +98,23 @@ class gocythonize(Command):
             cpp = any([x in name for x in cpp_extensions])
 
             extensions.append(
-                Extension(name.replace("/","."), [source],
+                Extension(name.replace("/", "."), [source],
                           include_dirs=[include_path],
                           extra_compile_args=cmpl_args_omp if omp else cmpl_args,
                           extra_link_args=link_args_omp if omp else link_args,
                           language="c++" if cpp else "c"))
-
-        cythonize(extensions, compiler_directives={'binding': True}, annotate=True, force=self.force)
+        compiler_directives = {'binding': True, 'language_level': version_info.major}
+        cythonize(extensions, compiler_directives=compiler_directives, annotate=True, force=self.force)
 
 
 extensions = []
-for source in glob.glob("cubical/kernels/*.pyx"): 
+for source in glob.glob("cubical/kernels/*.pyx"):
     name, _ = os.path.splitext(source)
     is_cpp = any([s in name for s in cpp_extensions])
     is_omp = name.endswith("_omp")
 
     extensions.append(
-        Extension(name.replace("/","."), [name + ".cpp" if is_cpp else name + ".c"],
+        Extension(name.replace("/", "."), [name + ".cpp" if is_cpp else name + ".c"],
                   include_dirs=[include_path],
                   extra_compile_args=cmpl_args_omp if is_omp else cmpl_args,
                   extra_link_args=link_args_omp if is_omp else link_args))
@@ -127,16 +124,16 @@ for source in glob.glob("cubical/kernels/*.pyx"):
 on_rtd = os.environ.get('READTHEDOCS') == 'True'
 
 if on_rtd:
-    requirements = ['numpy', 
-                    'cython', 
-                    'futures', 
+    requirements = ['numpy',
+                    'cython',
+                    'futures',
                     'matplotlib',
                     'scipy']
 else:
-    requirements = ['numpy', 
-                    'futures', 
-                    'python-casacore>=2.1.2', 
-                    'sharedarray', 
+    requirements = ['numpy',
+                    'futures',
+                    'python-casacore>=2.1.2',
+                    'sharedarray',
                     'matplotlib<3.0',
                     'cython',
                     'scipy',
@@ -147,12 +144,12 @@ setup(name='cubical',
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/JSKenyon/phd-code',
       classifiers=[
-        "Development Status :: 3 - Alpha",
-        "Intended Audience :: Science/Research",
-        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-        "Operating System :: POSIX :: Linux",
-        "Programming Language :: Python",
-        "Topic :: Scientific/Engineering :: Astronomy"],
+          "Development Status :: 3 - Alpha",
+          "Intended Audience :: Science/Research",
+          "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+          "Operating System :: POSIX :: Linux",
+          "Programming Language :: Python",
+          "Topic :: Scientific/Engineering :: Astronomy"],
       author='Jonathan Kenyon',
       author_email='jonosken@gmail.com',
       license='GNU GPL v3',
@@ -162,19 +159,20 @@ setup(name='cubical',
       cmdclass={'build_ext': build_ext,
                 'gocythonize': gocythonize},
 
-      packages=['cubical', 
+      packages=['cubical',
                 'cubical.data_handler',
                 'cubical.machines',
-                'cubical.tools', 
-                'cubical.kernels', 
+                'cubical.tools',
+                'cubical.kernels',
                 'cubical.plots',
                 'cubical.database',
                 'cubical.madmax'],
       install_requires=requirements,
       include_package_data=True,
       zip_safe=False,
-      ext_modules = extensions,
-      entry_points={'console_scripts': ['gocubical = cubical.main:main']},           
-)
-
-
+      ext_modules=extensions,
+      entry_points={'console_scripts': ['gocubical = cubical.main:main']},
+      setup_requires=['pytest-runner'],
+      tests_require=['pytest', 'mock'],
+      test_suite="test",
+      )
