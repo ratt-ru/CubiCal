@@ -60,7 +60,7 @@ def debug():
 
     main(debugging=True)
 
-def main(debugging=False):
+def main(debugging=False, args=None):
     """
     Main cubical driver function. Reads options, sets up MS and solvers, calls the solver, etc.
 
