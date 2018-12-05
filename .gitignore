@@ -45,6 +45,8 @@ Thumbs.db
 .eggs/
 .idea/
 cubical.egg-info/
+dist/
+
 
 # Backup files #
 ################
@@ -73,6 +75,7 @@ cubical.egg-info/*
 *.py~
 examples/.ipynb_checkpoints/
 test/SUBSET-D147-output.MS/table.*
+test/SUBSET-D147-output.MS/
 
 # Folders #
 ###########
@@ -80,3 +83,8 @@ test/SUBSET-D147-output.MS/table.*
 docs/_build/
 docs/_templates/
 
+
+# virtualenvs #
+###############
+.venv*/
+.virtualenv*/
