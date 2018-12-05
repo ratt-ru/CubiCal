@@ -1869,9 +1869,9 @@ def cyapply_gains_conj4(complex3264 [:,:,:,:,:,:,:,:] m,
             for aa in xrange(n_ant-1):
                 for ab in xrange(aa+1,n_ant):
                     for t in xrange(n_tim):
-                        rr = t/t_int
+                        rr = t//t_int
                         for f in xrange(n_fre):
-                            rc = f/f_int
+                            rc = f//f_int
                             inplace_mat_product(&g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
                             mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
 
