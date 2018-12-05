@@ -11,7 +11,7 @@ from cubical.tools import logger
 log = logger.getLogger("param_db")
 
 #from database.pickled_db import PickledDatabase
-from database.casa_db_adaptor import casa_db_adaptor
+from .database.casa_db_adaptor import casa_db_adaptor
 def create(filename, metadata={}, backup=True):
     """
     Creates a new parameter database.
@@ -56,7 +56,7 @@ def load(filename):
 
 if __name__ == "__main__":
     log.verbosity(2)
-    print "Creating test DB"
+    print("Creating test DB")
     db = create("test.db")
     db.define_param("G", np.float64,
                     ["ant", "time", "freq", "corr"], interpolation_axes=["time", "freq"])
@@ -69,14 +69,14 @@ if __name__ == "__main__":
         db.add_chunk("B", arr, grid=dict(freq=np.arange(i0,i1)))
     db.close()
 
-    print "Loading test DB"
+    print("Loading test DB")
     db = load("test.db")
-    print db.names()
+    print(db.names())
     G = db['G']
     B = db['B']
-    print "G", db["G"].axis_labels, db["G"].shape
-    print "B", db["B"].axis_labels, db["B"].shape
-    print "G", G.get_slice(ant=0,corr=0)
-    print "B", G.get_slice(ant=0,corr=0)
-    print "Gint", G.reinterpolate(time=np.arange(0,10,.5),freq=np.arange(0,10,1.5))
+    print("G", db["G"].axis_labels, db["G"].shape)
+    print("B", db["B"].axis_labels, db["B"].shape)
+    print("G", G.get_slice(ant=0,corr=0))
+    print("B", G.get_slice(ant=0,corr=0))
+    print("Gint", G.reinterpolate(time=np.arange(0,10,.5),freq=np.arange(0,10,1.5)))
 

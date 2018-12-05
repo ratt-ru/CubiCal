@@ -7,7 +7,7 @@
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
 import logging, logging.handlers, os, re, sys, multiprocessing
-import ModColor
+from . import ModColor
 
 # dict of logger wrappers created by the application
 _loggers = {}
@@ -28,7 +28,7 @@ def logToFile(filename, append=False):
         _file_handler.setLevel(logging.DEBUG)
         _file_handler.setFormatter(_logfile_formatter)
         # set it as the target for the existing wrappers' handlers
-        for wrapper in _loggers.itervalues():
+        for wrapper in _loggers.values():
             wrapper.logfile_handler.setTarget(_file_handler)
 
 def getLogFilename():
@@ -265,7 +265,7 @@ def init(app_name):
     global _app_name
     global _root_logger
     if _root_logger is None:
-        logging.basicConfig(level=logging.DEBUG, fmt=_fmt, datefmt=_datefmt)
+        logging.basicConfig(level=logging.DEBUG, format=_fmt, datefmt=_datefmt)
         _app_name = app_name
         _root_logger = logging.getLogger(app_name)
         _root_logger.setLevel(logging.DEBUG)
@@ -280,7 +280,7 @@ def getLogger(name, verbose=None, log_verbose=None):
 
     logger = logging.getLogger("{}.{}".format(_app_name, name))
     lw = _loggers[name] = LoggerWrapper(logger, verbose, log_verbose)
-    print>>lw(2), "logger initialized"
+    print("logger initialized", file=lw(2))
 
     return lw
 
@@ -302,7 +302,7 @@ def setGlobalVerbosity(verbosity):
     for element in verbosity:
         if type(element) is int or re.match("^[0-9]+$", element):
             _global_verbosity = int(element)
-            print>> log(0, "green"), "set global console verbosity level {}".format(_global_verbosity)
+            print("set global console verbosity level {}".format(_global_verbosity), file=log(0, "green"))
         else:
             m = re.match("^(.+)=([0-9]+)$", element)
             if not m:
@@ -310,7 +310,7 @@ def setGlobalVerbosity(verbosity):
             logger = getLogger(m.group(1))
             level = int(m.group(2))
             logger.verbosity(level)
-            print>>logger(0,"green"),"set console verbosity level {}={}".format(m.group(1), level)
+            print("set console verbosity level {}={}".format(m.group(1), level), file=logger(0,"green"))
 
 def setGlobalLogVerbosity(verbosity):
     global _global_log_verbosity
@@ -328,7 +328,7 @@ def setGlobalLogVerbosity(verbosity):
         if type(element) is int or re.match("^[0-9]+$", element):
             _global_log_verbosity = int(element)
             if _global_log_verbosity is not None:
-                print>> log(0, "green"), "set global log verbosity level {}".format(_global_log_verbosity)
+                print("set global log verbosity level {}".format(_global_log_verbosity), file=log(0, "green"))
         else:
             m = re.match("^(.+)=([0-9]+)$", element)
             if not m:
@@ -336,12 +336,12 @@ def setGlobalLogVerbosity(verbosity):
             logger = getLogger(m.group(1))
             level = int(m.group(2))
             logger.log_verbosity(level)
-            print>>logger(0,"green"),"set log verbosity level {}={}".format(m.group(1), level)
+            print("set log verbosity level {}={}".format(m.group(1), level), file=logger(0,"green"))
 
 
 def setSilent(Lname):
     """Silences the specified sublogger(s)"""
-    print>>log, ModColor.Str("set silent: %s" % Lname, col="red")
+    print(ModColor.Str("set silent: %s" % Lname, col="red"), file=log)
     if type(Lname) is str:
         getLogger(Lname).logger.setLevel(logging.CRITICAL)
     elif type(Lname) is list:
@@ -351,7 +351,7 @@ def setSilent(Lname):
 
 def setLoud(Lname):
     """Un-silences the specified sublogger(s)"""
-    print>>log, ModColor.Str("set loud: %s" % Lname, col="green")
+    print(ModColor.Str("set loud: %s" % Lname, col="green"), file=log)
     if type(Lname) is str:
         getLogger(Lname).logger.setLevel(logging.DEBUG)
     elif type(Lname) is list:
@@ -361,4 +361,4 @@ def setLoud(Lname):
 
 if __name__=="__main__":
     log=getLogger("a.x")
-    print>>log, "a.x"
+    print("a.x", file=log)

@@ -20,7 +20,7 @@ def make_stats_plots(st, GD, basename, metadata):
         pylab.gcf().set_size_inches(min(width, 10000 / DPI), min(height, 10000 / DPI))
         filename = "{}.{}.png".format(basename, name)
         pylab.savefig(filename, dpi=DPI)
-        print>> log, "saved plot " + filename
+        print("saved plot " + filename, file=log)
         if GD["out"]["plots"] == "show":
             pylab.show()
         pylab.figure()
@@ -68,7 +68,7 @@ def make_stats_plots(st, GD, basename, metadata):
     noise = np.sqrt(st.chanant.dr2)
     noise[noise == 0] = np.inf
     nf, nant = noise.shape
-    for ant in xrange(nant):
+    for ant in range(nant):
         pylab.plot(noise[:, ant], 'o-')
     for x in pylab.xticks()[0]:
         pylab.axvline(x, c="grey", lw=.5, ls=':', zorder=999)
@@ -77,7 +77,7 @@ def make_stats_plots(st, GD, basename, metadata):
     pylab.ylabel("noise")
     pylab.subplot(122)
     make_antenna_xaxis(metadata.antenna_name)
-    for chan in xrange(nf):
+    for chan in range(nf):
         pylab.plot(noise[chan, :], 'o-')
     pylab.title("Noise (colour: channel)")
     pylab.ylabel("noise")
@@ -88,7 +88,7 @@ def make_stats_plots(st, GD, basename, metadata):
     chi2 = st.chanant.chi2
     chi2[chi2 == 0] = np.inf
     nf, nant = chi2.shape
-    for ant in xrange(nant):
+    for ant in range(nant):
         pylab.plot(chi2[:, ant], 'o-')
     for x in pylab.xticks()[0]:
         pylab.axvline(x, c="grey", lw=.5, ls=':', zorder=999)
@@ -97,7 +97,7 @@ def make_stats_plots(st, GD, basename, metadata):
     pylab.ylabel("$\chi^2$")
     pylab.subplot(122)
     make_antenna_xaxis(metadata.antenna_name)
-    for chan in xrange(nf):
+    for chan in range(nf):
         pylab.plot(chi2[chan, :], 'o-')
     pylab.title("Chi-sq (colour: channel)")
     pylab.ylabel("$\chi^2$")

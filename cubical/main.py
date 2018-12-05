@@ -14,7 +14,7 @@ Main code body. Handles options, invokes solvers and manages multiprocessing.
 #     logging.getLogger('vext').setLevel(logging.WARNING)
 ##
 
-import cPickle
+import pickle
 import os, os.path
 import sys
 import warnings
@@ -89,8 +89,8 @@ def main(debugging=False, args=None):
 
     try:
         if debugging:
-            print>> log, "initializing from cubical.last"
-            GD = cPickle.load(open("cubical.last"))
+            print("initializing from cubical.last", file=log)
+            GD = pickle.load(open("cubical.last"))
             basename = GD["out"]["name"]
             parser = None
         else:
@@ -100,7 +100,7 @@ def main(debugging=False, args=None):
 
             if len(sys.argv) > 1 and not sys.argv[1][0].startswith('-'):
                 custom_parset_file = sys.argv[1]
-                print>> log, "reading defaults from {}".format(custom_parset_file)
+                print("reading defaults from {}".format(custom_parset_file), file=log)
                 try:
                     parset = parsets.Parset(custom_parset_file)
                 except:
@@ -128,7 +128,7 @@ def main(debugging=False, args=None):
                 raise UserInputError("Unexpected number of arguments. Use -h for help.")
 
             # "GD" is a global defaults dict, containing options set up from parset + command line
-            cPickle.dump(GD, open("cubical.last", "w"))
+            pickle.dump(GD, open("cubical.last", "wb"))
 
             # get basename for all output files
             basename = GD["out"]["name"]
@@ -147,8 +147,8 @@ def main(debugging=False, args=None):
                     os.path.samefile(save_parset, custom_parset_file):
                 basename = "~" + basename
                 save_parset = basename + ".parset"
-                print>> log, ModColor.Str(
-                    "Your --Output-Name would overwrite its own parset. Using %s instead." % basename)
+                print(ModColor.Str(
+                    "Your --Output-Name would overwrite its own parset. Using %s instead." % basename), file=log)
             parser.write_to_parset(save_parset)
 
         enable_pdb = GD["debug"]["pdb"]
@@ -163,7 +163,7 @@ def main(debugging=False, args=None):
         logger.setGlobalLogVerbosity(GD["log"]["file-verbose"])
 
         if not debugging:
-            print>>log, "started " + " ".join(sys.argv)
+            print("started " + " ".join(sys.argv), file=log)
 
         # disable matplotlib's tk backend if we're not going to be showing plots
         if GD['out']['plots'] =='show' or GD['madmax']['plot'] == 'show':
@@ -171,10 +171,10 @@ def main(debugging=False, args=None):
             try:
                 pylab.figure()
                 pylab.close()
-            except Exception, exc:
+            except Exception as exc:
                 import traceback
-                print>>log, ModColor.Str("Error initializing matplotlib: {}({})\n {}".format(type(exc).__name__,
-                                                                                       exc, traceback.format_exc()))
+                print(ModColor.Str("Error initializing matplotlib: {}({})\n {}".format(type(exc).__name__,
+                                                                                       exc, traceback.format_exc())), file=log)
                 raise UserInputError("matplotlib can't connect to X11. Can't use --out-plots show or --madmax-plot show.")
         else:
             matplotlib.use("Agg")
@@ -196,7 +196,7 @@ def main(debugging=False, args=None):
         # collect list of options from enabled Jones matrices
         if not len(jones_opts):
             raise UserInputError("No Jones terms are enabled")
-        print>> log, ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green")
+        print(ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green"), file=log)
 
         have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
 
@@ -214,7 +214,7 @@ def main(debugging=False, args=None):
         if solver_type not in solver.SOLVERS:
             raise UserInputError("invalid setting --out-mode {}".format(solver_type))
         solver_mode_name = solver.SOLVERS[solver_type].__name__.replace("_", " ")
-        print>>log,ModColor.Str("mode: {}".format(solver_mode_name), col='green')
+        print(ModColor.Str("mode: {}".format(solver_mode_name), col='green'), file=log)
         # these flags are used below to tweak the behaviour of gain machines and model loaders
         apply_only = solver.SOLVERS[solver_type] in (solver.correct_only, solver.correct_residuals)
         load_model = solver.SOLVERS[solver_type] is not solver.correct_only   # no model needed in "correct only" mode
@@ -292,7 +292,7 @@ def main(debugging=False, args=None):
                 if type(subdirs) is str:
                     try:
                         if ',' in subdirs:
-                            subdirs = map(int, subdirs.split(","))
+                            subdirs = list(map(int, subdirs.split(",")))
                         else:
                             subdirs = eval("np.s_[{}]".format(subdirs))
                     except:
@@ -305,7 +305,7 @@ def main(debugging=False, args=None):
                     if out_of_range:
                         raise UserInputError("--out-subtract-dirs {} out of range for {} model direction(s)".format(
                                 ",".join(map(str, out_of_range)), len(ms.model_directions)))
-                print>>log(0),"subtraction directions set to {}".format(subdirs)
+                print("subtraction directions set to {}".format(subdirs), file=log(0))
             else:
                 subdirs = slice(None)
             solver_opts["subtract-dirs"] = subdirs
@@ -347,8 +347,8 @@ def main(debugging=False, args=None):
         if GD["dist"]["max-chunks"]:
             chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
 
-        print>>log, "defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
-            ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else "")
+        print("defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
+            ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else ""), file=log)
 
         chunks_per_tile, tile_list = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["rebin-time"],
                                             GD["data"]["freq-chunk"],
@@ -367,18 +367,18 @@ def main(debugging=False, args=None):
         stats_dict = workers.run_process_loop(ms, tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 
 
-        print>>log, ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green")
+        print(ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green"), file=log)
 
         # print flagging stats
-        print>>log, ModColor.Str("Flagging stats: ",col="green") + " ".join(ms.get_flag_counts())
+        print(ModColor.Str("Flagging stats: ",col="green") + " ".join(ms.get_flag_counts()), file=log)
 
         if not apply_only:
             # now summarize the stats
-            print>> log, "computing summary statistics"
+            print("computing summary statistics", file=log)
             st = SolverStats(stats_dict)
             filename = basename + ".stats.pickle"
             st.save(filename)
-            print>> log, "saved summary statistics to %s" % filename
+            print("saved summary statistics to %s" % filename, file=log)
 
             if GD["postmortem"]["enable"]:
                 # flag based on summary stats
@@ -387,7 +387,7 @@ def main(debugging=False, args=None):
                 if flag3 is not None:
                     st.apply_flagcube(flag3)
                     if GD["flags"]["save"] and flag3.any() and not GD["data"]["single-chunk"]:
-                        print>>log,"regenerating output flags based on post-solution flagging"
+                        print("regenerating output flags based on post-solution flagging", file=log)
                         flagcol = ms.flag3_to_col(flag3)
                         ms.save_flags(flagcol)
 
@@ -396,13 +396,13 @@ def main(debugging=False, args=None):
                 import cubical.plots
                 try:
                     cubical.plots.make_summary_plots(st, ms, GD, basename)
-                except Exception, exc:
+                except Exception as exc:
                     if GD["debug"]["escalate-warnings"]:
                         raise
-                    print>> ModColor.Str("An error has occurred while making summary plots: {}({})\n {}".format(type(exc).__name__,
+                    print(file=ModColor.Str("An error has occurred while making summary plots: {}({})\n {}".format(type(exc).__name__,
                                                                                            exc,
-                                                                                           traceback.format_exc()))
-                    print>>log, ModColor.Str("This is not fatal, but should be reported (and your plots have gone missing!)")
+                                                                                           traceback.format_exc())))
+                    print(ModColor.Str("This is not fatal, but should be reported (and your plots have gone missing!)"), file=log)
 
         # make BBC plots
         if solver.ifrgain_machine and solver.ifrgain_machine.is_computing() and GD["bbc"]["plot"] and GD["out"]["plots"]:
@@ -414,23 +414,23 @@ def main(debugging=False, args=None):
             else:
                 try:
                     cubical.plots.ifrgains.make_ifrgain_plots(solver.ifrgain_machine.reload(), ms, GD, basename)
-                except Exception, exc:
+                except Exception as exc:
                     import traceback
-                    print>> ModColor.Str("An error has occurred while making BBC plots: {}({})\n {}".format(type(exc).__name__,
+                    print(file=ModColor.Str("An error has occurred while making BBC plots: {}({})\n {}".format(type(exc).__name__,
                                                                                            exc,
-                                                                                           traceback.format_exc()))
-                    print>>log, ModColor.Str("This is not fatal, but should be reported (and your plots have gone missing!)")
+                                                                                           traceback.format_exc())))
+                    print(ModColor.Str("This is not fatal, but should be reported (and your plots have gone missing!)"), file=log)
 
         ms.close()
 
-        print>>log, ModColor.Str("completed successfully", col="green")
+        print(ModColor.Str("completed successfully", col="green"), file=log)
 
-    except Exception, exc:
+    except Exception as exc:
         if type(exc) is UserInputError:
-            print>> log, ModColor.Str(exc)
+            print(ModColor.Str(exc), file=log)
         else:
-            print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__,
-                                                                    exc, traceback.format_exc()))
+            print(ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__,
+                                                                    exc, traceback.format_exc())), file=log)
             if enable_pdb and not type(exc) is UserInputError:
                 from cubical.tools import pdb
                 exc, value, tb = sys.exc_info()

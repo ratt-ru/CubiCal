@@ -81,7 +81,7 @@ class Complex2x2Gains(PerIntervalGains):
             pzd = np.angle(dm_sum/dabs_sum)
             pzd[dabs_sum==0] = 0
 
-            print>>log(2),"{}: PZD estimate {}".format(self.chunk_label, pzd)
+            print("{}: PZD estimate {}".format(self.chunk_label, pzd), file=log(2))
             self.gains[:,:,:,:,1,1] = np.exp(-1j*pzd)[np.newaxis,:,:,np.newaxis]
 
 

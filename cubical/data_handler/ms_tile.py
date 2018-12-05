@@ -103,7 +103,7 @@ class MSTile(object):
             if not self.tile.dh.do_freq_rebin and not self.tile.dh.do_time_rebin:
                 return data
             shape = len(self.rebin_row_map), len(self.rebin_chan_map), data.shape[2]
-            print>>log(1),"upsampling to {} rows and {} channels".format(shape[0], shape[1])
+            print("upsampling to {} rows and {} channels".format(shape[0], shape[1]), file=log(1))
             return data[self.rebin_row_map[:, np.newaxis],
                         self.rebin_chan_map[np.newaxis, :], None].reshape(shape)
 
@@ -123,7 +123,7 @@ class MSTile(object):
 
             """
 
-            import MBTiggerSim
+            from . import MBTiggerSim
             from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
 
             # setup montblanc machinery once per subset (may be called multiple times for different models)
@@ -153,8 +153,8 @@ class MSTile(object):
                                       np.int32)
 
                 # make full list of row indices in Montblanc-compliant order (ddid-time-ant1-ant2)
-                full_index = [(p, q, t, d) for d in xrange(len(uniq_ddids)) for t in uniq_times
-                              for p in xrange(self.nants) for q in xrange(self.nants)
+                full_index = [(p, q, t, d) for d in range(len(uniq_ddids)) for t in uniq_times
+                              for p in range(self.nants) for q in range(self.nants)
                               if p < q]
 
                 self._expected_nrows = len(full_index)
@@ -162,19 +162,19 @@ class MSTile(object):
                 # and corresponding full set of indices
                 full_row_set = set(full_index)
 
-                print>> log(1), "  {} rows ({} expected for {} timeslots, {} baselines and {} DDIDs)".format(
-                    self.nrows, self._expected_nrows, ntime, n_bl, len(uniq_ddids))
+                print("  {} rows ({} expected for {} timeslots, {} baselines and {} DDIDs)".format(
+                    self.nrows, self._expected_nrows, ntime, n_bl, len(uniq_ddids)), file=log(1))
 
                 # make mapping from existing indices -> row numbers, omitting autocorrelations
                 current_row_index = {(p, q, t, d): row for row, (p, q, t, d) in
                                      enumerate(zip(self.antea, self.anteb, self.times, ddid_index)) if p != q}
 
                 # do we need to add fake rows for missing data?
-                missing = full_row_set.difference(current_row_index.iterkeys())
+                missing = full_row_set.difference(iter(current_row_index.keys()))
                 nmiss = len(missing)
 
                 if nmiss:
-                    print>> log(1), "  {} rows will be padded in for Montblanc".format(nmiss)
+                    print("  {} rows will be padded in for Montblanc".format(nmiss), file=log(1))
                     # pad up columns
                     uvwco = np.concatenate((uvwco, [[0, 0, 0]] * nmiss))
                     antea = np.concatenate((self.antea,
@@ -207,7 +207,7 @@ class MSTile(object):
                 else:
                     self._mb_arbeam_src = None
 
-            print>> log(0), "  computing visibilities for {}".format(model_source)
+            print("  computing visibilities for {}".format(model_source), file=log(0))
             # setup Montblanc computation for this LSM
             tigger_source = model_source
             cached_src = CachedSourceProvider(tigger_source, clear_start=True, clear_stop=True)
@@ -222,7 +222,7 @@ class MSTile(object):
             column_snk = MBTiggerSim.ColumnSinkProvider(self.tile.dh, self._freqs.shape, full_model, self._mb_sorted_ind)
             snks = [column_snk]
 
-            for direction in xrange(ndirs):
+            for direction in range(ndirs):
                 tigger_source.set_direction(direction)
                 tigger_source.set_frequency(self._freqs)
                 column_snk.set_direction(direction)
@@ -233,9 +233,9 @@ class MSTile(object):
                                                 for i, clus in enumerate(tigger_source._cluster_keys)}
 
             model = loaded_models[model_source][cluster]
-            print>> log(1), "  using {}{} for model {} direction {}".format(model_source,
+            print("  using {}{} for model {} direction {}".format(model_source,
                                 "" if not cluster else ("()" if cluster == 'die' else "({})".format(cluster)),
-                                imod, idir)
+                                imod, idir), file=log(1))
 
             # release memory asap
             del column_snk, snks
@@ -282,7 +282,7 @@ class MSTile(object):
 
             possible_dims = ["dirs", "mods", "rows", "freqs", "cors"]
 
-            dims = {possible_dims[-i]: column.shape[-i] for i in xrange(1, col_ndim + 1)}
+            dims = {possible_dims[-i]: column.shape[-i] for i in range(1, col_ndim + 1)}
 
             dims.setdefault("mods", 1)
             dims.setdefault("dirs", 1)
@@ -314,10 +314,10 @@ class MSTile(object):
             corr_slice = slice(None) if self.ncorr == 4 else slice(None, None, 3)
 
             col_selections = [tuple([dirs, mods, rows, freqs, slice(None)][-col_ndim:])
-                              for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
+                              for dirs in range(dims["dirs"]) for mods in range(dims["mods"])]
 
             cub_selections = [[dirs, mods, tchunk, slice(None), achunk, bchunk, corr_slice][-(reqdims - 1):]
-                              for dirs in xrange(dims["dirs"]) for mods in xrange(dims["mods"])]
+                              for dirs in range(dims["dirs"]) for mods in range(dims["mods"])]
 
             # The following takes the arbitrarily ordered data from the MS and places it into a N-D
             # data structure (correlation matrix).
@@ -351,7 +351,7 @@ class MSTile(object):
             # This zeros the diagonal elements in the "baseline" plane. This is purely a precaution -
             # we do not want autocorrelations on the diagonal.
 
-            out_arr[..., range(self.nants), range(self.nants), :] = zeroval
+            out_arr[..., list(range(self.nants)), list(range(self.nants)), :] = zeroval
 
             return out_arr0
 
@@ -529,7 +529,7 @@ class MSTile(object):
     def get_chunk_keys(self):
         """ Returns all chunk keys. """
 
-        return self._chunk_dict.iterkeys()
+        return iter(self._chunk_dict.keys())
 
     def get_chunk_tfs(self, key):
         """
@@ -556,11 +556,11 @@ class MSTile(object):
     def fill_bitflags(self, flagbit):
         for subset in self._subsets:
             if subset.label is None:
-                print>> log(1), "    {}: filling bitflags, MS rows {}~{}".format(self.label, self.first_row0, self.last_row0)
+                print("    {}: filling bitflags, MS rows {}~{}".format(self.label, self.first_row0, self.last_row0), file=log(1))
             else:
-                print>> log(1), "    {}: filling bitflags, MS rows {}~{}, {} ({} rows)".format(self.label, self.first_row0,
+                print("    {}: filling bitflags, MS rows {}~{}, {} ({} rows)".format(self.label, self.first_row0,
                                                                                           self.last_row0, subset.label,
-                                                                                          len(subset.rows0))
+                                                                                          len(subset.rows0)), file=log(1))
             table_subset = self.dh.data.selectrows(subset.rows0)
             flagcol = table_subset.getcol("FLAG")
             flagrow = table_subset.getcol("FLAG_ROW")
@@ -608,12 +608,12 @@ class MSTile(object):
 
         for subset in self._subsets:
             if subset.label is None:
-                print>> log(0, "blue"), "{}: reading MS rows {}~{}".format(self.label, self.first_row0, self.last_row0)
+                print("{}: reading MS rows {}~{}".format(self.label, self.first_row0, self.last_row0), file=log(0, "blue"))
                 data = data0
             else:
-                print>> log(0, "blue"), "{}: reading MS rows {}~{}, {} ({} rows)".format(self.label, self.first_row0,
+                print("{}: reading MS rows {}~{}, {} ({} rows)".format(self.label, self.first_row0,
                                                                                           self.last_row0, subset.label,
-                                                                                          len(subset.rows0))
+                                                                                          len(subset.rows0)), file=log(0, "blue"))
                 data = shared_dict.create(subset.datadict)
 
             table_subset = self.dh.data.selectrows(subset.rows0)
@@ -622,10 +622,10 @@ class MSTile(object):
             original_row_numbers = table_subset.rownumbers(self.data)
 
             obvis0 = self.dh.fetchslice(self.dh.data_column, subset=table_subset).astype(self.dh.ctype)
-            print>> log(2), "  read " + self.dh.data_column
+            print("  read " + self.dh.data_column, file=log(2))
 
             uvw0 = table_subset.getcol("UVW")
-            print>> log(2), "  read UVW coordinates"
+            print("  read UVW coordinates", file=log(2))
 
             # read weight columns, if a model is to be read
 
@@ -634,7 +634,7 @@ class MSTile(object):
                 wcol_cache = {}
                 for i, (_, weight_col) in enumerate(self.dh.models):
                     if weight_col not in wcol_cache:
-                        print>> log(1), "  reading weights from {}".format(weight_col)
+                        print("  reading weights from {}".format(weight_col), file=log(1))
                         wcol = table_subset.getcol(weight_col)
                         # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
                         if weight_col == "WEIGHT":
@@ -667,7 +667,7 @@ class MSTile(object):
                 flagcol = self.dh.fetchslice("FLAG", subset=table_subset)
                 flagrow = table_subset.getcol("FLAG_ROW")
                 flagcol[flagrow, :, :] = True
-                print>> log(2), "  read FLAG/FLAG_ROW"
+                print("  read FLAG/FLAG_ROW", file=log(2))
                 # compute stats
                 self._flagcol_sum = flagcol.sum()
                 self.dh.flagcounts["FLAG"] += self._flagcol_sum
@@ -683,18 +683,18 @@ class MSTile(object):
                 inactive = np.zeros(nrows0, bool)
             num_inactive = inactive.sum()
             if num_inactive:
-                print>> log(0), "  applying a solvable subset deselects {} rows".format(num_inactive)
+                print("  applying a solvable subset deselects {} rows".format(num_inactive), file=log(0))
             # apply baseline selection
             if self.dh.min_baseline or self.dh.max_baseline:
                 uv2 = (uvw0[:, 0:2] ** 2).sum(1)
                 inactive[uv2 < self.dh.min_baseline ** 2] = True
                 if self.dh.max_baseline:
                     inactive[uv2 > self.dh.max_baseline ** 2] = True
-                print>> log(0), "  applying solvable baseline cutoff deselects {} rows".format(
-                    inactive.sum() - num_inactive)
+                print("  applying solvable baseline cutoff deselects {} rows".format(
+                    inactive.sum() - num_inactive), file=log(0))
                 num_inactive = inactive.sum()
             if num_inactive:
-                print>> log(0), "  {:.2%} visibilities deselected via specificed subset and/or baseline cutoffs".format(num_inactive / float(inactive.size))
+                print("  {:.2%} visibilities deselected via specificed subset and/or baseline cutoffs".format(num_inactive / float(inactive.size)), file=log(0))
                 flag_arr0[inactive] |= FL.SKIPSOL
                 self.dh.flagcounts["DESEL"] += num_inactive*flag_arr0[0].size
 
@@ -706,9 +706,9 @@ class MSTile(object):
                 # occurrence so we may as well deal with it. In this case, if auto-fill is set,
                 # fill BITFLAG from FLAG/FLAG_ROW.
                 self.bflagcol = self.dh.fetchslice("BITFLAG", subset=table_subset)
-                print>> log(2), "  read BITFLAG/BITFLAG_ROW"
+                print("  read BITFLAG/BITFLAG_ROW", file=log(2))
                 # compute stats
-                for flagset, bitmask in self.dh.bitflags.iteritems():
+                for flagset, bitmask in self.dh.bitflags.items():
                     flagged = self.bflagcol & bitmask != 0
                     flagged[self.bflagrow & bitmask != 0, :, :] = True
                     self.dh.flagcounts[flagset] += flagged.sum()
@@ -734,7 +734,7 @@ class MSTile(object):
                 flag_arr0[invalid] |= FL.INVALID
                 self.dh.flagcounts.setdefault("INVALID", 0)
                 self.dh.flagcounts["INVALID"] += ninv
-                print>> log(0,"red"), "  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size))
+                print("  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size)), file=log(0,"red"))
 
             # check for invalid weights
             if self.dh.has_weights and load_model:
@@ -745,18 +745,18 @@ class MSTile(object):
                     flag_arr0[invalid] |= FL.INVWGHT
                     self.dh.flagcounts.setdefault("INVWGHT", 0)
                     self.dh.flagcounts["INVWGHT"] += ninv
-                    print>> log(0, "red"), "  {:.2%} input visibilities flagged due to inf/nan weights".format(
-                        ninv / float(flagged.size))
+                    print("  {:.2%} input visibilities flagged due to inf/nan weights".format(
+                        ninv / float(flagged.size)), file=log(0, "red"))
 
             nfl = flagged.sum()
             self.dh.flagcounts["IN"] += nfl
-            print>> log, "  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size))
+            print("  {:.2%} input visibilities flagged and/or deselected".format(nfl / float(flagged.size)), file=log)
 
             # now rebin arrays if appropriate
             if self.dh.do_freq_rebin or self.dh.do_time_rebin:
                 nrows = abs(subset.rebin_row_map[-1])+1
                 nchan = subset.rebin_chan_map[-1]+1
-                print>> log(0), "  rebinning into {} rows and {} channels".format(nrows, nchan)
+                print("  rebinning into {} rows and {} channels".format(nrows, nchan), file=log(0))
 
                 import cubical.kernels
                 rebinning = cubical.kernels.import_kernel("rebinning")
@@ -810,21 +810,21 @@ class MSTile(object):
                             for model_source, cluster in dirmodels[dirname]:
                                 # see if data for this model is already loaded
                                 if model_source in loaded_models:
-                                    print>> log(1), "  reusing {}{} for model {} direction {}".format(model_source,
+                                    print("  reusing {}{} for model {} direction {}".format(model_source,
                                                                                                       "" if not cluster else (
                                                                                                           "()" if cluster == 'die' else "({})".format(
                                                                                                               cluster)),
-                                                                                                      imod, idir)
+                                                                                                      imod, idir), file=log(1))
                                     model = loaded_models[model_source][cluster]
                                 # cluster of None signifies that this is a visibility column
                                 elif cluster is None:
                                     if model_source is 1:
-                                        print>> log(0), "  using 1.+0j for model {} direction {}".format(model_source,
-                                                                                                         imod, idir)
+                                        print("  using 1.+0j for model {} direction {}".format(model_source,
+                                                                                                         imod, idir), file=log(0))
                                         model = np.ones_like(obvis)
                                     else:
-                                        print>> log(0), "  reading {} for model {} direction {}".format(model_source, imod,
-                                                                                                        idir)
+                                        print("  reading {} for model {} direction {}".format(model_source, imod,
+                                                                                                        idir), file=log(0))
                                         model0 = self.dh.fetchslice(model_source, subset=table_subset)
                                         if self.dh.do_freq_rebin or self.dh.do_time_rebin:
                                             model = np.empty_like(obvis)
@@ -860,8 +860,8 @@ class MSTile(object):
                     flag_arr[invmodel] |= FL.INVMODEL
                     self.dh.flagcounts.setdefault("INVMODEL", 0)
                     self.dh.flagcounts["INVMODEL"] += ninv*rebin_factor
-                    print>> log(0, "red"), "  {:.2%} visibilities flagged due to 0/inf/nan model".format(
-                        ninv / float(flagged.size))
+                    print("  {:.2%} visibilities flagged due to 0/inf/nan model".format(
+                        ninv / float(flagged.size)), file=log(0, "red"))
 
             data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
 
@@ -1015,7 +1015,7 @@ class MSTile(object):
 
         data = shared_dict.attach(self._data_dict_name)
         soldict = data['solutions']
-        for key in soldict.iterkeys():
+        for key in soldict.keys():
             yield soldict[key]
 
     def save(self, final=False):
@@ -1033,12 +1033,12 @@ class MSTile(object):
 
         for subset in self._subsets:
             if subset.label is None:
-                print>> log(0, "blue"), "{}: saving MS rows {}~{}".format(self.label, self.first_row0, self.last_row0)
+                print("{}: saving MS rows {}~{}".format(self.label, self.first_row0, self.last_row0), file=log(0, "blue"))
                 data = data0
             else:
-                print>> log(0, "blue"), "{}: saving MS rows {}~{}, {} ({} rows)".format(self.label, self.first_row0,
+                print("{}: saving MS rows {}~{}, {} ({} rows)".format(self.label, self.first_row0,
                                                                                           self.last_row0, subset.label,
-                                                                                          len(subset.rows0))
+                                                                                          len(subset.rows0)), file=log(0, "blue"))
                 data = shared_dict.attach(subset.datadict)
 
             # insert output columns, if needed, and reopen MS if they were actually added
@@ -1057,7 +1057,7 @@ class MSTile(object):
 
             if self.dh.output_column and data0['updated'][0]:
                 covis = subset.upsample(data['covis'])
-                print>> log, "  writing {} column".format(self.dh.output_column)
+                print("  writing {} column".format(self.dh.output_column), file=log)
                 self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
 
             if self.dh.output_model_column and 'movis' in data:
@@ -1068,13 +1068,13 @@ class MSTile(object):
                 else:
                     model = model.sum(axis=0)
                 model = subset.upsample(model)
-                print>> log, "  writing {} column".format(self.dh.output_model_column)
+                print("  writing {} column".format(self.dh.output_model_column), file=log)
                 self.dh.putslice(self.dh.output_model_column, model, subset=table_subset)
 
             #writing outputs weights if any
             if self.dh.output_weight_column and data0['updated'][2]:
                 outweights = subset.upsample(data['outweights'])
-                print>> log, "  writing {} weight column".format(self.dh.output_weight_column)
+                print("  writing {} weight column".format(self.dh.output_weight_column), file=log)
                 self.dh.putslice(self.dh.output_weight_column, outweights, subset=table_subset)
 
             # write flags if (a) solver has generated flags, and we're saving them, (b) always, if auto-filling BITFLAG column
@@ -1097,22 +1097,22 @@ class MSTile(object):
                     self.bflagcol[newflags] |= self.dh._save_bitflag
                     bflag_col = True
                     if self.dh._save_flags:
-                        print>> log, "  {:.2%} visibilities flagged by solver: saving to BITFLAG and FLAG columns".format(ratio)
+                        print("  {:.2%} visibilities flagged by solver: saving to BITFLAG and FLAG columns".format(ratio), file=log)
                         flag_col = self.bflagcol != 0
                     else:
-                        print>> log, "  {:.2%} visibilities flagged by solver: saving to BITFLAG column only".format(ratio)
+                        print("  {:.2%} visibilities flagged by solver: saving to BITFLAG column only".format(ratio), file=log)
 
                 # else write to FLAG/FLAG_ROW only, if asked to
                 elif self.dh._save_flags:
-                    print>> log, "  {:.2%} visibilities flagged by solver: saving to FLAG column".format(ratio)
+                    print("  {:.2%} visibilities flagged by solver: saving to FLAG column".format(ratio), file=log)
                     self._flagcol[newflags] = True
                     flag_col = self._flagcol
 
                 # else just message
                 else:
-                    print>> log, "  {:.2%} visibilities flagged by solver, but we're not saving flags".format(ratio)
+                    print("  {:.2%} visibilities flagged by solver, but we're not saving flags".format(ratio), file=log)
             else:
-                print>> log, "  no new flags were generated"
+                print("  no new flags were generated", file=log)
 
             if self.dh._save_flags_apply:
                 prior_flags = subset.upsample((data['flags'] & FL.PRIOR) != 0)
@@ -1121,7 +1121,7 @@ class MSTile(object):
                 else:
                     flag_col |= prior_flags
                 ratio = prior_flags.sum() / float(prior_flags.size)
-                print>> log, "  also transferring {:.2%} input flags (--flags-save-legacy apply)".format(ratio)
+                print("  also transferring {:.2%} input flags (--flags-save-legacy apply)".format(ratio), file=log)
 
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
@@ -1129,11 +1129,11 @@ class MSTile(object):
                 self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
                 totflags = (self.bflagcol != 0).sum()
                 self.dh.flagcounts['OUT'] += totflags
-                print>> log, "  updated BITFLAG column ({:.2%} visibilities flagged)".format(totflags / float(self.bflagcol.size))
+                print("  updated BITFLAG column ({:.2%} visibilities flagged)".format(totflags / float(self.bflagcol.size)), file=log)
                 self.bflagrow = np.bitwise_and.reduce(self.bflagcol, axis=(-1, -2))
                 table_subset.putcol("BITFLAG_ROW", self.bflagrow)
-                print>> log, "  updated BITFLAG_ROW column ({:.2%} rows flagged)".format(
-                    (self.bflagrow!=0).sum()/float(self.bflagrow.size))
+                print("  updated BITFLAG_ROW column ({:.2%} rows flagged)".format(
+                    (self.bflagrow!=0).sum()/float(self.bflagrow.size)), file=log)
 
             #prevents memory leak by clearing
             self.bflagcol = self.bflagrow = None
@@ -1144,10 +1144,10 @@ class MSTile(object):
                 totflags = flag_col.sum()
                 if bflag_col is None:                  # only count if not counted above
                     self.dh.flagcounts['OUT'] += totflags
-                print>> log, "  updated FLAG column ({:.2%} visibilities flagged)".format(totflags / float(flag_col.size))
+                print("  updated FLAG column ({:.2%} visibilities flagged)".format(totflags / float(flag_col.size)), file=log)
                 flag_row = flag_col.all(axis=(-1, -2))
                 table_subset.putcol("FLAG_ROW", flag_row)
-                print>> log, "  updated FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum() / float(flag_row.size))
+                print("  updated FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum() / float(flag_row.size)), file=log)
 
             if final:
                 self.dh.finalize()

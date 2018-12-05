@@ -8,7 +8,7 @@ import numpy as np
 import cubical.kernels
 
 from cubical.tools import logger
-import machine_types
+from . import machine_types
 from cubical.flagging import FL
 log = logger.getLogger("jones_chain")
 
@@ -115,7 +115,7 @@ class JonesChain(MasterMachine):
         # prefix jones label to solution name
         for term in self.jones_terms:
             if term.solvable:
-                for label, sol in term.export_solutions().iteritems():
+                for label, sol in term.export_solutions().items():
                     soldict["{}:{}".format(term.jones_label, label)] = sol
         soldict['prefixed'] = True
 
@@ -176,7 +176,7 @@ class JonesChain(MasterMachine):
             self.cached_model_arr = cached_model_arr = np.empty_like(model_arr)
             np.copyto(cached_model_arr, model_arr)
 
-            for ind in xrange(self.n_terms - 1, self.active_index, -1):
+            for ind in range(self.n_terms - 1, self.active_index, -1):
                 term = self.jones_terms[ind]
                 term.apply_gains(cached_model_arr)
 
@@ -199,7 +199,7 @@ class JonesChain(MasterMachine):
 
         np.copyto(self.jh, self.cached_model_arr)
 
-        for ind in xrange(self.active_index, -1, -1):
+        for ind in range(self.active_index, -1, -1):
             term = self.jones_terms[ind]
             self.cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
             
@@ -214,7 +214,7 @@ class JonesChain(MasterMachine):
 
         self.cykernel.cycompute_jhr(self.jh, r, self._jhr, 1, 1)
 
-        for ind in xrange(0, self.active_index, 1):
+        for ind in range(0, self.active_index, 1):
             term = self.jones_terms[ind]
             g_inv, gh_inv, flag_counts = term.get_inverse_gains()
             self.cychain.cyapply_left_inv_jones(self._jhr, g_inv, *term.gain_intervals)
@@ -401,14 +401,14 @@ class JonesChain(MasterMachine):
             if self.active_term.solvable:
                 self.active_term.maxiter = self.term_iters.pop(0)
                 if not self.active_term.maxiter:
-                    print>> log(1), "skipping term {}: 0 term iters specified".format(self.active_term.jones_label)
+                    print("skipping term {}: 0 term iters specified".format(self.active_term.jones_label), file=log(1))
                     continue
                 self.active_term.iters = 0
                 self._convergence_states_finalized = False
-                print>> log(1), "activating term {}".format(self.active_term.jones_label)
+                print("activating term {}".format(self.active_term.jones_label), file=log(1))
                 return True
             else:
-                print>> log(1), "skipping term {}: non-solvable".format(self.active_term.jones_label)
+                print("skipping term {}: non-solvable".format(self.active_term.jones_label), file=log(1))
 
 
     def next_iteration(self):
@@ -421,8 +421,8 @@ class JonesChain(MasterMachine):
         self.last_active_index = self.active_index
 
         if self.active_term.has_converged:
-            print>>log(1),"term {} converged ({} iters): {}".format(self.active_term.jones_label,
-                        self.active_term.iters, self.active_term.final_convergence_status_string)
+            print("term {} converged ({} iters): {}".format(self.active_term.jones_label,
+                        self.active_term.iters, self.active_term.final_convergence_status_string), file=log(1))
             self._convergence_states.append(self.active_term.final_convergence_status_string)
             self._convergence_states_finalized = True
             self._next_chain_term()

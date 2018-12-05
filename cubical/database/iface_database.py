@@ -7,8 +7,7 @@ Defines database interface
 """
 import abc
 
-class iface_database(object):
-    __metaclass__ = abc.ABCMeta
+class iface_database(object, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def __init__(self):
         raise NotImplementedError("To be defined")

@@ -19,7 +19,7 @@ from cubical.tools import BREAK  # useful: can set static breakpoints by putting
 #warnings.simplefilter('error', UserWarning)
 #warnings.simplefilter('error', RuntimeWarning)
 
-from madmax.flagger import Flagger
+from .madmax.flagger import Flagger
 
 log = logger.getLogger("solver")
 #log.verbosity(2)
@@ -37,13 +37,13 @@ gm_factory = None
 ifrgain_machine = None
 
 
-import __builtin__
+import builtins
 try:
-    __builtin__.profile
+    builtins.profile
 except AttributeError:
     # No line profiler, provide a pass-through version
     def profile(func): return func
-    __builtin__.profile = profile
+    builtins.profile = profile
 
 
 @profile
@@ -119,7 +119,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         """Returns a string describing per-flagset statistics"""
         fstats = []
 
-        for flag, mask in FL.categories().iteritems():
+        for flag, mask in FL.categories().items():
             n_flag = ((flags_arr & mask) != 0).sum()
             if n_flag:
                 fstats.append("{}:{}({:.2%})".format(flag, n_flag, n_flag/float(flags_arr.size)))
@@ -151,8 +151,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     if not gm.has_valid_solutions:
         stats.chunk.num_sol_flagged, _ = gm.num_gain_flags()
 
-        print>> log, ModColor.Str("{} no solutions: {}; flags {}".format(label,
-                        gm.conditioning_status_string, get_flagging_stats()))
+        print(ModColor.Str("{} no solutions: {}; flags {}".format(label,
+                        gm.conditioning_status_string, get_flagging_stats())), file=log)
         return (obser_arr if compute_residuals else None), stats, None 
 
     # Initialize a residual array.
@@ -197,9 +197,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # The following provides conditioning information when verbose is set to > 0.
     if log.verbosity() > 0:
 
-        print>> log, "{} chi^2_0 {:.4}; {}; noise {:.3}, flags: {}".format(
+        print("{} chi^2_0 {:.4}; {}; noise {:.3}, flags: {}".format(
                         label, mean_chi, gm.conditioning_status_string,
-                        float(stats.chunk.init_noise), get_flagging_stats())
+                        float(stats.chunk.init_noise), get_flagging_stats()), file=log)
 
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
@@ -280,9 +280,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                print>> log(2), ("{} {} chi2 {:.4}, delta {:.4}, stall {:.2%}").format(
+                print(("{} {} chi2 {:.4}, delta {:.4}, stall {:.2%}").format(
                                     label, gm.current_convergence_status_string,
-                                    mean_chi, delta_chi, frac_stall)
+                                    mean_chi, delta_chi, frac_stall), file=log(2))
 
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
@@ -328,13 +328,13 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             message = "{} ({:.4}), noise {:.3} -> {:.3}".format(message,
                             float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
 
-        print>> log, message
+        print(message, file=log)
 
     # If everything has been flagged, no valid solutions are generated. 
 
     else:
         
-        print>>log(0, "red"), "{} {}: completely flagged?".format(label, gm.final_convergence_status_string)
+        print("{} {}: completely flagged?".format(label, gm.final_convergence_status_string), file=log(0, "red"))
 
         stats.chunk.chi2 = 0
         resid_arr = obser_arr
@@ -350,7 +350,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     if stats.chunk.num_sol_flagged:
         # also for up message with flagging stats
         fstats = []
-        for flagname, mask in FL.categories().iteritems():
+        for flagname, mask in FL.categories().items():
             if mask != FL.MISSING:
                 n_flag, n_tot = gm.num_gain_flags(mask)
                 if n_flag:
@@ -370,9 +370,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             warning, color = "", "blue"
         else:
             warning, color = "WARNING: ", "red"
-        print>> log(0, color), "{}{} {}: {} ({:.2%}) new data flags".format(
+        print("{}{} {}: {} ({:.2%}) new data flags".format(
             warning, label, ", ".join(flagstatus),
-            n_new_flags, n_new_flags / float(flags_arr.size))
+            n_new_flags, n_new_flags / float(flags_arr.size)), file=log(0, color))
 
     robust_weights = None
     if hasattr(gm, 'save_weights'):
@@ -808,8 +808,8 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
         return stats
 
-    except Exception, exc:
-        print>>log,ModColor.Str("Solver for tile {} chunk {} failed with exception: {}".format(itile, label, exc))
-        print>>log,traceback.format_exc()
+    except Exception as exc:
+        print(ModColor.Str("Solver for tile {} chunk {} failed with exception: {}".format(itile, label, exc)), file=log)
+        print(traceback.format_exc(), file=log)
         raise
 

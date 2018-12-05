@@ -19,13 +19,13 @@ def _normalize(x, dtype):
         return x
 
 
-import __builtin__
+import builtins
 try:
-    __builtin__.profile
+    builtins.profile
 except AttributeError:
     # No line profiler, provide a pass-through version
     def profile(func): return func
-    __builtin__.profile = profile
+    builtins.profile = profile
 
 
 class PhaseSlopeGains(ParameterisedGains):
@@ -120,14 +120,14 @@ class PhaseSlopeGains(ParameterisedGains):
 
         # defines solutions we can import from
         # Note that complex gain (as a derived parameter) is exported, but not imported
-        return { label: self.interval_grid for label in self._labels.iterkeys() }
+        return { label: self.interval_grid for label in self._labels.keys() }
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
 
         solutions = ParameterisedGains.export_solutions(self)
 
-        for label, num in self._labels.iteritems():
+        for label, num in self._labels.items():
             solutions[label] = masked_array(self.slope_params[...,num,(0,1),(0,1)]), self.interval_grid
             if self.posterior_slope_error is not None:
                 solutions[label+".err"] = masked_array(self.posterior_slope_error[..., num, :]), self.interval_grid
@@ -148,7 +148,7 @@ class PhaseSlopeGains(ParameterisedGains):
         # delay will then be left at zero).
 
         loaded = False
-        for label, num in self._labels.iteritems():
+        for label, num in self._labels.items():
             value = soldict.get(label)
             if value is not None:
                 self.slope_params[...,num,(0,1),(0,1)] = value

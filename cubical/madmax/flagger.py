@@ -13,13 +13,13 @@ log = logger.getLogger("madmax")
 # Conversion factor for sigma = SIGMA_MAD*mad
 SIGMA_MAD = 1.4826
 
-import __builtin__
+import builtins
 try:
-    __builtin__.profile
+    builtins.profile
 except AttributeError:
     # No line profiler, provide a pass-through version
     def profile(func): return func
-    __builtin__.profile = profile 
+    builtins.profile = profile 
     
 
 class Flagger(object):
@@ -116,15 +116,14 @@ class Flagger(object):
                 warning, color = "WARNING: ", "red"
             frac = nbad / float(baddies.size)
             mode = "trial-" if self._trial else ("pretend-" if self._pretend else "")
-            print>> log(1, color), \
-                "{warning}{max_label} {method} {mode}flags {nbad} ({frac:.2%}) visibilities".format(**locals())
+            print("{warning}{max_label} {method} {mode}flags {nbad} ({frac:.2%}) visibilities".format(**locals()), file=log(1, color))
             if log.verbosity() > 2 or self.GD['madmax']['plot']:
                 per_bl = []
                 total_elements = float(n_tim * n_fre)
                 interesting_fraction = self.GD['madmax']['plot-frac-above']*total_elements
                 plot_explicit_baseline = None
-                for p in xrange(n_ant):
-                    for q in xrange(p + 1, n_ant):
+                for p in range(n_ant):
+                    for q in range(p + 1, n_ant):
                         n_flagged = baddies[:, :, p, q].sum()
                         if n_flagged and n_flagged >= interesting_fraction:
                             per_bl.append((n_flagged, p, q))
@@ -135,7 +134,7 @@ class Flagger(object):
                 per_bl_str = ["{} ({}m): {} ({:.2%})".format(self.metadata.baseline_name[p,q],
                                 int(self.metadata.baseline_length[p,q]), n_flagged, n_flagged/total_elements)
                               for n_flagged, p, q in per_bl]
-                print>> log(3), "{} of which per baseline: {}".format(max_label, ", ".join(per_bl_str))
+                print("{} of which per baseline: {}".format(max_label, ", ".join(per_bl_str)), file=log(3))
                 # plot, if asked to
                 if self.GD['madmax']['plot']:
                     baselines_to_plot = []
@@ -166,12 +165,12 @@ class Flagger(object):
                         else:
                             filename = self.get_plot_filename()
                             figure.savefig(filename, dpi=300)
-                            print>>log(1),"{}: saving Mad Max flagging plot to {}".format(self.chunk_label,filename)
+                            print("{}: saving Mad Max flagging plot to {}".format(self.chunk_label,filename), file=log(1))
                         pylab.close(figure)
                         del figure
                         made_plots = True
         else:
-            print>> log(2),"{} {} abides".format(max_label, method)
+            print("{} {} abides".format(max_label, method), file=log(2))
         return made_plots
 
 
@@ -201,24 +200,24 @@ class Flagger(object):
         shape1 = [mad.shape[0], mad.shape[1]*mad.shape[2]] + list(mad.shape[3:])
         medmad = np.ma.median(mad.reshape(shape1), axis=1)
         # all this was worth it, just so I could type "mad.max()" as legit code
-        print>>log(2),"{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f} to {:.2f}".format(max_label, mad.min(), mad.max(), medmad.min(), medmad.max())
+        print("{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f} to {:.2f}".format(max_label, mad.min(), mad.max(), medmad.min(), medmad.max()), file=log(2))
         if log.verbosity() > 4:
-            for imod in xrange(n_mod):
+            for imod in range(n_mod):
                 if self.mad_per_corr:
                     for ic1,c1 in enumerate(self.metadata.feeds):
                         for ic2,c2 in enumerate(self.metadata.feeds):
-                            per_bl = [(mad[imod,p,q,ic1,ic2], p, q) for p in xrange(n_ant)
-                                      for q in xrange(p+1, n_ant) if not mad.mask[imod,p,q,ic1,ic2]]
+                            per_bl = [(mad[imod,p,q,ic1,ic2], p, q) for p in range(n_ant)
+                                      for q in range(p+1, n_ant) if not mad.mask[imod,p,q,ic1,ic2]]
                             per_bl = ["{} ({}m): {:.2f}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
                                       for x, p, q in sorted(per_bl)[::-1]]
-                            print>>log(4),"{} model {} {}{} MADs are {}".format(max_label, imod,
-                                                                                c1.upper(), c2.upper(), ", ".join(per_bl))
+                            print("{} model {} {}{} MADs are {}".format(max_label, imod,
+                                                                                c1.upper(), c2.upper(), ", ".join(per_bl)), file=log(4))
                 else:
-                    per_bl = [(mad[imod,p,q,], p, q) for p in xrange(n_ant)
-                              for q in xrange(p+1, n_ant) if not mad.mask[imod,p,q]]
+                    per_bl = [(mad[imod,p,q,], p, q) for p in range(n_ant)
+                              for q in range(p+1, n_ant) if not mad.mask[imod,p,q]]
                     per_bl = ["{} ({}m) {:.2f}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
                               for x, p, q in sorted(per_bl)[::-1]]
-                    print>>log(4),"{} model {} MADs are {}".format(max_label, imod, ", ".join(per_bl))
+                    print("{} model {} MADs are {}".format(max_label, imod, ", ".join(per_bl)), file=log(4))
 
 
         made_plots = False
@@ -267,23 +266,23 @@ class Flagger(object):
                 if self.mad_per_corr:
                     outflags = outflags.any(axis=(-1,-2))
                 if self.GD['madmax']['flag-ant'] and not self._pretend:
-                    print>>log(0, "red"),"{} baselines {}flagged on mad residuals (--madmax-flag-ant 1)".format(
-                                            outflags.sum()/2, "trial-" if self._trial else "")
+                    print("{} baselines {}flagged on mad residuals (--madmax-flag-ant 1)".format(
+                                            outflags.sum()/2, "trial-" if self._trial else ""), file=log(0, "red"))
                     flags_arr[:,:,outflags] |= self.flagbit
                     model_arr[:,:,:,:,outflags,:,:] = 0
                     data_arr[:,:,:,outflags,:,:] = 0
                 else:
-                    print>>log(0, "red"),"{} baselines would have been flagged due to mad residuals (use --madmax-flag-ant)".format(outflags.sum()/2)
+                    print("{} baselines would have been flagged due to mad residuals (use --madmax-flag-ant)".format(outflags.sum()/2), file=log(0, "red"))
 
             if self.GD['madmax']['plot'] == 'show':
                 pylab.show()
             else:
                 filename = self.get_plot_filename('mads')
-                print>>log(1),"{}: saving MAD distribution plot to {}".format(self.chunk_label,filename)
+                print("{}: saving MAD distribution plot to {}".format(self.chunk_label,filename), file=log(1))
                 figure.savefig(filename, dpi=300)
-                import cPickle
+                import pickle
                 pickle_file = filename+".cp"
-                cPickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "w"), 2)
-                print>>log(1),"{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file)
+                pickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "w"), 2)
+                print("{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file), file=log(1))
             pylab.close(figure)
             del figure

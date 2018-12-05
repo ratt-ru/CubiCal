@@ -35,5 +35,5 @@ def make_summary_plots(st, ms, GD, basename):
     """
     stats.make_stats_plots(st, GD, basename, ms.metadata)
 
-import ifrgains, stats
+from . import ifrgains, stats
 
