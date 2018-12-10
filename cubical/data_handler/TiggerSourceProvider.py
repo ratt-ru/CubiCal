@@ -124,7 +124,11 @@ class TiggerSourceProvider(SourceProvider):
                 # I think this should be "or 1"
                 rf = self._sm.freq0 or 0
 
-            a = source.spectrum.spi
+            try:
+                a = source.spectrum.spi
+            except AttributeErro:
+                a = 0
+
             spectrum = (f/rf)**a
 
             # Multiply flux into the spectrum,
@@ -171,7 +175,11 @@ class TiggerSourceProvider(SourceProvider):
                 # I think this should be "or 1"
                 rf = self._sm.freq0 or 0
 
-            a = source.spectrum.spi
+            try:
+                a = source.spectrum.spi
+            except AttributeError:
+                a = 0
+
             spectrum = (f/rf)**a
 
             # Multiply flux into the spectrum,
