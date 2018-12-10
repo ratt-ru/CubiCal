@@ -127,10 +127,12 @@ class TiggerSourceProvider(SourceProvider):
             a = source.spectrum.spi
             spectrum = (f/rf)**a
 
-            stokes[ind, :, :, 0] = source.flux.I[None, None]*spectrum
-            stokes[ind, :, :, 1] = source.flux.Q[None, None]*spectrum
-            stokes[ind, :, :, 2] = source.flux.U[None, None]*spectrum
-            stokes[ind, :, :, 3] = source.flux.V[None, None]*spectrum
+            # Multiply flux into the spectrum,
+            # broadcasting into the time dimension
+            stokes[ind, :, :, 0] = source.flux.I*spectrum[None, :]
+            stokes[ind, :, :, 1] = source.flux.Q*spectrum[None, :]
+            stokes[ind, :, :, 2] = source.flux.U*spectrum[None, :]
+            stokes[ind, :, :, 3] = source.flux.V*spectrum[None, :]
 
         return stokes
 
@@ -172,10 +174,12 @@ class TiggerSourceProvider(SourceProvider):
             a = source.spectrum.spi
             spectrum = (f/rf)**a
 
-            stokes[ind, :, :, 0] = source.flux.I[None, None]*spectrum
-            stokes[ind, :, :, 1] = source.flux.Q[None, None]*spectrum
-            stokes[ind, :, :, 2] = source.flux.U[None, None]*spectrum
-            stokes[ind, :, :, 3] = source.flux.V[None, None]*spectrum
+            # Multiply flux into the spectrum,
+            # broadcasting into the time dimension
+            stokes[ind, :, :, 0] = source.flux.I*spectrum[None, :]
+            stokes[ind, :, :, 1] = source.flux.Q*spectrum[None, :]
+            stokes[ind, :, :, 2] = source.flux.U*spectrum[None, :]
+            stokes[ind, :, :, 3] = source.flux.V*spectrum[None, :]
 
         return stokes
 
