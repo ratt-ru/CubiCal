@@ -122,21 +122,21 @@ class TiggerSourceProvider(SourceProvider):
             except AttributeError:
                 # TODO(jkenyon, osmirnov)
                 # I think this should be "or 1"
-                rf = self._sm.freq0 or 0
+                rf = self._sm.freq0 or 1
 
             try:
                 a = source.spectrum.spi
             except AttributeError:
                 a = 0
 
-            spectrum = (f/rf)**a
+            spectrum = ((f/rf)**a)[None, :]
 
             # Multiply flux into the spectrum,
             # broadcasting into the time dimension
-            stokes[ind, :, :, 0] = source.flux.I*spectrum[None, :]
-            stokes[ind, :, :, 1] = source.flux.Q*spectrum[None, :]
-            stokes[ind, :, :, 2] = source.flux.U*spectrum[None, :]
-            stokes[ind, :, :, 3] = source.flux.V*spectrum[None, :]
+            stokes[ind, :, :, 0] = source.flux.I*spectrum
+            stokes[ind, :, :, 1] = source.flux.Q*spectrum
+            stokes[ind, :, :, 2] = source.flux.U*spectrum
+            stokes[ind, :, :, 3] = source.flux.V*spectrum
 
         return stokes
 
@@ -173,21 +173,21 @@ class TiggerSourceProvider(SourceProvider):
             except AttributeError:
                 # TODO(jkenyon, osmirnov)
                 # I think this should be "or 1"
-                rf = self._sm.freq0 or 0
+                rf = self._sm.freq0 or 1
 
             try:
                 a = source.spectrum.spi
             except AttributeError:
                 a = 0
 
-            spectrum = (f/rf)**a
+            spectrum = ((f/rf)**a)[None, :]
 
             # Multiply flux into the spectrum,
             # broadcasting into the time dimension
-            stokes[ind, :, :, 0] = source.flux.I*spectrum[None, :]
-            stokes[ind, :, :, 1] = source.flux.Q*spectrum[None, :]
-            stokes[ind, :, :, 2] = source.flux.U*spectrum[None, :]
-            stokes[ind, :, :, 3] = source.flux.V*spectrum[None, :]
+            stokes[ind, :, :, 0] = source.flux.I*spectrum
+            stokes[ind, :, :, 1] = source.flux.Q*spectrum
+            stokes[ind, :, :, 2] = source.flux.U*spectrum
+            stokes[ind, :, :, 3] = source.flux.V*spectrum
 
         return stokes
 
