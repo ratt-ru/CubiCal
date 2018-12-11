@@ -118,16 +118,18 @@ class TiggerSourceProvider(SourceProvider):
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
             try:
-                rf = source.spectrum.freq0
-            except AttributeError:
-                # TODO(jkenyon, osmirnov)
-                # I think this should be "or 1"
-                rf = self._sm.freq0 or 1
-
-            try:
                 a = source.spectrum.spi
             except AttributeError:
-                a = 0
+                a = 0.0
+
+            try:
+                rf = last_freq0 = source.spectrum.freq0
+            except AttributeError:
+                try:
+                    rf = last_freq0 = self._sm.freq0 or last_freq0
+                except NameError as e:
+                    assert 'last_freq0' in e.message
+                    a, rf = 0.0, 1.0  # Force a flat spectrum
 
             spectrum = ((f/rf)**a)[None, :]
 
@@ -169,16 +171,18 @@ class TiggerSourceProvider(SourceProvider):
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
             try:
-                rf = source.spectrum.freq0
-            except AttributeError:
-                # TODO(jkenyon, osmirnov)
-                # I think this should be "or 1"
-                rf = self._sm.freq0 or 1
-
-            try:
                 a = source.spectrum.spi
             except AttributeError:
-                a = 0
+                a = 0.0
+
+            try:
+                rf = last_freq0 = source.spectrum.freq0
+            except AttributeError:
+                try:
+                    rf = last_freq0 = self._sm.freq0 or last_freq0
+                except NameError as e:
+                    assert 'last_freq0' in e.message
+                    a, rf = 0.0, 1.0  # Force a flat spectrum
 
             spectrum = ((f/rf)**a)[None, :]
 
