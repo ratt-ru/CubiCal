@@ -114,7 +114,7 @@ class TiggerSourceProvider(SourceProvider):
         # (npsrc, ntime, nchan, 4)
         stokes = np.empty(context.shape, context.dtype)
 
-        f = self._freqs[None, lc:uc]
+        f = self._freqs[lc:uc]
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
             try:
@@ -126,7 +126,7 @@ class TiggerSourceProvider(SourceProvider):
 
             try:
                 a = source.spectrum.spi
-            except AttributeErro:
+            except AttributeError:
                 a = 0
 
             spectrum = (f/rf)**a
@@ -165,7 +165,7 @@ class TiggerSourceProvider(SourceProvider):
         # (npsrc, ntime, nchan, 4)
         stokes = np.empty(context.shape, context.dtype)
 
-        f = self._freqs[None, lc:uc]
+        f = self._freqs[lc:uc]
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
             try:
