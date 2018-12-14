@@ -1,18 +1,20 @@
 FROM kernsuite/base:4
 
-RUN docker-apt-install casacore-dev \
-                   casacore-data \
-                   build-essential \
-                   python-pip \
-                   libboost-all-dev \
-                   wcslib-dev \
-                   libcfitsio-dev \
-                   python-numpy \
-                   python-casacore
+RUN docker-apt-install \
+	casacore-dev \
+	casacore-data \
+	build-essential \
+	python-pip \
+	libboost-all-dev \
+	wcslib-dev \
+	libcfitsio-dev \
+	python-numpy \
+	python-casacore \
+	python-pytest \
+	cython
 
-RUN pip install -U pip cython pytest
 ADD . /code
 WORKDIR /code
 RUN python setup.py gocythonize
-RUN python setup.py build_ext
-RUN pytest
+RUN python setup.py build_ext --inplace
+RUN PYTHONPATH=. python test/kernels_test.py
