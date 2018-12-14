@@ -23,7 +23,7 @@ def conj2x2(x, y):
 
 def reroll_array(arr, axes):
     """Returns array where the axes are stored in a specific order"""
-    axes = axes or range(len(arr.shape))
+    axes = axes or list(range(len(arr.shape)))
     realarray = arr.transpose(axes).copy(order='C')
     return realarray.transpose(np.argsort(axes))
 
@@ -55,7 +55,7 @@ class UnorderedArrays(object):
         else:
             self._gshape = self._pshape = self._intshape
         if allocate:
-            self.f = np.zeros(self._pshape[:-2], np.uint16)
+            self.f = np.zeros([int(i) for i in self._pshape[:-2]], np.uint16)
         if jhrshape:
             self._jhrshape = self._pshape[:-2] + jhrshape
         else:
@@ -63,8 +63,8 @@ class UnorderedArrays(object):
         if pshape:
             self._pshape = self._pshape[:-2] + pshape
         if allocate:
-            self.g = np.zeros(self._gshape, dtype)
-            self.p = np.zeros(self._pshape, ptype)
+            self.g = np.zeros([int(i) for i in self._gshape], dtype)
+            self.p = np.zeros([int(i) for i in self._pshape], ptype)
 
         if kernel:
             self._kernel_name = kernel.__name__
@@ -72,7 +72,7 @@ class UnorderedArrays(object):
             self._kernel_name = None
 
         self.na = na
-        self.baselines = [(p, q) for p in xrange(self.na) for q in xrange(self.na) if p < q]
+        self.baselines = [(p, q) for p in range(self.na) for q in range(self.na) if p < q]
         if allocate:
             for p, q in self.baselines:
                 if diagmodel:
@@ -84,7 +84,7 @@ class UnorderedArrays(object):
                     fillrand(self.m[..., p, q, :, :])
                 conj2x2(self.o[..., q, p, :, :], self.o[..., p, q, :, :])
                 conj2x2(self.m[..., q, p, :, :], self.m[..., p, q, :, :])
-            for p in xrange(self.na):
+            for p in range(self.na):
                 if diaggain:
                     for c in 0, 1:
                         fillrand(self.g[..., p, c, c])
@@ -94,18 +94,18 @@ class UnorderedArrays(object):
 
     def fillrest(self):
         self.gh = np.zeros_like(self.g)
-        for p in xrange(self.na):
+        for p in range(self.na):
             conj2x2(self.gh[..., p, :, :], self.g[..., p, :, :])
         self.jh = np.zeros_like(self.m)
-        self.jhr = np.zeros(self._jhrshape, self._ptype)
+        self.jhr = np.zeros([int(i) for i in self._jhrshape], self._ptype)
         self.jhj = np.zeros_like(self.jhr)
         self.jhjinv = np.zeros_like(self.jhj)
         self.corr = np.zeros_like(self.o)
 
     def printshapes(self):
-        for name, value in self.__dict__.iteritems():
+        for name, value in self.__dict__.items():
             if type(value) is np.ndarray:
-                print("   .{}: {}".format(name, value.shape))
+                print(("   .{}: {}".format(name, value.shape)))
 
 
 class OrderedArrays(UnorderedArrays):
@@ -128,7 +128,7 @@ class OrderedArrays(UnorderedArrays):
             np.copyto(getattr(self, arr), getattr(other, arr))
         # populate derived arrays
         self.fillrest()
-        print "Array shapes are:"
+        print("Array shapes are:")
         self.printshapes()
 
 
@@ -148,7 +148,7 @@ nfailed = 0
 
 def benchmark(code, name, n=3):
     res = timeit.repeat(code, repeat=n, number=1)
-    print "{:70}: {:.2f}ms (best of {})".format(name, min(res) * 1000, n)
+    print("{:70}: {:.2f}ms (best of {})".format(name, min(res) * 1000, n))
 
 
 def benchmark_all(module, function_name, arguments, setup=None, check=None, notes=''):
@@ -159,7 +159,7 @@ def benchmark_all(module, function_name, arguments, setup=None, check=None, note
             setup()
         benchmark(lambda: getattr(module, funcname)(*arguments), "{}.{} ({})".format(modname, funcname, notes))
         if check is not None and not check():
-            print "*** FAIL ***"
+            print("*** FAIL ***")
             global nfailed
             nfailed += 1
 
@@ -200,8 +200,8 @@ def main(args=None):
     refkern = cubical.kernels.import_kernel(refkern_name)
     testkerns = [kernels[name] for name in kernel_names]
 
-    print "\n### Reference kernel:", refkern_name
-    print "### Test kernels:", " ".join(kernel_names)
+    print("\n### Reference kernel:", refkern_name)
+    print("### Test kernels:", " ".join(kernel_names))
 
     nt, nf, na = args.nt, args.nf, args.na,
 
@@ -210,9 +210,9 @@ def main(args=None):
     THREADS = [1] if not args.omp else [1, args.omp]
     NDIRS = [1] if not args.nd else args.nd
 
-    print "### {} threads, {} dirs, {} times, {} freqs, {} antennas, intervals {} {}\n".format(THREADS, NDIRS, nt, nf,
-                                                                                               na, t_int, f_int)
-    print "### ordered memory layout determined by {} kernel".format(kernel_names[0])
+    print("### {} threads, {} dirs, {} times, {} freqs, {} antennas, intervals {} {}\n".format(THREADS, NDIRS, nt, nf,
+                                                                                               na, t_int, f_int))
+    print("### ordered memory layout determined by {} kernel".format(kernel_names[0]))
 
     def benchmark_function(function, arguments, setup=None, check=None):
         for kern in testkerns:
@@ -253,7 +253,7 @@ def main(args=None):
                                 diagmodel=args.diagmodel, kernel=refkern)
             o = OrderedArrays(u, testkerns[0], pshape=[nparm, 2, 2], jhrshape=[nb, 2, 2])
 
-            print "\n### Testing {} directions, model shape is {}\n".format(nd, u.m.shape)
+            print("\n### Testing {} directions, model shape is {}\n".format(nd, u.m.shape))
 
             print('*** RES')
 
@@ -358,7 +358,7 @@ def main(args=None):
                                 diagmodel=args.diagmodel, kernel=refkern)
             o = OrderedArrays(u, testkerns[0])
 
-            print "\n### Testing {} directions, model shape is {}\n".format(nd, u.m.shape)
+            print("\n### Testing {} directions, model shape is {}\n".format(nd, u.m.shape))
 
             print('*** RES')
 

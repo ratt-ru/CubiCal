@@ -16,7 +16,7 @@ def kw_to_args(**kw):
         cmd = "--sol-jones {} ".format(kw.pop("sol_jones"))
     else:
         cmd = ""
-    cmd += " ".join(["--{} {}".format(name.replace("_", "-"), value) for name, value in kw.items()])
+    cmd += " ".join(["--{} {}".format(name.replace("_", "-"), value) for name, value in list(kw.items())])
     return cmd
 
 
