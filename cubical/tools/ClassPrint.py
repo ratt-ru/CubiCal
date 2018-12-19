@@ -6,6 +6,7 @@
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
+from __future__ import print_function
 import os
 import sys
 from . import ModColor

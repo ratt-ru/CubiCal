@@ -128,7 +128,11 @@ if on_rtd:
                     'cython',
                     'futures',
                     'matplotlib',
-                    'scipy']
+                    'scipy',
+                    'configparser',
+                    'future',
+                    'six',
+                    ]
 else:
     requirements = ['numpy',
                     'futures',
@@ -137,7 +141,11 @@ else:
                     'matplotlib<3.0',
                     'cython',
                     'scipy',
-                    'astro-tigger-lsm']
+                    'astro-tigger-lsm',
+                    'configparser',
+                    'future',
+                    'six',
+                    ]
 
 setup(name='cubical',
       version=cubical.VERSION,

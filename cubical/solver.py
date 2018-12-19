@@ -5,13 +5,13 @@
 """
 Implements the solver loop.
 """
+from __future__ import print_function
 import numpy as np
-import os, os.path
 import traceback
 from cubical.tools import logger, ModColor
 from cubical.flagging import FL
 from cubical.statistics import SolverStats
-from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code
+
 
 ## uncomment this to make UserWarnings (from e.g. numpy.ma) into full-blown exceptions
 ## TODO: add a --debug-catch-warnings option for this?
@@ -46,7 +46,7 @@ except AttributeError:
     builtins.profile = profile
 
 
-@profile
+@builtins.profile
 def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     Main body of the GN/LM method. Handles iterations and convergence tests.

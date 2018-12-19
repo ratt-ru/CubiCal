@@ -2,9 +2,11 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
+from six import string_types
 import numpy as np
 from collections import OrderedDict
-import pyrap.tables as pt
+import casacore.tables as pt
 import pickle
 import re
 import traceback
@@ -27,6 +29,7 @@ log = logger.getLogger("data_handler")
 def _divide_up(n, k):
     """For two integers n and k, returns ceil(n/k)"""
     return n//k + (1 if n%k else 0)
+
 
 def _parse_slice(arg, what="slice"):
     """
@@ -110,7 +113,9 @@ def _parse_range(arg, nmax):
 
     return fullrange[_parse_slice(arg, "range or slice")]
 
+
 _prefixes = dict(m=1e-3, k=1e+3, M=1e+6, G=1e+9, T=1e+12)
+
 
 def _parse_bin(binspec, units, default_int=None, default_float=None, kind='bin'):
     """
@@ -122,7 +127,7 @@ def _parse_bin(binspec, units, default_int=None, default_float=None, kind='bin')
         return default_int, default_float
     elif type(binspec) is int:
         return binspec, default_float
-    elif type(binspec) is str:
+    elif isinstance(binspec, string_types):
         for unit, multiplier in list(units.items()):
             if binspec.endswith(unit) and len(binspec) > len(unit):
                 xval = binspec[:-len(unit)]
@@ -139,6 +144,7 @@ def _parse_bin(binspec, units, default_int=None, default_float=None, kind='bin')
 def _parse_timespec(timespec, default_int=None, default_float=None):
     return _parse_bin(timespec, dict(s=1, m=60, h=3600),
                       default_int, default_float, "time")
+
 
 def _parse_freqspec(freqspec, default_int=None, default_float=None):
     return _parse_bin(freqspec, dict(Hz=1),
@@ -698,7 +704,7 @@ class MSDataHandler:
                 Result of getcol(\*args, \*\*kwargs).
         """
 
-        return (subset or self.data).getcol(colname, first_row, nrows)
+        return (subset or self.data).getcol(str(colname), first_row, nrows)
 
     def fetchslice(self, column, startrow=0, nrows=-1, subset=None):
         """
@@ -764,7 +770,7 @@ class MSDataHandler:
         # if no slicing, just use putcol to put the whole thing. This always works,
         # unless the MS is screwed up
         if self._ms_blc == None:
-            return subset.putcol(column, value, startrow, nrows)
+            return subset.putcol(str(column), value, startrow, nrows)
         # A variable-shape column may be uninitialized, in which case putcolslice will not work.
         # But we try it first anyway, especially if the first row of the block looks initialized
         if self.data.iscelldefined(column, startrow):
@@ -1083,7 +1089,7 @@ class MSDataHandler:
             bitflags = flagging.Flagsets(self.ms)
 
         if auto_init:
-            if type(auto_init) is not str:
+            if type(auto_init) not in [str, unicode]:
                 raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
             if auto_init in bitflags.names():
                 print("  bitflag '{}' already exists, will not auto-fill".format(auto_init), file=log(0))
@@ -1112,7 +1118,7 @@ class MSDataHandler:
                 # --flags-apply specified as a bitmask, or a single string, or a single negated string, or a list of strings
                 if type(apply_flags) is int:
                     self._apply_bitflags = apply_flags
-                elif type(apply_flags) is not str:
+                elif type(apply_flags) not in [str, unicode]:
                     raise ValueError("Illegal --flags-apply setting -- string or bitmask values expected")
                 else:
                     print("  BITFLAG column defines the following flagsets: {}".format(
@@ -1279,7 +1285,7 @@ class MSDataHandler:
             # new column needs to be inserted -- get column description from column 'like_col'
             print("  inserting new column %s" % (col_name), file=log)
             desc = self.ms.getcoldesc(like_col)
-            desc['name'] = col_name
+            desc['name'] = str(col_name)
             desc['comment'] = desc['comment'].replace(" ", "_")  # got this from Cyril, not sure why
             dminfo = self.ms.getdminfo(like_col)
             dminfo["NAME"] =  "{}-{}".format(dminfo["NAME"], col_name)

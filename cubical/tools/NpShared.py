@@ -8,7 +8,9 @@
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
 #import sharedarray.SharedArray as SharedArray
+from __future__ import print_function
 import SharedArray
+import numpy as np
 from . import ModColor
 from . import logger
 import traceback
@@ -256,7 +258,7 @@ def PackListSquareMatrix(shared_dict, Name, LArray):
 
 def UnPackListSquareMatrix(Array):
     LArray = []
-    S = GiveArray(Array) if type(Array) is str else Array
+    S = GiveArray(Array) if isinstance(Array, string_types) else Array
 
     NArray = np.int32(S[0].real)
     idx = 1

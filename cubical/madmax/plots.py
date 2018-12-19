@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as np
 
 from cubical.tools import BREAK  # useful: can set static breakpoints by putting BREAK() in the code

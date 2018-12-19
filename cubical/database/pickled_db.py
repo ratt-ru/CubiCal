@@ -5,7 +5,7 @@
 """
 Handles parameter databases which can contain solutions and other relevant values. 
 """
-
+from __future__ import print_function
 import pickle, os, os.path
 import numpy as np
 import traceback
@@ -186,6 +186,9 @@ class PickledDatabase(iface_database):
                 return pickle.load(self.fobj)
             except EOFError:
                 raise StopIteration
+
+        def next(self):
+            return self.__next__()
 
     def _load(self, filename):
         """

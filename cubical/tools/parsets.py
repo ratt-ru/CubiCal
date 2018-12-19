@@ -111,7 +111,7 @@ def parse_config_string(string, name='config', extended=True, type=None):
     # interpret explicit types
     if type:
         # make sure None string is still None
-        if type is str and string == "None" or string == "none":
+        if type in [str, unicode] and string == "None" or string == "none":
             return None, attrs
         # make sure False/True etc. are interpreted as booleans
         if type is bool:

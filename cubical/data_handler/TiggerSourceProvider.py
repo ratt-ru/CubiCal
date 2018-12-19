@@ -5,16 +5,10 @@
 """
 Source provider for reading source information from a Tigger lsm.
 """
-
-import logging
+from six import string_types
 import numpy as np
-
-import montblanc
-
 from montblanc.impl.rime.tensorflow.sources import SourceProvider
-
 import Tigger
-import pyrap.tables as pt
 
 
 class TiggerSourceProvider(SourceProvider):
@@ -224,7 +218,7 @@ def cluster_sources(sm, dde_tag):
         if dde_tag:
             tagvalue = src.getTag(dde_tag)
             if tagvalue:
-                if type(tagvalue) is str:
+                if isinstance(tagvalue, string_types):
                     dde_cluster = tagvalue
                 else:
                     dde_cluster = src.getTag('cluster')

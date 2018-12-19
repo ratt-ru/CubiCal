@@ -17,4 +17,5 @@ ADD . /code
 WORKDIR /code
 RUN python setup.py gocythonize
 RUN python setup.py build_ext --inplace
+RUN pip install -e .
 RUN PYTHONPATH=. python test/kernels_test.py

@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as np
 import os, os.path
 import traceback
@@ -102,7 +103,7 @@ class Flagger(object):
         self._plotnum += 1
         return filename
 
-    @profile
+    @builtins.profile
     def report_carnage(self, absres, mad, baddies, flags_arr, method, max_label):
         made_plots = False
         n_tim, n_fre, n_ant, n_ant = baddies.shape
@@ -174,7 +175,7 @@ class Flagger(object):
         return made_plots
 
 
-    @profile
+    @builtins.profile
     def beyond_thunderdome(self, resid_arr, data_arr, model_arr, flags_arr, threshold, med_threshold, max_label):
         """This function implements MAD-based flagging on residuals"""
         if not threshold and not med_threshold:

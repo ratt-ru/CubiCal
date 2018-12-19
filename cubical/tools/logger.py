@@ -6,6 +6,7 @@
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
+from __future__ import print_function
 import logging, logging.handlers, os, re, sys, multiprocessing
 from . import ModColor
 
@@ -295,7 +296,7 @@ def setGlobalVerbosity(verbosity):
     # ensure verbosity is turned into a list.
     if type(verbosity) is int:
         verbosity = [verbosity]
-    elif type(verbosity) is str:
+    elif isinstance(verbosity, string_types):
         verbosity = verbosity.split(",")
     elif not isinstance(verbosity, (list, tuple)):
         raise TypeError("can't parse verbosity specification of type '{}'".format(type(verbosity)))
@@ -320,7 +321,7 @@ def setGlobalLogVerbosity(verbosity):
     # ensure verbosity is turned into a list.
     if type(verbosity) is int:
         verbosity = [verbosity]
-    elif type(verbosity) is str:
+    elif isinstance(verbosity, string_types):
         verbosity = verbosity.split(",")
     elif not isinstance(verbosity, (list, tuple)):
         raise TypeError("can't parse verbosity specification of type '{}'".format(type(verbosity)))
@@ -342,7 +343,7 @@ def setGlobalLogVerbosity(verbosity):
 def setSilent(Lname):
     """Silences the specified sublogger(s)"""
     print(ModColor.Str("set silent: %s" % Lname, col="red"), file=log)
-    if type(Lname) is str:
+    if isinstance(Lname, string_types):
         getLogger(Lname).logger.setLevel(logging.CRITICAL)
     elif type(Lname) is list:
         for name in Lname:
@@ -352,7 +353,7 @@ def setSilent(Lname):
 def setLoud(Lname):
     """Un-silences the specified sublogger(s)"""
     print(ModColor.Str("set loud: %s" % Lname, col="green"), file=log)
-    if type(Lname) is str:
+    if isinstance(Lname, string_types):
         getLogger(Lname).logger.setLevel(logging.DEBUG)
     elif type(Lname) is list:
         for name in Lname:

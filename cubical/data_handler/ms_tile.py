@@ -2,6 +2,7 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
 import numpy as np
 from collections import OrderedDict
 import traceback
@@ -635,7 +636,7 @@ class MSTile(object):
                 for i, (_, weight_col) in enumerate(self.dh.models):
                     if weight_col not in wcol_cache:
                         print("  reading weights from {}".format(weight_col), file=log(1))
-                        wcol = table_subset.getcol(weight_col)
+                        wcol = table_subset.getcol(str(weight_col))
                         # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
                         if weight_col == "WEIGHT":
                             wcol_cache[weight_col] = np.empty_like(obvis0, self.dh.wtype)

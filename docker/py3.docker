@@ -17,4 +17,5 @@ ADD . /code
 WORKDIR /code
 RUN python3 setup.py gocythonize
 RUN python3 setup.py build_ext --inplace
-RUN PYTHONPATH=. python3 test/kernels_test.py
+RUN pip3 install -e .
+RUN PYTHONPATH=/code python3 test/kernels_test.py

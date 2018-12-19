@@ -8,6 +8,7 @@ Handles the flagging of data.
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does, 
 # even if one is only trying to save figures to .png.
+from __future__ import print_function
 import numpy as np
 import re
 

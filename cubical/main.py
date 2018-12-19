@@ -13,7 +13,8 @@ Main code body. Handles options, invokes solvers and manages multiprocessing.
 #         logging.root.removeHandler(handler)
 #     logging.getLogger('vext').setLevel(logging.WARNING)
 ##
-
+from __future__ import print_function
+from six import string_types
 import pickle
 import os, os.path
 import sys
@@ -49,16 +50,18 @@ from cubical.statistics import SolverStats
 
 GD = None
 
+
 class UserInputError(Exception):
     pass
 
 # set to true with --Debug-Pdb 1, causes pdb to be invoked on exception
 enable_pdb = True
 
+
 def debug():
     """ Calls the main() function in debugging mode. """
-
     main(debugging=True)
+
 
 def main(debugging=False, args=None):
     """
@@ -190,7 +193,7 @@ def main(debugging=False, args=None):
         solver_opts = GD["sol"]
         debug_opts  = GD["debug"]
         sol_jones = solver_opts["jones"]
-        if type(sol_jones) is str:
+        if isinstance(sol_jones, string_types):
             sol_jones = set(sol_jones.split(','))
         jones_opts = [GD[j.lower()] for j in sol_jones]
         # collect list of options from enabled Jones matrices
@@ -289,7 +292,7 @@ def main(debugging=False, args=None):
             if type(subdirs) is int:
                 subdirs = [subdirs]
             if subdirs:
-                if type(subdirs) is str:
+                if isinstance(subdirs, string_types):
                     try:
                         if ',' in subdirs:
                             subdirs = list(map(int, subdirs.split(",")))
@@ -339,7 +342,7 @@ def main(debugging=False, args=None):
         # set up chunking
 
         chunk_by = GD["data"]["chunk-by"]
-        if type(chunk_by) is str:
+        if isinstance(chunk_by, string_types):
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
