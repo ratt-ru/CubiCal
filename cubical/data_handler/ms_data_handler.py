@@ -983,9 +983,7 @@ class MSDataHandler:
         print("  generated {} row chunks based on time and DDID".format(len(chunklist)), file=log)
 
         # re-sort these row chunks into naturally increasing order (by first row of each chunk)
-        def _compare_chunks(a, b):
-            return cmp(a.rows[0], b.rows[0])
-        chunklist.sort(cmp=_compare_chunks)
+        chunklist.sort(key=lambda x: x.rows[0])
 
         # now, break the row chunks into tiles. Tiles are an "atom" of I/O. First, we try to define each tile as a
         # sequence of overlapping row chunks (i.e. chunks such that the first row of a subsequent chunk comes before
@@ -1089,7 +1087,7 @@ class MSDataHandler:
             bitflags = flagging.Flagsets(self.ms)
 
         if auto_init:
-            if type(auto_init) not in [str, unicode]:
+            if not isinstance(auto_init, string_types):
                 raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
             if auto_init in bitflags.names():
                 print("  bitflag '{}' already exists, will not auto-fill".format(auto_init), file=log(0))
@@ -1118,7 +1116,7 @@ class MSDataHandler:
                 # --flags-apply specified as a bitmask, or a single string, or a single negated string, or a list of strings
                 if type(apply_flags) is int:
                     self._apply_bitflags = apply_flags
-                elif type(apply_flags) not in [str, unicode]:
+                elif not isinstance(apply_flags, string_types):
                     raise ValueError("Illegal --flags-apply setting -- string or bitmask values expected")
                 else:
                     print("  BITFLAG column defines the following flagsets: {}".format(

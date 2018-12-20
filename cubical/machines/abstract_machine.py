@@ -655,7 +655,7 @@ class MasterMachine(with_metaclass(ABCMeta, object)):
                     if fname == filename:
                         break
                     filename = fname
-                return filename
+                return str(filename)
             except Exception as exc:
                 print("{}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc()), file=log)
                 print(ModColor.Str("Error parsing filename '{}', see above".format(filename)), file=log)

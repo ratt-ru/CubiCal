@@ -67,7 +67,7 @@ class SharedDict (dict):
             except:
                 print("Error loading item %s" % self.path)
                 traceback.print_exc()
-                return SharedDict.ItemLoadError(path, sys.exc_info())
+                return SharedDict.ItemLoadError(self.path, sys.exc_info())
 
     class SharedArrayProxy (ItemProxy):
         def load_impl(self):
@@ -264,7 +264,7 @@ class SharedDict (dict):
             value = dict1
         # all other types, just use pickle
         else:
-            pickle.dump(value, file(path+'p', "w"), 2)
+            pickle.dump(value, open(path+'p', "wb"), 2)
         dict.__setitem__(self, item, value)
 
     def addSubdict (self, item):

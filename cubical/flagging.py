@@ -9,6 +9,8 @@ Handles the flagging of data.
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does, 
 # even if one is only trying to save figures to .png.
 from __future__ import print_function
+from past.builtins import cmp
+from functools import cmp_to_key
 import numpy as np
 import re
 
@@ -87,7 +89,7 @@ class Flagsets (object):
                     order = []
                 # form up "natural" order by comparing bitmasks
                 bitwise_order = list(self.bits.keys())
-                bitwise_order.sort(lambda a,b:cmp(self.bits[a],self.bits[b]))
+                bitwise_order.sort(key=cmp_to_key(lambda a,b:cmp(self.bits[a],self.bits[b])))
                 # if an order is specified, make sure it is actually valid,
                 # and add any elements from bitwise_order that are not present
                 self.order = [ fs for fs in order if fs in self.bits ] + \

@@ -53,7 +53,7 @@ class casa_caltable_factory(object):
             os.rename(os.path.join(basedir, BLANK_TABLE_NAME), filename)
 
             antorder = [db.antnames.index(an) for an in solants]
-            with tbl("%s::ANTENNA" % filename, ack=False, readonly=False) as t:
+            with tbl("%s::ANTENNA" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.anttype))
                 t.putcol("OFFSET", db.antoffset[antorder])
                 t.putcol("POSITION", db.antpos[antorder])

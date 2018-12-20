@@ -51,7 +51,7 @@ class PickledDatabase(iface_database):
         self.do_backup = backup
         self.metadata = OrderedDict(mode=self.MODE_FRAGMENTED, time=time.time(), **metadata)
         # we'll write to a temp file, and do a backup on successful closure
-        self._fobj = open(filename + ".tmp", 'w')
+        self._fobj = open(filename + ".tmp", 'wb')
         pickle.dump(self.metadata, self._fobj)
         self._fobj.flush()
         self._parameters = {}

@@ -9,6 +9,7 @@
 import configparser
 from collections import OrderedDict
 import re
+from six import string_types
 
 def test():
     P=Parset()
@@ -111,7 +112,7 @@ def parse_config_string(string, name='config', extended=True, type=None):
     # interpret explicit types
     if type:
         # make sure None string is still None
-        if type in [str, unicode] and string == "None" or string == "none":
+        if type in string_types and string == "None" or string == "none":
             return None, attrs
         # make sure False/True etc. are interpreted as booleans
         if type is bool:
