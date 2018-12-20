@@ -79,7 +79,7 @@ class SharedDict (dict):
 
     class PickleProxy(ItemProxy):
         def load_impl(self):
-            return pickle.load(file(self.path))
+            return pickle.load(open(self.path, 'rb'))
 
     # this maps "class codes" parsed out of item filenames to appropriate item proxies. See reload() below
     _proxy_class_map = dict(a=SharedArrayProxy, d=SubdictProxy, p=PickleProxy)

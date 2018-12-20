@@ -859,7 +859,7 @@ class MSDataHandler:
 
         # count of rows in output
         nrow_out = 0                                     # number of rows allocated in output
-        chunk_end_ts = chunk_end_time = None             # current end-of-chunk boundary
+        chunk_end_ts = chunk_end_time = -1               # current end-of-chunk boundary
 
         # set chunk-by boundaries, if specified
         boundaries = np.zeros_like(time_col, bool)
