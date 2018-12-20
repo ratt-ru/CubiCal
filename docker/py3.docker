@@ -14,8 +14,12 @@ RUN docker-apt-install \
 	cython3
 
 ADD . /code
+WORKDIR /code/test                     
+RUN tar zxvf SUBSET-D147-output.MS.tgz 
 WORKDIR /code
 RUN python3 setup.py gocythonize
 RUN python3 setup.py build_ext --inplace
 RUN pip3 install -e .
 RUN PYTHONPATH=/code python3 test/kernels_test.py
+RUN gocubical --data-ms test/SUBSET-D147-output.MS --model-list DATA --out-subtract-dirs 0
+
