@@ -26,7 +26,7 @@ class MSSourceProvider(SourceProvider):
     Handles interface between CubiCal tiles and Montblanc simulation.
     """
 
-    def __init__(self, tile, time_col, antea, anteb, ddid_col, uvw, freqs, sort_ind, nrows):
+    def __init__(self, tile, time_col, antea, anteb, ddid_col, uvw, freqs, sort_ind, nrows, do_pa_rotation=True):
         """
         Initialises this source provider.
 
@@ -65,6 +65,7 @@ class MSSourceProvider(SourceProvider):
         self._uvwco = uvw                  #  data['uvwco']
         self._nrows = nrows
         self.sort_ind = sort_ind
+        self.do_pa_rotation = do_pa_rotation
 
     def name(self):
         """ Returns name of associated source provider. """
@@ -134,7 +135,8 @@ class MSSourceProvider(SourceProvider):
 
         # Time and antenna extents
         (lt, ut), (la, ua) = context.dim_extents('ntime', 'na')
-
+        if not self.do_pa_rotation:
+            return np.zeros(context.shape, dtype=context.dtype)
         return mbu.parallactic_angles(
                         np.unique(self._times[self.sort_ind])[lt:ut],
                         self._antpos[la:ua],
