@@ -208,7 +208,6 @@ class MSDataHandler:
                 Should rotate sky model (either lsm or MODEL_DATA) around observer's third axis 
             enable_apply_parallactic_rotation
                 Should derotate corrected data after calibration
-
         Raises:
             RuntimeError:
                 If Montblanc cannot be imported but simulation is required.

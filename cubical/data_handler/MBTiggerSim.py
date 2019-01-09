@@ -21,6 +21,12 @@ import montblanc.impl.rime.tensorflow.ms.ms_manager as MS
 from montblanc.impl.rime.tensorflow.sources import SourceProvider
 from montblanc.impl.rime.tensorflow.sinks import SinkProvider
 
+import datetime as dt
+import pyrap.quanta as pq
+
+from cubical.tools import logger, ModColor
+log = logger.getLogger("MBSourceProvider")
+
 class MSSourceProvider(SourceProvider):
     """
     Handles interface between CubiCal tiles and Montblanc simulation.
@@ -137,6 +143,16 @@ class MSSourceProvider(SourceProvider):
         (lt, ut), (la, ua) = context.dim_extents('ntime', 'na')
         if not self.do_pa_rotation:
             return np.zeros(context.shape, dtype=context.dtype)
+
+        def __mjd2dt(utc_timestamp):
+            """
+            Converts array of UTC timestamps to list of datetime objects for human readable printing
+            """
+            return [dt.datetime.utcfromtimestamp(pq.quantity(t, "s").to_unix_time()) for t in utc_timestamp]
+        utc_times = np.unique(self._times[self.sort_ind])[lt:ut]
+        dt_start = __mjd2dt([np.min(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
+        dt_end = __mjd2dt([np.max(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
+        log.info("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end))
         return mbu.parallactic_angles(
                         np.unique(self._times[self.sort_ind])[lt:ut],
                         self._antpos[la:ua],

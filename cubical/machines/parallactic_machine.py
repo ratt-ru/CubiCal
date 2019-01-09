@@ -74,8 +74,9 @@ class parallactic_machine(object):
         dt_start = self.__mjd2dt([np.min(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
         dt_end = self.__mjd2dt([np.max(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
         log.info("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end))
-
-        return np.asarray([
+        
+        unique_times = np.unique(utc_timestamp)
+        unique_pa = np.asarray([
             pm.do_frame(pm.epoch("UTC", pq.quantity(t, 's')))
             and
             [
@@ -84,7 +85,15 @@ class parallactic_machine(object):
                 pm.posangle(self.field_centre[rpi], self.__zenith_azel).get_value("rad")
                 for rpi, rp in enumerate(self.__observer_positions)
             ]
-            for t in utc_timestamp])
+            for t in unique_times])
+        
+        ntime = utc_timestamp.shape[0]
+        nobs = len(self.__observer_names)
+        pas = np.zeros((ntime, nobs))
+        for t, pa in zip(unique_times, unique_pa):
+            pas[utc_timestamp == t, :] = pa
+
+        return pas
 
     def __apply_rotation(self, utc_timestamp, vis, a1, a2, clockwise=False):
         """
