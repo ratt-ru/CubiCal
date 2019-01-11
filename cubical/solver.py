@@ -94,7 +94,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     n_stall = 0
     frac_stall = 0
-    n_original_flags = (flags_arr&~(FL.PRIOR|FL.MISSING) != 0).sum()
+    n_original_flags = (flags_arr&~(FL.MISSING) != 0).sum()
 
     # initialize iteration counter
 
@@ -365,7 +365,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # clear Mad Max flags if in trial mode
         if madmax.trial_mode:
             flags_arr &= ~FL.MAD
-        n_new_flags = (flags_arr&~(FL.PRIOR | FL.MISSING) != 0).sum() - n_original_flags
+        n_new_flags = (flags_arr&~(FL.MISSING) != 0).sum() - n_original_flags
         if n_new_flags < flags_arr.size*flag_warning_threshold:
             warning, color = "", "blue"
         else:

@@ -222,7 +222,7 @@ class ColumnSinkProvider(SinkProvider):
 
 _mb_slvr = None
 
-def simulate(src_provs, snk_provs, opts):
+def simulate(src_provs, snk_provs, polarisation_type, opts):
     """
     Convenience function which creates and executes a Montblanc solver for the given source and 
     sink providers.
@@ -244,7 +244,7 @@ def simulate(src_provs, snk_provs, opts):
         slvr_cfg = montblanc.rime_solver_cfg(
             mem_budget=opts["mem-budget"]*1024*1024,
             dtype=opts["dtype"],
-            polarisation_type=opts["feed-type"],
+            polarisation_type=polarisation_type,
             device_type=opts["device-type"])
 
         _mb_slvr = montblanc.rime_solver(slvr_cfg)

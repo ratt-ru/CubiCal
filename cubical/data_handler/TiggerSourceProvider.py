@@ -122,15 +122,19 @@ class TiggerSourceProvider(SourceProvider):
             except AttributeError:
                 # TODO(jkenyon, osmirnov)
                 # I think this should be "or 1"
-                rf = self._sm.freq0 or 0
+                rf = self._sm.freq0 or 1
 
-            a = source.spectrum.spi
-            spectrum = (f/rf)**a
+            alpha = source.spectrum.spi
+            frf = f/rf
+            if not isinstance(alpha, (list, tuple)):
+                alpha = [alpha]
+            logfr = np.log10(frf)
+            spectrum = frf**sum([a*np.power(logfr, n) for n,a in enumerate(alpha)])
 
-            stokes[ind, :, :, 0] = source.flux.I[None, None]*spectrum
-            stokes[ind, :, :, 1] = source.flux.Q[None, None]*spectrum
-            stokes[ind, :, :, 2] = source.flux.U[None, None]*spectrum
-            stokes[ind, :, :, 3] = source.flux.V[None, None]*spectrum
+            stokes[ind, :, :, 0] = source.flux.I*spectrum
+            stokes[ind, :, :, 1] = source.flux.Q*spectrum
+            stokes[ind, :, :, 2] = source.flux.U*spectrum
+            stokes[ind, :, :, 3] = source.flux.V*spectrum
 
         return stokes
 
@@ -167,15 +171,19 @@ class TiggerSourceProvider(SourceProvider):
             except AttributeError:
                 # TODO(jkenyon, osmirnov)
                 # I think this should be "or 1"
-                rf = self._sm.freq0 or 0
+                rf = self._sm.freq0 or 1
 
-            a = source.spectrum.spi
-            spectrum = (f/rf)**a
+            alpha = source.spectrum.spi
+            frf = f/rf
+            if not isinstance(alpha, (list, tuple)):
+                alpha = [alpha]
+            logfr = np.log10(frf)
+            spectrum = frf**sum([a*np.power(logfr, n) for n,a in enumerate(alpha)])
 
-            stokes[ind, :, :, 0] = source.flux.I[None, None]*spectrum
-            stokes[ind, :, :, 1] = source.flux.Q[None, None]*spectrum
-            stokes[ind, :, :, 2] = source.flux.U[None, None]*spectrum
-            stokes[ind, :, :, 3] = source.flux.V[None, None]*spectrum
+            stokes[ind, :, :, 0] = source.flux.I*spectrum
+            stokes[ind, :, :, 1] = source.flux.Q*spectrum
+            stokes[ind, :, :, 2] = source.flux.U*spectrum
+            stokes[ind, :, :, 3] = source.flux.V*spectrum
 
         return stokes
 

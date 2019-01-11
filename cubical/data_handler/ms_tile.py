@@ -226,7 +226,7 @@ class MSTile(object):
                 tigger_source.set_direction(direction)
                 tigger_source.set_frequency(self._freqs)
                 column_snk.set_direction(direction)
-                MBTiggerSim.simulate(srcs, snks, self.tile.dh.mb_opts)
+                MBTiggerSim.simulate(srcs, snks, polarisation_type=self.tile.dh._poltype, opts=self.tile.dh.mb_opts)
 
             # now associate each cluster in the LSM with an entry in the loaded_models cache
             loaded_models[model_source] = { clus: full_model[i, 0, self._row_identifiers, :, :]
