@@ -72,6 +72,7 @@ class MSTile(object):
             self.antea = self.tile.dh.antea[ms_rows]
             self.anteb = self.tile.dh.anteb[ms_rows]
             self.times = self.tile.dh.times[ms_rows]
+            self.utc_timestamps = self.tile.dh.utc_timestamps[ms_rows] # keep the corresponding UTC times
             self.nrows = len(self.times)
             # first DDID in subset
             self.first_ddid = self.ddid_col[0]
@@ -195,10 +196,14 @@ class MSTile(object):
                 self._mb_sorted_ind = np.array([current_row_index[idx] for idx in full_index])
 
                 self._mb_measet_src = MBTiggerSim.MSSourceProvider(self.tile, time_col, antea, anteb, ddid_index, uvwco,
-                                                       self._freqs, self._mb_sorted_ind, len(self.time_col))
+                                                       self._freqs, self._mb_sorted_ind, len(self.time_col), 
+                                                       do_pa_rotation=self.tile.dh.enable_solve_parallactic_rotation)
 
+                if not self.tile.dh.enable_solve_parallactic_rotation:
+                    log.warn("Disabling LSM parallactic rotation as per user request")
+                cache_data_sources = ["parallactic_angles"] if self.tile.dh.enable_solve_parallactic_rotation else []
                 self._mb_cached_ms_src = CachedSourceProvider(self._mb_measet_src,
-                                                 cache_data_sources=["parallactic_angles"],
+                                                 cache_data_sources=cache_data_sources,
                                                  clear_start=False, clear_stop=False)
                 if self.tile.dh.beam_pattern:
                     self._mb_arbeam_src = FitsBeamSourceProvider(self.tile.dh.beam_pattern,
@@ -306,7 +311,7 @@ class MSTile(object):
 
             achunk = self.antea[rows]
             bchunk = self.anteb[rows]
-            tchunk = self.times[rows]
+            tchunk = self.times[rows].copy()
             tchunk -= np.min(tchunk)
 
             # Creates lists of selections to make subsequent selection from column and out_arr easier.
@@ -370,7 +375,7 @@ class MSTile(object):
                     If True, input array is a flag cube (i.e. no correlation axes).
             """
 
-            tchunk = self.times[rows]
+            tchunk = self.times[rows].copy()
             tchunk -= tchunk[0]  # is this correct -- does in_array start from beginning of chunk?
             achunk = self.antea[rows]
             bchunk = self.anteb[rows]
@@ -826,6 +831,7 @@ class MSTile(object):
                                         print>> log(0), "  reading {} for model {} direction {}".format(model_source, imod,
                                                                                                         idir)
                                         model0 = self.dh.fetchslice(model_source, subset=table_subset)
+                                        model0 = self.dh.parallactic_machine.rotate(subset.utc_timestamps, model0, subset.antea, subset.anteb)
                                         if self.dh.do_freq_rebin or self.dh.do_time_rebin:
                                             model = np.empty_like(obvis)
                                             rebinning.rebin_model(model, model0, flag_arr0,
@@ -1057,6 +1063,7 @@ class MSTile(object):
 
             if self.dh.output_column and data0['updated'][0]:
                 covis = subset.upsample(data['covis'])
+                covis = self.dh.parallactic_machine.derotate(subset.utc_timestamps, covis, subset.antea, subset.anteb)
                 print>> log, "  writing {} column".format(self.dh.output_column)
                 self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
 

@@ -104,6 +104,21 @@ class TiggerSourceProvider(SourceProvider):
 
         return lm
 
+    def _get_spectrum(self, source, freqs):
+        if hasattr(source, 'spectrum'):
+            rf = getattr(source.spectrum, 'freq0', 1)
+            alpha = source.spectrum.spi
+            frf = freqs / rf
+            if not isinstance(alpha, (list, tuple)):
+                alpha = [alpha]
+            logfr = np.log10(frf)
+            spectrum = frf ** sum([a * np.power(logfr, n) for n, a in enumerate(alpha)])
+
+            ## broadcast into the time dimension.
+            return spectrum[None, :]
+        else:
+            return 1
+
     def point_stokes(self, context):
         """ Returns a stokes parameter array to Montblanc. """
 
@@ -117,20 +132,7 @@ class TiggerSourceProvider(SourceProvider):
         f = self._freqs[None, lc:uc]
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
-            try:
-                rf = source.spectrum.freq0
-            except AttributeError:
-                # TODO(jkenyon, osmirnov)
-                # I think this should be "or 1"
-                rf = self._sm.freq0 or 1
-
-            alpha = source.spectrum.spi
-            frf = f/rf
-            if not isinstance(alpha, (list, tuple)):
-                alpha = [alpha]
-            logfr = np.log10(frf)
-            spectrum = frf**sum([a*np.power(logfr, n) for n,a in enumerate(alpha)])
-
+            spectrum = self._get_spectrum(source, f)
             stokes[ind, :, :, 0] = source.flux.I*spectrum
             stokes[ind, :, :, 1] = source.flux.Q*spectrum
             stokes[ind, :, :, 2] = source.flux.U*spectrum
@@ -166,20 +168,7 @@ class TiggerSourceProvider(SourceProvider):
         f = self._freqs[None, lc:uc]
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
-            try:
-                rf = source.spectrum.freq0
-            except AttributeError:
-                # TODO(jkenyon, osmirnov)
-                # I think this should be "or 1"
-                rf = self._sm.freq0 or 1
-
-            alpha = source.spectrum.spi
-            frf = f/rf
-            if not isinstance(alpha, (list, tuple)):
-                alpha = [alpha]
-            logfr = np.log10(frf)
-            spectrum = frf**sum([a*np.power(logfr, n) for n,a in enumerate(alpha)])
-
+            spectrum = self._get_spectrum(source, f)
             stokes[ind, :, :, 0] = source.flux.I*spectrum
             stokes[ind, :, :, 1] = source.flux.Q*spectrum
             stokes[ind, :, :, 2] = source.flux.U*spectrum

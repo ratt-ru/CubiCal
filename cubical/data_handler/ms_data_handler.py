@@ -21,6 +21,7 @@ from cubical.data_handler import Metadata
 from cubical.data_handler.ms_tile import RowChunk, MSTile
 
 from cubical.tools import logger, ModColor
+from cubical.machines.parallactic_machine import parallactic_machine
 log = logger.getLogger("data_handler")
 
 
@@ -155,7 +156,9 @@ class MSDataHandler:
                  beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
                  active_subset=None, min_baseline=0, max_baseline=0,
                  chunk_freq=None, rebin_freq=None,
-                 do_load_CASA_kwtables=True):
+                 do_load_CASA_kwtables=True,
+                 enable_solve_parallactic_rotation=True,
+                 enable_apply_parallactic_rotation=True):
         """
         Initialises a DataHandler object.
 
@@ -201,8 +204,10 @@ class MSDataHandler:
             do_load_CASA_kwtables
                 Should load CASA MS MEMO 229 keyword tables (optional). If not loaded
                 no CASA-style gaintables can be produced.
-
-
+            enable_solve_parallactic_rotation
+                Should rotate sky model (either lsm or MODEL_DATA) around observer's third axis 
+            enable_apply_parallactic_rotation
+                Should derotate corrected data after calibration
         Raises:
             RuntimeError:
                 If Montblanc cannot be imported but simulation is required.
@@ -551,6 +556,15 @@ class MSDataHandler:
 
         self.gain_dict = {}
 
+        self.enable_solve_parallactic_rotation = enable_solve_parallactic_rotation
+        self.enable_apply_parallactic_rotation = enable_apply_parallactic_rotation
+        self.parallactic_machine = parallactic_machine(antnames, 
+                                                       antpos, 
+                                                       feed_basis=self._poltype, 
+                                                       enable_rotation=enable_solve_parallactic_rotation,
+                                                       enable_derotation=enable_apply_parallactic_rotation,
+                                                       field_centre=tuple(np.rad2deg(self.phadir)))
+        pass
 
     def init_models(self, models, weights, mb_opts={}, use_ddes=False):
         """Parses the model list and initializes internal structures"""
@@ -825,6 +839,7 @@ class MSDataHandler:
         print>> log, "  read indexing columns ({} total rows)".format(len(self.time_col))
         self.do_time_rebin = False
 
+        self.utc_timestamps = time_col
         self.times, self.uniq_times,_ = data_handler.uniquify(time_col)
         print>> log, "  built timeslot index ({} unique timestamps)".format(len(self.uniq_times))
 

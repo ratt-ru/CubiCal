@@ -241,7 +241,9 @@ def main(debugging=False):
                           max_baseline=GD["sol"]["max-bl"],
                           chunk_freq=GD["data"]["freq-chunk"],
                           rebin_freq=GD["data"]["rebin-freq"],
-                          do_load_CASA_kwtables = GD["out"]["casa-gaintables"])
+                          do_load_CASA_kwtables = GD["out"]["casa-gaintables"],
+                          enable_solve_parallactic_rotation=GD["model"]["pa-rotate"],
+                          enable_apply_parallactic_rotation=GD["out"]["pa-derotate"])
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
