@@ -104,6 +104,44 @@ class TiggerSourceProvider(SourceProvider):
 
         return lm
 
+    def source_spectrum(self, source, freq):
+        """
+        Calculate a spectrum for the source
+
+        Args:
+            source (:obj:`~Tigger.Models.SkyModel.Source`):
+                Tigger source
+            freq (`numpy.ndarray`):
+                array of frequencies of shape `(chan,)`
+
+        Returns:
+            `numpy.ndarray`:
+                spectrum of shape `(chan,)`
+        """
+        try:
+            a = source.spectrum.spi
+        except AttributeError:
+            a = None
+
+        if a is None:
+            a = 0.0
+
+        try:
+            # Try get it off the source
+            rf = source.spectrum.freq0
+        except AttributeError:
+            try:
+                # Otherwise try the file
+                rf = self._sm.freq0
+            except AttributeError:
+                rf = None
+
+        # Force a flat spectrum if we have missing/bad reference frequency
+        if rf is None or rf == 0.0:
+            return np.ones(freq.shape, dtype=freq.dtype)
+
+        return ((freq/rf)**a)
+
     def point_stokes(self, context):
         """ Returns a stokes parameter array to Montblanc. """
 
@@ -117,20 +155,7 @@ class TiggerSourceProvider(SourceProvider):
         f = self._freqs[lc:uc]
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
-            try:
-                a = source.spectrum.spi
-            except AttributeError:
-                a = 0.0
-
-            try:
-                rf = source.spectrum.freq0
-            except AttributeError:
-                try:
-                    rf = self._sm.freq0
-                except AttributeError:
-                    a, rf = 0.0, 1.0  # Force a flat spectrum
-
-            spectrum = ((f/rf)**a)[None, :]
+            spectrum = self.source_spectrum(source, f)[None, :]
 
             # Multiply flux into the spectrum,
             # broadcasting into the time dimension
@@ -169,20 +194,7 @@ class TiggerSourceProvider(SourceProvider):
         f = self._freqs[lc:uc]
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
-            try:
-                a = source.spectrum.spi
-            except AttributeError:
-                a = 0.0
-
-            try:
-                rf = source.spectrum.freq0
-            except AttributeError:
-                try:
-                    rf = self._sm.freq0
-                except AttributeError:
-                    a, rf = 0.0, 1.0  # Force a flat spectrum
-
-            spectrum = ((f/rf)**a)[None, :]
+            spectrum = self.source_spectrum(source, f)[None, :]
 
             # Multiply flux into the spectrum,
             # broadcasting into the time dimension
