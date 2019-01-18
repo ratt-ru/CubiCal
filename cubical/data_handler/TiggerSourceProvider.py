@@ -123,12 +123,11 @@ class TiggerSourceProvider(SourceProvider):
                 a = 0.0
 
             try:
-                rf = last_freq0 = source.spectrum.freq0
+                rf = source.spectrum.freq0
             except AttributeError:
                 try:
-                    rf = last_freq0 = self._sm.freq0 or last_freq0
-                except NameError as e:
-                    assert 'last_freq0' in e.message
+                    rf = self._sm.freq0
+                except AttributeError:
                     a, rf = 0.0, 1.0  # Force a flat spectrum
 
             spectrum = ((f/rf)**a)[None, :]
@@ -176,12 +175,11 @@ class TiggerSourceProvider(SourceProvider):
                 a = 0.0
 
             try:
-                rf = last_freq0 = source.spectrum.freq0
+                rf = source.spectrum.freq0
             except AttributeError:
                 try:
-                    rf = last_freq0 = self._sm.freq0 or last_freq0
-                except NameError as e:
-                    assert 'last_freq0' in e.message
+                    rf = self._sm.freq0
+                except AttributeError:
                     a, rf = 0.0, 1.0  # Force a flat spectrum
 
             spectrum = ((f/rf)**a)[None, :]
