@@ -104,9 +104,23 @@ class TiggerSourceProvider(SourceProvider):
 
         return lm
 
-    def _get_spectrum(self, source, freqs):
-        if hasattr(source, 'spectrum'):
-            rf = getattr(source.spectrum, 'freq0', 1)
+    def source_spectrum(self, source, freqs):
+        """
+        Calculate a spectrum for the source. If source.spectrum attribute is missing,
+        returns flat spectrum
+
+        Args:
+            source (:obj:`~Tigger.Models.SkyModel.Source`):
+                Tigger source
+            freq (`numpy.ndarray`):
+                array of frequencies of shape `(chan,)`
+
+        Returns:
+            `numpy.ndarray`:
+                spectrum of shape `(chan,)`
+        """
+        if hasattr(source, 'spectrum') and source.spectrum is not None:
+            rf = getattr(source.spectrum, 'freq0', 1e+9)
             alpha = source.spectrum.spi
             frf = freqs / rf
             if not isinstance(alpha, (list, tuple)):
@@ -115,9 +129,9 @@ class TiggerSourceProvider(SourceProvider):
             spectrum = frf ** sum([a * np.power(logfr, n) for n, a in enumerate(alpha)])
 
             ## broadcast into the time dimension.
-            return spectrum[None, :]
+            return spectrum
         else:
-            return 1
+            return np.ones_like(freqs)
 
     def point_stokes(self, context):
         """ Returns a stokes parameter array to Montblanc. """
@@ -129,10 +143,13 @@ class TiggerSourceProvider(SourceProvider):
         # (npsrc, ntime, nchan, 4)
         stokes = np.empty(context.shape, context.dtype)
 
-        f = self._freqs[None, lc:uc]
+        f = self._freqs[lc:uc]
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
-            spectrum = self._get_spectrum(source, f)
+            spectrum = self.source_spectrum(source, f)[None, :]
+
+            # Multiply flux into the spectrum,
+            # broadcasting into the time dimension
             stokes[ind, :, :, 0] = source.flux.I*spectrum
             stokes[ind, :, :, 1] = source.flux.Q*spectrum
             stokes[ind, :, :, 2] = source.flux.U*spectrum
@@ -165,10 +182,13 @@ class TiggerSourceProvider(SourceProvider):
         # (npsrc, ntime, nchan, 4)
         stokes = np.empty(context.shape, context.dtype)
 
-        f = self._freqs[None, lc:uc]
+        f = self._freqs[lc:uc]
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
-            spectrum = self._get_spectrum(source, f)
+            spectrum = self.source_spectrum(source, f)[None, :]
+
+            # Multiply flux into the spectrum,
+            # broadcasting into the time dimension
             stokes[ind, :, :, 0] = source.flux.I*spectrum
             stokes[ind, :, :, 1] = source.flux.Q*spectrum
             stokes[ind, :, :, 2] = source.flux.U*spectrum
