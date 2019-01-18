@@ -123,8 +123,9 @@ class TiggerSourceProvider(SourceProvider):
         except AttributeError:
             a = None
 
+        # Force a flat spectrum if the spi is missing
         if a is None:
-            a = 0.0
+            return np.ones_like(freq)
 
         try:
             # Try get it off the source
@@ -138,9 +139,9 @@ class TiggerSourceProvider(SourceProvider):
 
         # Force a flat spectrum if we have missing/bad reference frequency
         if rf is None or rf == 0.0:
-            return np.ones(freq.shape, dtype=freq.dtype)
+            return np.ones_like(freq)
 
-        return ((freq/rf)**a)
+        return (freq/rf)**a
 
     def point_stokes(self, context):
         """ Returns a stokes parameter array to Montblanc. """
