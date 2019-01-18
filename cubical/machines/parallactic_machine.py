@@ -109,8 +109,7 @@ class parallactic_machine(object):
                 c, s = np.cos(pa[:, aindex]).repeat(nchan), np.sin(pa[:, aindex]).repeat(nchan)
                 N = pa.shape[0]
                 if N == 0: 
-                    log.warn("This data chunk appears to be empty. You should probably check your data!")
-                    return np.zeros((0, nchan, 2, 2)) # special case: no data????
+                    return np.zeros((0, nchan, 2, 2)) # special case: no data for this baseline
                 if conjugate_transpose:
                     return np.array([c, -s, s, c]).T.reshape(N, nchan, 2, 2)
                 else:
@@ -123,8 +122,7 @@ class parallactic_machine(object):
                 ec = e * -1.0j
                 N = pa.shape[0]
                 if N == 0: 
-                    log.warn("This data chunk appears to be empty. You should probably check your data!")
-                    return np.zeros((0, nchan, 2, 2)) # special case: no data????
+                    return np.zeros((0, nchan, 2, 2)) # special case: no data for this baseline
                 if conjugate_transpose:
                     return np.array([e, 0, 0, ec]).T.reshape(N, nchan, 2, 2)
                 else:
