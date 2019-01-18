@@ -831,7 +831,8 @@ class MSTile(object):
                                         print>> log(0), "  reading {} for model {} direction {}".format(model_source, imod,
                                                                                                         idir)
                                         model0 = self.dh.fetchslice(model_source, subset=table_subset)
-                                        model0 = self.dh.parallactic_machine.rotate(subset.utc_timestamps, model0, subset.antea, subset.anteb)
+                                        if self.dh.parallactic_machine is not None:
+                                            model0 = self.dh.parallactic_machine.rotate(subset.utc_timestamps, model0, subset.antea, subset.anteb)
                                         if self.dh.do_freq_rebin or self.dh.do_time_rebin:
                                             model = np.empty_like(obvis)
                                             rebinning.rebin_model(model, model0, flag_arr0,
@@ -1063,7 +1064,8 @@ class MSTile(object):
 
             if self.dh.output_column and data0['updated'][0]:
                 covis = subset.upsample(data['covis'])
-                covis = self.dh.parallactic_machine.derotate(subset.utc_timestamps, covis, subset.antea, subset.anteb)
+                if self.dh.parallactic_machine is not None:
+                    covis = self.dh.parallactic_machine.derotate(subset.utc_timestamps, covis, subset.antea, subset.anteb)
                 print>> log, "  writing {} column".format(self.dh.output_column)
                 self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
 

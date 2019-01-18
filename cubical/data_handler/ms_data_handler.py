@@ -558,12 +558,15 @@ class MSDataHandler:
 
         self.enable_solve_parallactic_rotation = enable_solve_parallactic_rotation
         self.enable_apply_parallactic_rotation = enable_apply_parallactic_rotation
-        self.parallactic_machine = parallactic_machine(antnames, 
-                                                       antpos, 
-                                                       feed_basis=self._poltype, 
-                                                       enable_rotation=enable_solve_parallactic_rotation,
-                                                       enable_derotation=enable_apply_parallactic_rotation,
-                                                       field_centre=tuple(np.rad2deg(self.phadir)))
+        if enable_solve_parallactic_rotation or enable_apply_parallactic_rotation:
+            self.parallactic_machine = parallactic_machine(antnames,
+                                                           antpos,
+                                                           feed_basis=self._poltype,
+                                                           enable_rotation=enable_solve_parallactic_rotation,
+                                                           enable_derotation=enable_apply_parallactic_rotation,
+                                                           field_centre=tuple(np.rad2deg(self.phadir)))
+        else:
+            self.parallactic_machine = None
         pass
 
     def init_models(self, models, weights, mb_opts={}, use_ddes=False):

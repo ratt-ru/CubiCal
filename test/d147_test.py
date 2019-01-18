@@ -2,6 +2,7 @@
 
 import os, os.path, sys
 from casacore.tables import table
+import numpy as np
 from collections import OrderedDict
 
 def kw_to_args(**kw):
@@ -44,10 +45,12 @@ class SolverVerification(object):
         if retcode:
             raise RuntimeError("{}: return code {}".format(cmd, retcode))
         cd = table(self.msname).getcol("CORRECTED_DATA")
+        if not np.isfinite(cd).all():
+            raise RuntimeError("{}: NaNs/INFs detected in output data".format(cmd))
         c0 = table(self.refmsname).getcol(refcolname)
         diff = abs(cd-c0).max()
         logprint("*** max diff between CORRECTED_DATA and {} is {}".format(refcolname, diff))
-        if diff > tolerance:
+        if not diff <= tolerance:
             raise RuntimeError("{}: diff {} exceeds tolerance of {}".format(cmd, diff, tolerance))
 
 d147_test_list = [

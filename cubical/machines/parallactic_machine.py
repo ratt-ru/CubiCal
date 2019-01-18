@@ -120,13 +120,14 @@ class parallactic_machine(object):
                 Calibration Errors in Interferometric Radio Polarimetry """
                 e = np.exp(1.0j * pa[:, aindex]).repeat(nchan)
                 ec = e * -1.0j
+                null = np.zeros_like(e)
                 N = pa.shape[0]
                 if N == 0: 
                     return np.zeros((0, nchan, 2, 2)) # special case: no data for this baseline
                 if conjugate_transpose:
-                    return np.array([e, 0, 0, ec]).T.reshape(N, nchan, 2, 2)
+                    return np.array([e, null, null, ec]).T.reshape(N, nchan, 2, 2)
                 else:
-                    return np.array([ec, 0, 0, e]).T.reshape(N, nchan, 2, 2)
+                    return np.array([ec, null, null, e]).T.reshape(N, nchan, 2, 2)
             if self.feed_basis == "linear":
                 return give_linear_mat(pa, nchan, aindex, conjugate_transpose)
             elif self.feed_basis == "circular":
