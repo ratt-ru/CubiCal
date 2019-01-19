@@ -157,8 +157,9 @@ class MSDataHandler:
                  active_subset=None, min_baseline=0, max_baseline=0,
                  chunk_freq=None, rebin_freq=None,
                  do_load_CASA_kwtables=True,
-                 enable_solve_parallactic_rotation=True,
-                 enable_apply_parallactic_rotation=True):
+                 pa_rotate_model=True,
+                 pa_derotate_output=True,
+                 pa_rotate_montblanc=True):
         """
         Initialises a DataHandler object.
 
@@ -204,9 +205,9 @@ class MSDataHandler:
             do_load_CASA_kwtables
                 Should load CASA MS MEMO 229 keyword tables (optional). If not loaded
                 no CASA-style gaintables can be produced.
-            enable_solve_parallactic_rotation
+            pa_rotate_model
                 Should rotate sky model (either lsm or MODEL_DATA) around observer's third axis 
-            enable_apply_parallactic_rotation
+            pa_derotate_output
                 Should derotate corrected data after calibration
         Raises:
             RuntimeError:
@@ -556,14 +557,15 @@ class MSDataHandler:
 
         self.gain_dict = {}
 
-        self.enable_solve_parallactic_rotation = enable_solve_parallactic_rotation
-        self.enable_apply_parallactic_rotation = enable_apply_parallactic_rotation
-        if enable_solve_parallactic_rotation or enable_apply_parallactic_rotation:
+        self.pa_rotate_model = pa_rotate_model
+        self.pa_derotate_output = pa_derotate_output if pa_derotate_output is not None else pa_rotate_model
+        self.pa_rotate_montblanc = pa_rotate_montblanc if pa_rotate_montblanc is not None else pa_rotate_model
+        if pa_rotate_model or pa_derotate_output:
             self.parallactic_machine = parallactic_machine(antnames,
                                                            antpos,
                                                            feed_basis=self._poltype,
-                                                           enable_rotation=enable_solve_parallactic_rotation,
-                                                           enable_derotation=enable_apply_parallactic_rotation,
+                                                           enable_rotation=pa_rotate_model,
+                                                           enable_derotation=pa_derotate_output,
                                                            field_centre=tuple(np.rad2deg(self.phadir)))
         else:
             self.parallactic_machine = None

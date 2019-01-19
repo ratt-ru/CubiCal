@@ -197,11 +197,11 @@ class MSTile(object):
 
                 self._mb_measet_src = MBTiggerSim.MSSourceProvider(self.tile, time_col, antea, anteb, ddid_index, uvwco,
                                                        self._freqs, self._mb_sorted_ind, len(self.time_col), 
-                                                       do_pa_rotation=self.tile.dh.enable_solve_parallactic_rotation)
+                                                       do_pa_rotation=self.tile.dh.pa_rotate_montblanc)
 
-                if not self.tile.dh.enable_solve_parallactic_rotation:
+                if not self.tile.dh.pa_rotate_montblanc:
                     log.warn("Disabling LSM parallactic rotation as per user request")
-                cache_data_sources = ["parallactic_angles"] if self.tile.dh.enable_solve_parallactic_rotation else []
+                cache_data_sources = ["parallactic_angles"] if self.tile.dh.pa_rotate_montblanc else []
                 self._mb_cached_ms_src = CachedSourceProvider(self._mb_measet_src,
                                                  cache_data_sources=cache_data_sources,
                                                  clear_start=False, clear_stop=False)

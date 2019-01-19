@@ -20,6 +20,7 @@ beam-m-axis = None
 pa-rotate = 0
 
 [montblanc]
+pa-rotate = 1
 device-type = CPU 
 dtype = float
 feed-type = circular 
@@ -60,7 +61,7 @@ mode = sr
 column = CORRECTED_DATA 
 plots = False 
 plots-show = False
-pa-derotate = 0
+pa-derotate = None
 
 
 [log]
