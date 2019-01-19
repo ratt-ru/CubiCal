@@ -270,7 +270,7 @@ def main(debugging=False):
 
         # force floats in Montblanc calculations
         mb_opts = GD["montblanc"]
-        mb_opts['dtype'] = 'float'
+        # mb_opts['dtype'] = 'float'
 
         ms.init_models(str(GD["model"]["list"]).split(","),
                        GD["weight"]["column"].split(",") if GD["weight"]["column"] else None,
