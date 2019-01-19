@@ -218,7 +218,9 @@ class MSTile(object):
             # make a sink with an array to receive visibilities
             ndirs = model_source._nclus
             model_shape = (ndirs, 1, self._expected_nrows, self.nfreq, self.tile.dh.ncorr)
-            full_model = np.zeros(model_shape, self.tile.dh.ctype)
+            use_double = self.tile.dh.mb_opts['dtype'] == 'double'
+            full_model = np.zeros(model_shape, np.complex128 if use_double else self.tile.dh.ctype)
+            print>>log(0),"montblanc dtype is {} ('{}')".format(full_model.dtype, self.tile.dh.mb_opts['dtype'])
             column_snk = MBTiggerSim.ColumnSinkProvider(self.tile.dh, self._freqs.shape, full_model, self._mb_sorted_ind)
             snks = [column_snk]
 
@@ -226,6 +228,10 @@ class MSTile(object):
                 tigger_source.set_direction(direction)
                 column_snk.set_direction(direction)
                 MBTiggerSim.simulate(srcs, snks, self.tile.dh.mb_opts)
+
+            # convert back to float, if double was used
+            if full_model.dtype != self.tile.dh.ctype:
+                full_model = full_model.astype(self.tile.dh.ctype)
 
             # now associate each cluster in the LSM with an entry in the loaded_models cache
             loaded_models[model_source] = { clus: full_model[i, 0, self._row_identifiers, :, :]
