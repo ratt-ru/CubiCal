@@ -99,7 +99,8 @@ class parallactic_machine(object):
         """
         Pads data and performs anticlockwise rotation by default
         """
-        sign = 1 if clockwise else -1
+        ## OMS: Ben had it in the opposite direction originally, but I'm sure this is right, and matches VLA results
+        sign = -1 if clockwise else 1
         pa = sign * self.parallactic_angle(utc_timestamp)
 
         def mat_factory(pa, nchan, aindex, conjugate_transpose=False):
@@ -119,7 +120,7 @@ class parallactic_machine(object):
                 """ phase rotation matrix according to Hales, 2017: 
                 Calibration Errors in Interferometric Radio Polarimetry """
                 e = np.exp(1.0j * pa[:, aindex]).repeat(nchan)
-                ec = e * -1.0j
+                ec = np.conj(e) # e * -1.0j
                 null = np.zeros_like(e)
                 N = pa.shape[0]
                 if N == 0: 
@@ -178,7 +179,7 @@ class parallactic_machine(object):
             if ub - lb == 0: 
                 break
             padded_vis = pad(vis[lb:ub, :, :])
-            p, q = np.triu_indices(np.max(list(set(a1[lb:ub]).union(set(a2[lb:ub])))))
+            p, q = np.triu_indices(np.max(list(set(a1[lb:ub]).union(set(a2[lb:ub]))))+1)  ## OMS: needs +1 or last baseline goes AWOL
             for bl in zip(p, q):
                 blsel = np.logical_and(a1[lb:ub] == bl[0], a2[lb:ub] == bl[1])
                 Pa1 = mat_factory(pa[lb:ub, :][blsel, :], 

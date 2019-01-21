@@ -844,7 +844,6 @@ class MSDataHandler:
         print>> log, "  read indexing columns ({} total rows)".format(len(self.time_col))
         self.do_time_rebin = False
 
-        self.utc_timestamps = time_col
         self.times, self.uniq_times,_ = data_handler.uniquify(time_col)
         print>> log, "  built timeslot index ({} unique timestamps)".format(len(self.uniq_times))
 

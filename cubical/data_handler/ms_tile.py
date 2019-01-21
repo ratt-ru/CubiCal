@@ -72,7 +72,6 @@ class MSTile(object):
             self.antea = self.tile.dh.antea[ms_rows]
             self.anteb = self.tile.dh.anteb[ms_rows]
             self.times = self.tile.dh.times[ms_rows]
-            self.utc_timestamps = self.tile.dh.utc_timestamps[ms_rows] # keep the corresponding UTC times
             self.nrows = len(self.times)
             # first DDID in subset
             self.first_ddid = self.ddid_col[0]
@@ -838,7 +837,7 @@ class MSTile(object):
                                                                                                         idir)
                                         model0 = self.dh.fetchslice(model_source, subset=table_subset)
                                         if self.dh.parallactic_machine is not None:
-                                            model0 = self.dh.parallactic_machine.rotate(subset.utc_timestamps, model0, subset.antea, subset.anteb)
+                                            model0 = self.dh.parallactic_machine.rotate(subset.time_col, model0, subset.antea, subset.anteb)
                                         if self.dh.do_freq_rebin or self.dh.do_time_rebin:
                                             model = np.empty_like(obvis)
                                             rebinning.rebin_model(model, model0, flag_arr0,
@@ -1071,7 +1070,7 @@ class MSTile(object):
             if self.dh.output_column and data0['updated'][0]:
                 covis = subset.upsample(data['covis'])
                 if self.dh.parallactic_machine is not None:
-                    covis = self.dh.parallactic_machine.derotate(subset.utc_timestamps, covis, subset.antea, subset.anteb)
+                    covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb)
                 print>> log, "  writing {} column".format(self.dh.output_column)
                 self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
 
