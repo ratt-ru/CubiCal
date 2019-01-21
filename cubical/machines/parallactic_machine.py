@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import pyrap.quanta as pq
 import pyrap.measures
 pm = pyrap.measures.measures()
@@ -35,11 +37,12 @@ class parallactic_machine(object):
             raise ValueError("ECEF coordinates must be 3 dimensional")
 
         self.__observer_names = copy.deepcopy(observer_names)
-        log.info("Initializing new parallactic angle machine for the following ECEF positions:")
+        print("Initializing new parallactic angle machine for {} ECEF positions".format(len(self.__observer_names)),
+              file=log(0))
         for s in ["%s\t\t%.2f\t%.2f\t%.2f" % (aname, X, Y, Z) 
                   for aname, (X, Y, Z) in zip(self.__observer_names,
                                               ECEF_positions)]:
-            log.info("\t" + s)
+            print("        " + s, file=log(1))
         self.__observer_positions = [pm.position('itrf',
                                                  *(pq.quantity(x, 'm') for x in pos))
                                      for pos in ECEF_positions]
@@ -73,7 +76,7 @@ class parallactic_machine(object):
         """
         dt_start = self.__mjd2dt([np.min(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
         dt_end = self.__mjd2dt([np.max(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
-        log.info("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end))
+        print("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end), file=log(0))
         
         unique_times = np.unique(utc_timestamp)
         unique_pa = np.asarray([
@@ -277,19 +280,20 @@ class parallactic_machine(object):
             # duplicate radec to all observers
             radec = np.tile(np.array([np.deg2rad(radec[0]), np.deg2rad(radec[1])]), 
                             (len(self.__observer_names), 1))
+            fmtcoord = [pq.quantity(fi, 'deg').formatted("ANGLE") for fi in np.rad2deg(radec[0])]
+            print("Field centre is {} {} {}".format(self.__epoch, fmtcoord[0], fmtcoord[1]), file=log(1))
         # fly's eye otherwise -- position per observer
         elif isinstance(radec, np.ndarray) and \
              radec.ndim == 2 and \
              radec.shape[0] == len(self.__observer_names) and \
              radec.shape[1] == 2:
              radec = np.deg2rad(radec)
+             print("Fly's eye mode: field centres are as follows", file=log(1))
+             for (aname, coord) in zip(self.__observer_names, radec):
+                 fmtcoord = [pq.quantity(fi, 'deg').formatted("ANGLE") for fi in np.rad2deg(coord)]
+                 print("        {}: {} {} {}".format(aname, self.__epoch, fmtcoord[0], fmtcoord[1]), file=log(1))
         else:
             raise ValueError("Expected coordinate tuple or nant x 2 ndarray for fly's eye observing")
-        log.info("Changing field centre as follows:")
-        for (aname, coord) in zip(self.__observer_names, radec):
-            fmtcoord = [pq.quantity(fi, 'deg').formatted("ANGLE") for fi in np.rad2deg(coord)]
-            log.info("\t%s\t%s\t%s\t%s" % (aname, self.__epoch, fmtcoord[0], fmtcoord[1]))
-        self.__field_centre
         self.__field_centre = [pm.direction(self.__epoch,
                                             *(pq.quantity(fi, 'rad') for fi in fc))
                                for fc in radec]
