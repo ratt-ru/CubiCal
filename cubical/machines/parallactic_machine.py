@@ -110,6 +110,7 @@ class parallactic_machine(object):
             def give_linear_mat(pa, nchan, aindex, conjugate_transpose=False):
                 """ 2D rotation matrix according to Hales, 2017: 
                 Calibration Errors in Interferometric Radio Polarimetry """
+                pa = -pa # just a test
                 c, s = np.cos(pa[:, aindex]).repeat(nchan), np.sin(pa[:, aindex]).repeat(nchan)
                 N = pa.shape[0]
                 if N == 0: 

@@ -839,6 +839,7 @@ class MSDataHandler:
 
         self.antea = antea = self.fetch("ANTENNA1").astype(np.int64)
         self.anteb = anteb = self.fetch("ANTENNA2").astype(np.int64)
+        self.rownumbers = self.data.rownumbers()
         self.time_col = time_col = self.fetch("TIME")
         self.ddid_col = ddid_col = ddid_col0 = self.fetch("DATA_DESC_ID").astype(np.int64)
         print>> log, "  read indexing columns ({} total rows)".format(len(self.time_col))
