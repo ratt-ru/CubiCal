@@ -242,9 +242,11 @@ def main(debugging=False):
                            chunk_freq=GD["data"]["freq-chunk"],
                            rebin_freq=GD["data"]["rebin-freq"],
                            do_load_CASA_kwtables = GD["out"]["casa-gaintables"],
+                           feed_rotate_model=GD["model"]["feed-rotate"],
                            pa_rotate_model=GD["model"]["pa-rotate"],
-                           pa_derotate_output=GD["out"]["pa-derotate"],
-                           pa_rotate_montblanc=GD["montblanc"]["pa-rotate"])
+                           pa_rotate_montblanc=GD["montblanc"]["pa-rotate"],
+                           derotate_output=GD["out"]["derotate"],
+                           )
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory

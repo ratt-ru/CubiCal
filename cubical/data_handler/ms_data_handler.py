@@ -157,9 +157,10 @@ class MSDataHandler:
                  active_subset=None, min_baseline=0, max_baseline=0,
                  chunk_freq=None, rebin_freq=None,
                  do_load_CASA_kwtables=True,
+                 feed_rotate_model="auto",
                  pa_rotate_model=True,
-                 pa_derotate_output=True,
-                 pa_rotate_montblanc=True):
+                 pa_rotate_montblanc=True,
+                 derotate_output=True):
         """
         Initialises a DataHandler object.
 
@@ -205,10 +206,15 @@ class MSDataHandler:
             do_load_CASA_kwtables
                 Should load CASA MS MEMO 229 keyword tables (optional). If not loaded
                 no CASA-style gaintables can be produced.
+            feed_rotate_model
+                Rotate sky model (either lsm or MODEL_DATA) to a receptor angle
             pa_rotate_model
-                Should rotate sky model (either lsm or MODEL_DATA) around observer's third axis 
-            pa_derotate_output
-                Should derotate corrected data after calibration
+                Rotate sky model (either lsm or MODEL_DATA) to take P.A. into account
+            pa_rotate_monblanc
+                Rotate Montblanc sky model to take P.A. into account, overrides pa_rotate_model setting,
+                or use None to follow the setting
+            derotate_output
+                Derotate corrected data after calibration
         Raises:
             RuntimeError:
                 If Montblanc cannot be imported but simulation is required.
@@ -320,7 +326,7 @@ class MSDataHandler:
         self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
         self.metadata.ra0, self.metadata.dec0 = self.phadir
         self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
-        
+
         if np.any([pol in self._poltype for pol in ['L','l','R','r']]):
             self._poltype = "circular"
             self.feeds = self.metadata.feeds = "rl"
@@ -557,15 +563,37 @@ class MSDataHandler:
 
         self.gain_dict = {}
 
-        self.pa_rotate_model = pa_rotate_model
-        self.pa_derotate_output = pa_derotate_output if pa_derotate_output is not None else pa_rotate_model
+        # figure out feed rotation
+        if feed_rotate_model == "auto":
+            feed_angles = _feedtab.getcol('RECEPTOR_ANGLE')
+            feed_rotate_model = (feed_angles !=0 ).any()
+        elif not feed_rotate_model:
+            feed_angles = np.zeros((self.nants, 2), 0)
+        elif isinstance(feed_rotate_model, (float,int)):
+            feed_angles = np.full((self.nants, 2), feed_rotate_model*math.pi/180)
+            feed_rotate_model = True
+
+        # figure out PA rotation
+        self.rotate_model = pa_rotate_model or feed_rotate_model
+
+        self.derotate_output = derotate_output if derotate_output is not None else self.rotate_model
         self.pa_rotate_montblanc = pa_rotate_montblanc if pa_rotate_montblanc is not None else pa_rotate_model
-        if pa_rotate_model or pa_derotate_output:
+
+        print>>log(0),"Input model feed rotation {}abled, PA rotation {}abled".format(
+                        "en" if feed_rotate_model else "dis", "en" if pa_rotate_model else "dis")
+        if feed_rotate_model:
+           print>>log(1),"Feed angles are {}".format(feed_angles)
+        print>>log(0),"Output visibilities derotation {}abled".format(
+                        "en" if self.derotate_output else "dis")
+
+        if self.rotate_model or self.derotate_output:
             self.parallactic_machine = parallactic_machine(antnames,
                                                            antpos,
                                                            feed_basis=self._poltype,
-                                                           enable_rotation=pa_rotate_model,
-                                                           enable_derotation=pa_derotate_output,
+                                                           feed_angles=feed_angles,
+                                                           enable_rotation=self.rotate_model,
+                                                           enable_pa=pa_rotate_model,
+                                                           enable_derotation=self.derotate_output,
                                                            field_centre=tuple(np.rad2deg(self.phadir)))
         else:
             self.parallactic_machine = None

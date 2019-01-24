@@ -77,6 +77,8 @@ class MSTile(object):
             self.first_ddid = self.ddid_col[0]
             self.nfreq = len(tile.dh.chanfreqs[self.first_ddid])
             self.ncorr = tile.dh.ncorr
+            # cached [de]rotation angles
+            self._angles = None
 
             # row map for rebinning -- label of None means subset is full tile
             if label is None:
@@ -837,7 +839,10 @@ class MSTile(object):
                                                                                                         idir)
                                         model0 = self.dh.fetchslice(model_source, subset=table_subset)
                                         if self.dh.parallactic_machine is not None:
-                                            model0 = self.dh.parallactic_machine.rotate(subset.time_col, model0, subset.antea, subset.anteb)
+                                            subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                                            model0 = self.dh.parallactic_machine.rotate(subset.time_col, model0,
+                                                                                        subset.antea, subset.anteb,
+                                                                                        angles=subset._angles)
                                         if self.dh.do_freq_rebin or self.dh.do_time_rebin:
                                             model = np.empty_like(obvis)
                                             rebinning.rebin_model(model, model0, flag_arr0,
@@ -1070,9 +1075,12 @@ class MSTile(object):
             if self.dh.output_column and data0['updated'][0]:
                 covis = subset.upsample(data['covis'])
                 if self.dh.parallactic_machine is not None:
-                    covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb)
+                    covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb,
+                                                                 angles=subset._angles)
                 print>> log, "  writing {} column".format(self.dh.output_column)
                 self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
+
+            subset._angles = None
 
             if self.dh.output_model_column and 'movis' in data:
                 # take first mode, and sum over directions if needed

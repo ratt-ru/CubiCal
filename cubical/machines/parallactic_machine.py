@@ -13,10 +13,12 @@ log = logger.getLogger("parallactic_machine")
 class parallactic_machine(object):
     def __init__(self, 
                  observer_names, 
-                 ECEF_positions, 
+                 ECEF_positions,
+                 feed_angles=None,
                  epoch='J2000', 
                  feed_basis='linear', 
-                 enable_rotation=True, 
+                 enable_rotation=True,
+                 enable_pa=True,
                  enable_derotation=True,
                  field_centre=(0,-90)):
         """
@@ -24,11 +26,13 @@ class parallactic_machine(object):
         coordiante frame
         Args:
         @observer_names: list of antenna names
-        @ECEF_positions: as provided in MS::ANTENNA subtable
+        @ECEF_positions: (nant, 3) array, as provided in MS::ANTENNA subtable
+        @feed_angles: (nant, 2) array, as provided by MS::FEED subtable. None for nominally oriented receptors
         @epoch: coordinate system epoch, usually J2000
         @feed_basis: linear or circular feeds
         @enable_rotation: switches on rotation
         @enable_derotation: switches on derotation
+        @enable_pa: include PA in rotation/derotation (else feed angle only)
         @field_centre: initial field centre, SCP by default
         """
         if not len(observer_names) == ECEF_positions.shape[0]:
@@ -59,6 +63,8 @@ class parallactic_machine(object):
         self.feed_basis = feed_basis
         self.__enable_rotation = None
         self.__enable_derotation = None
+        self.__enable_pa = enable_pa
+        self.__feed_angles = feed_angles
         self.enable_rotation = enable_rotation
         self.enable_derotation = enable_derotation
 
@@ -68,71 +74,79 @@ class parallactic_machine(object):
         """
         return [dt.datetime.utcfromtimestamp(pq.quantity(t, "s").to_unix_time()) for t in utc_timestamp]
 
-    def parallactic_angle(self, utc_timestamp):
+    def rotation_angles(self, utc_timestamp):
         """
-        Computes the parallactic angle based on the observers' zenithal angle for every timestamp
+        Computes the rotation angle based on the observers' zenithal angle for every timestamp
         Args:
         utc_timestamp: ndarray of utc_timestamps in seconds
         """
-        dt_start = self.__mjd2dt([np.min(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
-        dt_end = self.__mjd2dt([np.max(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
-        print("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end), file=log(0))
-        
-        unique_times = np.unique(utc_timestamp)
-        unique_pa = np.asarray([
-            pm.do_frame(pm.epoch("UTC", pq.quantity(t, 's')))
-            and
-            [
-                pm.do_frame(rp)
-                and
-                pm.posangle(self.field_centre[rpi], self.__zenith_azel).get_value("rad")
-                for rpi, rp in enumerate(self.__observer_positions)
-            ]
-            for t in unique_times])
-        
         ntime = utc_timestamp.shape[0]
         nobs = len(self.__observer_names)
-        pas = np.zeros((ntime, nobs))
-        for t, pa in zip(unique_times, unique_pa):
-            pas[utc_timestamp == t, :] = pa
+        # init angles from feed angles
+        angles = np.zeros((ntime, nobs, 2), float)
+        angles[:] = self.__feed_angles[np.newaxis, :, :]
 
-        return pas
+        # add PA
+        if self.__enable_pa:
+            dt_start = self.__mjd2dt([np.min(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
+            dt_end = self.__mjd2dt([np.max(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
+            print("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end), file=log(1))
 
-    def __apply_rotation(self, utc_timestamp, vis, a1, a2, clockwise=False):
+            unique_times = np.unique(utc_timestamp)
+            unique_pa = np.asarray([
+                pm.do_frame(pm.epoch("UTC", pq.quantity(t, 's')))
+                and
+                [
+                    pm.do_frame(rp)
+                    and
+                    pm.posangle(self.field_centre[rpi], self.__zenith_azel).get_value("rad")
+                    for rpi, rp in enumerate(self.__observer_positions)
+                ]
+                for t in unique_times])
+
+            for t, pa in zip(unique_times, unique_pa):
+                angles[utc_timestamp == t, :, :] = pa[:, np.newaxis]
+
+        return angles
+
+
+    def __apply_rotation(self, utc_timestamp, vis, a1, a2, angles=None, clockwise=False):
         """
         Pads data and performs anticlockwise rotation by default
         """
+        if angles is None:
+            angles = self.rotation_angles(utc_timestamp)
+
         ## OMS: Ben had it in the opposite direction originally, but I'm sure this is right, and matches VLA results
-        sign = -1 if clockwise else 1
-        pa = sign * self.parallactic_angle(utc_timestamp)
+        pa = -angles if clockwise else angles
 
         def mat_factory(pa, nchan, aindex, conjugate_transpose=False):
             def give_linear_mat(pa, nchan, aindex, conjugate_transpose=False):
                 """ 2D rotation matrix according to Hales, 2017: 
                 Calibration Errors in Interferometric Radio Polarimetry """
-                pa = -pa # just a test
-                c, s = np.cos(pa[:, aindex]).repeat(nchan), np.sin(pa[:, aindex]).repeat(nchan)
+                c1, s1 = np.cos(pa[:, aindex, 0]).repeat(nchan), np.sin(pa[:, aindex, 0]).repeat(nchan)
+                c2, s2 = np.cos(pa[:, aindex, 1]).repeat(nchan), np.sin(pa[:, aindex, 1]).repeat(nchan)
                 N = pa.shape[0]
                 if N == 0: 
                     return np.zeros((0, nchan, 2, 2)) # special case: no data for this baseline
                 if conjugate_transpose:
-                    return np.array([c, -s, s, c]).T.reshape(N, nchan, 2, 2)
+                    return np.array([c1, -s1, s2, c2]).T.reshape(N, nchan, 2, 2)
                 else:
-                    return np.array([c, s, -s, c]).T.reshape(N, nchan, 2, 2)
+                    return np.array([c1, s1, -s2, c2]).T.reshape(N, nchan, 2, 2)
                 
             def give_circular_mat(pa, nchan, aindex, conjugate_transpose=False):
                 """ phase rotation matrix according to Hales, 2017: 
                 Calibration Errors in Interferometric Radio Polarimetry """
-                e = np.exp(1.0j * pa[:, aindex]).repeat(nchan)
-                ec = np.conj(e) # e * -1.0j
-                null = np.zeros_like(e)
+                e1 = np.exp(1.0j * pa[:, aindex, 0]).repeat(nchan)
+                e2 = np.exp(1.0j * pa[:, aindex, 1]).repeat(nchan)
+                null = np.zeros_like(e1)
                 N = pa.shape[0]
                 if N == 0: 
                     return np.zeros((0, nchan, 2, 2)) # special case: no data for this baseline
                 if conjugate_transpose:
-                    return np.array([e, null, null, ec]).T.reshape(N, nchan, 2, 2)
+                    return np.array([e1, null, null, np.conj(e2)]).T.reshape(N, nchan, 2, 2)
                 else:
-                    return np.array([ec, null, null, e]).T.reshape(N, nchan, 2, 2)
+                    return np.array([np.conj(e1), null, null, e2]).T.reshape(N, nchan, 2, 2)
             if self.feed_basis == "linear":
                 return give_linear_mat(pa, nchan, aindex, conjugate_transpose)
             elif self.feed_basis == "circular":
@@ -205,7 +219,7 @@ class parallactic_machine(object):
         vis.reshape(orig_vis_shape)
         return vis
 
-    def rotate(self, utc_timestamp, vis, a1, a2, ack=True):
+    def rotate(self, utc_timestamp, vis, a1, a2, angles=None, ack=True):
         """
         Rotates visibilties around the observer's third axis
         This can be applied to e.g MODEL_DATA because P is the first Jones in the chain
@@ -215,9 +229,9 @@ class parallactic_machine(object):
             return vis
         if ack:
             log.info("Applying P Jones to sky (precomputed)")
-        return self.__apply_rotation(utc_timestamp, vis, a1, a2, clockwise=False)
+        return self.__apply_rotation(utc_timestamp, vis, a1, a2, angles=angles, clockwise=False)
 
-    def derotate(self, utc_timestamp, vis, a1, a2, ack=True):
+    def derotate(self, utc_timestamp, vis, a1, a2, angles=None, ack=True):
         """
         Rotates visibilties around the observer's third axis
         This can be applied to e.g CORRECTED_DATA because P
@@ -227,7 +241,7 @@ class parallactic_machine(object):
             return vis
         if ack:
             log.info("Applying P Jones to corrected data (precomputed)")
-        return self.__apply_rotation(utc_timestamp, vis, a1, a2, clockwise=True)
+        return self.__apply_rotation(utc_timestamp, vis, a1, a2, angles=angles, clockwise=True)
 
     @property
     def enable_rotation(self):
