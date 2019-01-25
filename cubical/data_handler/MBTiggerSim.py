@@ -75,7 +75,7 @@ class MSSourceProvider(SourceProvider):
 
     def name(self):
         """ Returns name of associated source provider. """
-        
+
         return self._name
 
     def updated_dimensions(self):
@@ -109,13 +109,13 @@ class MSSourceProvider(SourceProvider):
         # Compute per antenna uvw coordinates. Data must be ordered by time.
         # Per antenna uvw coordinates fail on data where time!=time_centroid.
 
-        ant_uvw = mbu.antenna_uvw(self._uvwco[:self._nrows], 
-                                  self._antea[:self._nrows], 
-                                  self._anteb[:self._nrows], 
+        ant_uvw = mbu.antenna_uvw(self._uvwco[:self._nrows],
+                                  self._antea[:self._nrows],
+                                  self._anteb[:self._nrows],
                                   chunks,
-                                  self._nants, 
+                                  self._nants,
                                   check_missing=False,
-                                  check_decomposition=False, 
+                                  check_decomposition=False,
                                   max_err=100)
 
         return ant_uvw[t_low:t_high, ...].astype(context.dtype)
@@ -157,6 +157,14 @@ class MSSourceProvider(SourceProvider):
                         np.unique(self._times[self.sort_ind])[lt:ut],
                         self._antpos[la:ua],
                         self._phadir).reshape(context.shape).astype(context.dtype)
+
+    def feed_angles(self, context):
+        """ Provides Montblanc with an array of feed angles. """
+
+        (la, ua) = context.dim_extents('na')
+        # TODO(osmirnov)
+        # Please fill me in
+        return np.zeros(ua-la, dtype=context.dtype)
 
     def __enter__(self):
         return self
@@ -202,7 +210,7 @@ class ColumnSinkProvider(SinkProvider):
 
     def set_direction(self, idir):
         """Sets current direction being simulated.
-        
+
         Args:
             idir (int):
                 Direction number, from 0 to n_dir-1
@@ -242,16 +250,16 @@ _mb_slvr = None
 
 def simulate(src_provs, snk_provs, polarisation_type, opts):
     """
-    Convenience function which creates and executes a Montblanc solver for the given source and 
+    Convenience function which creates and executes a Montblanc solver for the given source and
     sink providers.
 
     Args:
-        src_provs (list): 
+        src_provs (list):
             List of :obj:`~montblanc.impl.rime.tensorflow.sources.SourceProvider` objects. See
             Montblanc's documentation.
         snk_provs (list):
             List of :obj:`~montblanc.impl.rime.tensorflow.sinks.SinkProvider` objects. See
-            Montblanc's documentation. 
+            Montblanc's documentation.
         opts (dict):
             Montblanc simulation options (see [montblanc] section in DefaultParset.cfg).
     """
@@ -266,15 +274,15 @@ def simulate(src_provs, snk_provs, polarisation_type, opts):
             device_type=opts["device-type"])
 
         _mb_slvr = montblanc.rime_solver(slvr_cfg)
-        
+
     _mb_slvr.solve(source_providers=src_provs, sink_providers=snk_provs)
 
 import atexit
 
 def _shutdown_mb_slvr():
-    
+
     global _mb_slvr
-    
+
     if _mb_slvr is not None:
         _mb_slvr.close()
 
