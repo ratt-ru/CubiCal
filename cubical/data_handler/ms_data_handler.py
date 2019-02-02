@@ -568,7 +568,7 @@ class MSDataHandler:
             feed_angles = _feedtab.getcol('RECEPTOR_ANGLE')
             feed_rotate_model = (feed_angles !=0 ).any()
         elif not feed_rotate_model:
-            feed_angles = np.zeros((self.nants, 2), 0)
+            feed_angles = np.zeros((self.nants, 2), float)
         elif isinstance(feed_rotate_model, (float,int)):
             feed_angles = np.full((self.nants, 2), feed_rotate_model*math.pi/180)
             feed_rotate_model = True
@@ -582,7 +582,7 @@ class MSDataHandler:
         print>>log(0),"Input model feed rotation {}abled, PA rotation {}abled".format(
                         "en" if feed_rotate_model else "dis", "en" if pa_rotate_model else "dis")
         if feed_rotate_model:
-           print>>log(1),"  feed angles are {}".format(feed_angles)
+           print>>log(1),"  feed angles (deg) are {}".format(", ".join(["{:.1f} {:.1f}".format(*fa) for fa in feed_angles*180/math.pi]))
         print>>log(0),"Output visibilities derotation {}abled".format(
                         "en" if self.derotate_output else "dis")
 
