@@ -143,7 +143,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         # else try to load from gain term
         elif "gain" in soldict:
-            np.angle(soldict["gain"].data, out=self.phases)
+            self.phases[..., (0,1), (0,1)] = np.angle(soldict["gain"].data)[..., (0,1), (0,1)]
             self.phases[...,0,1].fill(0)
             self.phases[...,1,0].fill(0)
             print("loading phase component from gain", file=log(0))
