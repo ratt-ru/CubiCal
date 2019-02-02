@@ -178,6 +178,11 @@ class PerIntervalGains(MasterMachine):
         else:
             return obser_arr
 
+    def get_gain_mask(self):
+        """Helper method: make a gain array mask from gain flags by broadcasting the corr1/2 axes."""
+        mask = np.zeros_like(self.gains, bool)
+        mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
+        return mask
 
     def init_gains(self):
         """
@@ -313,9 +318,7 @@ class PerIntervalGains(MasterMachine):
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
         
-        # Make a mask from gain flags by broadcasting the corr1/2 axes.
-        mask = np.zeros_like(self.gains, bool)
-        mask[:] = (self.gflags!=0)[...,np.newaxis,np.newaxis]
+        mask = self.get_gain_mask()
 
         sols = { "gain": (masked_array(self.gains, mask), self.gain_grid) }
 

@@ -48,7 +48,7 @@ class casa_caltable_factory(object):
                     log.info("Destination CASA gain table '%s' exists. Will overwrite." % filename)
                     shutil.rmtree(filename) # CASA convention is to overwrite
                     
-            basedir = os.path.dirname(filename)
+            basedir = os.path.dirname(filename) or '.'
             subprocess.check_output(["tar", "zxvf", BLANK_TABLE_TARBALL, "-C", basedir])
             os.rename(os.path.join(basedir, BLANK_TABLE_NAME), filename)
 

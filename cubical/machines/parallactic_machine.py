@@ -105,7 +105,7 @@ class parallactic_machine(object):
                 for t in unique_times])
 
             for t, pa in zip(unique_times, unique_pa):
-                angles[utc_timestamp == t, :, :] = pa[:, np.newaxis]
+                angles[utc_timestamp == t, :, :] += pa[:, np.newaxis]
 
         return angles
 

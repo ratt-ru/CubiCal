@@ -155,9 +155,11 @@ class PhaseSlopeGains(ParameterisedGains):
                 loaded = True
 
         if loaded:
+            self.restrict_solution()
             self.cyslope.cyconstruct_gains(self.slope_params, self.gains,
                                            self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
-        
+            self._gains_loaded = True
+
 
     @profile
     def compute_js(self, obser_arr, model_arr):
@@ -254,7 +256,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
     def restrict_solution(self):
         """
-        Restricts the solution by invoking the inherited restrict_soultion method and applying
+        Restricts the solution by invoking the inherited restrict_solution method and applying
         any machine specific restrictions.
         """
 

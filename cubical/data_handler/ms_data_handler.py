@@ -582,7 +582,7 @@ class MSDataHandler:
         print>>log(0),"Input model feed rotation {}abled, PA rotation {}abled".format(
                         "en" if feed_rotate_model else "dis", "en" if pa_rotate_model else "dis")
         if feed_rotate_model:
-           print>>log(1),"Feed angles are {}".format(feed_angles)
+           print>>log(1),"  feed angles are {}".format(feed_angles)
         print>>log(0),"Output visibilities derotation {}abled".format(
                         "en" if self.derotate_output else "dis")
 

@@ -2,10 +2,14 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 from cubical.flagging import FL
 import cubical.kernels
+from numpy.ma import masked_array
+
+from .abstract_machine import log
 
 class PhaseDiagGains(PerIntervalGains):
     """
@@ -89,6 +93,70 @@ class PhaseDiagGains(PerIntervalGains):
     def dof_per_antenna(self):
         """This property returns the number of real degrees of freedom per antenna, per solution interval"""
         return 2
+
+    @staticmethod
+    def exportable_solutions():
+        """ Returns a dictionary of exportable solutions for this machine type. """
+
+        exportables = PerIntervalGains.exportable_solutions()
+
+        exportables.update({
+            "phase": (0., ("dir", "time", "freq", "ant", "corr")),
+            "phase.err": (0., ("dir", "time", "freq", "ant", "corr")),
+        })
+
+        return exportables
+
+    def importable_solutions(self):
+        """ Returns a dictionary of importable solutions for this machine type. """
+
+        # defines solutions we can import from
+        # can import phase, or also a 2x2 complex gain
+        return { 'gain': self.interval_grid, 'phase': self.interval_grid }
+
+    def export_solutions(self):
+        """ Saves the solutions to a dict of {label: solutions,grids} items. """
+
+        solutions = super(PhaseDiagGains, self).export_solutions()
+
+        # construct phase solutions, applying mask from parent gains
+        mask = solutions['gain'][0].mask
+        solutions['phase'] = masked_array(self.phases, mask)[..., (0, 1), (0, 1)], self.interval_grid
+
+        # phase error is same as gain error (small angle approx!)
+        solutions["phase.err"] = solutions["gain.err"][0][..., (0, 1), (0, 1)], self.interval_grid
+
+        return solutions
+
+    def import_solutions(self, soldict):
+        """
+        Loads solutions from a dict.
+
+        Args:
+            soldict (dict):
+                Contains gains solutions which must be loaded.
+        """
+        # load from phase term, if present
+        if "phase" in soldict:
+            self.phases[...,(0,1),(0,1)] = soldict["phase"].data
+            print("loading phases directly", file=log(0))
+
+        # else try to load from gain term
+        elif "gain" in soldict:
+            np.angle(soldict["gain"].data, out=self.phases)
+            self.phases[...,0,1].fill(0)
+            self.phases[...,1,0].fill(0)
+            print("loading phase component from gain", file=log(0))
+        else:
+            return
+
+        # loaded -- do the housekeeping
+
+        self.restrict_solution()
+        np.multiply(self.phases, 1j, out=self.gains)
+        np.exp(self.gains, out=self.gains)
+        self._gains_loaded = True
+
 
     def implement_update(self, jhr, jhjinv):
 
