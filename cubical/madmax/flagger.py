@@ -161,12 +161,16 @@ class Flagger(object):
                         pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({})".format(max_label,
                                         method, blname, bllen, n_flagged, fraction, baseline_label))
                         # save or show plot
-                        if self.GD['madmax']['plot'] == 'show':
-                            pylab.show()
-                        else:
-                            filename = self.get_plot_filename()
-                            figure.savefig(filename, dpi=300)
-                            print>>log(1),"{}: saving Mad Max flagging plot to {}".format(self.chunk_label,filename)
+                        try:
+                            if self.GD['madmax']['plot'] == 'show':
+                                pylab.show()
+                            else:
+                                filename = self.get_plot_filename()
+                                figure.savefig(filename, dpi=300)
+                                print>>log(1),"{}: saving Mad Max flagging plot to {}".format(self.chunk_label,filename)
+                        except Exception as exc:
+                            print>>log(0, "red"),"{}: mad max plotting failed. Something is funky with the data!".format(self.chunk_label)
+
                         pylab.close(figure)
                         del figure
                         made_plots = True

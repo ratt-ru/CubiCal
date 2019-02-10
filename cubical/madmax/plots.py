@@ -24,7 +24,10 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
             pylab.subplot(2, 4, 1 + c1 * 2 + c2)
             if (res[..., c1, c2] > 0).any():
                 pylab.imshow(res[..., c1, c2], norm=norm, aspect='auto')
-                pylab.colorbar()
+                try:
+                    pylab.colorbar()
+                except ZeroDivisionError:
+                    pass
             pylab.title(subplot_titles.get((c1,c2)))
     for c1, x1 in enumerate(feeds.upper()):
         for c2, x2 in enumerate(feeds.upper()):
@@ -32,7 +35,10 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
             res1 = np.ma.masked_array(absres[0, :, :, p, q, c1, c2], fl_prior | fl_new[:, :, p, q])
             if (res1 > 0).any():
                 pylab.imshow(res1, norm=norm, aspect='auto')
-                pylab.colorbar()
+                try:
+                    pylab.colorbar()
+                except ZeroDivisionError:
+                    pass
             pylab.title("{}{} flagged".format(x1, x2))
     return figure
 
