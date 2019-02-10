@@ -175,7 +175,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # do mad max flagging, if requested
     thr1, thr2 = madmax.get_mad_thresholds()
     if thr1 or thr2:
-        madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2, "{} initial".format(label))
+        if madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2, "{} initial".format(label)):
+            gm.update_equation_counts(flags_arr != 0)
 
     def compute_chisq(statfield=None):
         """
@@ -263,7 +264,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             # do mad max flagging, if requested
             thr1, thr2 = madmax.get_mad_thresholds()
             if thr1 or thr2:
-                madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2, "{} iter {} ({})".format(label, num_iter, gm.jones_label))
+                if madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2,
+                                             "{} iter {} ({})".format(label, num_iter, gm.jones_label)):
+                    gm.update_equation_counts(flags_arr != 0)
 
             chi, mean_chi = compute_chisq()
 
@@ -303,11 +306,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             # do mad max flagging, if requested
             thr1, thr2 = madmax.get_mad_thresholds()
             if thr1 or thr2:
-                madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2, "{} final".format(label))
-
-            if sol_opts['last-rites']:
-                # Recompute chi-squared based on original noise statistics.
-                chi, mean_chi = compute_chisq(statfield='chi2')
+                if madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2,
+                                            "{} final".format(label)) and sol_opts['last-rites']:
+                    gm.update_equation_counts(flags_arr != 0)
 
         # Re-estimate the noise using the final residuals, if last rites are needed.
 

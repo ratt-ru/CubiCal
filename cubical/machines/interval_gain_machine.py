@@ -406,7 +406,7 @@ class PerIntervalGains(MasterMachine):
                 bad_slots = self.unpack_intervals(bad_intervals)
                 flags_arr[bad_slots,...] |= FL.LOWSNR
                 unflagged[bad_slots,...] = False
-                self._update_equation_counts(unflagged)
+                self.update_equation_counts(unflagged)
         else:
             self._n_flagged_on_max_error = None
 
@@ -419,10 +419,10 @@ class PerIntervalGains(MasterMachine):
         # model = np.sqrt(self.interval_sum(modelsq,1))
         # self.model_error = model*self.gain_error*(2+self.gain_error)
 
-    def _update_equation_counts(self, unflagged):
+    def update_equation_counts(self, unflagged):
         """Sets up equation counters based on flagging information. Overrides base version to compute
         additional stuff"""
-        MasterMachine._update_equation_counts(self, unflagged)
+        MasterMachine.update_equation_counts(self, unflagged)
 
         self.eqs_per_interval = self.interval_sum(self.eqs_per_tf_slot)
 
@@ -537,7 +537,7 @@ class PerIntervalGains(MasterMachine):
             flags_arr |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING
             flags_arr |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
 
-            self._update_equation_counts(flags_arr==0)
+            self.update_equation_counts(flags_arr == 0)
 
             return True
         return False

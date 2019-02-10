@@ -261,10 +261,9 @@ class MasterMachine(object):
         """
         return 0
 
-    def _update_equation_counts(self, unflagged):
+    def update_equation_counts(self, unflagged):
         """
-        Internal method used by precompute_attributes() and propagate_gflags() to set up equation 
-        counters and chi-sq normalization factors. Sets up the following attributes:
+        Sets up equation counters and normalization factors. Sets up the following attributes:
         
             - eqs_per_tf_slot (np.ndarray):
                 Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
@@ -272,6 +271,9 @@ class MasterMachine(object):
                 Shape (n_ant, ) array containing a count of equations per antenna.
 
         Also sets up corresponding chi-sq normalization factors.
+
+        Normally called form precompute_attributes() to set things up. Should also be called every time
+        the flags change (otherwise chi-sq normalization will go off)
 
         Args:
             unflagged (np.ndarray):
@@ -353,7 +355,7 @@ class MasterMachine(object):
             bool np.ndarray, shape (n_tim, n_fre, n_ant, n_ant), indicating the inverse of flags
         """
         unflagged = flags_arr==0
-        self._update_equation_counts(unflagged)
+        self.update_equation_counts(unflagged)
         return unflagged
 
     @abstractmethod
