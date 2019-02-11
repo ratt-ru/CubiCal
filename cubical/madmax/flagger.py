@@ -177,8 +177,6 @@ class Flagger(object):
                                             self.chunk_label, exc, baseline_label)
                             print>>log(1), "Although harmless, this may indicate a problem with the data, or a bug in CubiCal."
                             print>>log(1), "Please see stack trace above, and report if you think this is a bug."
-
-
         else:
             print>> log(2),"{} {} abides".format(max_label, method)
 
