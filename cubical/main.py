@@ -333,6 +333,7 @@ def main(debugging=False):
         
 
         single_chunk = GD["data"]["single-chunk"]
+        single_tile = GD["data"]["single-tile"]
 
         # setup worker process properties
 
@@ -368,6 +369,10 @@ def main(debugging=False):
         # run the main loop
 
         t0 = time()
+
+        if single_tile >= 0:
+            tile_list = tile_list[single_tile:single_tile+1]
+            print>> log(0, "blue"), "--data-single-tile {} set, will process only one tile".format(single_tile)
 
         stats_dict = workers.run_process_loop(ms, tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 

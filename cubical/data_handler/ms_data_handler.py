@@ -1064,7 +1064,7 @@ class MSDataHandler:
 
         tile_list = coarser_tile_list
         for i, tile in enumerate(tile_list):
-            tile.finalize("tile #{}/{}".format(i+1, len(tile_list)))
+            tile.finalize("tile {}/{}".format(i, len(tile_list)))
 
         max_chunks = max([tile.total_tf_chunks() for tile in tile_list])
 
