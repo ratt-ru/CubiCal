@@ -74,6 +74,11 @@ class Flagger(object):
         else:
             raise RuntimeError("invalid --madmax-estimate {} setting".format(GD['madmax']['estimate']))
 
+        if GD['madmax']['plot-bl']:
+            self._plot_baselines = set(GD['madmax']['plot-bl'].split(","))
+        else:
+            self._plot_baselines = set()
+
         self._plotnum = 0
 
     def get_mad_thresholds(self):
@@ -122,14 +127,14 @@ class Flagger(object):
                 per_bl = []
                 total_elements = float(n_tim * n_fre)
                 interesting_fraction = self.GD['madmax']['plot-frac-above']*total_elements
-                plot_explicit_baseline = None
+                plot_explicit_baselines = []
                 for p in xrange(n_ant):
                     for q in xrange(p + 1, n_ant):
                         n_flagged = baddies[:, :, p, q].sum()
                         if n_flagged and n_flagged >= interesting_fraction:
                             per_bl.append((n_flagged, p, q))
-                        if self.GD['madmax']['plot-bl'] == self.metadata.baseline_name[p,q]:
-                            plot_explicit_baseline = (n_flagged, p ,q)
+                        if self.metadata.baseline_name[p,q] in self._plot_baselines:
+                            plot_explicit_baselines.append(((n_flagged, p, q), "--madmax-plot-bl"))
                 per_bl = sorted(per_bl, reverse=True)
                 # print
                 per_bl_str = ["{} ({}m): {} ({:.2%})".format(self.metadata.baseline_name[p,q],
@@ -143,8 +148,7 @@ class Flagger(object):
                         baselines_to_plot.append((per_bl[0], "worst baseline"))
                     if len(per_bl)>2:
                         baselines_to_plot.append((per_bl[len(per_bl)//2], "median baseline"))
-                    if plot_explicit_baseline:
-                        baselines_to_plot.append((plot_explicit_baseline,"--madmax-plot-bl"))
+                    baselines_to_plot += plot_explicit_baselines
                     import pylab
                     for (n_flagged, p, q), baseline_label in baselines_to_plot:
                         # make subplots
