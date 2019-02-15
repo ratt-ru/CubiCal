@@ -19,6 +19,7 @@ import os, os.path
 import sys
 import warnings
 import numpy as np
+import re
 from time import time
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
@@ -365,14 +366,30 @@ def main(debugging=False):
         # MS to populate the column)
         ms.define_flags(tile_list, flagopts=GD["flags"])
 
+        # single-chunk implies single-tile
+        if single_tile >= 0:
+            tile_list = tile_list[single_tile:single_tile+1]
+            print>> log(0, "blue"), "--data-single-tile {} set, will process only the one tile".format(single_tile)
+        elif single_chunk:
+            match = re.match("D([0-9]+)T([0-9]+)", single_chunk)
+            if not match:
+                raise ValueError("invalid setting: --data-single-chunk {}".format(single_chunk))
+            ddid_tchunk = int(match.group(1)), int(match.group(2))
+
+            tilemap = { (rc.ddid, rc.tchunk): (tile, rc) for tile in tile_list for rc in tile.rowchunks }
+            single_tile_rc = tilemap.get(ddid_tchunk)
+            if single_tile_rc:
+                tile, rc = single_tile_rc
+                tile_list = [tile]
+                print>> log(0, "blue"), "--data-single-chunk {} in {}, rows {}:{}".format(
+                    single_chunk, tile.label, min(rc.rows0), max(rc.rows0)+1)
+            else:
+                raise ValueError("--data-single-chunk {}: chunk with this ID not found".format(single_chunk))
 
         # run the main loop
 
         t0 = time()
 
-        if single_tile >= 0:
-            tile_list = tile_list[single_tile:single_tile+1]
-            print>> log(0, "blue"), "--data-single-tile {} set, will process only one tile".format(single_tile)
 
         stats_dict = workers.run_process_loop(ms, tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 

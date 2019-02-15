@@ -1029,6 +1029,9 @@ class MSDataHandler:
             return cmp(a.rows[0], b.rows[0])
         chunklist.sort(cmp=_compare_chunks)
 
+        if log.verbosity() > 2:
+            print>>log(3),"  row chunks: {}".format(", ".join(["{} {}:{}".format(ch.tchunk, min(ch.rows0), max(ch.rows0)+1) for ch in chunklist]))
+
         # now, break the row chunks into tiles. Tiles are an "atom" of I/O. First, we try to define each tile as a
         # sequence of overlapping row chunks (i.e. chunks such that the first row of a subsequent chunk comes before
         # the last row of the next chunk).

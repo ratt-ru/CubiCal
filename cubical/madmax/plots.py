@@ -161,7 +161,7 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
         lmmad_bllen = np.ma.masked_array([bl for bl,_,_ in indices_pq], lmmad_mask)
         lmmad_mad   = np.ma.masked_array([(lmmad.get((p,q), 0) or 0) for _,p,q in indices_pq], lmmad_mask)
 
-        lmmad_ad = np.ma.masked_array([abs((blmad1 or 0)- lmmad.get((p,q), 0)) for (_,p,q,_,_),blmad1 in zip(indices,blmad)], blmad.mask)
+        lmmad_ad = np.ma.masked_array([abs((blmad1 or 0) - lmmad.get((p,q), 0)) for (_,p,q,_,_),blmad1 in zip(indices,blmad)], blmad.mask)
         lmmad_madmad = np.ma.median(lmmad_ad)
         print>>log(3),"make_baseline_mad_plot: plotting baselines"
 
