@@ -234,6 +234,10 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             model_arr[:, :, new_flags, :, :] = 0
             obser_arr[   :, new_flags, :, :] = 0
 
+            # Adding the below lines for the robust solver so that flags should be apply to the weights
+            if hasattr(gm, 'new_flags'):
+                gm.new_flags = new_flags
+
             # Break out of the solver loop if we find ourselves with no valid solution intervals.
             
             if not gm.has_valid_solutions:
