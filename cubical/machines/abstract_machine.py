@@ -232,7 +232,7 @@ class MasterMachine(object):
         
         return NotImplementedError
 
-    @abstractmethod			
+    @abstractmethod
     def apply_gains(self, model_arr):
         """
         This method should be able to apply the gains associated with the gain
@@ -354,7 +354,7 @@ class MasterMachine(object):
         self._update_equation_counts(unflagged)
         return unflagged
 
-    @abstractmethod				
+    @abstractmethod
     def check_convergence(self, min_delta_g):
         """
         This method should check the gain solutions for convergence.

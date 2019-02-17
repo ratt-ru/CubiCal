@@ -37,7 +37,7 @@ with open('README.md') as f:
     long_description = f.read()
 
 with open('README.md') as f:
-	long_description = f.read()
+    long_description = f.read()
 
 # Try get location of numpy headers. Compilation requires these headers. 
 
@@ -86,6 +86,9 @@ class gocythonize(Command):
         self.force = self.force or 0
 
     def run(self):
+
+        if not cythonize:
+            raise Exception("Cython not available, please install first.")
         
         CCO.buffer_max_dims = 9
 
