@@ -80,7 +80,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     chi_interval = sol_opts["chi-int"]
     stall_quorum = sol_opts["stall-quorum"]
 
-
+    
     # collect flagging options
 
     flag_warning_threshold = GD['flags']["warn-thr"]

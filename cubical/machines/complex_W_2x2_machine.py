@@ -195,7 +195,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         else:
 
-            unflagged = self.new_flags==0
+            unflagged = self.new_flags==False
         
             num_init_unflaged_eqs = np.sum(unflagged)
 
@@ -272,7 +272,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.cykernel.cycompute_weights(self.residuals, covinv, w, v, self.npol)
 
         # re-set weights for visibillities flagged from start to 0
-        self.weights[:,self.new_flags] = 0
+        self.weights[:,self.new_flags,:] = 0
 
         #---------normalising the weights to mean 1 using only half the weights--------------------------#
         aa, ab = np.tril_indices(self.n_ant, -1)
@@ -318,6 +318,6 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.weights = np.ones(self.weights_shape, dtype=self.dtype)
         self.weights[:,flags_arr!=0] = 0
-        self.new_flags = flags_arr
+        self.new_flags = flags_arr!=0
 
         self.v = 2.   # t-distribution number of degrees of freedom
