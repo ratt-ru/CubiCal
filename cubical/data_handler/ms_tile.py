@@ -838,20 +838,30 @@ class MSTile(object):
                                         print>> log(0), "  reading {} for model {} direction {}".format(model_source, imod,
                                                                                                         idir)
                                         model0 = self.dh.fetchslice(model_source, subset=table_subset)
-                                        if self.dh.parallactic_machine is not None:
-                                            subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
-                                            model0 = self.dh.parallactic_machine.rotate(subset.time_col, model0,
-                                                                                        subset.antea, subset.anteb,
-                                                                                        angles=subset._angles)
+                                        # sanity check (I've seen nulls coming out of wsclean...)
+                                        invmodel = (~np.isfinite(model0))
+                                        invmodel[..., (0, -1)] |= (model0[..., (0, -1)] == 0)
+                                        invmodel &= (flag_arr0==0)
+                                        num_inv = invmodel.sum()
+                                        if num_inv:
+                                            print>>log(0,"red"), "  {} ({:.2%}) model visibilities flagged as 0/inf/nan".format(
+                                                num_inv, num_inv / float(invmodel.size))
+                                            flag_arr0[invmodel] |= FL.INVMODEL
+                                        # now rebin (or conjugate)
                                         if self.dh.do_freq_rebin or self.dh.do_time_rebin:
-                                            model = np.empty_like(obvis)
+                                            model = np.zeros_like(obvis)
                                             rebinning.rebin_model(model, model0, flag_arr0,
-                                                                  weights0[imod], num_weights > 0,
                                                                   subset.rebin_row_map, subset.rebin_chan_map)
                                         else:
                                             model0[subset.rebin_row_map < 0] = model0[subset.rebin_row_map < 0].conjugate()
                                             model = model0
                                         model0 = None
+                                        # apply rotation (*after* rebinning: subset.time_col is rebinned version!)
+                                        if self.dh.parallactic_machine is not None:
+                                            subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                                            model = self.dh.parallactic_machine.rotate(subset.time_col, model,
+                                                                                        subset.antea, subset.anteb,
+                                                                                        angles=subset._angles)
                                     loaded_models.setdefault(model_source, {})[None] = model
                                 # else evaluate a Tigger model with Montblanc
                                 else:
@@ -877,8 +887,8 @@ class MSTile(object):
                     flag_arr[invmodel] |= FL.INVMODEL
                     self.dh.flagcounts.setdefault("INVMODEL", 0)
                     self.dh.flagcounts["INVMODEL"] += ninv*rebin_factor
-                    print>> log(0, "red"), "  {:.2%} visibilities flagged due to 0/inf/nan model".format(
-                        ninv / float(flagged.size))
+                    print>> log(0, "red"), "  {} ({:.2%}) visibilities flagged due to 0/inf/nan model".format(
+                        ninv, ninv / float(flagged.size))
 
             data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
 
