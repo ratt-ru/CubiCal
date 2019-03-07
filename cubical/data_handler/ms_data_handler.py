@@ -765,7 +765,9 @@ class MSDataHandler:
         """
         subset = subset or self.data
         if self._ms_blc == None:
+            print>>log(0),"fetching {} {} {}".format(column, startrow, nrows)
             return subset.getcol(column, startrow, nrows)
+        print>>log(0),"fetching {} {} {} {} {} {}".format(column, startrow, nrows, self._ms_blc, self._ms_trc, self._ms_incr)
         return subset.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
 
     def fetchslicenp(self, column, data, startrow=0, nrows=-1, subset=None):
@@ -938,7 +940,7 @@ class MSDataHandler:
             self.rebin_row_map[row0] = row if a1<a2 else -row
 
         print>>log,"  found {} time chunks: {} {}".format(len(timechunk_row0),
-                        " ".join([str(self.times[r]) for r in timechunk_row0]),
+                        " ".join(["{}:{}:{}".format(i, r, self.times[r]) for i, r in enumerate(timechunk_row0)]),
                         str(self.times[-1]+1))
 
         # at the end of this, we have a list of timechunk_row0: i.e. a list of starting rows for

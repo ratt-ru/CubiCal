@@ -159,7 +159,6 @@ def rebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
 @cython.nonecheck(False)
 def rebin_model(fcomplex [:,:,:] model,  const fcomplex [:,:,:] model0,
                   const flag_t [:,:,:] flag0,
-                  const wfloat [:,:,:]  weights0, int has_weights,
                   const index_t [:] rebin_row_map, const index_t [:] rebin_chan_map):
     """
     Rebins a model column, following a rebin_row_map precomputed by cyrebin_vis

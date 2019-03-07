@@ -319,7 +319,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         stats.chunk.chi2 = mean_chi
 
-        message = "{} {}, stall {:.2%}, chi^2 {:.4} -> {:.4}".format(label,
+        message = "{} (end solve) {}, stall {:.2%}, chi^2 {:.4} -> {:.4}".format(label,
                     gm.final_convergence_status_string,
                     frac_stall, float(stats.chunk.init_chi2), mean_chi)
 
@@ -335,7 +335,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     else:
         
-        print>>log(0, "red"), "{} {}: completely flagged?".format(label, gm.final_convergence_status_string)
+        print>>log(0, "red"), "{} (end solve) {}: completely flagged?".format(label, gm.final_convergence_status_string)
 
         stats.chunk.chi2 = 0
         resid_arr = obser_arr

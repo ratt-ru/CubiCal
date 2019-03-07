@@ -787,7 +787,7 @@ class MSTile(object):
                                       flag_arr, flag_arr0,
                                       weights, weights0, num_weights,
                                       subset.rebin_row_map, subset.rebin_chan_map)
-
+#                import pdb; pdb.set_trace()
                 del obvis0, uvw0
                 # we'll need flag_arr0 and weights0 for load_models below so don't delete
                 flagged = flag_arr != 0
@@ -852,6 +852,7 @@ class MSTile(object):
                                             model = np.zeros_like(obvis)
                                             rebinning.rebin_model(model, model0, flag_arr0,
                                                                   subset.rebin_row_map, subset.rebin_chan_map)
+#                                            import pdb; pdb.set_trace()
                                         else:
                                             model0[subset.rebin_row_map < 0] = model0[subset.rebin_row_map < 0].conjugate()
                                             model = model0
@@ -949,7 +950,7 @@ class MSTile(object):
         else:
             flags[:] = flags_2x2[..., 0, 0]
             flags |= flags_2x2[..., 1, 1]
-
+        
         obs_arr = subset._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, ctype,
                                        reqdims=6, allocator=allocator)
         if 'movis' in data:
@@ -1083,10 +1084,11 @@ class MSTile(object):
             table_subset = self.dh.data.selectrows(subset.rows0)
 
             if self.dh.output_column and data0['updated'][0]:
-                covis = subset.upsample(data['covis'])
+                covis = data['covis']
                 if self.dh.parallactic_machine is not None:
                     covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb,
                                                                  angles=subset._angles)
+                covis = subset.upsample(covis)
                 print>> log, "  writing {} column".format(self.dh.output_column)
                 self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
 

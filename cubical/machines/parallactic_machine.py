@@ -116,6 +116,7 @@ class parallactic_machine(object):
         """
         if angles is None:
             angles = self.rotation_angles(utc_timestamp)
+        print("Rotation angles are {}".format(angles), file=log(2))
 
         ## OMS: Ben had it in the opposite direction originally, but I'm sure this is right, and matches VLA results
         pa = -angles if clockwise else angles
