@@ -644,17 +644,29 @@ class MSTile(object):
             if self.dh.has_weights and load_model:
                 weights0 = np.zeros([len(self.dh.models)] + list(obvis0.shape), self.dh.wtype)
                 wcol_cache = {}
-                for i, (_, weight_col) in enumerate(self.dh.models):
-                    if weight_col not in wcol_cache:
-                        print>> log(1), "  reading weights from {}".format(weight_col)
-                        wcol = table_subset.getcol(weight_col)
-                        # If weight_column is WEIGHT, expand along the freq axis (looks like WEIGHT SPECTRUM).
-                        if weight_col == "WEIGHT":
-                            wcol_cache[weight_col] = np.empty_like(obvis0, self.dh.wtype)
-                            wcol_cache[weight_col][:] = wcol[:, np.newaxis, self.dh._corr_slice]
+                for imod, (_, weight_columns) in enumerate(self.dh.models):
+                    # look for weights to be multiplied in
+                    for iwcol, weight_col in enumerate(weight_columns.split("*")):
+                        if weight_col not in wcol_cache:
+                            print>> log(0), "model {} weights {}: reading from {}".format(imod, iwcol, weight_col)
+                            wcol = table_subset.getcol(weight_col)
+                            # support two shapes of wcol: either same as data (a-la WEIGHT_SPECTRUM), or missing
+                            # a frequency axis (a-la WEIGHT)
+                            if wcol.shape == obvis0.shape:
+                                wcol_cache[weight_col] = wcol[:, self.dh._channel_slice, self.dh._corr_slice]
+                            elif tuple(wcol.shape) == (obvis0.shape[0], obvis0.shape[2]):
+                                print>> log(0), "    this weight column does not have a frequency axis: broadcasting"
+                                wcol_cache[weight_col] = np.empty_like(obvis0, self.dh.wtype)
+                                wcol_cache[weight_col][:] = wcol[:, np.newaxis, self.dh._corr_slice]
+                            else:
+                                raise RuntimeError("column {} has an invalid shape {}".format(weight_col, wcol.shape))
                         else:
-                            wcol_cache[weight_col] = wcol[:, self.dh._channel_slice, self.dh._corr_slice]
-                    weights0[i, ...] = wcol_cache[weight_col]
+                            print>> log(0), "model {} weights {}: reusing {}".format(imod, iwcol, weight_col)
+                        # init weights, if first column, else multiply weights by subsequent column
+                        if not iwcol:
+                            weights0[imod, ...] = wcol_cache[weight_col]
+                        else:
+                            weights0[imod, ...] *= wcol_cache[weight_col]
                 del wcol_cache
                 num_weights = len(self.dh.models)
             else:
@@ -803,7 +815,7 @@ class MSTile(object):
                 uvwco = data['uvwco'] = uvw0
                 if num_weights:
                     data['weigh'] = weights0
-                del obvis0, flag_arr0, uvw0, weights0
+                del obvis0, uvw0, weights0
 
             # The following either reads model visibilities from the measurement set, or uses an lsm
             # and Montblanc to simulate them. Data may need to be massaged to be compatible with
@@ -874,7 +886,7 @@ class MSTile(object):
 
                 # release memory (gc.collect() particularly important), as model visibilities are *THE* major user (especially
                 # in the DD case)
-                del loaded_models
+                del loaded_models, flag_arr0
                 import gc
                 gc.collect()
 
