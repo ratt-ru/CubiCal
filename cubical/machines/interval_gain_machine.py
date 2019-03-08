@@ -393,22 +393,22 @@ class PerIntervalGains(MasterMachine):
             self.prior_gain_error[self.fix_directions, ...] = 0
 
         # flag gains on max error
-        bad_gain_intervals = self.prior_gain_error > self.max_gain_error    # dir,time,freq,ant
-        if bad_gain_intervals.any():
-            # (n_dir,) array showing how many were flagged per direction
-            self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
-            # raised corresponding gain flags
-            self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] |= FL.LOWSNR
-            self.prior_gain_error[bad_gain_intervals] = 0
-            # flag intervals where all directions are bad, and propagate that out into flags
-            bad_intervals = bad_gain_intervals.all(axis=0)
-            if bad_intervals.any():
-                bad_slots = self.unpack_intervals(bad_intervals)
-                flags_arr[bad_slots,...] |= FL.LOWSNR
-                unflagged[bad_slots,...] = False
-                self.update_equation_counts(unflagged)
-        else:
-            self._n_flagged_on_max_error = None
+        self._n_flagged_on_max_error = None
+        if self.max_gain_error:
+            bad_gain_intervals = self.prior_gain_error > self.max_gain_error    # dir,time,freq,ant
+            if bad_gain_intervals.any():
+                # (n_dir,) array showing how many were flagged per direction
+                self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
+                # raised corresponding gain flags
+                self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] |= FL.LOWSNR
+                self.prior_gain_error[bad_gain_intervals] = 0
+                # flag intervals where all directions are bad, and propagate that out into flags
+                bad_intervals = bad_gain_intervals.all(axis=0)
+                if bad_intervals.any():
+                    bad_slots = self.unpack_intervals(bad_intervals)
+                    flags_arr[bad_slots,...] |= FL.LOWSNR
+                    unflagged[bad_slots,...] = False
+                    self.update_equation_counts(unflagged)
 
         self._n_flagged_on_max_posterior_error = None
         self.flagged = self.gflags != 0
@@ -491,7 +491,7 @@ class PerIntervalGains(MasterMachine):
 
         else:
             # else final flagging -- check the posterior error estimate
-            if self.posterior_gain_error is not None:
+            if self.posterior_gain_error is not None and self.max_post_error:
                 # reset to 0 for fixed directions
                 if self.dd_term:
                     self.posterior_gain_error[self.fix_directions, ...] = 0

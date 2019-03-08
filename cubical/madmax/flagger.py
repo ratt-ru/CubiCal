@@ -156,7 +156,7 @@ class Flagger(object):
                         for c1,x1 in enumerate(self.metadata.feeds.upper()):
                             for c2,x2 in enumerate(self.metadata.feeds.upper()):
                                 mm = mad[0,p,q,c1,c2] if self.mad_per_corr else mad[0,p,q]
-                                subplot_titles[c1,c2] = "{}{} residuals (MAD {:.2f})".format(x1, x2, mm)
+                                subplot_titles[c1,c2] = "{}{} residuals (MAD {:.3g})".format(x1, x2, mm)
                         try:
                             figure = plots.make_dual_absres_plot(absres, flags_arr!=0, baddies, p, q, self.metadata, subplot_titles)
                             # make plot title with some info
@@ -213,7 +213,7 @@ class Flagger(object):
         shape1 = [mad.shape[0], mad.shape[1]*mad.shape[2]] + list(mad.shape[3:])
         medmad = np.ma.median(mad.reshape(shape1), axis=1)
         # all this was worth it, just so I could type "mad.max()" as legit code
-        print>>log(2),"{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f} to {:.2f}".format(max_label, mad.min(), mad.max(), medmad.min(), medmad.max())
+        print>>log(2),"{} per-baseline MAD min {:.3g}, max {:.3g}, median {:.3g} to {:.3g}".format(max_label, mad.min(), mad.max(), medmad.min(), medmad.max())
         if log.verbosity() > 4:
             for imod in xrange(n_mod):
                 if self.mad_per_corr:
@@ -221,14 +221,14 @@ class Flagger(object):
                         for ic2,c2 in enumerate(self.metadata.feeds):
                             per_bl = [(mad[imod,p,q,ic1,ic2], p, q) for p in xrange(n_ant)
                                       for q in xrange(p+1, n_ant) if not mad.mask[imod,p,q,ic1,ic2]]
-                            per_bl = ["{} ({}m): {:.2f}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
+                            per_bl = ["{} ({}m): {:.3g}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
                                       for x, p, q in sorted(per_bl)[::-1]]
                             print>>log(4),"{} model {} {}{} MADs are {}".format(max_label, imod,
                                                                                 c1.upper(), c2.upper(), ", ".join(per_bl))
                 else:
                     per_bl = [(mad[imod,p,q,], p, q) for p in xrange(n_ant)
                               for q in xrange(p+1, n_ant) if not mad.mask[imod,p,q]]
-                    per_bl = ["{} ({}m) {:.2f}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
+                    per_bl = ["{} ({}m) {:.3g}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
                               for x, p, q in sorted(per_bl)[::-1]]
                     print>>log(4),"{} model {} MADs are {}".format(max_label, imod, ", ".join(per_bl))
 
