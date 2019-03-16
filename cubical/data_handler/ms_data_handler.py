@@ -620,11 +620,20 @@ class MSDataHandler:
         for imodel, (model, weight_col) in enumerate(zip(models, weights)):
             # list of per-direction models
             dirmodels = {}
-            self.models.append((dirmodels, weight_col))
+            subtract_models = set()
+            self.models.append((dirmodels, weight_col, subtract_models))
             for idir, dirmodel in enumerate(model.split(":")):
                 if not dirmodel:
                     continue
                 idirtag = " dir{}".format(idir if use_ddes else 0)
+                # models prefixed by '-' are subtracted from dir0, or else ignored if DDEs are off
+                if dirmodel[0] == '-':
+                    if not idir:
+                        raise ValueError("can't subtract model for direction 0")
+                    if not use_ddes:
+                        continue
+                    dirmodel = dirmodel[1:]
+                    subtract_models.add(idirtag)
                 for component in dirmodel.split("+"):
                     # special case: "1" means unity visibilities
                     if component == "1":

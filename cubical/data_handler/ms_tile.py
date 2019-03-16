@@ -644,7 +644,7 @@ class MSTile(object):
             if self.dh.has_weights and load_model:
                 weights0 = np.zeros([len(self.dh.models)] + list(obvis0.shape), self.dh.wtype)
                 wcol_cache = {}
-                for imod, (_, weight_columns) in enumerate(self.dh.models):
+                for imod, (_, weight_columns, _) in enumerate(self.dh.models):
                     # look for weights to be multiplied in
                     for iwcol, weight_col in enumerate(weight_columns.split("*")):
                         if weight_col not in wcol_cache:
@@ -826,9 +826,10 @@ class MSTile(object):
                 loaded_models = {}
                 movis = data.addSharedArray('movis', model_shape, self.dh.ctype)
 
-                for imod, (dirmodels, _) in enumerate(self.dh.models):
+                for imod, (dirmodels, _, subtract_models) in enumerate(self.dh.models):
                     # populate directions of this model
                     for idir, dirname in enumerate(self.dh.model_directions):
+                        subtract = dirname in subtract_models
                         if dirname in dirmodels:
                             # loop over additive components
                             for model_source, cluster in dirmodels[dirname]:
@@ -883,7 +884,9 @@ class MSTile(object):
                                 # finally, add model in at correct slot
                                 movis[idir, imod, ...] += model
                                 del model
-
+                            if dirname in subtract_models:
+                                print>> log(0), "  model for direction {} subtracted from direction 0".format(idir)
+                                movis[0, imod, ...] -= movis[idir, imod, ...]
                 # release memory (gc.collect() particularly important), as model visibilities are *THE* major user (especially
                 # in the DD case)
                 del loaded_models, flag_arr0

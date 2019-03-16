@@ -290,8 +290,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:
-            phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
-            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]
+            phase = np.angle(self.gains[...,self.ref_ant,0,0])
+            self.gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
 
 
 
