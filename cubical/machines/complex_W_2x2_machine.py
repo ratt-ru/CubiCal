@@ -165,9 +165,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
-        covinv = self.compute_covinv()
-
-        self.weights, self.v = self.update_weights(covinv, self.weights, self.v)
+        self.update_weights()
 
         return flag_count
 
@@ -229,8 +227,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         return covinv
     
 
-
-    def update_weights(self, covinv, w, v):
+    def update_weights(self):
         
         """
             This computes the weights, given the latest residual visibilities and the v parameter.
@@ -267,29 +264,32 @@ class ComplexW2x2Gains(PerIntervalGains):
             
             return root
 
+        covinv = self.compute_covinv()
+
+        w , v  = self.weights, self.v
+
         # import pdb; pdb.set_trace()
 
         self.cykernel.cycompute_weights(self.residuals, covinv, w, v, self.npol)
 
         # re-set weights for visibillities flagged from start to 0
-        self.weights[:,self.new_flags,:] = 0
+        w[:,self.new_flags,:] = 0
 
         #---------normalising the weights to mean 1 using only half the weights--------------------------#
         aa, ab = np.tril_indices(self.n_ant, -1)
         w_real = np.real(w[:,:,:,aa,ab,0].flatten())
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
         norm = np.average(w_nzero) 
-        w /=norm  
+  
+        self.weights = w/norm
         
         #-----------computing the v parameter---------------------#
         # This computation is only done after a certain number of iterations. Default is 5
         if self.iters % self.v_int == 0 or self.iters == 1:
             wn = w_nzero/norm 
-            v = _brute_solve_v(wn)
-        else:
-            v = self.v
+            self.v = _brute_solve_v(wn)
         
-        return w, v 
+        return 
 
     def restrict_solution(self):
         
