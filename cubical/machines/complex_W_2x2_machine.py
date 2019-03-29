@@ -10,7 +10,7 @@ import cubical.kernels
 import time
 
 from cubical.tools import logger
-log = logger.getLogger("complex_2x2")  #TODO check this
+log = logger.getLogger("solver")  #TODO check this "complex_2x2"
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -62,7 +62,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.v_int = options.get("robust-int", 1)
 
-
+       
     @staticmethod
     def get_kernel(options):
         """Returns kernel approriate to Jones options"""
@@ -189,8 +189,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         if self.cov_type == "identity":
 
             covinv = np.eye(4, dtype=self.dtype)
-           
-        
+            computed = False
+
         else:
 
             unflagged = self.new_flags==False
@@ -208,11 +208,13 @@ class ComplexW2x2Gains(PerIntervalGains):
             covinv = np.eye(4, dtype=self.dtype)
 
             if self.cov_type == "hybrid":
-                if np.max(std) < 1:
+                if np.max(np.abs(std)) < 1:
                     covinv *= 1/(np.max(std) + self.eps**2)
+                    computed = True
 
             elif self.cov_type == "compute":
                 covinv *= 1/(np.max(std) + self.eps**2)
+                computed = True
                     
             else:
                 raise RuntimeError("unknown robust-cov setting")
@@ -220,9 +222,17 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         if self.npol == 2:
             covinv[(1,2), (1,2)] = 0
+            
             # For non polarised visibilities, the xx(ll) and yy(rr) are almost identical
-            # Thus they have a strong covariance
-            covinv[(0,3), (3,0)] = covinv[0,0]  
+            # Thus they have a strong covariance and breaks the diagonal approximation to the covariance
+            # Trying a quick fix here by setting thr diagonal elements to account for the offdiagnoal terms
+            # which are different from zero in such cases
+            # We only bother about this when covariance is computed
+            if computed:
+                if np.abs((np.abs(std[0,0]+self.eps**2)/np.abs(std[0,3]+self.eps**2)) - 1.) < 1:
+                    covinv[(0,3), (3,0)] = covinv[0,0] 
+            else:
+                covinv[(0,3), (3,0)] = covinv[0,0] 
 
         return covinv
     
@@ -254,13 +264,18 @@ class ComplexW2x2Gains(PerIntervalGains):
             """
 
             m = len(wn)
-        
-            vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - \
-                                     special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
 
-            vvals = np.arange(2, 51, 1, dtype=float) #search for v in the range (2,50)
+            
+            vfunc = lambda a: special.digamma(a+self.npol) - np.log(a+self.npol) - \
+                        special.digamma(a) + np.log(a) + (1./m)*np.sum(np.log(wn) - wn) + 1
+            
+
+            vvals = np.arange(2, 101, 1, dtype=float) #search for v in the range (2, 100)
             fvals = vfunc(vvals)
             root = vvals[np.argmin(np.abs(fvals))]
+
+            if self.iters % 5 == 0 or self.iters == 1:
+                print>> log, "{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root)
             
             return root
 
