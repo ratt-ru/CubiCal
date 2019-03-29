@@ -39,7 +39,9 @@ cdef inline void weight_upd_product(complex3264 *out, const complex3264 *r, cons
            r[0].conjugate()*c[2]*r[1] + r[1].conjugate()*c[6]*r[2] + r[2].conjugate()*c[10]*r[2] +r[3].conjugate()*c[14]*r[2] + \
            r[0].conjugate()*c[3]*r[3] + r[1].conjugate()*c[7]*r[3] + r[2].conjugate()*c[11]*r[3] + r[3].conjugate()*c[15]*r[3]
 
-    out[0] = (v+2*npol)/(v + 2*denom.real)
+    
+    out[0] = (v+npol)/(v + denom.real) # using LB derivation
+   
 
 cdef inline void cov_upd_product(complex3264 *out, const complex3264 *r, const complex3264 *w) nogil:
     """
