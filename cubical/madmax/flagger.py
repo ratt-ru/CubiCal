@@ -114,7 +114,7 @@ class Flagger(object):
         nbad = int(baddies.sum())
         self.stats.chunk.num_mad_flagged += nbad
 
-        if nbad:
+        if nbad or self._plot_baselines:
             if nbad < flags_arr.size * self.flag_warning_threshold:
                 warning, color = "", "blue"
             else:
@@ -177,8 +177,8 @@ class Flagger(object):
                             made_plots = True
                         except Exception as exc:
                             traceback.print_exc()
-                            print>>log(1, "red"), "WARNING: {}: exception {} raised while generating Mad Max waterfall plot for baseline {}".format(
-                                            self.chunk_label, exc, baseline_label)
+                            print>>log(1, "red"), "WARNING: {}: exception {} raised while generating Mad Max waterfall plot for baseline {} ({})".format(
+                                            self.chunk_label, exc, blname, baseline_label)
                             print>>log(1), "Although harmless, this may indicate a problem with the data, or a bug in CubiCal."
                             print>>log(1), "Please see stack trace above, and report if you think this is a bug."
         else:

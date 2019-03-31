@@ -13,9 +13,9 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
     fl_prior = fl_prior[:, :, p, q] & ~fl_new[:, :, p, q]
     figure = pylab.figure(figsize=(16, 10))
     resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
-    resmask[:] = fl_prior[..., np.newaxis, np.newaxis]
+    resmask[:] = fl_prior[..., np.newaxis, np.newaxis] #| absres[0, :, :, p, q]==0
     res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
-    vmin = res.min()
+    vmin = max(res.min(), 1e-9)
     vmax = res.max()
     if vmin != vmax:
         from matplotlib.colors import LogNorm

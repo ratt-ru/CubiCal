@@ -248,6 +248,10 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
         _init_worker(main=True)
 
         for itile, tile in enumerate(tile_list):
+            # check for dead children
+            pid, status, _ = os.wait3(os.WNOHANG)
+            if pid:
+                print>> log(0), "child process {} exited with status {}. This is a bug, or an out-of-memory condition.".format(pid, status)
             # wait for I/O job on current tile to finish
             print>> log(0), "waiting for I/O on {}".format(tile.label)
             done, not_done = cf.wait([io_futures[itile]])

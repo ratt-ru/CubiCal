@@ -644,29 +644,37 @@ class MSTile(object):
             if self.dh.has_weights and load_model:
                 weights0 = np.zeros([len(self.dh.models)] + list(obvis0.shape), self.dh.wtype)
                 wcol_cache = {}
-                for imod, (_, weight_columns, _) in enumerate(self.dh.models):
+                for imod, (_, weight_columns) in enumerate(self.dh.models):
                     # look for weights to be multiplied in
                     for iwcol, weight_col in enumerate(weight_columns.split("*")):
-                        if weight_col not in wcol_cache:
-                            print>> log(0), "model {} weights {}: reading from {}".format(imod, iwcol, weight_col)
+                        mean_corr = "~ (mean across corrs)" if weight_col.endswith("~") else ""
+                        if mean_corr:
+                            weight_col = weight_col[:-1]
+                        wcol = wcol_cache.get(weight_col)
+                        if wcol is None:
+                            print>> log(0), "model {} weights {}: reading from {}{}".format(imod, iwcol, weight_col, mean_corr)
                             wcol = table_subset.getcol(weight_col)
                             # support two shapes of wcol: either same as data (a-la WEIGHT_SPECTRUM), or missing
                             # a frequency axis (a-la WEIGHT)
-                            if wcol.shape == obvis0.shape:
-                                wcol_cache[weight_col] = wcol[:, self.dh._channel_slice, self.dh._corr_slice]
+                            if wcol.ndim == 3:
+                                wcol_cache[weight_col] = wcol = wcol[:, self.dh._channel_slice, self.dh._corr_slice]
+                                if wcol.shape != obvis0.shape:
+                                    raise RuntimeError("column {} does not match shape of visibility column".format(weight_col))
                             elif tuple(wcol.shape) == (obvis0.shape[0], obvis0.shape[2]):
                                 print>> log(0), "    this weight column does not have a frequency axis: broadcasting"
                                 wcol_cache[weight_col] = np.empty_like(obvis0, self.dh.wtype)
                                 wcol_cache[weight_col][:] = wcol[:, np.newaxis, self.dh._corr_slice]
                             else:
-                                raise RuntimeError("column {} has an invalid shape {}".format(weight_col, wcol.shape))
+                                raise RuntimeError("column {} has an invalid shape {} (expected {})".format(weight_col, wcol.shape, obvis0.shape))
                         else:
-                            print>> log(0), "model {} weights {}: reusing {}".format(imod, iwcol, weight_col)
+                            print>> log(0), "model {} weights {}: reusing {}{}".format(imod, iwcol, weight_col, mean_corr)
                         # init weights, if first column, else multiply weights by subsequent column
+                        if mean_corr:
+                            wcol = wcol.mean(-1)[..., np.newaxis]
                         if not iwcol:
-                            weights0[imod, ...] = wcol_cache[weight_col]
+                            weights0[imod, ...] = wcol
                         else:
-                            weights0[imod, ...] *= wcol_cache[weight_col]
+                            weights0[imod, ...] *= wcol
                 del wcol_cache
                 num_weights = len(self.dh.models)
             else:
@@ -826,30 +834,30 @@ class MSTile(object):
                 loaded_models = {}
                 movis = data.addSharedArray('movis', model_shape, self.dh.ctype)
 
-                for imod, (dirmodels, _, subtract_models) in enumerate(self.dh.models):
+                for imod, (dirmodels, _) in enumerate(self.dh.models):
                     # populate directions of this model
                     for idir, dirname in enumerate(self.dh.model_directions):
-                        subtract = dirname in subtract_models
                         if dirname in dirmodels:
                             # loop over additive components
-                            for model_source, cluster in dirmodels[dirname]:
+                            for model_source, cluster, subtract in dirmodels[dirname]:
+                                subtract_str = " (-)" if subtract else ""
                                 # see if data for this model is already loaded
                                 if model_source in loaded_models:
-                                    print>> log(1), "  reusing {}{} for model {} direction {}".format(model_source,
+                                    print>> log(0), "  reusing {}{} for model {} direction {}{}".format(model_source,
                                                                                                       "" if not cluster else (
                                                                                                           "()" if cluster == 'die' else "({})".format(
                                                                                                               cluster)),
-                                                                                                      imod, idir)
+                                                                                                      imod, idir, subtract_str)
                                     model = loaded_models[model_source][cluster]
                                 # cluster of None signifies that this is a visibility column
                                 elif cluster is None:
                                     if model_source is 1:
-                                        print>> log(0), "  using 1.+0j for model {} direction {}".format(model_source,
-                                                                                                         imod, idir)
+                                        print>> log(0), "  using 1.+0j for model {} direction {}{}".format(model_source,
+                                                                                                         imod, idir, subtract_str)
                                         model = np.ones_like(obvis)
                                     else:
-                                        print>> log(0), "  reading {} for model {} direction {}".format(model_source, imod,
-                                                                                                        idir)
+                                        print>> log(0), "  reading {} for model {} direction {}{}".format(model_source, imod,
+                                                                                                        idir, subtract_str)
                                         model0 = self.dh.fetchslice(model_source, subset=table_subset)
                                         # sanity check (I've seen nulls coming out of wsclean...)
                                         invmodel = (~np.isfinite(model0))
@@ -882,11 +890,11 @@ class MSTile(object):
                                     model = subset.load_montblanc_models(uvwco, loaded_models, model_source, cluster, imod, idir)
 
                                 # finally, add model in at correct slot
-                                movis[idir, imod, ...] += model
+                                if subtract:
+                                    movis[idir, imod, ...] -= model
+                                else:
+                                    movis[idir, imod, ...] += model
                                 del model
-                            if dirname in subtract_models:
-                                print>> log(0), "  model for direction {} subtracted from direction 0".format(idir)
-                                movis[0, imod, ...] -= movis[idir, imod, ...]
                 # release memory (gc.collect() particularly important), as model visibilities are *THE* major user (especially
                 # in the DD case)
                 del loaded_models, flag_arr0
@@ -907,6 +915,7 @@ class MSTile(object):
                         ninv, ninv / float(flagged.size))
 
             data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
+#            import pdb; pdb.set_trace()
 
             # Create a placeholder if using the Robust solver with save weights activated
             if self.dh.output_weight_column is not None:

@@ -620,24 +620,21 @@ class MSDataHandler:
         for imodel, (model, weight_col) in enumerate(zip(models, weights)):
             # list of per-direction models
             dirmodels = {}
-            subtract_models = set()
-            self.models.append((dirmodels, weight_col, subtract_models))
+            self.models.append((dirmodels, weight_col))
             for idir, dirmodel in enumerate(model.split(":")):
                 if not dirmodel:
                     continue
                 idirtag = " dir{}".format(idir if use_ddes else 0)
-                # models prefixed by '-' are subtracted from dir0, or else ignored if DDEs are off
-                if dirmodel[0] == '-':
-                    if not idir:
-                        raise ValueError("can't subtract model for direction 0")
-                    if not use_ddes:
-                        continue
-                    dirmodel = dirmodel[1:]
-                    subtract_models.add(idirtag)
-                for component in dirmodel.split("+"):
+                # split component list at +/- signs
+                components = re.split("([+-])", dirmodel.rstrip("+-"))  # this list will be 'comp1', '+', 'comp2', etc.
+                # insert leading "+" if missing
+                if components[0] != "+" and components[0] != '-':
+                    components.insert(0, "+")
+                for sign, component in zip(components[::2], components[1::2]):
+                    subtract = sign == '-'
                     # special case: "1" means unity visibilities
                     if component == "1":
-                        dirmodels.setdefault(idirtag, []).append((1, None))
+                        dirmodels.setdefault(idirtag, []).append((1, None, subtract))
                     # else check for an LSM component
                     elif component.startswith("./") or component not in self.ms.colnames():
                         # check if LSM ends with @tag specification
@@ -660,12 +657,12 @@ class MSDataHandler:
                                                                                   dde_tag=use_ddes and tag)
                             for key in component._cluster_keys:
                                 dirname = idirtag if key == 'die' else key
-                                dirmodels.setdefault(dirname, []).append((component, key))
+                                dirmodels.setdefault(dirname, []).append((component, key, subtract))
                         else:
                             raise ValueError,"model component {} is neither a valid LSM nor an MS column".format(component)
                     # else it is a visibility column component
                     else:
-                        dirmodels.setdefault(idirtag, []).append((component, None))
+                        dirmodels.setdefault(idirtag, []).append((component, None, subtract))
             self.model_directions.update(dirmodels.iterkeys())
         # Now, each model is a dict of dirmodels, keyed by direction name (unnamed directions are _dir0, _dir1, etc.)
         # Get all possible direction names
@@ -681,13 +678,17 @@ class MSDataHandler:
             print>>log(0),"  model {} (weight {}):".format(imod, weight_col)
             for idir, dirname in enumerate(self.model_directions):
                 if dirname in dirmodels:
-                    comps = []
-                    for comp, tag in dirmodels[dirname]:
-                        if not tag or tag == 'die':
-                            comps.append("{}".format(comp))
+                    comps = ""
+                    for comp, tag, subtract in dirmodels[dirname]:
+                        if subtract:
+                            sign = "-"
                         else:
-                            comps.append("{}({})".format(tag, comp))
-                    print>>log(0),"    direction {}: {}".format(idir, " + ".join(comps))
+                            sign = "+" if comps else ""
+                        if not tag or tag == 'die':
+                            comps += "{}{}".format(sign, comp)
+                        else:
+                            comps += "{}{}({})".format(sign,tag, comp)
+                    print>>log(0),"    direction {}: {}".format(idir, comps)
                 else:
                     print>>log(0),"    direction {}: empty".format(idir)
 
@@ -822,15 +823,16 @@ class MSDataHandler:
         # unless the MS is screwed up
         if self._ms_blc == None:
             return subset.putcol(column, value, startrow, nrows)
-        # A variable-shape column may be uninitialized, in which case putcolslice will not work.
-        # But we try it first anyway, especially if the first row of the block looks initialized
-        if self.data.iscelldefined(column, startrow):
-            try:
-                return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [], startrow, nrows)
-            except Exception, exc:
-                pass
         if nrows<0:
             nrows = subset.nrows()
+        # A variable-shape column may be uninitialized, in which case putcolslice will not work.
+        # But we try it first anyway, especially if the first row of the block looks initialized
+        if False and self.data.iscelldefined(column, startrow):
+            try:
+                print>>log(0),"putcolslice {} {} {} {} {}".format(value.shape,self._ms_blc,self._ms_trc, startrow, nrows)
+                return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [1,1], startrow, nrows)
+            except Exception, exc:
+                pass
         print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
         ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
         value0 = np.zeros((nrows, self._nchan0_orig[ddid], self.nmscorrs), value.dtype)
