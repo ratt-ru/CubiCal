@@ -389,7 +389,7 @@ def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
                     for f in xrange(n_fre):
-                        weight_upd_product(&w[i,t,f,aa,ab,0], &r[i,t,f,aa,ab,0,0], &cov[0,0], v, npol, lb)
+                        weight_upd_product(&w[i,t,f,aa,ab,0], &r[i,t,f,aa,ab,0,0], &cov[0,0], v, npol)
 
 
 @cython.cdivision(True)
