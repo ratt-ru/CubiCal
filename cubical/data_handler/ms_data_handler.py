@@ -909,7 +909,7 @@ class MSDataHandler:
             return subset.putcol(column, value, startrow, nrows)
         # A variable-shape column may be uninitialized, in which case putcolslice will not work.
         # But we try it first anyway, especially if the first row of the block looks initialized
-        if self.data.iscelldefined(column, startrow):
+        if False and self.data.iscelldefined(column, startrow): #@oms's patch to work around a casacore bug #a90db9bbcb41431862e9a
             try:
                 return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [], startrow, nrows)
             except Exception, exc:
