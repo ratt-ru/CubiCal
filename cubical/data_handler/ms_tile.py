@@ -668,9 +668,12 @@ class MSTile(object):
                                 raise RuntimeError("column {} has an invalid shape {} (expected {})".format(weight_col, wcol.shape, obvis0.shape))
                         else:
                             print>> log(0), "model {} weights {}: reusing {}{}".format(imod, iwcol, weight_col, mean_corr)
-                        # init weights, if first column, else multiply weights by subsequent column
+                        # take mean weights if specified, else fill off-diagonals
                         if mean_corr:
                             wcol = wcol.mean(-1)[..., np.newaxis]
+                        elif self.dh.fill_offdiag_weights:
+                            wcol[:, :, (1, 2)] = np.sqrt(wcol[: ,: ,0]*wcol[: ,: ,3])[..., np.newaxis]
+                        # init weights, if first column, else multiply weights by subsequent column
                         if not iwcol:
                             weights0[imod, ...] = wcol
                         else:
@@ -779,6 +782,15 @@ class MSTile(object):
                     self.dh.flagcounts["INVWGHT"] += ninv
                     print>> log(0, "red"), "  {:.2%} input visibilities flagged due to inf/nan weights".format(
                         ninv / float(flagged.size))
+                wnull = (weights0 == 0) & ~flagged
+                nnull = wnull.sum()
+                if nnull:
+                    flagged |= wnull
+                    flag_arr0[wnull] |= FL.NULLWGHT
+                    self.dh.flagcounts.setdefault("NULLWGHT", 0)
+                    self.dh.flagcounts["NULLWGHT"] += nnull
+                    print>> log(0, "red"), "  {:.2%} input visibilities flagged due to null weights".format(
+                        nnull / float(flagged.size))
 
             nfl = flagged.sum()
             self.dh.flagcounts["IN"] += nfl
@@ -929,7 +941,6 @@ class MSTile(object):
 
         return data
 
-
     def get_chunk_cubes(self, key, ctype=np.complex128, allocator=np.empty, flag_allocator=np.empty):
         """
         Produces the CubiCal data cubes corresponding to the specified key.
@@ -953,7 +964,7 @@ class MSTile(object):
                 - data (np.ndarray):    [n_tim, n_fre, n_ant, n_ant, 2, 2]
                 - model (np.ndarray):   [n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, 2, 2]
                 - flags (np.ndarray):   [n_tim, n_fre, n_ant, n_ant]
-                - weights (np.ndarray): [n_mod, n_tim, n_fre, n_ant, n_ant] or None for no weighting
+                - weights (np.ndarray): [n_mod, n_tim, n_fre, n_ant, n_ant, 2, 2] or None for no weighting
 
                 n_mod refers to number of models simultaneously fitted.
         """
@@ -989,13 +1000,13 @@ class MSTile(object):
             mod_arr = None
 
         if 'weigh' in data:
-            wgt_2x2 = subset._column_to_cube(data['weigh'], t_dim, f_dim, rows, freq_slice, self.dh.wtype,
+            wgt_arr = subset._column_to_cube(data['weigh'], t_dim, f_dim, rows, freq_slice, self.dh.wtype,
                                            allocator=allocator)
-            wgt_arr = flag_allocator(wgt_2x2.shape[:-2], wgt_2x2.dtype)
-            np.mean(wgt_2x2, axis=(-1, -2), out=wgt_arr)
-            #            wgt_arr = np.sqrt(wgt_2x2.sum(axis=(-1,-2)))    # this is wrong
-            wgt_arr[flags!=0] = 0
-            wgt_arr = wgt_arr.reshape([1, t_dim, f_dim, nants, nants])
+            # wgt_arr = flag_allocator(wgt_2x2.shape[:-2], wgt_2x2.dtype)
+            # np.mean(wgt_2x2, axis=(-1, -2), out=wgt_arr)
+            # #            wgt_arr = np.sqrt(wgt_2x2.sum(axis=(-1,-2)))    # this is wrong
+            wgt_arr[flags!=0, :, :] = 0
+            # wgt_arr = wgt_arr.reshape([1, t_dim, f_dim, nants, nants])
         else:
             wgt_arr = None
 

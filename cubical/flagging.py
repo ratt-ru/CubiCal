@@ -33,7 +33,8 @@ class FL(object):
     LOWSNR   = dtype(1<<9)    # prior SNR too low for gain solution
     GVAR     = dtype(1<<10)   # posterior variance too low for gain solution
     INVMODEL = dtype(1<<11)   # invalid model (zero, inf, nan)
-    INVWGHT  = dtype(1<<12)   # invalid weight (zero, inf, nan)
+    INVWGHT  = dtype(1<<12)   # invalid weight (inf or nan)
+    NULLWGHT = dtype(1<<13)   # null weight
 
     MAD      = dtype(1<<14)   # residual exceeds MAD-based threshold
     SKIPSOL  = dtype(1<<15)   # omit this data point from the solver

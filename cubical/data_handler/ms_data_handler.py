@@ -599,7 +599,7 @@ class MSDataHandler:
             self.parallactic_machine = None
         pass
 
-    def init_models(self, models, weights, mb_opts={}, use_ddes=False):
+    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False):
         """Parses the model list and initializes internal structures"""
 
         # ensure we have as many weights as models
@@ -611,6 +611,7 @@ class MSDataHandler:
         elif len(weights) != len(models):
             raise ValueError,"need as many sets of weights as there are models"
 
+        self.fill_offdiag_weights = fill_offdiag_weights
         self.use_montblanc = False    # will be set to true if Montblanc is invoked
         self.models = []
         self.model_directions = set() # keeps track of directions in Tigger models
@@ -626,12 +627,12 @@ class MSDataHandler:
                     continue
                 idirtag = " dir{}".format(idir if use_ddes else 0)
                 # split component list at +/- signs
-                components = re.split("([+-])", dirmodel.rstrip("+-"))  # this list will be 'comp1', '+', 'comp2', etc.
+                components = re.split("(\\+-|\\+)", dirmodel.rstrip("+-"))  # this list will be 'comp1', '+', 'comp2', etc.
                 # insert leading "+" if missing
-                if components[0] != "+" and components[0] != '-':
+                if components[0] != "+" and components[0] != '+-':
                     components.insert(0, "+")
                 for sign, component in zip(components[::2], components[1::2]):
-                    subtract = sign == '-'
+                    subtract = sign == '+-'
                     # special case: "1" means unity visibilities
                     if component == "1":
                         dirmodels.setdefault(idirtag, []).append((1, None, subtract))

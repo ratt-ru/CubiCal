@@ -277,6 +277,7 @@ def main(debugging=False):
 
         ms.init_models(str(GD["model"]["list"]).split(","),
                        GD["weight"]["column"].split(",") if GD["weight"]["column"] else None,
+                       fill_offdiag_weights=GD["weight"]["fill-off-diag"],
                        mb_opts=GD["montblanc"],
                        use_ddes=have_dd_jones and dde_mode != 'never')
 

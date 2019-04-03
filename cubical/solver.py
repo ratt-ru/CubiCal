@@ -414,7 +414,10 @@ class _VisDataManager(object):
         self.gm = None
         ## OMS: take sqrt() of weights since that's the correct thing to use in whitening
         self.obser_arr, self.model_arr, self.flags_arr, self.weight_arr = \
+            obser_arr, model_arr, flags_arr, weight_arr
             obser_arr, model_arr, flags_arr, np.sqrt(weight_arr)
+#        self.weight_arr[:] = np.sqrt(self.weight_arr.mean(axis=(-1,-2)))[..., np.newaxis, np.newaxis]
+#        self.weight_arr[:] = self.weight_arr.mean(axis=(-1,-2))[..., np.newaxis, np.newaxis]
         self._wobs_arr = self._wmod_arr = None
         self.freq_slice = freq_slice
         self._model_corrupted = False
@@ -429,7 +432,7 @@ class _VisDataManager(object):
         """
         if self._wobs_arr is None:
             if self.weight_arr is not None:
-                self._wobs_arr = self.obser_arr[np.newaxis,...] * self.weight_arr[..., np.newaxis, np.newaxis]
+                self._wobs_arr = self.obser_arr[np.newaxis,...] * self.weight_arr
             else:
                 self._wobs_arr = self.obser_arr.copy().reshape([1]+list(self.obser_arr.shape))
                 # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
@@ -447,7 +450,7 @@ class _VisDataManager(object):
         """
         if self._wmod_arr is None:
             if self.weight_arr is not None:
-                self._wmod_arr = self.model_arr * self.weight_arr[np.newaxis, ..., np.newaxis, np.newaxis]
+                self._wmod_arr = self.model_arr * self.weight_arr[np.newaxis, ...]
             else:
                 self._wmod_arr = self.model_arr.copy()
                 # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
@@ -465,7 +468,7 @@ class _VisDataManager(object):
         """
         cmod = self.corrupt_model(None).sum(0)
         if self.weight_arr is not None:
-            return cmod*self.weight_arr[..., np.newaxis, np.newaxis]
+            return cmod*self.weight_arr
         else:
             return cmod
 
