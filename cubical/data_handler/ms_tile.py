@@ -795,7 +795,8 @@ class MSTile(object):
                 obvis = data.addSharedArray('obvis', [nrows, nchan, self.dh.ncorr], obvis0.dtype)
                 rebin_factor = obvis0.size / float(obvis.size)
                 flag_arr = data.addSharedArray('flags', obvis.shape, FL.dtype)
-                flag_arr.fill(-1)
+                ### no longer filling with -1 -- see flag logic changes in the kernel 
+                ## flag_arr.fill(-1)
                 uvwco = data.addSharedArray('uvwco', [nrows, 3], float)
                 # make dummy weight array if not 0
                 if num_weights:
@@ -895,11 +896,6 @@ class MSTile(object):
                                 else:
                                     movis[idir, imod, ...] += model
                                 del model
-                # release memory (gc.collect() particularly important), as model visibilities are *THE* major user (especially
-                # in the DD case)
-                del loaded_models, flag_arr0
-                import gc
-                gc.collect()
 
                 # check for a null model (all directions)
                 invmodel = (~np.isfinite(movis)).any(axis=(0,1))
@@ -908,11 +904,18 @@ class MSTile(object):
 
                 ninv = invmodel.sum()
                 if ninv:
+#                    import pdb; pdb.set_trace()
                     flag_arr[invmodel] |= FL.INVMODEL
                     self.dh.flagcounts.setdefault("INVMODEL", 0)
                     self.dh.flagcounts["INVMODEL"] += ninv*rebin_factor
                     print>> log(0, "red"), "  {} ({:.2%}) visibilities flagged due to 0/inf/nan model".format(
                         ninv, ninv / float(flagged.size))
+                        
+                # release memory (gc.collect() particularly important), as model visibilities are *THE* major user (especially
+                # in the DD case)
+                del loaded_models, flag_arr0
+                import gc
+                gc.collect()
 
             data.addSharedArray('covis', data['obvis'].shape, self.dh.ctype)
 #            import pdb; pdb.set_trace()

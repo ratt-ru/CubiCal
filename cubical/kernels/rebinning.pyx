@@ -127,7 +127,10 @@ def rebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
         for f0 in xrange(n_fre0):
             f = rebin_chan_map[f0]
             for c in xrange(n_cor0):
-                flag[row, f, c] &= flag0[row0, f0, c]
+		# output flags accumulate all input flags across the bin with bitwise-OR,
+		# however below we'll clear them if at least one unflagged
+		# visibility was present
+                flag[row, f, c] |= flag0[row0, f0, c]  
                 if not flag0[row0, f0, c]:
                     # accumulate weights
                     if num_weights:
@@ -150,6 +153,7 @@ def rebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
             for f in xrange(n_fre):
                 for c in xrange(n_cor0):
                     if sum_ww[row, f, c]:
+                        flag[row, f, c] = 0
                         vis[row, f, c] /= sum_ww[row, f, c]
 
 

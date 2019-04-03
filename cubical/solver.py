@@ -412,8 +412,9 @@ class _VisDataManager(object):
                 Slice into the full data frequency axis corresponding to this chunk. 
         """
         self.gm = None
+        ## OMS: take sqrt() of weights since that's the correct thing to use in whitening
         self.obser_arr, self.model_arr, self.flags_arr, self.weight_arr = \
-            obser_arr, model_arr, flags_arr, weight_arr
+            obser_arr, model_arr, flags_arr, np.sqrt(weight_arr)
         self._wobs_arr = self._wmod_arr = None
         self.freq_slice = freq_slice
         self._model_corrupted = False
