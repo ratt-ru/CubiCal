@@ -711,6 +711,20 @@ class PerIntervalGains(MasterMachine):
 
 
     @property
+    def flagging_stats_string(self):
+        """Returns a string describing per-flagset statistics"""
+        fstats = []
+
+        for flag, mask in FL.categories().iteritems():
+            n_flag = ((self.gflags & mask) != 0).sum()
+            if n_flag:
+                fstats.append("{}:{}({:.2%})".format(flag, n_flag, n_flag/float(self.gflags.size)))
+
+        return " ".join(fstats)
+
+
+
+    @property
     def current_convergence_status_string(self):
         """
         This property must return a status string for the gain machine, e.g.
@@ -720,7 +734,7 @@ class PerIntervalGains(MasterMachine):
             string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.converged_fraction)
             nfl, ntot = self.num_gain_flags()
             if nfl:
-                string += ", g/fl {:.2%}".format(nfl/float(ntot))
+                string += ", g/fl {:.2%} [{}]".format(nfl/float(ntot), self.flagging_stats_string)
             if self.missing_gain_fraction:
                 string += ", d/fl {:.2%}".format(self.missing_gain_fraction)
             string += ", max update {:.4}".format(self.max_update)
@@ -741,7 +755,7 @@ class PerIntervalGains(MasterMachine):
             string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.converged_fraction)
             nfl, ntot = self.num_gain_flags()
             if nfl:
-                string += ", g/fl {:.2%}".format(nfl/float(ntot))
+                string += ", g/fl {:.2%} [{}]".format(nfl/float(ntot), self.flagging_stats_string)
             if self.missing_gain_fraction:
                 string += ", d/fl {:.2%}".format(self.missing_gain_fraction)
             if self.posterior_gain_error is not None:

@@ -127,6 +127,9 @@ class Complex2x2Gains(PerIntervalGains):
         self.cykernel.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
 
         flag_count = self.cykernel.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        
+        if flag_count:
+            import pdb; pdb.set_trace()
 
         return jhr, jhjinv, flag_count
 

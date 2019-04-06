@@ -227,7 +227,6 @@ class JonesChain(MasterMachine):
 
         flag_count = self.cykernel.cycompute_jhjinv(self._jhj, self._jhjinv,
                                                     self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
-
         return self._jhrint, self._jhjinv, flag_count
 
     def implement_update(self, jhr, jhjinv):
