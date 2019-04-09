@@ -782,7 +782,7 @@ class MSTile(object):
                     self.dh.flagcounts["INVWGHT"] += ninv
                     print>> log(0, "red"), "  {:.2%} input visibilities flagged due to inf/nan weights".format(
                         ninv / float(flagged.size))
-                wnull = (weights0 == 0) & ~flagged
+                wnull = (weights0 == 0).all(axis=0) & ~flagged
                 nnull = wnull.sum()
                 if nnull:
                     flagged |= wnull
