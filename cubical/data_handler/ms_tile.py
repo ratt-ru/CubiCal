@@ -660,10 +660,11 @@ class MSTile(object):
                                 wcol_cache[weight_col] = wcol = wcol[:, self.dh._channel_slice, self.dh._corr_slice]
                                 if wcol.shape != obvis0.shape:
                                     raise RuntimeError("column {} does not match shape of visibility column".format(weight_col))
-                            elif tuple(wcol.shape) == (obvis0.shape[0], obvis0.shape[2]):
+                            elif tuple(wcol.shape) == (obvis0.shape[0], self.dh.nmscorrs):
                                 print>> log(0), "    this weight column does not have a frequency axis: broadcasting"
                                 wcol_cache[weight_col] = np.empty_like(obvis0, self.dh.wtype)
                                 wcol_cache[weight_col][:] = wcol[:, np.newaxis, self.dh._corr_slice]
+                                wcol = wcol_cache[weight_col]
                             else:
                                 raise RuntimeError("column {} has an invalid shape {} (expected {})".format(weight_col, wcol.shape, obvis0.shape))
                         else:
