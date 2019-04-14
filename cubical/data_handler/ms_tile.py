@@ -77,8 +77,6 @@ class MSTile(object):
             self.first_ddid = self.ddid_col[0]
             self.nfreq = len(tile.dh.chanfreqs[self.first_ddid])
             self.ncorr = tile.dh.ncorr
-            # cached [de]rotation angles
-            self._angles = None
 
             # row map for rebinning -- label of None means subset is full tile
             if label is None:
@@ -1001,12 +999,13 @@ class MSTile(object):
             ### APPLY ROTATION HERE
             if self.dh.rotate_model:
                 model = data['movis']
+                angles = data['pa'][rows]
                 for idir in range(model.shape[0]):
                     for imod in range(model.shape[1]):
                         submod = model[idir, imod, rows, freq_slice]
                         submod[:] = self.dh.parallactic_machine.rotate(subset.time_col[rows], submod,
                                                            subset.antea[rows], subset.anteb[rows],
-                                                           angles=subset._angles[rows])
+                                                           angles=angles)
 
             mod_arr = subset._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, ctype,
                                            reqdims=8, allocator=allocator)
@@ -1064,7 +1063,7 @@ class MSTile(object):
                 vis = data[column][rows, freq_slice]
                 vis[:] = self.dh.parallactic_machine.derotate(subset.time_col[rows], vis,
                                                                subset.antea[rows], subset.anteb[rows],
-                                                               angles=subset._angles[rows])
+                                                               angles=data['pa'][rows])
         if flag_cube is not None:
             data['updated'][1] = True
             subset._cube_to_column(data['flags'], flag_cube, rows, freq_slice, flags=True)
