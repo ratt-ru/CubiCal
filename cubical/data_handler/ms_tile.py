@@ -892,11 +892,11 @@ class MSTile(object):
                                             model = model0
                                         model0 = None
                                         # apply rotation (*after* rebinning: subset.time_col is rebinned version!)
-                                        if self.dh.parallactic_machine is not None:
-                                            subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
-                                            model = self.dh.parallactic_machine.rotate(subset.time_col, model,
-                                                                                        subset.antea, subset.anteb,
-                                                                                        angles=subset._angles)
+                                        # if self.dh.parallactic_machine is not None:
+                                        #     subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                                        #     model = self.dh.parallactic_machine.rotate(subset.time_col, model,
+                                        #                                                 subset.antea, subset.anteb,
+                                        #                                                 angles=subset._angles)
                                     loaded_models.setdefault(model_source, {})[None] = model
                                 # else evaluate a Tigger model with Montblanc
                                 else:
