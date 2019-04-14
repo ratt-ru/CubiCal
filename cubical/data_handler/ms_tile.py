@@ -1146,9 +1146,9 @@ class MSTile(object):
 
             if self.dh.output_column and data0['updated'][0]:
                 covis = data['covis']
-                if self.dh.parallactic_machine is not None:
-                    covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb,
-                                                                 angles=subset._angles)
+                # if self.dh.parallactic_machine is not None:
+                #     covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb,
+                #                                                  angles=subset._angles)
                 covis = subset.upsample(covis)
                 print>> log, "  writing {} column".format(self.dh.output_column)
                 self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
