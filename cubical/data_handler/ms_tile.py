@@ -936,6 +936,12 @@ class MSTile(object):
             if self.dh.output_weight_column is not None:
                 data.addSharedArray('outweights', data['obvis'].shape, self.dh.wtype)
 
+        # compute PA rotation angles, if needed
+        if self.dh.parallactic_machine is not None:
+            angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+            data.addSharedArray('pa', angles.shape, np.float64)
+            data['pa'][:] = angles
+
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
 
@@ -992,6 +998,16 @@ class MSTile(object):
         obs_arr = subset._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, ctype,
                                        reqdims=6, allocator=allocator)
         if 'movis' in data:
+            ### APPLY ROTATION HERE
+            if self.dh.rotate_model:
+                model = data['movis']
+                for idir in range(model.shape[0]):
+                    for imod in range(model.shape[1]):
+                        submod = model[idir, imod, rows, freq_slice]
+                        submod[:] = self.dh.parallactic_machine.rotate(subset.time_col[rows], submod,
+                                                           subset.antea[rows], subset.anteb[rows],
+                                                           angles=subset._angles[rows])
+
             mod_arr = subset._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, ctype,
                                            reqdims=8, allocator=allocator)
             # flag invalid model visibilities
@@ -1038,9 +1054,17 @@ class MSTile(object):
         data = shared_dict.attach(subset.datadict)
         rows = rowchunk.rows
         freq_slice = slice(freq0, freq1)
+
         if cube is not None:
             data['updated'][0] = True
             subset._cube_to_column(data[column], cube, rows, freq_slice)
+
+            ### APPLY DEROTATION HERE
+            if self.dh.derotate_output:
+                vis = data[column][rows, freq_slice]
+                vis[:] = self.dh.parallactic_machine.derotate(subset.time_col[rows], vis,
+                                                               subset.antea[rows], subset.anteb[rows],
+                                                               angles=subset._angles[rows])
         if flag_cube is not None:
             data['updated'][1] = True
             subset._cube_to_column(data['flags'], flag_cube, rows, freq_slice, flags=True)

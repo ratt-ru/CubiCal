@@ -4,6 +4,7 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from cubical.machines.abstract_machine import MasterMachine
 from cubical.machines.complex_2x2_machine import Complex2x2Gains
+from cubical.machines.complex_W_2x2_machine import ComplexW2x2Gains
 import numpy as np
 import cubical.kernels
 
@@ -61,8 +62,8 @@ class JonesChain(MasterMachine):
             jones_class = machine_types.get_machine_class(term_opts['type'])
             if jones_class is None:
                 raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
-            if jones_class is not Complex2x2Gains and term_opts['solvable']:
-                raise UserInputError("only complex-2x2 terms can be made solvable in a Jones chain")
+            if jones_class not in (Complex2x2Gains, ComplexW2x2Gains) and term_opts['solvable']:
+                raise UserInputError("only complex-2x2 or robust-2x2 terms can be made solvable in a Jones chain")
             self.jones_terms.append(jones_class(term_opts["label"], data_arr,
                                         ndir, nmod, times, frequencies, chunk_label, term_opts))
 

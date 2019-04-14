@@ -110,7 +110,7 @@ class parallactic_machine(object):
         return angles
 
 
-    def __apply_rotation(self, utc_timestamp, vis, a1, a2, angles=None, clockwise=False):
+    def __apply_rotation(self, utc_timestamp, vis, a1, a2, angles=None, clockwise=False, row_subset=None, freq_slice=None):
         """
         Pads data and performs anticlockwise rotation by default
         """
