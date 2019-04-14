@@ -27,7 +27,7 @@ cdef inline void add_w_mat_product(complex3264 * out, const complex3264 *a, cons
     out[3] += (a[2]*b[1]*w[0] + a[3]*b[3]*w[0])
 
 
-cdef inline void weight_upd_product(complex3264 *out, const complex3264 *r, const complex3264 *c, const float v, const int npol) nogil:
+cdef inline void weight_upd_product(complex3264 *out, const complex3264 *r, const complex3264 *c, const float v, const float npol) nogil:
     """
     Multiplies 1X4 vector with 4x4 maxtrix and 4x1 vector : out = r.conj().c.r
     """
@@ -39,7 +39,9 @@ cdef inline void weight_upd_product(complex3264 *out, const complex3264 *r, cons
            r[0].conjugate()*c[2]*r[1] + r[1].conjugate()*c[6]*r[2] + r[2].conjugate()*c[10]*r[2] +r[3].conjugate()*c[14]*r[2] + \
            r[0].conjugate()*c[3]*r[3] + r[1].conjugate()*c[7]*r[3] + r[2].conjugate()*c[11]*r[3] + r[3].conjugate()*c[15]*r[3]
 
-    out[0] = (v+2*npol)/(v + 2*denom)
+    
+    out[0] = (v+npol)/(v + denom.real) # using LB derivation
+   
 
 cdef inline void cov_upd_product(complex3264 *out, const complex3264 *r, const complex3264 *w) nogil:
     """

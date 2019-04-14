@@ -82,7 +82,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     chi_interval = sol_opts["chi-int"]
     stall_quorum = sol_opts["stall-quorum"]
 
-
+    
     # collect flagging options
 
     flag_warning_threshold = GD['flags']["warn-thr"]
@@ -236,6 +236,10 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             new_flags = flags_arr&~(FL.MISSING|FL.PRIOR) !=0
             model_arr[:, :, new_flags, :, :] = 0
             obser_arr[   :, new_flags, :, :] = 0
+
+            # Adding the below lines for the robust solver so that flags should be apply to the weights
+            if hasattr(gm, 'new_flags'):
+                gm.new_flags = new_flags
 
             # Break out of the solver loop if we find ourselves with no valid solution intervals.
             

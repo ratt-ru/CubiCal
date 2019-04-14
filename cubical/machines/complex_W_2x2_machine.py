@@ -10,7 +10,7 @@ import cubical.kernels
 import time
 
 from cubical.tools import logger
-log = logger.getLogger("complex_2x2")  #TODO check this
+log = logger.getLogger("solver")  #TODO check this "complex_2x2"
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -56,13 +56,13 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.label = label
 
-        self.cov_type = options.get("robust-cov", "hybrid") #adding an option to compute residuals covariance or just assume 1 as in Robust-t paper
+        self.cov_type = options.get("robust-cov", "compute") #adding an option to compute residuals covariance or just assume 1 as in Robust-t paper
 
-        self.npol = options.get("robust-npol", 2) #testing if the number of polarizations really have huge effects
+        self.npol = options.get("robust-npol", 2.) #testing if the number of polarizations really have huge effects
 
-        self.v_int = options.get("robust-int", 5)
-    
+        self.v_int = options.get("robust-int", 1)
 
+       
     @staticmethod
     def get_kernel(options):
         """Returns kernel approriate to Jones options"""
@@ -129,7 +129,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         update = self.init_update(jhr)
         self.cykernel.cycompute_update(jhr, jhjinv, update)
 
-        #if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
+        # if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
         update += self.gains
 
         if self.iters % 2 == 0 or self.n_dir > 1:
@@ -161,13 +161,11 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.implement_update(jhwr, jhwjinv)
 
-        #Computing the weights
+        # Computing the weights
         
         self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
-        covinv = self.compute_covinv()
-
-        self.weights, self.v = self.update_weights(covinv, self.weights, self.v)
+        self.update_weights()
 
         return flag_count
 
@@ -189,44 +187,45 @@ class ComplexW2x2Gains(PerIntervalGains):
         """
 
         if self.cov_type == "identity":
-            
+
             covinv = np.eye(4, dtype=self.dtype)
-        
+          
         else:
 
-            Nvis = self.num_init_unflaged_eqs/2. #only half of the visibilties are used for covariance computation
+            unflagged = self.new_flags==False
+        
+            num_init_unflaged_eqs = np.sum(unflagged)
+
+            Nvis = num_init_unflaged_eqs/2. #only half of the visibilties are used for covariance computation
 
             ompstd = np.zeros((4,4), dtype=self.dtype)
 
             self.cykernel.cycompute_cov(self.residuals, ompstd, self.weights)
 
-            std = ompstd/Nvis
+            # removing the offdiagonal correlations
+
+            std = np.diagonal(ompstd/Nvis) + self.eps**2 # To avoid division by zero
 
             covinv = np.eye(4, dtype=self.dtype)
 
             if self.cov_type == "hybrid":
-                if np.max(std) < 1:
-                    covinv *= 1/np.max(std) 
-                   
-
+                if np.max(np.abs(std)) < 1:
+                    covinv[np.diag_indices(4)]= 1/std
+                    
             elif self.cov_type == "compute":
-                covinv *= 1/np.max(std) 
-
+                covinv[np.diag_indices(4)]= 1/std
+               
             else:
                 raise RuntimeError("unknown robust-cov setting")
-
         
         if self.npol == 2:
             covinv[(1,2), (1,2)] = 0
-            #For non polarised visibilities, the xx(ll) and yy(rr) are almost identical
-            #Thus they have a strong covariance
-            covinv[(0,3), (3,0)] = covinv[0,0]  
+            
 
         return covinv
     
 
-
-    def update_weights(self, covinv, w, v):
+    def update_weights(self):
         
         """
             This computes the weights, given the latest residual visibilities and the v parameter.
@@ -253,37 +252,47 @@ class ComplexW2x2Gains(PerIntervalGains):
             """
 
             m = len(wn)
-        
-            vfunc = lambda a: special.digamma(0.5*(a+2*self.npol)) - np.log(0.5*(a+2*self.npol)) - \
-                                     special.digamma(0.5*a) + np.log(0.5*a) + (1./m)*np.sum(np.log(wn) - wn) + 1
 
-            vvals = np.arange(2, 51, 1, dtype=float)
+            
+            vfunc = lambda a: special.digamma(a+self.npol) - np.log(a+self.npol) - \
+                        special.digamma(a) + np.log(a) + (1./m)*np.sum(np.log(wn) - wn) + 1
+            
+
+            vvals = np.arange(2, 101, 1, dtype=float) #search for v in the range (2, 100)
             fvals = vfunc(vvals)
             root = vvals[np.argmin(np.abs(fvals))]
+
+            if self.iters % 5 == 0 or self.iters == 1:
+                print>> log(2), "{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root)
             
             return root
 
+        covinv = self.compute_covinv()
+
+        w , v  = self.weights, self.v
+
+        # import pdb; pdb.set_trace()
+
         self.cykernel.cycompute_weights(self.residuals, covinv, w, v, self.npol)
 
-        #re-set weights for visibillities flagged from start to 0
-        self.weights[:,self._init_flags!=0] = 0
-    
+        # re-set weights for visibillities flagged from start to 0
+        w[:,self.new_flags,:] = 0
+
         #---------normalising the weights to mean 1 using only half the weights--------------------------#
         aa, ab = np.tril_indices(self.n_ant, -1)
         w_real = np.real(w[:,:,:,aa,ab,0].flatten())
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
         norm = np.average(w_nzero) 
-        w /=norm  
+  
+        self.weights = w/norm
         
         #-----------computing the v parameter---------------------#
-        #This computation is only done after a certain number of iterations. Default is 5
+        # This computation is only done after a certain number of iterations. Default is 5
         if self.iters % self.v_int == 0 or self.iters == 1:
             wn = w_nzero/norm 
-            v = _brute_solve_v(wn)
-        else:
-            v = self.v
+            self.v = _brute_solve_v(wn)
         
-        return w, v 
+        return 
 
     def restrict_solution(self):
         
@@ -312,9 +321,6 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.weights = np.ones(self.weights_shape, dtype=self.dtype)
         self.weights[:,flags_arr!=0] = 0
-        self._init_flags = flags_arr    
+        self.new_flags = flags_arr!=0
 
-        unflagged = flags_arr==0
-        
-        self.num_init_unflaged_eqs = np.sum(unflagged)
-        self.v = 2.   #t-distribution number of degrees of freedom
+        self.v = 2.   # t-distribution number of degrees of freedom
