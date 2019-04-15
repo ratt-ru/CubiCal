@@ -279,15 +279,23 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             n_stall = float(np.sum(((old_chi - chi) <= gm.delta_chi*old_chi)))
             frac_stall = n_stall/chi.size
 
+            n_div = float(np.sum(((old_chi - chi) < -0.1*old_chi)))
+            frac_div = n_div/chi.size
+
             gm.has_stalled = (frac_stall >= stall_quorum)
 
             if log.verbosity() > 1:
 
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
-                print>> log(2), ("{} {} chi2 {:.4}, delta {:.4}, active {:.2%}").format(
+                if n_div:
+                    diverging = ModColor.Str(" diverging {:.2%}".format(frac_div), "red")
+                else:
+                    diverging = ""
+
+                print>> log(2), ("{} {} chi2 {:.4}, delta {:.4}, active {:.2%}{}").format(
                                     label, gm.current_convergence_status_string,
-                                    mean_chi, delta_chi, 1-frac_stall)
+                                    mean_chi, delta_chi, 1-frac_stall, diverging)
 
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
