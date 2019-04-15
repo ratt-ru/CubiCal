@@ -407,6 +407,23 @@ def main(debugging=False):
             filename = basename + ".stats.pickle"
             st.save(filename)
             print>> log, "saved summary statistics to %s" % filename
+            print_stats = GD["log"]["stats"]
+            if print_stats:
+                print>> log(0), "printing some summary statistics below"
+                thresholds = []
+                for thr in GD["log"]["stats-warn"].split(","):
+                    field, value = thr.split(":")
+                    thresholds.append((field, float(value)))
+                    print>>log(0), "  highlighting {}>{}".format(field, float(value))
+                if print_stats == "all":
+                    print_stats = st.get_chunk_statfields()
+                else:
+                    print_stats = print_stats.split("//")
+                for stats in print_stats:
+                    if stats[0] != "{":
+                        stats = "{{{}}}".format(stats)
+                    lines = st.format_chunk_stats(stats, threshold=thresholds)
+                    print>>log(0),"  summary stats for {}:\n  {}".format(stats, "\n  ".join(lines))
 
             if GD["postmortem"]["enable"]:
                 # flag based on summary stats

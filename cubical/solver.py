@@ -320,8 +320,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             stats.chunk.noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
                                         stats.estimate_noise(resid_arr, flags_arr, residuals=True)
             chi1, mean_chi1 = compute_chisq(statfield='chi2')
+        else:
+            mean_chi1 = mean_chi
 
-        stats.chunk.chi2 = mean_chi
+        stats.chunk.final_chi2 = mean_chi
+        stats.chunk.chi2 = mean_chi1
 
         message = "{} (end solve) {}, stall {:.2%}, chi^2 {:.4} -> {:.4}".format(label,
                     gm.final_convergence_status_string,
@@ -341,7 +344,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         
         print>>log(0, "red"), "{} (end solve) {}: completely flagged?".format(label, gm.final_convergence_status_string)
 
-        stats.chunk.chi2 = 0
+        stats.chunk.chi2 = stats.chunk.final_chi2 = 0
         resid_arr = obser_arr
 
     stats.chunk.iters = num_iter
