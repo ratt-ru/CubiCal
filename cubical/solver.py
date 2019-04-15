@@ -93,6 +93,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     n_stall = 0
     frac_stall = 0
     n_original_flags = (flags_arr&~(FL.MISSING) != 0).sum()
+    diverging = ""
 
     # initialize iteration counter
 
@@ -289,7 +290,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                 delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
 
                 if n_div:
-                    diverging = ModColor.Str(" diverging {:.2%}".format(frac_div), "red")
+                    diverging = ", " + ModColor.Str("diverging {:.2%}".format(frac_div), "red")
                 else:
                     diverging = ""
 
@@ -332,9 +333,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         stats.chunk.final_chi2 = mean_chi
         stats.chunk.chi2 = mean_chi1
 
-        message = "{} (end solve) {}, stall {:.2%}, chi^2 {:.4} -> {:.4}".format(label,
+        message = "{} (end solve) {}, stall {:.2%}{}, chi^2 {:.4} -> {:.4}".format(label,
                     gm.final_convergence_status_string,
-                    frac_stall, float(stats.chunk.init_chi2), mean_chi)
+                    frac_stall, diverging, float(stats.chunk.init_chi2), mean_chi)
 
 
         if sol_opts['last-rites']:
