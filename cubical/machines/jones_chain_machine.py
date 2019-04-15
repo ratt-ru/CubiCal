@@ -510,7 +510,7 @@ class JonesChain(MasterMachine):
 
     @property
     def has_stalled(self):
-        return np.all([term.has_stalled for term in self.jones_terms])
+        return self.active_term.has_stalled and not self.term_iters
 
     @has_stalled.setter
     def has_stalled(self, value):
@@ -518,11 +518,11 @@ class JonesChain(MasterMachine):
 
     @property
     def epsilon(self):
-        return self.active_term._epsilon
+        return self.active_term.epsilon
 
     @property
     def delta_chi(self):
-        return self.active_term._delta_chi
+        return self.active_term.delta_chi
 
 
     class Factory(MasterMachine.Factory):
