@@ -687,6 +687,11 @@ class PerIntervalGains(MasterMachine):
         """ Returns convergence status. """
         return self.converged_fraction >= self.min_quorum or self.iters >= self.maxiter
 
+    @has_converged.setter
+    def has_converged(self, value):
+        if not value:
+            self._frac_cnvgd = self.n_cnvgd = 0
+
     @property
     def conditioning_status_string(self):
         """Returns conditioning status string"""

@@ -397,6 +397,8 @@ class JonesChain(MasterMachine):
         while True:
             if not self.term_iters:
                 return False
+            previous_term = self.active_term
+            # clear converged and stalled properties
             self.active_index = (self.active_index + 1) % self.n_terms
             if self.active_term.solvable:
                 self.active_term.maxiter = self.term_iters.pop(0)
@@ -405,6 +407,9 @@ class JonesChain(MasterMachine):
                     continue
                 self.active_term.iters = 0
                 self._convergence_states_finalized = False
+                if previous_term:
+                    previous_term.has_converged = previous_term.has_stalled = False
+                self.active_term.has_converged = self.active_term.has_stalled = False
                 print>> log(1), "activating term {}".format(self.active_term.jones_label)
                 return True
             else:
