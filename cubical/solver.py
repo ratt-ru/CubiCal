@@ -77,8 +77,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             - stats (:obj:`~cubical.statistics.SolverStats`)
                 An object containing solver statistics.
     """
-    min_delta_g  = sol_opts["delta-g"]
-    chi_tol      = sol_opts["delta-chi"]
     chi_interval = sol_opts["chi-int"]
     stall_quorum = sol_opts["stall-quorum"]
 
@@ -253,7 +251,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # Compute values used in convergence tests. This check implicitly marks flagged gains as 
         # converged.
         
-        gm.check_convergence(min_delta_g)
+        gm.check_convergence(gm.epsilon)
 
         # Check residual behaviour after a number of iterations equal to chi_interval. This is
         # expensive, so we do it as infrequently as possible.
@@ -278,7 +276,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
             # Check for stalled solutions - solutions for which the residual is no longer improving.
 
-            n_stall = float(np.sum(((old_chi - chi) < chi_tol*old_chi)))
+            n_stall = float(np.sum(((old_chi - chi) <= gm.delta_chi*old_chi)))
             frac_stall = n_stall/chi.size
 
             gm.has_stalled = (frac_stall >= stall_quorum)

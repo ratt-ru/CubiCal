@@ -80,6 +80,9 @@ class MasterMachine(object):
 
         self._prop_flags = options.get('prop-flags', 'default')
 
+        self._epsilon = options.get('epsilon')
+        self._delta_chi = options.get('delta-chi')
+
         self.n_dir, self.n_mod = ndir if self._dd_term else 1, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
 
@@ -101,6 +104,14 @@ class MasterMachine(object):
     def dd_term(self):
         """This property is true if the machine represents a direction-dependent"""
         return self._dd_term
+
+    @property
+    def epsilon(self):
+        return self._epsilon
+
+    @property
+    def delta_chi(self):
+        return self._delta_chi
 
     @property
     def propagates_flags(self):
