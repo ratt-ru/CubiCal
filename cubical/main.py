@@ -416,7 +416,7 @@ def main(debugging=False):
                     thresholds.append((field, float(value)))
                     print>>log(0), "  highlighting {}>{}".format(field, float(value))
                 if print_stats == "all":
-                    print_stats = st.get_chunk_statfields()
+                    print_stats = st.get_notrivial_chunk_statfields()
                 else:
                     print_stats = print_stats.split("//")
                 for stats in print_stats:

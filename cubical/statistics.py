@@ -12,6 +12,7 @@ import cPickle
 
 from cubical.tools import logger
 from cubical.tools import ModColor
+from collections import OrderedDict
 
 log = logger.getLogger("stats")
 
@@ -59,13 +60,32 @@ class SolverStats (object):
         self.chanant  = np.rec.array(np.zeros((n_fre, n_ant), dtype))
         self.timeant  = np.rec.array(np.zeros((n_tim, n_ant), dtype))
         self.timechan = np.rec.array(np.zeros((n_tim, n_fre), dtype))
+
         # other stats: per chunk
-        dtype = [ ('label', 'S32'), ('iters', 'i4'),
-                  ('num_intervals', 'i4'), ('num_converged', 'i4'), ('num_stalled', 'i4'),
-                  ('num_sol_flagged', 'i4'),
-                  ('num_mad_flagged', 'i4'),
-                  ('init_chi2', 'f8'), ('init_noise', 'f8'), ('final_chi2', 'f8'), ('chi2', 'f8'), ('noise', 'f8') ]
+
+        # these are truly per chunk, corresponding to starting and final values
+        dtype = [ ('label', 'S32'), ('num_prior_flagged', 'i8'), ('num_data_points', 'i8') ]
+
+        # these have intermediate values as well (e.g. when solving for a chain)
+        self._chunk_stats_intermediate_fields = [
+                    ('chi2u', 'f8'), ('noise', 'f8'), ('chi2', 'f8'),
+                    ('iters', 'i4'),
+                    ('num_solutions', 'i4'), ('num_converged', 'i4'), ('num_stalled', 'i4'),
+                    ('num_sol_flagged', 'i4'), ('num_mad_flagged', 'i4'),
+                    ('frac_converged', 'f8'), ('frac_stalled', 'f8'),
+                    ('end_chi2', 'f8') ]
+
+        dtype += self._chunk_stats_intermediate_fields
+
+        self._max_intermediate_fields = 10
+        for i in range(self._max_intermediate_fields):
+            dtype += [("{}_{}".format(field, i), dt) for field, dt in self._chunk_stats_intermediate_fields]
+
         self.chunk = np.rec.array(np.zeros((), dtype))
+
+    def save_chunk_stats(self, step):
+        for key, _ in self._chunk_stats_intermediate_fields:
+            self.chunk["{}_{}".format(key, step)] = self.chunk[key]
 
     def save(self, filename):
         """
@@ -249,8 +269,9 @@ class SolverStats (object):
         self.chunk = np.rec.array([[stats[time, chan].chunk for chan in chans] for time in times],
                                   dtype=stats[times[0], chans[0]].chunk.dtype)
 
-    def get_chunk_statfields(self):
-        return [field for field in self.chunk.dtype.fields.keys() if field != "label"]
+    def get_notrivial_chunk_statfields(self):
+        """Returns list of interesting (i.e. non-0) stat fields"""
+        return [field for field in self.chunk.dtype.names if field != "label" and (self.chunk[field]!=0).any()]
 
     def format_chunk_stats(self, format_string, ncol=8, threshold=None):
         """

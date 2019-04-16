@@ -13,6 +13,7 @@ if __name__ == '__main__':
     import argparse
     import os, os.path
     from cubical.statistics import SolverStats
+    from cubical.tools import ModColor
 
     parser = argparse.ArgumentParser(description="""
         Prints solution statistics from a CubiCal run.
@@ -52,7 +53,7 @@ if __name__ == '__main__':
         stats = SolverStats(open(filename))
 
         if options.all:
-            print_stats = stats.get_chunk_statfields()
+            print_stats = stats.get_notrivial_chunk_statfields()
         else:
             print_stats = options.stats
 
@@ -66,6 +67,6 @@ if __name__ == '__main__':
             if "{" not in field:
                 field = "{{{}}}".format(field)
             lines = stats.format_chunk_stats(field, ncol=options.num_columns, threshold=thresholds)
-            print("printing stats for {}:\n  {}".format(field, "\n  ".join(lines)), file=log(0))
+            print("{}:\n  {}\n -".format(ModColor.Str(field, "blue"), "\n  ".join(lines)), file=log(0))
 
 

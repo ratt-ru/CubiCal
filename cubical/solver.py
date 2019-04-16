@@ -89,10 +89,9 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     stats = SolverStats(obser_arr)
     stats.chunk.label = label
+    stats.chunk.num_prior_flagged = (flags_arr&~FL.MISSING != 0).sum()  # number of prior flagged data points
+    stats.chunk.num_data_points = (flags_arr != 0).sum()                # nominal number of valid data points
 
-    n_stall = 0
-    frac_stall = 0
-    n_original_flags = (flags_arr&~(FL.MISSING) != 0).sum()
     diverging = ""
 
     # initialize iteration counter
@@ -102,8 +101,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     # Estimates the overall noise level and the inverse variance per channel and per antenna as
     # noise varies across the band. This is used to normalize chi^2.
 
-    stats.chunk.init_noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
-                                                        stats.estimate_noise(obser_arr, flags_arr)
+    stats.chunk.noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
+                                        stats.estimate_noise(obser_arr, flags_arr)
 
     # if we have directions in the model, but the gain machine is non-DD, collapse them
     if not gm.dd_term and model_arr.shape[0] > 1:
@@ -144,16 +143,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     
     update_stats(flags_arr, ('initchi2', 'chi2'))
 
-    # In the event that there are no solutions with valid data, this will log some of the
-    # flag information and break out of the function.
-
-    if not gm.has_valid_solutions:
-        stats.chunk.num_sol_flagged, _ = gm.num_gain_flags()
-
-        print>> log, ModColor.Str("{} no solutions: {}; flags {}".format(label,
-                        gm.conditioning_status_string, get_flagging_stats()))
-        return (obser_arr if compute_residuals else None), stats, None 
-
     # Initialize a residual array.
 
     resid_shape = [gm.n_mod, gm.n_tim, gm.n_fre, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
@@ -166,8 +155,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     
     have_residuals = True
 
-    stats.chunk.num_mad_flagged = 0
-
     # apply MAD flagging
     madmax = Flagger(GD, label, metadata, stats)
 
@@ -176,6 +163,20 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     if thr1 or thr2:
         if madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2, "{} initial".format(label)):
             gm.update_equation_counts(flags_arr != 0)
+            stats.chunk.num_mad_flagged = ((flags_arr & FL.MAD) != 0).sum()
+
+    # In the event that there are no solutions with valid data, this will log some of the
+    # flag information and break out of the function.
+    stats.chunk.num_solutions = gm.num_solutions
+    stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
+
+    # every chunk stat set above now copied to stats.chunk.field_0
+    stats.save_chunk_stats(step=0)
+
+    if not gm.has_valid_solutions:
+        print>> log, ModColor.Str("{} no solutions: {}; flags {}".format(label,
+                        gm.conditioning_status_string, get_flagging_stats()))
+        return (obser_arr if compute_residuals else None), stats, None
 
     def compute_chisq(statfield=None):
         """
@@ -191,22 +192,28 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         
         return chisq_per_tf_slot, chisq_tot
 
-    chi, mean_chi = compute_chisq(statfield='initchi2')
-    stats.chunk.init_chi2 = mean_chi
+    chi, stats.chunk.chi2u = compute_chisq(statfield='initchi2')
+    stats.chunk.chi2u_0 = stats.chunk.chi2u
 
     # The following provides conditioning information when verbose is set to > 0.
     if log.verbosity() > 0:
 
         print>> log, "{} chi^2_0 {:.4}; {}; noise {:.3}, flags: {}".format(
-                        label, mean_chi, gm.conditioning_status_string,
-                        float(stats.chunk.init_noise), get_flagging_stats())
+                        label, stats.chunk.chi2_0, gm.conditioning_status_string,
+                        float(stats.chunk.noise_0), get_flagging_stats())
 
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
 
+    major_step = 0  # keeps track of "major" solution steps, for purposes of collecting stats
+
     while not(gm.has_converged) and not(gm.has_stalled):
 
-        num_iter = gm.next_iteration()
+        num_iter, update_major_step = gm.next_iteration()
+
+        if update_major_step:
+            major_step += 1
+            stats.save_chunk_stats(step=major_step)
 
         # This is currently an awkward necessity - if we have a chain of jones terms, we need to 
         # make sure that the active term is correct and need to support some sort of decision making
@@ -217,7 +224,6 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # individual machines be aware of their own stalled/converged status, and make those
         # properties more complicated on the chain. This should allow for fairly easy substitution 
         # between the various machines.
-
 
         gm.compute_update(model_arr, obser_arr)
         
@@ -236,14 +242,11 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             model_arr[:, :, new_flags, :, :] = 0
             obser_arr[   :, new_flags, :, :] = 0
 
+            stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
+
             # Adding the below lines for the robust solver so that flags should be apply to the weights
             if hasattr(gm, 'new_flags'):
                 gm.new_flags = new_flags
-
-            # Break out of the solver loop if we find ourselves with no valid solution intervals.
-            
-            if not gm.has_valid_solutions:
-                break
 
         # print>>log,"{} {} {}".format(de.gains[1,5,2,5], de.posterior_gain_error[1,5,2,5], de.posterior_gain_error[1].mean())
         #
@@ -254,12 +257,20 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         
         gm.check_convergence(gm.epsilon)
 
+        stats.chunk.iters = num_iter
+        stats.chunk.num_converged = gm.num_converged_solutions
+        stats.chunk.frac_converged = gm.num_converged_solutions / float(gm.num_solutions)
+
+        # Break out of the solver loop if we find ourselves with no valid solution intervals (e.g. due to gain flagging)
+        if not gm.has_valid_solutions:
+            break
+
         # Check residual behaviour after a number of iterations equal to chi_interval. This is
         # expensive, so we do it as infrequently as possible.
 
         if (num_iter % chi_interval) == 0 or num_iter <= 1:
 
-            old_chi, old_mean_chi = chi, mean_chi
+            old_chi, old_mean_chi = chi, stats.chunk.chi2u
 
             gm.compute_residual(obser_arr, model_arr, resid_arr)
             resid_arr[:,flags_arr!=0] = 0
@@ -270,33 +281,36 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
                 if madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2,
                                              "{} iter {} ({})".format(label, num_iter, gm.jones_label)):
                     gm.update_equation_counts(flags_arr != 0)
+                    stats.chunk.num_mad_flagged = ((flags_arr&FL.MAD) != 0).sum()
 
-            chi, mean_chi = compute_chisq()
+            chi, stats.chunk.chi2u = compute_chisq()
 
             have_residuals = True
 
             # Check for stalled solutions - solutions for which the residual is no longer improving.
+            delta_chi = old_chi - chi
 
-            n_stall = float(np.sum(((old_chi - chi) <= gm.delta_chi*old_chi)))
-            frac_stall = n_stall/chi.size
+            stats.chunk.num_stalled = np.sum((delta_chi <= gm.delta_chi*old_chi))
+            stats.chunk.frac_stalled = stats.chunk.num_stalled / float(chi.size)
 
-            n_div = float(np.sum(((old_chi - chi) < -0.1*old_chi)))
-            frac_div = n_div/chi.size
+            stats.chunk.num_diverged = np.sum((delta_chi < -0.1*old_chi))
+            stats.chunk.frac_diverged = stats.chunk.num_diverged / float(chi.size)
 
-            gm.has_stalled = (frac_stall >= stall_quorum)
+            gm.has_stalled = (stats.chunk.frac_stalled >= stall_quorum)
 
             if log.verbosity() > 1:
+                delta_chi[old_chi != 0] /= old_chi
+                delta_chi_max  = delta_chi.max()
+                delta_chi_mean = (old_mean_chi - stats.chunk.chi2u) / stats.chunk.chi2u
 
-                delta_chi = (old_mean_chi-mean_chi)/old_mean_chi
-
-                if n_div:
-                    diverging = ", " + ModColor.Str("diverging {:.2%}".format(frac_div), "red")
+                if stats.chunk.num_diverged:
+                    diverging = ", " + ModColor.Str("diverging {:.2%}".format(stats.chunk.frac_diverged), "red")
                 else:
                     diverging = ""
 
-                print>> log(2), ("{} {} chi2 {:.4}, delta {:.4}, active {:.2%}{}").format(
+                print>> log(2), ("{} {} chi2 {:.4}, rel delta {:.4} max {:.4}, active {:.2%}{}").format(
                                     label, gm.current_convergence_status_string,
-                                    mean_chi, delta_chi, 1-frac_stall, diverging)
+                                    stats.chunk.chi2u, delta_chi_mean, delta_chi_max, 1-stats.chunk.frac_stalled, diverging)
 
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
@@ -304,6 +318,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
     if gm.has_valid_solutions:
         # Final round of flagging
         flagged = gm.flag_solutions(flags_arr, True)
+        stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
     else:
         flagged = None
         
@@ -326,22 +341,18 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         if sol_opts['last-rites']:
             stats.chunk.noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
                                         stats.estimate_noise(resid_arr, flags_arr, residuals=True)
-            chi1, mean_chi1 = compute_chisq(statfield='chi2')
+            chi1, stats.chunk.chi2 = compute_chisq(statfield='chi2')
         else:
-            mean_chi1 = mean_chi
-
-        stats.chunk.final_chi2 = mean_chi
-        stats.chunk.chi2 = mean_chi1
+            stats.chunk.chi2 = stats.chunk.chi2u
 
         message = "{} (end solve) {}, stall {:.2%}{}, chi^2 {:.4} -> {:.4}".format(label,
                     gm.final_convergence_status_string,
-                    frac_stall, diverging, float(stats.chunk.init_chi2), mean_chi)
-
+                    stats.chunk.frac_stalled, diverging, float(stats.chunk.chi2_0), stats.chunk.chi2u)
 
         if sol_opts['last-rites']:
 
             message = "{} ({:.4}), noise {:.3} -> {:.3}".format(message,
-                            float(mean_chi1), float(stats.chunk.init_noise), float(stats.chunk.noise))
+                            float(stats.chunk.chi2), float(stats.chunk.noise_0), float(stats.chunk.noise))
 
         print>> log, message
 
@@ -351,17 +362,12 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         
         print>>log(0, "red"), "{} (end solve) {}: completely flagged?".format(label, gm.final_convergence_status_string)
 
-        stats.chunk.chi2 = stats.chunk.final_chi2 = 0
+        chi2 = chi2u = 0
         resid_arr = obser_arr
-
-    stats.chunk.iters = num_iter
-    stats.chunk.num_converged = gm.num_converged_solutions
-    stats.chunk.num_stalled = n_stall
 
     # collect messages from various flagging sources, and print to log if any
     flagstatus = []
 
-    stats.chunk.num_sol_flagged, _ = gm.num_gain_flags()
     if stats.chunk.num_sol_flagged:
         # also for up message with flagging stats
         fstats = []
@@ -380,7 +386,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # clear Mad Max flags if in trial mode
         if madmax.trial_mode:
             flags_arr &= ~FL.MAD
-        n_new_flags = (flags_arr&~(FL.MISSING) != 0).sum() - n_original_flags
+        n_new_flags = (flags_arr&~(FL.MISSING) != 0).sum() - stats.chunk.num_data_flags_0
         if n_new_flags < flags_arr.size*flag_warning_threshold:
             warning, color = "", "blue"
         else:

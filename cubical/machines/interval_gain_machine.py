@@ -564,6 +564,10 @@ class PerIntervalGains(MasterMachine):
         return bool(self.n_valid_sols)
 
     @property
+    def num_solutions(self):
+        return self.n_tf_ints
+
+    @property
     def num_converged_solutions(self):
         return self.n_cnvgd
 

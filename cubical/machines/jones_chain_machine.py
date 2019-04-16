@@ -424,6 +424,7 @@ class JonesChain(MasterMachine):
         """
 
         self.last_active_index = self.active_index
+        major_step = False
 
         if self.active_term.has_converged or self.active_term.has_stalled:
             print>>log(1),"term {} {} ({} iters): {}".format(self.active_term.jones_label,
@@ -432,10 +433,11 @@ class JonesChain(MasterMachine):
             self._convergence_states.append(self.active_term.final_convergence_status_string)
             self._convergence_states_finalized = True
             self._next_chain_term()
+            major_step = True
 
         self.active_term.next_iteration()
 
-        return MasterMachine.next_iteration(self)
+        return MasterMachine.next_iteration(self), major_step
 
     def compute_chisq(self, resid_arr, inv_var_chan):
         """Computes chi-square using the active chain term"""

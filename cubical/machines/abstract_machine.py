@@ -266,6 +266,13 @@ class MasterMachine(object):
         return False
 
     @property
+    def num_solutions(self):
+        """
+        This property gives the number of solutions (e.g. intervals) defined by the machine
+        """
+        return 0
+
+    @property
     def num_converged_solutions(self):
         """
         This property gives the number of currently converged solutions defined by the machine
@@ -424,10 +431,12 @@ class MasterMachine(object):
         behaviour required for multiple Jones terms. Default version just bumps the iteration counter.
         
         Returns:
-            Value of iteration counter
+            Tuple of two values
+                - value of iteration counter
+                - True/False hint indicating if a "major" step was taken
         """
         self._iters += 1
-        return self.iters
+        return self.iters, False
 
     @abstractmethod
     def restrict_solution(self):
