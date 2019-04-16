@@ -208,10 +208,10 @@ class parallactic_machine(object):
                                    padded_vis.shape[1], 
                                    bl[1], 
                                    conjugate_transpose=True)
-                if bl[0] == 0 and bl[1] == 1:
-                    print("angles: {}".format(angles[lb,[0,1],:]), file=log(0))
-                    print("P0: {}".format(Pa1[0,0]), file=log(0))
-                    print("P1: {}".format(Pa2H[0,0]), file=log(0))
+                #if bl[0] == 0 and bl[1] == 1:
+                #    print("angles: {}".format(angles[lb,[0,1],:]), file=log(0))
+                #    print("P0: {}".format(Pa1[0,0]), file=log(0))
+                #    print("P1: {}".format(Pa2H[0,0]), file=log(0))
                 # Pp * V * Pq^H
                 padded_vis[blsel, :, :] = np.matmul(Pa1, 
                                                     np.matmul(padded_vis[blsel, :, :].reshape((np.sum(blsel), 
