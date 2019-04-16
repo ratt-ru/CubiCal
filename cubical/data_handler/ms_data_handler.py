@@ -835,7 +835,7 @@ class MSDataHandler:
                 return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [1,1], startrow, nrows)
             except Exception, exc:
                 pass
-        print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
+        # print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
         ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
         value0 = np.zeros((nrows, self._nchan0_orig[ddid], self.nmscorrs), value.dtype)
         value0[:, self._channel_slice, self._corr_slice] = value
