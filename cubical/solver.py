@@ -91,8 +91,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     stats = SolverStats(obser_arr)
     stats.chunk.label = label
-    stats.chunk.num_prior_flagged = (flags_arr&~FL.MISSING != 0).sum()  # number of prior flagged data points
-    stats.chunk.num_data_points = (flags_arr != 0).sum()                # nominal number of valid data points
+    stats.chunk.num_prior_flagged = (flags_arr&~(FL.MISSING|FL.SKIPSOL) != 0).sum()  # number of prior flagged data points
+    stats.chunk.num_data_points = (flags_arr == 0).sum()                             # nominal number of valid data points
 
     diverging = ""
 
@@ -400,7 +400,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         # clear Mad Max flags if in trial mode
         if madmax.trial_mode:
             flags_arr &= ~FL.MAD
-        n_new_flags = (flags_arr&~(FL.MISSING) != 0).sum() - stats.chunk.num_data_flags_0
+        n_new_flags = (flags_arr&~(FL.MISSING|FL.SKIPSOL) != 0).sum() - stats.chunk.num_prior_flags_0
         if n_new_flags < flags_arr.size*flag_warning_threshold:
             warning, color = "", "blue"
         else:
