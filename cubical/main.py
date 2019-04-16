@@ -277,7 +277,7 @@ def main(debugging=False):
 
         ms.init_models(str(GD["model"]["list"]).split(","),
                        GD["weight"]["column"].split(",") if GD["weight"]["column"] else None,
-                       fill_offdiag_weights=GD["weight"]["fill-off-diag"],
+                       fill_offdiag_weights=GD["weight"]["fill-offdiag"],
                        mb_opts=GD["montblanc"],
                        use_ddes=have_dd_jones and dde_mode != 'never')
 
@@ -332,7 +332,8 @@ def main(debugging=False):
         # create IFR-based gain machine. Only compute gains if we're loading a model
         # (i.e. not in load-apply mode)
         solver.ifrgain_machine = ifr_gain_machine.IfrGainMachine(solver.gm_factory, GD["bbc"], compute=load_model)
-        
+
+        solver.legacy_version12_weights = GD["weight"]["legacy-v1-2"]
 
         single_chunk = GD["data"]["single-chunk"]
         single_tile = GD["data"]["single-tile"]
@@ -390,7 +391,6 @@ def main(debugging=False):
         # run the main loop
 
         t0 = time()
-
 
         stats_dict = workers.run_process_loop(ms, tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts)
 

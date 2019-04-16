@@ -27,7 +27,8 @@ feed-type = circular
 mem-budget = 4096 
 
 [weight]
-column = WEIGHT_SPECTRUM 
+column = WEIGHT_SPECTRUM
+legacy-v1-2 = 1
 
 [flags]
 apply = legacy 
@@ -61,7 +62,7 @@ mode = sr
 column = CORRECTED_DATA 
 plots = False 
 plots-show = False
-pa-derotate = None
+derotate = 0
 
 
 [log]

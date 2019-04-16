@@ -36,6 +36,8 @@ gm_factory = None
 # IFR-based gain machine to use
 ifrgain_machine = None
 
+# set to true for old-style (version <= 1.2.1) weight averaging, where 2x2 weights are collapsed into a single number
+legacy_version12_weights = False
 
 import __builtin__
 try:
@@ -193,7 +195,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         return chisq_per_tf_slot, chisq_tot
 
     chi, stats.chunk.chi2u = compute_chisq(statfield='initchi2')
-    stats.chunk.chi2u_0 = stats.chunk.chi2u
+    stats.chunk.chi2_0 = stats.chunk.chi2u_0 = stats.chunk.chi2u
 
     # The following provides conditioning information when verbose is set to > 0.
     if log.verbosity() > 0:
@@ -259,7 +261,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         stats.chunk.iters = num_iter
         stats.chunk.num_converged = gm.num_converged_solutions
-        stats.chunk.frac_converged = gm.num_converged_solutions / float(gm.num_solutions)
+        stats.chunk.frac_converged = gm.num_solutions and gm.num_converged_solutions / float(gm.num_solutions)
 
         # Break out of the solver loop if we find ourselves with no valid solution intervals (e.g. due to gain flagging)
         if not gm.has_valid_solutions:
@@ -270,7 +272,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
         if (num_iter % chi_interval) == 0 or num_iter <= 1:
 
-            old_chi, old_mean_chi = chi, stats.chunk.chi2u
+            old_chi, old_mean_chi = chi, float(stats.chunk.chi2u)
 
             gm.compute_residual(obser_arr, model_arr, resid_arr)
             resid_arr[:,flags_arr!=0] = 0
@@ -288,20 +290,32 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
             have_residuals = True
 
             # Check for stalled solutions - solutions for which the residual is no longer improving.
-            delta_chi = old_chi - chi
+            # Don't do this on a major step (i.e. when going from term to term in a chain), as the
+            # reduced chisq (which compute_chisq() returns) can actually jump when going to the next term
 
-            stats.chunk.num_stalled = np.sum((delta_chi <= gm.delta_chi*old_chi))
+            if update_major_step:
+                stats.chunk.num_stalled = stats.chunk.num_diverged = 0
+            else:
+                delta_chi = old_chi - chi
+                stats.chunk.num_stalled = np.sum((delta_chi <= gm.delta_chi*old_chi))
+                stats.chunk.num_diverged = np.sum((delta_chi < -0.1 * old_chi))
+
             stats.chunk.frac_stalled = stats.chunk.num_stalled / float(chi.size)
-
-            stats.chunk.num_diverged = np.sum((delta_chi < -0.1*old_chi))
             stats.chunk.frac_diverged = stats.chunk.num_diverged / float(chi.size)
 
             gm.has_stalled = (stats.chunk.frac_stalled >= stall_quorum)
 
+            # if gm.has_stalled:
+            #     import pdb; pdb.set_trace()
+
             if log.verbosity() > 1:
-                delta_chi[old_chi != 0] /= old_chi
-                delta_chi_max  = delta_chi.max()
-                delta_chi_mean = (old_mean_chi - stats.chunk.chi2u) / stats.chunk.chi2u
+                if update_major_step:
+                    delta_chi_max = delta_chi_mean = 0.
+                else:
+                    wh = old_chi != 0
+                    delta_chi[wh] /= old_chi[wh]
+                    delta_chi_max  = delta_chi.max()
+                    delta_chi_mean = (old_mean_chi - stats.chunk.chi2u) / stats.chunk.chi2u
 
                 if stats.chunk.num_diverged:
                     diverging = ", " + ModColor.Str("diverging {:.2%}".format(stats.chunk.frac_diverged), "red")
@@ -434,10 +448,12 @@ class _VisDataManager(object):
         self.gm = None
         ## OMS: take sqrt() of weights since that's the correct thing to use in whitening
         self.obser_arr, self.model_arr, self.flags_arr, self.weight_arr = \
-            obser_arr, model_arr, flags_arr, np.sqrt(weight_arr)
-#            obser_arr, model_arr, flags_arr, weight_arr
-#        self.weight_arr[:] = np.sqrt(self.weight_arr.mean(axis=(-1,-2)))[..., np.newaxis, np.newaxis]
-#        self.weight_arr[:] = self.weight_arr.mean(axis=(-1,-2))[..., np.newaxis, np.newaxis]
+            obser_arr, model_arr, flags_arr, weight_arr
+        if legacy_version12_weights:
+            # self.weight_arr[:] = np.sqrt(self.weight_arr.mean(axis=(-1,-2)))[..., np.newaxis, np.newaxis]
+            self.weight_arr[:] = self.weight_arr.mean(axis=(-1,-2))[..., np.newaxis, np.newaxis]
+        else:
+            np.sqrt(self.weight_arr, out=self.weight_arr)
         self._wobs_arr = self._wmod_arr = None
         self.freq_slice = freq_slice
         self._model_corrupted = False
