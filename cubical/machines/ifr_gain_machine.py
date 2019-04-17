@@ -8,6 +8,7 @@ from numpy.ma import masked_array
 from cubical import param_db
 
 from cubical.tools import logger, ModColor
+from cubical.main import expand_templated_name
 log = logger.getLogger("gain_machine")
 
 
@@ -30,14 +31,14 @@ class IfrGainMachine(object):
             compute:        if False, gains are not computed even if options ask them to
         """
         self.gmfactory = gmfactory
-        load_from = ifrgain_opts['load-from']
-        save_to = ifrgain_opts['save-to']
+        load_from = expand_templated_name(ifrgain_opts['load-from'])
+        save_to = expand_templated_name(ifrgain_opts['save-to'])
         self._ifrgains_per_chan = ifrgain_opts['per-chan']
         self._ifrgain = None
         self._nfreq = gmfactory.grid["freq"]
         nfreq, nant, ncorr = [len(gmfactory.grid[axis]) for axis in "freq", "ant", "corr"]
         if load_from:
-            filename = gmfactory.make_filename(load_from)
+            filename = load_from
             print>> log(0), ModColor.Str("applying baseline-based corrections (BBCs) from {}".format(filename),
                                          col="green")
             if "//" in filename:
@@ -69,7 +70,7 @@ class IfrGainMachine(object):
             # setup axes for IFR-based gains
             axes = ["freq", "ant1", "ant2", "corr1", "corr2"]
             # define the ifrgain parameter
-            self._save_filename = gmfactory.make_filename(save_to)
+            self._save_filename = save_to
             parm = gmfactory.define_param(self._save_filename, "BBC", 1+0j, axes, interpolation_axes=["freq"])
             self._ifrgains_grid = {axis: parm.grid[i] for i, axis in enumerate(axes)}
             # initialize accumulators for M.D^H and D.D^H terms

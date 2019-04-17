@@ -11,6 +11,8 @@ from cubical import param_db
 from cubical.database.casa_db_adaptor import casa_db_adaptor
 
 from cubical.tools import logger, ModColor
+from cubical.main import expand_templated_name
+
 log = logger.getLogger("gain_machine")
 
 class MasterMachine(object):
@@ -667,20 +669,8 @@ class MasterMachine(object):
                     Expanded filename
                 
             """
-            if not filename:
-                return None
-            try:
-                # substitute recursively, but up to a limit
-                for i in xrange(10):
-                    fname = filename.format(JONES=jones_label or self.jones_label, **self.global_options)
-                    if fname == filename:
-                        break
-                    filename = fname
-                return filename
-            except Exception, exc:
-                print>> log,"{}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc())
-                print>>log,ModColor.Str("Error parsing filename '{}', see above".format(filename))
-                raise ValueError(filename)
+            return expand_templated_name(filename,
+                                         JONES=jones_label or self.jones_label)
 
         def _init_solutions(self, label, load_from, interpolate, save_to, exportables):
             """

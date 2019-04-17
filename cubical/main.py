@@ -20,6 +20,9 @@ import sys
 import warnings
 import numpy as np
 import re
+import datetime
+import getpass
+import traceback
 from time import time
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
@@ -33,6 +36,54 @@ logger.init("cc")
 
 import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
+GD = None
+
+_start_datetime = datetime.datetime.now()
+
+_runtime_templates = dict(DATE=_start_datetime.strftime("%Y%m%d"),
+                          TIME=_start_datetime.strftime("%H%M%S"),
+                          USER=getpass.getuser(),
+                          HOST=os.uname()[1],
+                          ENV=os.environ)
+
+def expand_templated_name(name, **keys):
+    """
+        Helper method: expands name from templated name. This uses the standard
+        str.format() function, passing in GD (global dict of options), as well as any keys supplied,
+        as well as the _runtime_templates dict above.
+        This allows for name templates that reference both the parset, as well as runtime conditions:
+        e.g. "{data[ms]}-ddid{sel[ddid]}-{DATE}-{TIME}".
+
+        Args:
+            name (str):
+                the templated name
+            keys (optional):
+                any optional substitution keys.
+
+        Returns:
+            str:
+                Expanded filename
+    """
+    name0 = name
+    try:
+        if name:
+            keys.update(_runtime_templates)
+            keys.update(GD)
+            # substitute recursively, but up to a limit
+            for i in xrange(10):
+                name1 = name.format(**keys)
+                if name1 == name:
+                    break
+                name = name1
+        return name
+    except Exception, exc:
+        print>> log, "{}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc())
+        if name == name0:
+            print>> log, ModColor.Str("Error substituting '{}', see above".format(name))
+        else:
+            print>> log, ModColor.Str("Error substituting '{}' (derived from '{}'), see above".format(name, name0))
+        raise ValueError(name)
 
 from cubical.data_handler.ms_data_handler import MSDataHandler
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
@@ -48,7 +99,6 @@ import cubical.flagging as flagging
 
 from cubical.statistics import SolverStats
 
-GD = None
 
 class UserInputError(Exception):
     pass
@@ -86,7 +136,6 @@ def main(debugging=False):
     custom_parset_file = None
     # "GD" is a global defaults dict, containing options set up from parset + command line
     global GD, enable_pdb
-    import traceback
 
     try:
         if debugging:
@@ -128,11 +177,9 @@ def main(debugging=False):
             if len(parser.get_arguments()) != (1 if custom_parset_file else 0):
                 raise UserInputError("Unexpected number of arguments. Use -h for help.")
 
-            # "GD" is a global defaults dict, containing options set up from parset + command line
-            cPickle.dump(GD, open("cubical.last", "w"))
-
             # get dirname and basename for all output files
-            basename = GD["out"]["name"]
+            basename = expand_templated_name(GD["out"]["name"])
+
             if not basename:
                 dirname, basename = "cubical-out", "cubical"
             elif basename.endswith("/"):
@@ -168,6 +215,11 @@ def main(debugging=False):
             if dirname != ".":
                 basename = "{}/{}".format(dirname, basename)
             print>> log(0, "blue"), "using {} as base for output files".format(basename)
+
+            GD["out"]["name"] = basename
+
+            # "GD" is a global defaults dict, containing options set up from parset + command line
+            cPickle.dump(GD, open("cubical.last", "w"))
 
             # save parset with all settings. We refuse to clobber a parset with itself
             # (so e.g. "gocubical test.parset --Section-Option foo" does not overwrite test.parset)
@@ -473,6 +525,7 @@ def main(debugging=False):
                 except Exception, exc:
                     if GD["debug"]["escalate-warnings"]:
                         raise
+                    import traceback
                     print>> ModColor.Str("An error has occurred while making summary plots: {}({})\n {}".format(type(exc).__name__,
                                                                                            exc,
                                                                                            traceback.format_exc()))
