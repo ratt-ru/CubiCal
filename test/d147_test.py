@@ -55,6 +55,7 @@ class SolverVerification(object):
 
 d147_test_list = [
     ("GSOL_DATA", dict()),
+    ("GSOL_DATA", dict(dist_ncpu=1)),
     ("GBSOL_DATA", dict(sol_jones="G,B", g_time_int=1, g_freq_int=0, b_time_int=0, b_freq_int=1)),
     ("PO_DATA", dict(g_type='phase-diag')),
     ("FS_DATA", dict(g_type='f-slope', g_time_int=1, g_freq_int=0)),

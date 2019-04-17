@@ -232,6 +232,14 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
     # this accumulates SolverStats objects from each chunk, for summarizing later
     stats_dict = {}
 
+    def reap_children():
+        pid, status, _ = os.wait3(os.WNOHANG)
+        if pid:
+            print>>log(0,"red"),"child process {} exited with status {}. This is a bug, or an out-of-memory condition.".format(pid, status)
+            print>>log(0,"red"),"This error is not recoverable: the main process will now commit ritual harakiri."
+            os._exit(1)
+            raise RuntimeError("child process {} exited with status {}".format(pid, status))
+
     with cf.ProcessPoolExecutor(max_workers=num_workers) as executor, \
             cf.ProcessPoolExecutor(max_workers=1) as io_executor:
         ms.flush()
@@ -248,15 +256,16 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
         _init_worker(main=True)
 
         for itile, tile in enumerate(tile_list):
-            # check for dead children
-            pid, status, _ = os.wait3(os.WNOHANG)
-            if pid:
-                print>> log(0), "child process {} exited with status {}. This is a bug, or an out-of-memory condition.".format(pid, status)
-                raise RuntimeError("child process {} exited with status {}".format(pid, status))
             # wait for I/O job on current tile to finish
             print>> log(0), "waiting for I/O on {}".format(tile.label)
-            done, not_done = cf.wait([io_futures[itile]])
-            if not done or not io_futures[itile].result():
+            # have a timeout so that if a child process dies, we at least find out
+            done = False
+            while not done:
+                reap_children()
+                done, not_done = cf.wait([io_futures[itile]], timeout=10)
+
+            # check if result was successful
+            if not io_futures[itile].result():
                 raise RuntimeError("I/O job on {} failed".format(tile.label))
             del io_futures[itile]
 
@@ -277,11 +286,15 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
                 print>> log(3), "submitted solver job for chunk {}".format(key)
 
             # wait for solvers to finish
-            for future in cf.as_completed(solver_futures):
-                key = solver_futures[future]
-                stats = future.result()
-                stats_dict[tile.get_chunk_indices(key)] = stats
-                print>> log(3), "handled result of chunk {}".format(key)
+            while solver_futures:
+                reap_children()
+                done, not_done = cf.wait(solver_futures.keys(), timeout=1)
+                for future in done:
+                    key = solver_futures[future]
+                    stats = future.result()
+                    stats_dict[tile.get_chunk_indices(key)] = stats
+                    print>> log(3), "handled result of chunk {}".format(key)
+                    del solver_futures[future]
 
             print>> log(0), "finished processing {}".format(tile.label)
 
@@ -289,7 +302,11 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
         # I/O job saving the second-to-last tile (which was submitted with itile+1), and the last tile was
         # never saved, so submit a job for that (also to close the MS), and wait
         io_futures[-1] = io_executor.submit(_io_handler, load=None, save=-1, finalize=True)
-        cf.wait([io_futures[-1]])
+        done = False
+        while not done:
+            reap_children()
+            done, not_done = cf.wait([io_futures[-1]], timeout=10)
+
         # get flagcounts from result of job
         ms.update_flag_counts(io_futures[-1].result()['flagcounts'])
 

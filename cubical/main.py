@@ -556,6 +556,7 @@ def main(debugging=False):
         if type(exc) is UserInputError:
             print>> log, ModColor.Str(exc)
         else:
+            import traceback
             print>>log, ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__,
                                                                     exc, traceback.format_exc()))
             if enable_pdb and not type(exc) is UserInputError:
