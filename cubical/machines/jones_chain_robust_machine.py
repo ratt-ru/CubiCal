@@ -99,12 +99,12 @@ class JonesChain(MasterMachine):
         return cubical.kernels.import_kernel('cyfull_W_complex')
         
 
-    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """Precomputes various stats before starting a solution"""
-        MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
+        MasterMachine.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
         for term in self.jones_terms:
             if term.solvable:
-                term.precompute_attributes(model_arr, flags_arr, inv_var_chan)
+                term.precompute_attributes(data_arr, model_arr, flags_arr, inv_var_chan)
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
@@ -427,6 +427,8 @@ class JonesChain(MasterMachine):
         while True:
             if not self.term_iters:
                 return False
+            previous_term = self.active_term
+            # clear converged and stalled properties
             self.active_index = (self.active_index + 1) % self.n_terms
             if self.active_term.solvable:
                 self.active_term.maxiter = self.term_iters.pop(0)
@@ -435,6 +437,9 @@ class JonesChain(MasterMachine):
                     continue
                 self.active_term.iters = 0
                 self._convergence_states_finalized = False
+                if previous_term:
+                    previous_term.has_converged = previous_term.has_stalled = False
+                self.active_term.has_converged = self.active_term.has_stalled = False
                 print>> log(1), "activating term {}".format(self.active_term.jones_label)
                 return True
             else:
@@ -449,17 +454,20 @@ class JonesChain(MasterMachine):
         """
 
         self.last_active_index = self.active_index
+        major_step = False
 
-        if self.active_term.has_converged:
-            print>>log(1),"term {} converged ({} iters): {}".format(self.active_term.jones_label,
+        if self.active_term.has_converged or self.active_term.has_stalled:
+            print>>log(1),"term {} {} ({} iters): {}".format(self.active_term.jones_label,
+                        "converged" if self.active_term.has_converged else "stalled",
                         self.active_term.iters, self.active_term.final_convergence_status_string)
             self._convergence_states.append(self.active_term.final_convergence_status_string)
             self._convergence_states_finalized = True
             self._next_chain_term()
+            major_step = True
 
         self.active_term.next_iteration()
 
-        return MasterMachine.next_iteration(self)
+        return MasterMachine.next_iteration(self)[0], major_step
 
     def compute_chisq(self, resid_arr, inv_var_chan):
         """Computes chi-square using the active chain term"""
@@ -534,11 +542,19 @@ class JonesChain(MasterMachine):
 
     @property
     def has_stalled(self):
-        return np.all([term.has_stalled for term in self.jones_terms])
+        return self.active_term.has_stalled and not self.term_iters
 
     @has_stalled.setter   
     def has_stalled(self, value):
         self.active_term.has_stalled = value
+        
+    @property
+    def epsilon(self):
+        return self.active_term.epsilon
+
+    @property
+    def delta_chi(self):
+        return self.active_term.delta_chi
 
     class Factory(MasterMachine.Factory):
         """
