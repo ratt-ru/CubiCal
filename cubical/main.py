@@ -131,15 +131,43 @@ def main(debugging=False):
             # "GD" is a global defaults dict, containing options set up from parset + command line
             cPickle.dump(GD, open("cubical.last", "w"))
 
-            # get basename for all output files
+            # get dirname and basename for all output files
             basename = GD["out"]["name"]
             if not basename:
-                basename = "out"
+                dirname, basename = "cubical-out", "cubical"
+            elif basename.endswith("/"):
+                dirname, basename = basename[:-1], "cubical"
+            elif "/" in basename:
+                dirname, basename = os.path.split(basename)
+                dirname = dirname.rstrip("/")
+            else:
+                dirname, basename = ".", basename
 
-            # create directory for output files, if it doesn't exist
-            dirname = os.path.dirname(basename)
-            if not os.path.exists(dirname) and not dirname == "":
+            # create directory for output files, if specified, and it doesn't exist
+            if not os.path.exists(dirname):
                 os.mkdir(dirname)
+
+            # find unique output name, if needed
+            if os.path.exists("{}/{}.log".format(dirname, basename)) and not GD["out"]["overwrite"]:
+                print>> log(0, "blue"), "{}/{}.log already exists, won't overwrite".format(dirname, basename)
+                dirname0, basename0 = dirname, basename
+                N = -1
+                while os.path.exists("{}/{}.log".format(dirname, basename)):
+                    N += 1
+                    if dirname == ".":
+                        basename = "{}.{}".format(basename0, N)
+                    else:
+                        dirname = "{}.{}".format(dirname0, N)
+                # rename old directory, if we ended up manipulating the directory name
+                if dirname != dirname0:
+                    os.rename(dirname0, dirname)
+                    print>> log(0, "blue"), "saved previous {} to {}".format(dirname0, dirname)
+                    dirname = dirname0
+                    os.mkdir(dirname)
+
+            if dirname != ".":
+                basename = "{}/{}".format(dirname, basename)
+            print>> log(0, "blue"), "using {} as base for output files".format(basename)
 
             # save parset with all settings. We refuse to clobber a parset with itself
             # (so e.g. "gocubical test.parset --Section-Option foo" does not overwrite test.parset)
@@ -148,8 +176,7 @@ def main(debugging=False):
                     os.path.samefile(save_parset, custom_parset_file):
                 basename = "~" + basename
                 save_parset = basename + ".parset"
-                print>> log, ModColor.Str(
-                    "Your --Output-Name would overwrite its own parset. Using %s instead." % basename)
+                print>> log, ModColor.Str("your --out-name would overwrite its own parset. Using {} instead.".format(basename))
             parser.write_to_parset(save_parset)
 
         enable_pdb = GD["debug"]["pdb"]
