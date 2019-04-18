@@ -156,7 +156,7 @@ class Flagger(object):
                         for c1,x1 in enumerate(self.metadata.feeds.upper()):
                             for c2,x2 in enumerate(self.metadata.feeds.upper()):
                                 mm = mad[0,p,q,c1,c2] if self.mad_per_corr else mad[0,p,q]
-                                subplot_titles[c1,c2] = "{}{} residuals (MAD {:.3g})".format(x1, x2, mm)
+                                subplot_titles[c1,c2] = "{}{} residuals (MAD {:.3g})".format(x1, x2, 0 if mm is np.ma.masked else mm) 
                         try:
                             figure = plots.make_dual_absres_plot(absres, flags_arr!=0, baddies, p, q, self.metadata, subplot_titles)
                             # make plot title with some info

@@ -324,7 +324,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
                 print>> log(2), ("{} {} chi2 {:.4}, rel delta {:.4} max {:.4}, active {:.2%}{}").format(
                                     label, gm.current_convergence_status_string,
-                                    stats.chunk.chi2u, delta_chi_mean, delta_chi_max, 1-stats.chunk.frac_stalled, diverging)
+                                    stats.chunk.chi2u, delta_chi_mean, delta_chi_max, float(1-stats.chunk.frac_stalled), diverging)
 
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
@@ -359,9 +359,8 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
         else:
             stats.chunk.chi2 = stats.chunk.chi2u
 
-        message = "{} (end solve) {}, stall {:.2%}{}, chi^2 {:.4} -> {:.4}".format(label,
-                    gm.final_convergence_status_string,
-                    stats.chunk.frac_stalled, diverging, float(stats.chunk.chi2_0), stats.chunk.chi2u)
+        message = "{} (end solve) {}, stall {:.2%}{}, chi^2 {:.4} -> {:.4}".format(label, gm.final_convergence_status_string,
+                    float(stats.chunk.frac_stalled), diverging, float(stats.chunk.chi2_0), stats.chunk.chi2u)
 
         if sol_opts['last-rites']:
 
