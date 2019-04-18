@@ -2,6 +2,7 @@
 from __future__ import print_function
 import cubical
 from cubical.tools import logger
+import numpy as np
 # set the base name of the logger. This must happen before any other loggers are instantiated
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
@@ -32,6 +33,8 @@ if __name__ == '__main__':
     parser.add_argument("-t", "--threshold", action="append", metavar="FIELD:THR", default=["chi2:10"],
                         help="highlight if value of field exceeds threshold. May be given multiple times.\n" +
                         "Default is %(default)s.")
+    parser.add_argument("-p", "--precision", metavar="DIGITS", default=3,
+                        help="default precision for floating-point values. Default is %(default)s.")
     parser.add_argument("-a", "--all", action="store_true",
                         help="print all fields.")
     parser.add_argument("-r", "--recent", metavar="NRECENT", type=int, default=1,
@@ -65,7 +68,10 @@ if __name__ == '__main__':
 
         for field in print_stats:
             if "{" not in field:
-                field = "{{{}}}".format(field)
+                if isinstance(stats.chunk[field][0,0], np.floating):
+                    field = "{{{}:.{}}}".format(field, options.precision)
+                else:
+                    field = "{{{}}}".format(field)
             lines = stats.format_chunk_stats(field, ncol=options.num_columns, threshold=thresholds)
             print("{}:\n  {}\n -".format(ModColor.Str(field, "blue"), "\n  ".join(lines)), file=log(0))
 
