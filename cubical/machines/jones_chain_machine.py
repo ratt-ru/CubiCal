@@ -97,7 +97,7 @@ class JonesChain(MasterMachine):
     @staticmethod
     def get_kernel(options):
         """Returns kernel approriate to Jones options"""
-        if options['diag-diag']:
+        if options['diag-only']:
             return cubical.kernels.import_kernel("cydiagdiag_complex")
         else:
             return cubical.kernels.import_kernel("cyfull_complex")

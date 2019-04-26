@@ -827,19 +827,37 @@ class MSDataHandler:
             return subset.putcol(column, value, startrow, nrows)
         if nrows<0:
             nrows = subset.nrows()
-        # A variable-shape column may be uninitialized, in which case putcolslice will not work.
-        # But we try it first anyway, especially if the first row of the block looks initialized
-        if False and self.data.iscelldefined(column, startrow):
-            try:
-                print>>log(0),"putcolslice {} {} {} {} {}".format(value.shape,self._ms_blc,self._ms_trc, startrow, nrows)
-                return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [1,1], startrow, nrows)
-            except Exception, exc:
-                pass
-        # print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
-        ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
-        value0 = np.zeros((nrows, self._nchan0_orig[ddid], self.nmscorrs), value.dtype)
-        value0[:, self._channel_slice, self._corr_slice] = value
-        return subset.putcol(column, value0, startrow, nrows)
+
+        ## NB: massive caveat emptor
+        ## putcolslice() segfaults occassionally (in casacore 3.0 at least), so the code below, while well-intentioned,
+        ## doesn't actually work:
+
+        # # A variable-shape column may be uninitialized, in which case putcolslice will not work.
+        # # But we try it first anyway, especially if the first row of the block looks initialized
+        # if self.data.iscelldefined(column, startrow):
+        #     try:
+        #         print>>log(0),"putcolslice {} {} {} {} {}".format(value.shape,self._ms_blc,self._ms_trc, startrow, nrows)
+        #         return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [1,1], startrow, nrows)
+        #     except Exception, exc:
+        #         pass
+
+        ## So if we do have a slice, we should really read the column in and write it back out. This seems a waste
+        ## for visibility columns (since presumably we're only interested in the slice), so we'll initialize the
+        ## out-of-slice values with zeroes, and flag them out
+
+        if self._channel_slice == slice(None) and self._corr_slice == slice(None):
+            return subset.putcol(column, value, startrow, nrows)
+        else:
+            # for bitflags, we want to preserve flags we haven't touched -- read the column
+            if column == "BITFLAG" or column == "FLAG":
+                value0 = subset.getcol(column)
+            # otherwise, init empty column
+            else:
+                ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
+                shape = (nrows, self._nchan0_orig[ddid], self.nmscorrs)
+                value0 = np.zeros(shape, value.dtype)
+            value0[:, self._channel_slice, self._corr_slice] = value
+            return subset.putcol(column, value0, startrow, nrows)
 
     def define_chunk(self, chunk_time, rebin_time, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """

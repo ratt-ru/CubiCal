@@ -690,7 +690,7 @@ class MSTile(object):
 
             flag_arr0 = np.zeros(obvis0.shape, dtype=FL.dtype)
 
-            # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITLAG from them.
+            # FLAG/FLAG_ROW only needed if applying them, or auto-filling BITFLAG from them.
 
             flagcol = flagrow = None
             self.bflagcol = None

@@ -49,10 +49,13 @@ class Complex2x2Gains(PerIntervalGains):
     @staticmethod
     def get_kernel(options):
         """Returns kernel approriate to Jones options"""
-        if options['diag-diag']:
+        if options['diag-only']:
             return cubical.kernels.import_kernel('cydiagdiag_complex')
         elif options['type'] == 'complex-2x2':
-            return cubical.kernels.import_kernel('cyfull_complex')
+            if options['update-type'] == 'full':
+                return cubical.kernels.import_kernel('cyfull_complex')
+            else:
+                return cubical.kernels.import_kernel('cydiag_complex')
         elif options['type'] == 'complex-diag':
             return cubical.kernels.import_kernel('cydiag_complex')
         else:

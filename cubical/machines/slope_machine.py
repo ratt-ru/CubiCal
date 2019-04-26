@@ -88,7 +88,7 @@ class PhaseSlopeGains(ParameterisedGains):
     @staticmethod
     def get_kernel(options):
         """Returns kernel approriate to Jones options"""
-        if options['diag-diag']:
+        if options['diag-only']:
             return cubical.kernels.import_kernel('cydiag_phase_only')
         else:
             return cubical.kernels.import_kernel('cyphase_only')

@@ -280,14 +280,6 @@ def main(debugging=False):
 
         have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
 
-        # TODO: in this case data_handler can be told to only load diagonal elements. Save memory!
-        # top-level diag-diag enforced across jones terms
-        if solver_opts['diag-diag']:
-            for jo in jones_opts:
-                jo['diag-diag'] = True
-        else:
-            solver_opts['diag-diag'] = all([jo['diag-diag'] for jo in jones_opts])
-
         # set up data handler
 
         solver_type = GD['out']['mode']
@@ -312,7 +304,7 @@ def main(debugging=False):
                            fid=GD["sel"]["field"],
                            ddid=GD["sel"]["ddid"],
                            channels=GD["sel"]["chan"],
-                           diag=solver_opts["diag-diag"],
+                           diag=GD["sel"]["diag"],
                            beam_pattern=GD["model"]["beam-pattern"],
                            beam_l_axis=GD["model"]["beam-l-axis"],
                            beam_m_axis=GD["model"]["beam-m-axis"],
@@ -327,6 +319,11 @@ def main(debugging=False):
                            pa_rotate_montblanc=GD["montblanc"]["pa-rotate"],
                            derotate_output=GD["out"]["derotate"],
                            )
+
+        # if using dual-corr mode, propagate this into Jones options
+        for jo in jones_opts:
+            jo['diag-only'] = (ms.ncorr == 2)
+        solver_opts['diag-only'] = (ms.ncorr == 2)
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
