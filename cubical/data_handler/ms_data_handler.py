@@ -851,6 +851,7 @@ class MSDataHandler:
             # for bitflags, we want to preserve flags we haven't touched -- read the column
             if column == "BITFLAG" or column == "FLAG":
                 value0 = subset.getcol(column)
+                value0[:] = np.bitwise_or.reduce(value0, axis=2)[:,:,np.newaxis]
             # otherwise, init empty column
             else:
                 ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]

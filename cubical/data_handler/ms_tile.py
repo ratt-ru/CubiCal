@@ -670,7 +670,7 @@ class MSTile(object):
                         # take mean weights if specified, else fill off-diagonals
                         if mean_corr:
                             wcol = wcol.mean(-1)[..., np.newaxis]
-                        elif self.dh.fill_offdiag_weights:
+                        elif self.dh.fill_offdiag_weights and wcol.shape[-1] == 4:
                             wcol[:, :, (1, 2)] = np.sqrt(wcol[: ,: ,0]*wcol[: ,: ,3])[..., np.newaxis]
                         # init weights, if first column, else multiply weights by subsequent column
                         if not iwcol:
@@ -740,6 +740,8 @@ class MSTile(object):
                 # occurrence so we may as well deal with it. In this case, if auto-fill is set,
                 # fill BITFLAG from FLAG/FLAG_ROW.
                 self.bflagcol = self.dh.fetchslice("BITFLAG", subset=table_subset)
+                self.bflagcol[:] = np.bitwise_or.reduce(self.bflagcol, axis=2)[:,:,np.newaxis]
+
                 print>> log(2), "  read BITFLAG/BITFLAG_ROW"
                 # compute stats
                 for flagset, bitmask in self.dh.bitflags.iteritems():
