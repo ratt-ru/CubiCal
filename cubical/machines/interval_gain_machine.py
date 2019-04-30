@@ -5,6 +5,7 @@
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
+import cubical.kernels
 
 from numpy.ma import masked_array
 
@@ -20,7 +21,7 @@ class PerIntervalGains(MasterMachine):
     This is a base class for all gain solution machines that use solutions intervals.
     """
 
-    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, options, cykernel):
+    def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, options):
         """
         Initialises a gain machine which supports solution intervals.
         
@@ -39,13 +40,24 @@ class PerIntervalGains(MasterMachine):
             freqs (np.ndarray):
                 Frequencies for the data being processsed.
             options (dict): 
-                Dictionary of options. 
+                Dictionary of options.
+            diag_gains (bool):
+                If True, gains are diagonal-only. Else gains are full 2x2.
         """
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, options)
 
-        self.cykernel = cykernel
+        # select which kernels to use for computing full data
+        self.cykernel = self.get_full_kernel(options, self.is_diagonal)
+
+        # kernel used in solver is diag-diag in diag mode, else uses full kernel version
+        if options.get('diag-data') or options.get('diag-only'):
+            self.cykernel_solve = cubical.kernels.import_kernel('cydiagdiag_complex')
+        else:
+            self.cykernel_solve = self.cykernel
+
+        print self.cykernel, self.cykernel_solve
 
         self.t_int = options["time-int"] or self.n_tim
         self.f_int = options["freq-int"] or self.n_fre
@@ -121,6 +133,26 @@ class PerIntervalGains(MasterMachine):
         # flag: have gains been updated
         self._gh_update = self._ghinv_update = True
 
+    @classmethod
+    def determine_allocators(cls, options):
+        kernel = cls.get_full_kernel(options, diag_gains=cls.determine_diagonality(options))
+        return kernel.allocate_vis_array, kernel.allocate_flag_array, kernel.allocate_gain_array
+
+    @classmethod
+    def get_full_kernel(cls, options, diag_gains):
+        # select which kernels to use
+        # (a) data is diagonal: this forces the use of diagonal gains and diag-diag kernels
+        if options.get('diag-data'):
+            return cubical.kernels.import_kernel('cydiagdiag_complex')
+        else:
+            # (b) data is 2x2, diagonal gains: use diagonal gain kernel
+            if diag_gains:
+                return cubical.kernels.import_kernel('cydiag_complex')
+            # (c) data and gains both 2x2: use full kernel
+            else:
+                return cubical.kernels.import_kernel('cyfull_complex')
+
+
     def get_conj_gains(self):
         if self._gh is None:
             self._gh = np.empty_like(self.gains)
@@ -134,7 +166,7 @@ class PerIntervalGains(MasterMachine):
             self._ginv = np.empty_like(self.gains)
             self._ghinv = np.empty_like(self.gains)
         if self._ghinv_update:
-            self._ghinv_flag_count = self.cykernel.cyinvert_gains(
+            self._ghinv_flag_count = self.cykernel_solve.cyinvert_gains(
                 self.gains, self._ginv, self.gflags, self.eps, FL.ILLCOND)
             np.conj(self._ginv.transpose(0, 1, 2, 3, 5, 4), out=self._ghinv)
             self._ghinv_update = False
@@ -219,7 +251,7 @@ class PerIntervalGains(MasterMachine):
         self.gain_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, self.n_cor, self.n_cor]
         self.gain_grid = self.interval_grid
 
-        self.gains = self.cykernel.allocate_gain_array(self.gain_shape, self.dtype)
+        self.gains = self.cykernel_solve.allocate_gain_array(self.gain_shape, self.dtype)
 
         self.gains[:] = np.eye(self.n_cor)
         self.gflags = np.zeros(self.gain_shape[:-2], FL.dtype)
@@ -229,78 +261,33 @@ class PerIntervalGains(MasterMachine):
         # function used to unpack interval resolution to gain resolution
         self._interval_to_gainres = self.copy_or_identity
 
-    def compute_residual(self, obser_arr, model_arr, resid_arr):
-        """
-        This function computes the residual. This is the difference between the
-        observed data, and the model data with the gains applied to it.
-
-        Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            resid_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the 
-                computed residuals should be placed.
-
-        Returns:
-            np.ndarray: 
-                Array containing the result of computing D - GMG\ :sup:`H`.
-        """
-
+    def compute_residual(self, obser_arr, model_arr, resid_arr, full2x2=True):
         gains_h = self.get_conj_gains()
 
         np.copyto(resid_arr, obser_arr)
 
-        self.cykernel.cycompute_residual(model_arr, self.gains, gains_h, resid_arr, *self.gain_intervals)
+        (self.cykernel if full2x2 else self.cykernel_solve).cycompute_residual(model_arr,
+                                                                               self.gains, gains_h, resid_arr, *self.gain_intervals)
 
         return resid_arr
 
 
-    def apply_gains(self, model_arr):
-        """
-        Applies the gains to an array at full time-frequency resolution. 
-
-        Args:
-            model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
-                model visibilities.
-
-        Returns:
-            np.ndarray:
-                Array containing the result of GMG\ :sup:`H`.
-        """
+    def apply_gains(self, model_arr, full2x2=True):
         gains_h = self.get_conj_gains()
 
-        self.cykernel.cyapply_gains(model_arr, self.gains, gains_h, *self.gain_intervals)
+        (self.cykernel if full2x2 else self.cykernel_solve).cyapply_gains(model_arr,
+                                                                          self.gains, gains_h, *self.gain_intervals)
 
         return model_arr
 
-    def apply_inv_gains(self, obser_arr, corr_vis=None):
-        """
-        Applies the inverse of the gain estimates to the observed data matrix.
-
-        Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.
-            corr_vis (np.ndarray or None, optional): 
-                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
-                into which the corrected visibilities should be placed.
-
-        Returns:
-            np.ndarray: 
-                Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
-        """
-
+    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True):
         g_inv, gh_inv, flag_count = self.get_inverse_gains()
 
         if corr_vis is None:
             corr_vis = np.empty_like(obser_arr)
 
-        self.cykernel.cycompute_corrected(obser_arr, g_inv, gh_inv, corr_vis, *self.gain_intervals)
+        (self.cykernel if full2x2 else self.cykernel_solve).cycompute_corrected(obser_arr,
+                                                                                g_inv, gh_inv, corr_vis, *self.gain_intervals)
 
         return corr_vis, flag_count
 
@@ -461,36 +448,35 @@ class PerIntervalGains(MasterMachine):
         flagged = self.flagged
         nfl0 = self.n_flagged
 
-        # while iterating, flag on OOB and such
-        if not final:
-            gain_mags = np.abs(self.gains)
+        # flag on OOB and such
+        gain_mags = np.abs(self.gains)
 
-            # Check for inf/nan solutions. One bad correlation will trigger flagging for all correlations.
+        # Check for inf/nan solutions. One bad correlation will trigger flagging for all correlations.
 
-            boom = (~np.isfinite(self.gains)).any(axis=(-1,-2))
-            self.gflags[boom&~flagged] |= FL.BOOM
-            flagged |= boom
-            gain_mags[boom] = 0
+        boom = (~np.isfinite(self.gains)).any(axis=(-1,-2))
+        self.gflags[boom&~flagged] |= FL.BOOM
+        flagged |= boom
+        gain_mags[boom] = 0
 
-            # Check for gain solutions for which diagonal terms have gone to 0.
+        # Check for gain solutions for which diagonal terms have gone to 0.
 
-            gnull = (self.gains[..., 0, 0] == 0) | (self.gains[..., 1, 1] == 0)
-            self.gflags[gnull&~flagged] |= FL.GNULL
-            flagged |= gnull
+        gnull = (self.gains[..., 0, 0] == 0) | (self.gains[..., 1, 1] == 0)
+        self.gflags[gnull&~flagged] |= FL.GNULL
+        flagged |= gnull
 
-            # Check for gain solutions which are out of bounds (based on clip thresholds).
+        # Check for gain solutions which are out of bounds (based on clip thresholds).
 
-            if self.clip_after<self.iters and self.clip_upper or self.clip_lower:
-                goob = np.zeros(gain_mags.shape, bool)
-                if self.clip_upper:
-                    goob = gain_mags.max(axis=(-1, -2)) > self.clip_upper
-                if self.clip_lower:
-                    goob |= (gain_mags[...,0,0]<self.clip_lower) | (gain_mags[...,1,1,]<self.clip_lower)
-                self.gflags[goob&~flagged] |= FL.GOOB
-                flagged |= goob
+        if self.clip_after<self.iters and self.clip_upper or self.clip_lower:
+            goob = np.zeros(gain_mags.shape, bool)
+            if self.clip_upper:
+                goob = gain_mags.max(axis=(-1, -2)) > self.clip_upper
+            if self.clip_lower:
+                goob |= (gain_mags[...,0,0]<self.clip_lower) | (gain_mags[...,1,1,]<self.clip_lower)
+            self.gflags[goob&~flagged] |= FL.GOOB
+            flagged |= goob
 
-        else:
-            # else final flagging -- check the posterior error estimate
+        # in final (post-solution) flagging, check the posterior error estimate
+        if final:
             if self.posterior_gain_error is not None and self.max_post_error:
                 # reset to 0 for fixed directions
                 if self.dd_term:
@@ -787,9 +773,3 @@ class PerIntervalGains(MasterMachine):
         """ Sets stalled status. """
 
         self._has_stalled = value
-
-
-
-
-
-

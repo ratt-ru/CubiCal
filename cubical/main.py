@@ -288,7 +288,7 @@ def main(debugging=False):
         solver_mode_name = solver.SOLVERS[solver_type].__name__.replace("_", " ")
         print>>log,ModColor.Str("mode: {}".format(solver_mode_name), col='green')
         # these flags are used below to tweak the behaviour of gain machines and model loaders
-        apply_only = solver.SOLVERS[solver_type] in (solver.correct_only, solver.correct_residuals)
+        apply_only = solver.SOLVERS[solver_type] in (solver.correct_only, solver.correct_residuals, solver.subtract_only)
         load_model = solver.SOLVERS[solver_type] is not solver.correct_only   # no model needed in "correct only" mode
 
         if load_model and not GD["model"]["list"]:
@@ -321,9 +321,12 @@ def main(debugging=False):
                            )
 
         # if using dual-corr mode, propagate this into Jones options
-        for jo in jones_opts:
-            jo['diag-only'] = (ms.ncorr == 2)
-        solver_opts['diag-only'] = (ms.ncorr == 2)
+        if ms.ncorr == 2:
+            for jo in jones_opts:
+                jo['diag-only'] = True
+                jo['diag-data'] = True
+            solver_opts['diag-only'] = True
+            solver_opts['diag-data'] = True
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory

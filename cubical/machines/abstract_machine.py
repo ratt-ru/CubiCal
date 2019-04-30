@@ -26,7 +26,7 @@ class MasterMachine(object):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, jones_label, data_arr, ndir, nmod, times, freqs, chunk_label, options):
+    def __init__(self, jones_label, data_arr, ndir, nmod, times, freqs, chunk_label, options, diagonal=None):
         """
         Initializes a gain machine.
         
@@ -64,8 +64,12 @@ class MasterMachine(object):
                 Frequencies for the data being processsed.
             chunk_label (str):
                 Label of the data chunk being processed, for messages
-            options (dict): 
-                Dictionary of options. 
+            options (dict):
+                Dictionary of options.
+            diagonal (bool or None):
+                Set to False or True or False if the gains are (non)diagonal. If None, calls the
+                determine_diagonality() class method instead
+
         """
         import cubical.kernels
         self.cygenerics = cubical.kernels.import_kernel('cygenerics')
@@ -75,6 +79,8 @@ class MasterMachine(object):
         self.times = times
         self.freqs = freqs
         self.options = options
+        self._is_diagonal = self.determine_diagonality(options)
+        self._allocate_vis_array, self._allocate_flag_array, self._allocate_gain_array = self.determine_allocators(options)
 
         self.solvable = options.get('solvable')
         self._dd_term = options.get('dd-term')
@@ -97,14 +103,44 @@ class MasterMachine(object):
     def jones_label(self):
         return self._jones_label
 
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel appropriate to the set of machine options"""
+    @property
+    def is_diagonal(self):
+        """Returns true if this machine instance represents a diagonal gain term"""
+        return self._is_diagonal
+
+    @property
+    def allocate_vis_array(self):
+        """Returns visibility allocator function for this machine"""
+        return self._allocate_vis_array
+
+    @property
+    def allocate_flag_array(self):
+        """Returns flag allocator function for this machine"""
+        return self._allocate_flag_array
+
+    @property
+    def allocate_gain_array(self):
+        """Returns flag allocator function for this machine"""
+        return self._allocate_gain_array
+
+    @classmethod
+    def determine_allocators(cls, options):
+        """
+        Returns allocation functions appropriate to the machine class and set of machine options.
+        Different machines may prefer different memory layouts, so other code needs to know up front which allocators
+        to use.
+        Returns tuple of vis_allocator, flag_allocator.
+        """
+        return NotImplementedError
+
+    @classmethod
+    def determine_diagonality(cls, options):
+        """Returns true if the machine class, given the options, represents a diagonal gain"""
         return NotImplementedError
 
     @property
     def dd_term(self):
-        """This property is true if the machine represents a direction-dependent"""
+        """This property is true if the machine represents a direction-dependent gain"""
         return self._dd_term
 
     @property
@@ -200,7 +236,7 @@ class MasterMachine(object):
         return flag_count
 
     @abstractmethod
-    def compute_residual(self, obser_arr, model_arr, resid_arr):
+    def compute_residual(self, obser_arr, model_arr, resid_arr, full2x2=True):
         """
         This method should compute the residual at the the full time-frequency resolution of the
         data. Must populate resid_arr with the values of the residual. Function signature must be 
@@ -216,12 +252,15 @@ class MasterMachine(object):
             resid_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array in which to place the 
                 residual values.
+            full2x2 (bool):
+                If True, a full 2x2 residual is required. If False, only the terms used in the solution
+                (e.g. the diagonals) are required.
         """
 
         return NotImplementedError
 
     @abstractmethod
-    def apply_inv_gains(self, obser_arr, corr_vis=None):
+    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True):
         """
         This method should be able to apply the inverse of the gains associated with the gain
         machines to an array at full time-frequency resolution. Should populate an input array with
@@ -235,6 +274,9 @@ class MasterMachine(object):
             corr_vis (np.ndarray or None, optional):
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array to fill with the corrected 
                 visibilities.
+            full2x2 (bool):
+                If True, gains should be applied to the full 2x2 matrix. If False, only the terms used in the solution
+                (e.g. the diagonals) are required.
 
         Returns:
             2-element tuple
@@ -246,7 +288,7 @@ class MasterMachine(object):
         return NotImplementedError
 
     @abstractmethod
-    def apply_gains(self, model_arr):
+    def apply_gains(self, model_arr, full2x2=True):
         """
         This method should be able to apply the gains associated with the gain
         to an array at full time-frequency resolution. 
@@ -255,6 +297,9 @@ class MasterMachine(object):
         Args:
             model_arr (np.ndarray):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model visibilities.
+            full2x2 (bool):
+                If True, gains should be applied to the full 2x2 matrix. If False, only the terms used in the solution
+                (e.g. the diagonals) are required.
         """
 
         return NotImplementedError
@@ -631,12 +676,12 @@ class MasterMachine(object):
             # initialize solution databases
             self.init_solutions()
 
-        def get_kernel(self):
+        def get_allocators(self):
             """
-            Returns kernel appropriate for the class of the gain machine.
-            This is the kernel used to allocate data etc.
+            Returns allocation functions appropriate for the class of the gain machine.
+            Returns tuple of vis_allocator, flag_allocator.
             """
-            return self.machine_class.get_kernel(self.jones_options)
+            return self.machine_class.get_allocators(self.jones_options)
 
         def init_solutions(self):
             """
@@ -840,3 +885,6 @@ class MasterMachine(object):
             for db in self._save_sols_byname.values():
                 db.export_CASA_gaintable = self.global_options["out"].get("casa-gaintables", True)
                 db.set_metadata(src)
+
+        def determine_allocators(self):
+            return self.machine_class.determine_allocators(self.jones_options)

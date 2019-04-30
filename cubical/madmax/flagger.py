@@ -248,8 +248,10 @@ class Flagger(object):
                                                 "baseline-based Mad Max ({} sigma)".format(threshold), max_label)
             if not self._pretend:
                 baddies = baddies.astype(bool)
-                model_arr[:,:,baddies,:,:] = 0
-                data_arr[:,baddies,:,:] = 0
+                if model_arr is not None:
+                    model_arr[:,:,baddies,:,:] = 0
+                if data_arr is not None:
+                    data_arr[:,baddies,:,:] = 0
 
         # apply global median MAD threshold
         if med_threshold:
@@ -270,8 +272,10 @@ class Flagger(object):
 
             if not self._pretend:
                 baddies = baddies.astype(bool)
-                model_arr[:, :, baddies, :, :] = 0
-                data_arr[:, baddies, :, :] = 0
+                if model_arr is not None:
+                    model_arr[:, :, baddies, :, :] = 0
+                if data_arr is not None:
+                    data_arr[:, baddies, :, :] = 0
         else:
             med_thr = None
 
@@ -289,8 +293,10 @@ class Flagger(object):
                     print>>log(0, "red"),"{} baselines {}flagged on mad residuals (--madmax-flag-ant 1)".format(
                                             outflags.sum()/2, "trial-" if self._trial else "")
                     flags_arr[:,:,outflags] |= self.flagbit
-                    model_arr[:,:,:,:,outflags,:,:] = 0
-                    data_arr[:,:,:,outflags,:,:] = 0
+                    if model_arr is not None:
+                        model_arr[:,:,:,:,outflags,:,:] = 0
+                    if data_arr is not None:
+                        data_arr[:,:,:,outflags,:,:] = 0
                 else:
                     print>>log(0, "red"),"{} baselines would have been flagged due to mad residuals (use --madmax-flag-ant)".format(outflags.sum()/2)
 

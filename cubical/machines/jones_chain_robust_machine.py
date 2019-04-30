@@ -93,12 +93,6 @@ class JonesChain(MasterMachine):
 
         self.cached_model_arr = self._r = self._m = None
 
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel approriate to Jones options, only one robust kernel so far"""
-        return cubical.kernels.import_kernel('cyfull_W_complex')
-        
-
     def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """Precomputes various stats before starting a solution"""
         MasterMachine.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
@@ -576,11 +570,4 @@ class JonesChain(MasterMachine):
                                      bool(opts["xfer-from"]),
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
                                      ComplexW2x2Gains.exportable_solutions())
-
-        def get_kernel(self):
-            """
-            Returns kernel appropriate for the class of the gain machine.
-            This is the kernel used to allocate data etc.
-            """
-            return self.machine_class.get_kernel(self.jones_options["sol"])
 

@@ -149,7 +149,7 @@ def _solve_gains(gm, obser_arr, model_arr, flags_arr, sol_opts, label="", comput
 
     resid_shape = [gm.n_mod, gm.n_tim, gm.n_fre, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
 
-    resid_arr = gm.cykernel.allocate_vis_array(resid_shape, obser_arr.dtype, zeros=True)
+    resid_arr = gm.allocate_vis_array(resid_shape, obser_arr.dtype, zeros=True)
     gm.compute_residual(obser_arr, model_arr, resid_arr)
     resid_arr[:,flags_arr!=0] = 0
 
@@ -799,12 +799,12 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
         # Get chunk data from tile.
 
         # need to know which kernel to use to allocate visibility and flag arrays
-        kernel = gm_factory.get_kernel()
+        allocate_vis_array, allocate_flag_array, _ = gm_factory.determine_allocators()
 
         obser_arr, model_arr, flags_arr, weight_arr = tile.get_chunk_cubes(chunk_key,
                                  gm_factory.ctype,
-                                 allocator=kernel.allocate_vis_array,
-                                 flag_allocator=kernel.allocate_flag_array)
+                                 allocator=allocate_vis_array,
+                                 flag_allocator=allocate_flag_array)
         
         chunk_ts, chunk_fs, _, freq_slice = tile.get_chunk_tfs(chunk_key)
 
@@ -839,7 +839,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
                     raise RuntimeError("excessive amplitude in chunk {}".format(label))
 
         # Copy results back into tile.
-        have_new_flags = stats and ( stats.chunk.num_sol_flagged > 0 or stats.chunk.num_mad_flagged > 0)
+        have_new_flags = stats and (stats.chunk.num_sol_flagged > 0 or stats.chunk.num_mad_flagged > 0)
 
         tile.set_chunk_cubes(corr_vis, flags_arr if have_new_flags else None, outweights, chunk_key)
 

@@ -36,9 +36,9 @@ class Complex2x2Gains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
+        # note that this sets up self.cykernel
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
-                                  chunk_ts, chunk_fs, chunk_label, options,
-                                  self.get_kernel(options))
+                                  chunk_ts, chunk_fs, chunk_label, options)
 
         # try guesstimating the PZD
         self._estimate_pzd = options["estimate-pzd"]
@@ -46,21 +46,10 @@ class Complex2x2Gains(PerIntervalGains):
 #        if label == "D":
 #            self.gains[:,:,:,:,1,1] = -1
 
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel approriate to Jones options"""
-        if options['diag-only']:
-            return cubical.kernels.import_kernel('cydiagdiag_complex')
-        elif options['type'] == 'complex-2x2':
-            if options['update-type'] == 'full':
-                return cubical.kernels.import_kernel('cyfull_complex')
-            else:
-                return cubical.kernels.import_kernel('cydiag_complex')
-        elif options['type'] == 'complex-diag':
-            return cubical.kernels.import_kernel('cydiag_complex')
-        else:
-            raise RuntimeError("unknown machine type '{}'".format(options['type']))
-
+    @classmethod
+    def determine_diagonality(cls, options):
+        """Returns true if the machine class, given the options, represents a diagonal gain"""
+        return options['type'] == 'complex-diag' or options['update-type'] != 'full'
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
         """
@@ -113,7 +102,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         jh = self.get_new_jh(model_arr)
 
-        self.cykernel.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.cykernel_solve.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
         if self._offdiag_only:
             jh[...,(0,1),(0,1)] = 0
 
@@ -123,13 +112,13 @@ class Complex2x2Gains(PerIntervalGains):
         if self._offdiag_only:
             r[...,(0,1),(0,1)] = 0
 
-        self.cykernel.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
+        self.cykernel_solve.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
 
         jhj, jhjinv = self.get_new_jhj()
 
-        self.cykernel.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
+        self.cykernel_solve.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
 
-        flag_count = self.cykernel.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        flag_count = self.cykernel_solve.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
         
 #         if flag_count:
 #             import pdb; pdb.set_trace()
@@ -149,7 +138,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         update = self.init_update(jhr)
 
-        self.cykernel.cycompute_update(jhr, jhjinv, update)
+        self.cykernel_solve.cycompute_update(jhr, jhjinv, update)
 
         if self.dd_term and self.n_dir > 1:
             update += self.gains
