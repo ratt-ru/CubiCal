@@ -48,14 +48,21 @@ class JonesChain(MasterMachine):
         # DI terms, we need to be initialise the DI terms using only one direction - we do this with
         # slicing rather than summation as it is slightly faster.
         self.jones_terms = []
-        for term_opts in jones_options['chain']:
+        self.num_left_di_terms = 0  # how many DI terms are there at the left of the chain
+        seen_dd_term = False
+        for iterm, term_opts in enumerate(jones_options['chain']):
             jones_class = machine_types.get_machine_class(term_opts['type'])
             if jones_class is None:
                 raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
             if jones_class not in (Complex2x2Gains, ComplexW2x2Gains) and term_opts['solvable']:
                 raise UserInputError("only complex-2x2 or robust-2x2 terms can be made solvable in a Jones chain")
-            self.jones_terms.append(jones_class(term_opts["label"], data_arr,
-                                        ndir, nmod, times, frequencies, chunk_label, term_opts))
+            term = jones_class(term_opts["label"], data_arr, ndir, nmod, times, frequencies, chunk_label, term_opts)
+            self.jones_terms.append(term)
+            if term.dd_term:
+                seen_dd_term = True
+            elif not seen_dd_term:
+                self.num_left_di_terms = iterm
+
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, jones_options)

@@ -2,6 +2,7 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
@@ -57,7 +58,8 @@ class PerIntervalGains(MasterMachine):
         else:
             self.cykernel_solve = self.cykernel
 
-        print self.cykernel, self.cykernel_solve
+        from cubical.solver import log
+        log(2).print("{} kernels are {} {}".format(label, self.cykernel, self.cykernel_solve))
 
         self.t_int = options["time-int"] or self.n_tim
         self.f_int = options["freq-int"] or self.n_fre
@@ -334,7 +336,7 @@ class PerIntervalGains(MasterMachine):
             self.restrict_solution()
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
-        """Precomputes various stats before starting a solution"""
+        """Precomputes various attributes of the machine before starting a solution"""
         unflagged = MasterMachine.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
 
         ## NB: not sure why I used to apply MISSING|PRIOR here. Surely other input flags must be honoured
@@ -353,49 +355,50 @@ class PerIntervalGains(MasterMachine):
         numeq_tfa = unflagged.sum(axis=-1)
 
         # compute error estimates per direction, antenna, and interval
-        with np.errstate(invalid='ignore', divide='ignore'):
-            sigmasq = 1/inv_var_chan                        # squared noise per channel. Could be infinite if no data
-            # collapse direction axis, if not directional
-            if not self.dd_term:
-                model_arr = model_arr.sum(axis=0, keepdims=True)
-            # mean |model|^2 per direction+TFA
-            modelsq = (model_arr*np.conj(model_arr)).real.sum(axis=(1,-1,-2,-3)) / \
-                      (self.n_mod*self.n_cor*self.n_cor*numeq_tfa)
-            modelsq[:, numeq_tfa==0] = 0
-            # inverse SNR^2 per direction+TFA
-            inv_snr2 = sigmasq[np.newaxis, np.newaxis, :, np.newaxis] / modelsq
-            inv_snr2[:, numeq_tfa==0] = 0
-            # take the mean SNR^-2 over each interval
-            # numeq_tfa becomes number of points per interval, antenna
-            numeq_tfa = self.interval_sum(numeq_tfa)
-            inv_snr2_int = self.interval_sum(inv_snr2,1) / numeq_tfa[np.newaxis,...]
-            inv_snr2_int[:, numeq_tfa==0] = 0
-            # convert that into a gain error per direction,interval,antenna
-            self.prior_gain_error = np.sqrt(inv_snr2_int /
-                                      (self.eqs_per_interval - self.num_unknowns)[np.newaxis, :, :, np.newaxis])
+        if inv_var_chan is not None:
+            with np.errstate(invalid='ignore', divide='ignore'):
+                sigmasq = 1/inv_var_chan                        # squared noise per channel. Could be infinite if no data
+                # collapse direction axis, if not directional
+                if not self.dd_term:
+                    model_arr = model_arr.sum(axis=0, keepdims=True)
+                # mean |model|^2 per direction+TFA
+                modelsq = (model_arr*np.conj(model_arr)).real.sum(axis=(1,-1,-2,-3)) / \
+                          (self.n_mod*self.n_cor*self.n_cor*numeq_tfa)
+                modelsq[:, numeq_tfa==0] = 0
+                # inverse SNR^2 per direction+TFA
+                inv_snr2 = sigmasq[np.newaxis, np.newaxis, :, np.newaxis] / modelsq
+                inv_snr2[:, numeq_tfa==0] = 0
+                # take the mean SNR^-2 over each interval
+                # numeq_tfa becomes number of points per interval, antenna
+                numeq_tfa = self.interval_sum(numeq_tfa)
+                inv_snr2_int = self.interval_sum(inv_snr2,1) / numeq_tfa[np.newaxis,...]
+                inv_snr2_int[:, numeq_tfa==0] = 0
+                # convert that into a gain error per direction,interval,antenna
+                self.prior_gain_error = np.sqrt(inv_snr2_int /
+                                          (self.eqs_per_interval - self.num_unknowns)[np.newaxis, :, :, np.newaxis])
 
-        self.prior_gain_error[:, ~self.valid_intervals, :] = 0
-        # reset to 0 for fixed directions
-        if self.dd_term:
-            self.prior_gain_error[self.fix_directions, ...] = 0
+            self.prior_gain_error[:, ~self.valid_intervals, :] = 0
+            # reset to 0 for fixed directions
+            if self.dd_term:
+                self.prior_gain_error[self.fix_directions, ...] = 0
 
-        # flag gains on max error
-        self._n_flagged_on_max_error = None
-        if self.max_gain_error:
-            bad_gain_intervals = self.prior_gain_error > self.max_gain_error    # dir,time,freq,ant
-            if bad_gain_intervals.any():
-                # (n_dir,) array showing how many were flagged per direction
-                self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
-                # raised corresponding gain flags
-                self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] |= FL.LOWSNR
-                self.prior_gain_error[bad_gain_intervals] = 0
-                # flag intervals where all directions are bad, and propagate that out into flags
-                bad_intervals = bad_gain_intervals.all(axis=0)
-                if bad_intervals.any():
-                    bad_slots = self.unpack_intervals(bad_intervals)
-                    flags_arr[bad_slots,...] |= FL.LOWSNR
-                    unflagged[bad_slots,...] = False
-                    self.update_equation_counts(unflagged)
+            # flag gains on max error
+            self._n_flagged_on_max_error = None
+            if self.max_gain_error:
+                bad_gain_intervals = self.prior_gain_error > self.max_gain_error    # dir,time,freq,ant
+                if bad_gain_intervals.any():
+                    # (n_dir,) array showing how many were flagged per direction
+                    self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
+                    # raised corresponding gain flags
+                    self.gflags[self._interval_to_gainres(bad_gain_intervals,1)] |= FL.LOWSNR
+                    self.prior_gain_error[bad_gain_intervals] = 0
+                    # flag intervals where all directions are bad, and propagate that out into flags
+                    bad_intervals = bad_gain_intervals.all(axis=0)
+                    if bad_intervals.any():
+                        bad_slots = self.unpack_intervals(bad_intervals)
+                        flags_arr[bad_slots,...] |= FL.LOWSNR
+                        unflagged[bad_slots,...] = False
+                        self.update_equation_counts(unflagged)
 
         self._n_flagged_on_max_posterior_error = None
         self.flagged = self.gflags != 0
@@ -466,7 +469,7 @@ class PerIntervalGains(MasterMachine):
 
         # Check for gain solutions which are out of bounds (based on clip thresholds).
 
-        if self.clip_after<self.iters and self.clip_upper or self.clip_lower:
+        if self.clip_after <= self.iters and (self.clip_upper or self.clip_lower):
             goob = np.zeros(gain_mags.shape, bool)
             if self.clip_upper:
                 goob = gain_mags.max(axis=(-1, -2)) > self.clip_upper

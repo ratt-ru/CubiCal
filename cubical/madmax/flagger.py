@@ -31,20 +31,6 @@ class Flagger(object):
 
         self.flag_warning_threshold = GD['flags']["warn-thr"]
 
-        self._mode = GD['madmax']['enable']
-        self._pretend = self._mode == "pretend"
-        self.trial_mode = self._trial = self._mode == "trial"
-        if self._pretend:
-            self.desc_mode = "Pretend-Mad Max"
-        elif self._mode == "trial":
-            self.desc_mode = "Trial-Mad Max"
-        elif self._mode:
-            self.desc_mode = "Mad Max"
-        else:
-            self.desc_mode = "No Max"
-
-        self.flagbit = 0 if self._pretend else FL.MAD
-
         self.mad_threshold = GD['madmax']['threshold']
         self.medmad_threshold = GD['madmax']['global-threshold']
         if not isinstance(self.mad_threshold, list):
@@ -80,6 +66,21 @@ class Flagger(object):
             self._plot_baselines = set()
 
         self._plotnum = 0
+
+    def set_mode(self, mode):
+        """Sets operational mode for flagger"""
+        self._mode = mode
+        self._pretend = self._mode == "pretend"
+        self.trial_mode = self._trial = self._mode == "trial"
+        if self._pretend:
+            self.desc_mode = "Pretend-Mad Max"
+        elif self._mode == "trial":
+            self.desc_mode = "Trial-Mad Max"
+        elif self._mode:
+            self.desc_mode = "Mad Max"
+        else:
+            self.desc_mode = "No Max"
+        self.flagbit = 0 if self._pretend else FL.MAD
 
     def get_mad_thresholds(self):
         """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
@@ -192,7 +193,14 @@ class Flagger(object):
         """This function implements MAD-based flagging on residuals"""
         if not threshold and not med_threshold:
             return False
-        n_mod, _, _, n_ant, n_ant, n_cor, n_cor = resid_arr.shape
+        # residuals can pe per-model (when invoked from solver) or not, when invoked on final residuals.
+        # cope with both cases
+        if resid_arr.ndim == 7:
+            n_mod, _, _, n_ant, n_ant, n_cor, n_cor = resid_arr.shape
+        else:
+            _, _, n_ant, n_ant, n_cor, n_cor = resid_arr.shape
+            n_mod = 1
+            resid_arr = resid_arr.reshape([1]+list(resid_arr.shape))
 
         import cubical.kernels
         cymadmax = cubical.kernels.import_kernel("cymadmax")
@@ -298,7 +306,7 @@ class Flagger(object):
                     if data_arr is not None:
                         data_arr[:,:,:,outflags,:,:] = 0
                 else:
-                    print>>log(0, "red"),"{} baselines would have been flagged due to mad residuals (use --madmax-flag-ant)".format(outflags.sum()/2)
+                    print>>log(0, "red"),"{} baselines would have been flagged due to mad residuals (use --madmax-flag-ant to enable this)".format(outflags.sum()/2)
 
             try:
                 if self.GD['madmax']['plot'] == 'show':
