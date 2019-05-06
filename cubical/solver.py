@@ -831,7 +831,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
             pdb.set_trace()
 
         corr_vis = solver_machine.run()
-
+        
         # Panic if amplitude has gone crazy
 
         if debug_opts['panic-amplitude']:

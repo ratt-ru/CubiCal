@@ -297,7 +297,7 @@ class JonesChain(MasterMachine):
         for term in self.jones_terms[::-1]:
             if not term.dd_term:
                 g, _, fc = term.get_inverse_gains()
-                g = term._gainres_to_fullres(g, tdim_ind=1)
+                # g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
                     term.cykernel.cyright_multiply_gains(gains, g[:1,...], *term.gain_intervals)
