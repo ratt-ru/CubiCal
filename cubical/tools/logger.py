@@ -5,6 +5,7 @@
 
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
+from __future__ import print_function
 
 import logging, logging.handlers, os, re, sys, multiprocessing
 import ModColor
@@ -52,6 +53,8 @@ class _DefaultWriter(object):
             message = ModColor.Str(message, col=self.color, Bold=self.bold)
         self.logger.log(self.level, message)
 
+    print = write
+
 class LoggerWrapper(object):
     def __init__(self, logger, verbose=None, log_verbose=None):
         self.logger = logger
@@ -97,7 +100,7 @@ class LoggerWrapper(object):
     def __call__(self, level, color=None):
         """
         Function call operator on logger. Use to issue messages at different verbosity levels.
-        E.g. print>>log(2),"message" will issue a message at level logging.INFO - 2.
+        E.g. log(2).print("message" will issue a message at level logging.INFO - 2.)
         An optional color argument will colorize the message.
 
         Returns:
@@ -124,6 +127,8 @@ class LoggerWrapper(object):
         """
         _DefaultWriter(self.logger, logging.INFO, color=color).write(msg)
     
+    print = info
+
     def write(self, message):
         return self.logger.info(message.rstrip())
 
@@ -280,7 +285,7 @@ def getLogger(name, verbose=None, log_verbose=None):
 
     logger = logging.getLogger("{}.{}".format(_app_name, name))
     lw = _loggers[name] = LoggerWrapper(logger, verbose, log_verbose)
-    print>>lw(2), "logger initialized"
+    lw(2).print("logger initialized")
 
     return lw
 
@@ -302,7 +307,7 @@ def setGlobalVerbosity(verbosity):
     for element in verbosity:
         if type(element) is int or re.match("^[0-9]+$", element):
             _global_verbosity = int(element)
-            print>> log(0, "green"), "set global console verbosity level {}".format(_global_verbosity)
+            log(0, "green").print("set global console verbosity level {}".format(_global_verbosity))
         else:
             m = re.match("^(.+)=([0-9]+)$", element)
             if not m:
@@ -310,7 +315,7 @@ def setGlobalVerbosity(verbosity):
             logger = getLogger(m.group(1))
             level = int(m.group(2))
             logger.verbosity(level)
-            print>>logger(0,"green"),"set console verbosity level {}={}".format(m.group(1), level)
+            logger(0,"green").print("set console verbosity level {}={}".format(m.group(1), level))
 
 def setGlobalLogVerbosity(verbosity):
     global _global_log_verbosity
@@ -328,7 +333,7 @@ def setGlobalLogVerbosity(verbosity):
         if type(element) is int or re.match("^[0-9]+$", element):
             _global_log_verbosity = int(element)
             if _global_log_verbosity is not None:
-                print>> log(0, "green"), "set global log verbosity level {}".format(_global_log_verbosity)
+                log(0, "green").print("set global log verbosity level {}".format(_global_log_verbosity))
         else:
             m = re.match("^(.+)=([0-9]+)$", element)
             if not m:
@@ -336,12 +341,12 @@ def setGlobalLogVerbosity(verbosity):
             logger = getLogger(m.group(1))
             level = int(m.group(2))
             logger.log_verbosity(level)
-            print>>logger(0,"green"),"set log verbosity level {}={}".format(m.group(1), level)
+            logger(0,"green").print("set log verbosity level {}={}".format(m.group(1), level))
 
 
 def setSilent(Lname):
     """Silences the specified sublogger(s)"""
-    print>>log, ModColor.Str("set silent: %s" % Lname, col="red")
+    log.print(ModColor.Str("set silent: %s" % Lname, col="red"))
     if type(Lname) is str:
         getLogger(Lname).logger.setLevel(logging.CRITICAL)
     elif type(Lname) is list:
@@ -351,7 +356,7 @@ def setSilent(Lname):
 
 def setLoud(Lname):
     """Un-silences the specified sublogger(s)"""
-    print>>log, ModColor.Str("set loud: %s" % Lname, col="green")
+    log.print(ModColor.Str("set loud: %s" % Lname, col="green"))
     if type(Lname) is str:
         getLogger(Lname).logger.setLevel(logging.DEBUG)
     elif type(Lname) is list:
@@ -361,4 +366,4 @@ def setLoud(Lname):
 
 if __name__=="__main__":
     log=getLogger("a.x")
-    print>>log, "a.x"
+    log.print("a.x")

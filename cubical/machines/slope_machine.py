@@ -54,11 +54,8 @@ class PhaseSlopeGains(ParameterisedGains):
             options (dict): 
                 Dictionary of options. 
         """
-        ### this kernel used for residuals etc.
-        cykernel = self.get_kernel(options)
-
         ParameterisedGains.__init__(self, label, data_arr, ndir, nmod,
-                                    chunk_ts, chunk_fs, chunk_label, options, cykernel)
+                                    chunk_ts, chunk_fs, chunk_label, options)
 
         self.slope_type = options["type"]
         self.n_param = 3 if self.slope_type == "tf-plane" else 2
@@ -83,15 +80,22 @@ class PhaseSlopeGains(ParameterisedGains):
         else:
             raise RuntimeError("unknown machine type '{}'".format(self.slope_type))
 
+        # kernel used in solver is diag-diag in diag mode, else uses full kernel version
+        if options.get('diag-data') or options.get('diag-only'):
+            self.cykernel_solve = cubical.kernels.import_kernel('cydiag_phase_only')
+        else:
+            self.cykernel_solve = cubical.kernels.import_kernel('cyphase_only')
+
         self._jhr0 = self._gerr = None
 
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel approriate to Jones options"""
-        if options['diag-only']:
-            return cubical.kernels.import_kernel('cydiag_phase_only')
-        else:
-            return cubical.kernels.import_kernel('cyphase_only')
+    @classmethod
+    def determine_diagonality(cls, options):
+        return True
+
+    @classmethod
+    def get_full_kernel(cls, options, diag_gains):
+        from phase_diag_machine import PhaseDiagGains
+        return PhaseDiagGains.get_full_kernel(options, diag_gains)
 
     @staticmethod
     def exportable_solutions():
@@ -191,7 +195,7 @@ class PhaseSlopeGains(ParameterisedGains):
         r = self.get_obs_or_res(obser_arr, model_arr)
 
         # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHR
-        self.cykernel.cycompute_jhr(gh, jh, r, jhr1, 1, 1)
+        self.cykernel_solve.cycompute_jhr(gh, jh, r, jhr1, 1, 1)
 
         jhr1 = jhr1.imag
 
@@ -283,7 +287,7 @@ class PhaseSlopeGains(ParameterisedGains):
         jhj1 = self.cyslope.allocate_gain_array(jhj1_shape, dtype=self.dtype, zeros=True)
 
         # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHJ
-        self.cykernel.cycompute_jhj(model_arr, jhj1, 1,1)
+        self.cykernel_solve.cycompute_jhj(model_arr, jhj1, 1, 1)
 
         blocks_per_inverse = 6 if self.slope_type=="tf-plane" else 3
 

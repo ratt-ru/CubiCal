@@ -30,7 +30,7 @@ class SolverVerification(object):
         logprint("*** Working directory is {}".format(os.getcwd()))
 
     def generate_reference(self, colname, args=[], **kw):
-        cmd = self.cmdline + kw_to_args(data_ms=self.refmsname, out_column=colname, out_name="ref_"+colname, **kw) + \
+        cmd = self.cmdline + kw_to_args(data_ms=self.refmsname, out_column=colname, out_name="ref_"+colname+"/cc", **kw) + \
                 " " + " ".join(args)
         logprint("*** running {}".format(cmd))
         retcode = os.system(cmd)
@@ -38,7 +38,7 @@ class SolverVerification(object):
             raise RuntimeError("gocubical failed, return code {}".format(retcode))
 
     def verify(self, refcolname, args=[], tolerance=1e-6, **kw):
-        cmd = self.cmdline + kw_to_args(data_ms=self.msname, out_column="CORRECTED_DATA", out_name="test_"+refcolname, **kw) + \
+        cmd = self.cmdline + kw_to_args(data_ms=self.msname, out_column="CORRECTED_DATA", out_name="test_"+refcolname+"/cc", **kw) + \
                 " " + " ".join(args)
         logprint("*** running {}".format(cmd))
         retcode = os.system(cmd)

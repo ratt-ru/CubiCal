@@ -37,18 +37,26 @@ class PhaseDiagGains(PerIntervalGains):
                 Dictionary of options. 
         """
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
-                                  chunk_ts, chunk_fs, chunk_label, options,
-                                  self.get_kernel(options))
+                                  chunk_ts, chunk_fs, chunk_label, options)
+
+        # kernel used in solver is diag-diag in diag mode, else uses full kernel version
+        if options.get('diag-data') or options.get('diag-only'):
+            self.cykernel_solve = cubical.kernels.import_kernel('cydiag_phase_only')
+        else:
+            self.cykernel_solve = cubical.kernels.import_kernel('cyphase_only')
 
         self.phases = self.cykernel.allocate_gain_array(self.gain_shape, dtype=self.ftype, zeros=True)
         self.gains = np.empty_like(self.phases, dtype=self.dtype)
         self.gains[:] = np.eye(self.n_cor) 
         self.old_gains = self.gains.copy()
 
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel approriate to Jones options"""
-        if options['diag-only']:
+    @classmethod
+    def determine_diagonality(cls, options):
+        return True
+
+    @classmethod
+    def get_full_kernel(cls, options, diag_gains):
+        if options.get('diag-data'):
             return cubical.kernels.import_kernel('cydiag_phase_only')
         else:
             return cubical.kernels.import_kernel('cyphase_only')
@@ -78,13 +86,13 @@ class PhaseDiagGains(PerIntervalGains):
         gh = self.get_conj_gains()
         jh = self.get_new_jh(model_arr)
 
-        self.cykernel.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.cykernel_solve.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
         jhr = self.get_new_jhr()
 
         r = self.get_obs_or_res(obser_arr, model_arr)
 
-        self.cykernel.cycompute_jhr(gh, jh, r, jhr, self.t_int, self.f_int)
+        self.cykernel_solve.cycompute_jhr(gh, jh, r, jhr, self.t_int, self.f_int)
 
         return jhr.imag, self.jhjinv, 0
 
@@ -168,7 +176,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         update = self.init_update(jhr)
 
-        self.cykernel.cycompute_update(jhr, jhjinv, update)
+        self.cykernel_solve.cycompute_update(jhr, jhjinv, update)
 
         if self.iters%2 == 0:
             update *= 0.5
@@ -208,9 +216,9 @@ class PhaseDiagGains(PerIntervalGains):
 
         self.jhjinv = np.zeros_like(self.gains)
 
-        self.cykernel.cycompute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)
+        self.cykernel_solve.cycompute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)
 
-        self.cykernel.cycompute_jhjinv(self.jhjinv, self.jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        self.cykernel_solve.cycompute_jhjinv(self.jhjinv, self.jhjinv, self.gflags, self.eps, FL.ILLCOND)
 
         self.jhjinv = self.jhjinv.real
 

@@ -52,7 +52,7 @@ class SolverStats (object):
                 A CubiCal data block.
         """
 
-        n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
+        n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
         # summary record arrays (per channel-antenna, time-antenna, time-channel)
         dtype = [ ('dv2', 'f8'), ('dr2', 'f8'), ('dv2n', 'i4'), ('dr2n', 'i4'),
                   ('chi2', 'f8'), ('chi2n', 'i4'),

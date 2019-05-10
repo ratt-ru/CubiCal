@@ -280,6 +280,8 @@ def main(debugging=False):
 
         have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
 
+        solver.GD = GD
+
         # set up data handler
 
         solver_type = GD['out']['mode']
@@ -288,8 +290,10 @@ def main(debugging=False):
         solver_mode_name = solver.SOLVERS[solver_type].__name__.replace("_", " ")
         print>>log,ModColor.Str("mode: {}".format(solver_mode_name), col='green')
         # these flags are used below to tweak the behaviour of gain machines and model loaders
-        apply_only = solver.SOLVERS[solver_type] in (solver.correct_only, solver.correct_residuals)
-        load_model = solver.SOLVERS[solver_type] is not solver.correct_only   # no model needed in "correct only" mode
+        apply_only = solver.SOLVERS[solver_type].is_apply_only
+        print>>log(0),"solver is apply-only type: {}".format(apply_only)
+        load_model = solver.SOLVERS[solver_type].is_model_required
+        print>>log(0),"solver requires model: {}".format(load_model)
 
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
@@ -320,10 +324,14 @@ def main(debugging=False):
                            derotate_output=GD["out"]["derotate"],
                            )
 
+        solver.metadata = ms.metadata
         # if using dual-corr mode, propagate this into Jones options
-        for jo in jones_opts:
-            jo['diag-only'] = (ms.ncorr == 2)
-        solver_opts['diag-only'] = (ms.ncorr == 2)
+        if ms.ncorr == 2:
+            for jo in jones_opts:
+                jo['diag-only'] = True
+                jo['diag-data'] = True
+            solver_opts['diag-only'] = True
+            solver_opts['diag-data'] = True
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
@@ -397,9 +405,6 @@ def main(debugging=False):
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
-
-        solver.GD = GD
-        solver.metadata = ms.metadata
 
         grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,
