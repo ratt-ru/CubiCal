@@ -21,12 +21,18 @@ import montblanc.impl.rime.tensorflow.ms.ms_manager as MS
 from montblanc.impl.rime.tensorflow.sources import SourceProvider
 from montblanc.impl.rime.tensorflow.sinks import SinkProvider
 
+import datetime as dt
+import pyrap.quanta as pq
+
+from cubical.tools import logger, ModColor
+log = logger.getLogger("MBSourceProvider")
+
 class MSSourceProvider(SourceProvider):
     """
     Handles interface between CubiCal tiles and Montblanc simulation.
     """
 
-    def __init__(self, tile, time_col, antea, anteb, ddid_col, uvw, freqs, sort_ind, nrows):
+    def __init__(self, tile, time_col, antea, anteb, ddid_col, uvw, freqs, sort_ind, nrows, do_pa_rotation=True):
         """
         Initialises this source provider.
 
@@ -65,10 +71,11 @@ class MSSourceProvider(SourceProvider):
         self._uvwco = uvw                  #  data['uvwco']
         self._nrows = nrows
         self.sort_ind = sort_ind
+        self.do_pa_rotation = do_pa_rotation
 
     def name(self):
         """ Returns name of associated source provider. """
-        
+
         return self._name
 
     def updated_dimensions(self):
@@ -102,13 +109,13 @@ class MSSourceProvider(SourceProvider):
         # Compute per antenna uvw coordinates. Data must be ordered by time.
         # Per antenna uvw coordinates fail on data where time!=time_centroid.
 
-        ant_uvw = mbu.antenna_uvw(self._uvwco[:self._nrows], 
-                                  self._antea[:self._nrows], 
-                                  self._anteb[:self._nrows], 
+        ant_uvw = mbu.antenna_uvw(self._uvwco[:self._nrows],
+                                  self._antea[:self._nrows],
+                                  self._anteb[:self._nrows],
                                   chunks,
-                                  self._nants, 
+                                  self._nants,
                                   check_missing=False,
-                                  check_decomposition=False, 
+                                  check_decomposition=False,
                                   max_err=100)
 
         return ant_uvw[t_low:t_high, ...].astype(context.dtype)
@@ -134,11 +141,30 @@ class MSSourceProvider(SourceProvider):
 
         # Time and antenna extents
         (lt, ut), (la, ua) = context.dim_extents('ntime', 'na')
+        if not self.do_pa_rotation:
+            return np.zeros(context.shape, dtype=context.dtype)
 
+        def __mjd2dt(utc_timestamp):
+            """
+            Converts array of UTC timestamps to list of datetime objects for human readable printing
+            """
+            return [dt.datetime.utcfromtimestamp(pq.quantity(t, "s").to_unix_time()) for t in utc_timestamp]
+        utc_times = np.unique(self._times[self.sort_ind])[lt:ut]
+        dt_start = __mjd2dt([np.min(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
+        dt_end = __mjd2dt([np.max(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
+        log.info("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end))
         return mbu.parallactic_angles(
                         np.unique(self._times[self.sort_ind])[lt:ut],
                         self._antpos[la:ua],
                         self._phadir).reshape(context.shape).astype(context.dtype)
+
+    def feed_angles(self, context):
+        """ Provides Montblanc with an array of feed angles. """
+
+        (la, ua) = context.dim_extents('na')
+        # TODO(osmirnov)
+        # Please fill me in
+        return np.zeros(ua-la, dtype=context.dtype)
 
     def __enter__(self):
         return self
@@ -184,7 +210,7 @@ class ColumnSinkProvider(SinkProvider):
 
     def set_direction(self, idir):
         """Sets current direction being simulated.
-        
+
         Args:
             idir (int):
                 Direction number, from 0 to n_dir-1
@@ -222,18 +248,18 @@ class ColumnSinkProvider(SinkProvider):
 
 _mb_slvr = None
 
-def simulate(src_provs, snk_provs, opts):
+def simulate(src_provs, snk_provs, polarisation_type, opts):
     """
-    Convenience function which creates and executes a Montblanc solver for the given source and 
+    Convenience function which creates and executes a Montblanc solver for the given source and
     sink providers.
 
     Args:
-        src_provs (list): 
+        src_provs (list):
             List of :obj:`~montblanc.impl.rime.tensorflow.sources.SourceProvider` objects. See
             Montblanc's documentation.
         snk_provs (list):
             List of :obj:`~montblanc.impl.rime.tensorflow.sinks.SinkProvider` objects. See
-            Montblanc's documentation. 
+            Montblanc's documentation.
         opts (dict):
             Montblanc simulation options (see [montblanc] section in DefaultParset.cfg).
     """
@@ -244,19 +270,19 @@ def simulate(src_provs, snk_provs, opts):
         slvr_cfg = montblanc.rime_solver_cfg(
             mem_budget=opts["mem-budget"]*1024*1024,
             dtype=opts["dtype"],
-            polarisation_type=opts["feed-type"],
+            polarisation_type=polarisation_type,
             device_type=opts["device-type"])
 
         _mb_slvr = montblanc.rime_solver(slvr_cfg)
-        
+
     _mb_slvr.solve(source_providers=src_provs, sink_providers=snk_provs)
 
 import atexit
 
 def _shutdown_mb_slvr():
-    
+
     global _mb_slvr
-    
+
     if _mb_slvr is not None:
         _mb_slvr.close()
 

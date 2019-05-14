@@ -11,6 +11,8 @@ import numpy as np
 import cPickle
 
 from cubical.tools import logger
+from cubical.tools import ModColor
+from collections import OrderedDict
 
 log = logger.getLogger("stats")
 
@@ -24,7 +26,7 @@ class SolverStats (object):
         Initialisation for the SolverStats object.
 
         Args:
-            obj (dict or np.ndarray):
+            obj (dict or np.ndarray or file):
                 Object from which to initialise the stats object.
 
         Raises:
@@ -36,6 +38,8 @@ class SolverStats (object):
             self._init_for_chunk(obj)
         elif type(obj) is dict:
             self._concatenate(obj)
+        elif type(obj) is file:
+            self.load(obj)
         else:
             raise TypeError("can't init SolverStats from object of type %s" % type(obj))
 
@@ -48,7 +52,7 @@ class SolverStats (object):
                 A CubiCal data block.
         """
 
-        n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
+        n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
         # summary record arrays (per channel-antenna, time-antenna, time-channel)
         dtype = [ ('dv2', 'f8'), ('dr2', 'f8'), ('dv2n', 'i4'), ('dr2n', 'i4'),
                   ('chi2', 'f8'), ('chi2n', 'i4'),
@@ -56,13 +60,32 @@ class SolverStats (object):
         self.chanant  = np.rec.array(np.zeros((n_fre, n_ant), dtype))
         self.timeant  = np.rec.array(np.zeros((n_tim, n_ant), dtype))
         self.timechan = np.rec.array(np.zeros((n_tim, n_fre), dtype))
+
         # other stats: per chunk
-        dtype = [ ('label', 'S32'), ('iters', 'i4'),
-                  ('num_intervals', 'i4'), ('num_converged', 'i4'), ('num_stalled', 'i4'),
-                  ('num_sol_flagged', 'i4'),
-                  ('num_mad_flagged', 'i4'),
-                  ('init_chi2', 'f8'), ('init_noise', 'f8'), ('chi2', 'f8'), ('noise', 'f8') ]
+
+        # these are truly per chunk, corresponding to starting and final values
+        dtype = [ ('label', 'S32'), ('num_prior_flagged', 'i8'), ('num_data_points', 'i8') ]
+
+        # these have intermediate values as well (e.g. when solving for a chain)
+        self._chunk_stats_intermediate_fields = [
+                    ('chi2u', 'f8'), ('noise', 'f8'), ('chi2', 'f8'),
+                    ('iters', 'i4'),
+                    ('num_solutions', 'i4'), ('num_converged', 'i4'), ('num_stalled', 'i4'),
+                    ('num_sol_flagged', 'i4'), ('num_mad_flagged', 'i4'),
+                    ('frac_converged', 'f8'), ('frac_stalled', 'f8'),
+                    ('end_chi2', 'f8') ]
+
+        dtype += self._chunk_stats_intermediate_fields
+
+        self._max_intermediate_fields = 10
+        for i in range(self._max_intermediate_fields):
+            dtype += [("{}_{}".format(field, i), dt) for field, dt in self._chunk_stats_intermediate_fields]
+
         self.chunk = np.rec.array(np.zeros((), dtype))
+
+    def save_chunk_stats(self, step):
+        for key, _ in self._chunk_stats_intermediate_fields:
+            self.chunk["{}_{}".format(key, step)] = self.chunk[key]
 
     def save(self, filename):
         """
@@ -76,6 +99,13 @@ class SolverStats (object):
 
         cPickle.dump(
             (self.chanant, self.timeant, self.timechan, self.chunk), open(filename, 'w'), 2)
+
+    def load(self, fileobj):
+        """
+        Loads contents from file object
+        """
+
+        self.chanant, self.timeant, self.timechan, self.chunk = cPickle.load(fileobj)
 
     def estimate_noise (self, data, flags, residuals=False):
         """
@@ -238,6 +268,59 @@ class SolverStats (object):
 
         self.chunk = np.rec.array([[stats[time, chan].chunk for chan in chans] for time in times],
                                   dtype=stats[times[0], chans[0]].chunk.dtype)
+
+    def get_notrivial_chunk_statfields(self):
+        """Returns list of interesting (i.e. non-0) stat fields"""
+        return [field for field in self.chunk.dtype.names if field != "label" and (self.chunk[field]!=0).any()]
+
+    def format_chunk_stats(self, format_string, ncol=8, threshold=None):
+        """
+        :param format: format string applied to each record
+        :param maxcol: maximum number of columns to allocate
+        :return:
+        """
+        nt, nf = self.chunk.shape
+        nt_per_col = 1
+        nf_per_col = None
+        if nf < ncol:
+            nt_per_col = ncol//nf
+        else:
+            nf_per_col = ncol
+        # convert stats to list of columns
+        output_rows  = [[("", False)]]
+        for itime in range(nt):
+            # start new line every NT_PER_COL-th time chunk
+            if itime%nt_per_col == 0:
+                output_rows.append([])
+            for ifreq in range(nf):
+                # start new line every NF_PER_COL-th freq chunk, if frequencies span lines
+                if nf_per_col is not None and output_rows[-1] and ifreq%nf_per_col == 0:
+                    output_rows.append([])
+                statrec = self.chunk[itime, ifreq]
+                statrec_dict = {field:statrec[field] for field in self.chunk.dtype.fields}
+                # new line: prepend chunk label
+                if not output_rows[-1]:
+                    output_rows[-1].append((statrec.label, False))
+                # put it in header as well
+                if len(output_rows) == 2:
+                    output_rows[0].append((statrec.label, False))
+                # check for threshold
+                warn = False
+                if threshold is not None:
+                    for field, value in threshold:
+                        if statrec[field] > value:
+                            warn = True
+                text = format_string.format(**statrec_dict)
+                output_rows[-1].append((text, warn))
+
+        # now work out column widths and format
+        ncol = max([len(row) for row in output_rows])
+        colwidths = [max([len(row[icol][0]) for row in output_rows if icol<len(row)]) for icol in range(ncol)]
+        colformat = ["{{:{}}}  ".format(w) for w in colwidths]
+
+        output_rows = [[(colformat[icol].format(col), warn) for icol, (col, warn) in enumerate(row)] for row in output_rows]
+
+        return ["".join([(ModColor.Str(col, 'red') if warn else col) for col, warn in row]) for row in output_rows]
 
     def apply_flagcube(self, flag3):
         """

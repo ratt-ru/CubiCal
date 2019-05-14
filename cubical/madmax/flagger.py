@@ -31,20 +31,6 @@ class Flagger(object):
 
         self.flag_warning_threshold = GD['flags']["warn-thr"]
 
-        self._mode = GD['madmax']['enable']
-        self._pretend = self._mode == "pretend"
-        self.trial_mode = self._trial = self._mode == "trial"
-        if self._pretend:
-            self.desc_mode = "Pretend-Mad Max"
-        elif self._mode == "trial":
-            self.desc_mode = "Trial-Mad Max"
-        elif self._mode:
-            self.desc_mode = "Mad Max"
-        else:
-            self.desc_mode = "No Max"
-
-        self.flagbit = 0 if self._pretend else FL.MAD
-
         self.mad_threshold = GD['madmax']['threshold']
         self.medmad_threshold = GD['madmax']['global-threshold']
         if not isinstance(self.mad_threshold, list):
@@ -74,7 +60,27 @@ class Flagger(object):
         else:
             raise RuntimeError("invalid --madmax-estimate {} setting".format(GD['madmax']['estimate']))
 
+        if GD['madmax']['plot-bl']:
+            self._plot_baselines = set(GD['madmax']['plot-bl'].split(","))
+        else:
+            self._plot_baselines = set()
+
         self._plotnum = 0
+
+    def set_mode(self, mode):
+        """Sets operational mode for flagger"""
+        self._mode = mode
+        self._pretend = self._mode == "pretend"
+        self.trial_mode = self._trial = self._mode == "trial"
+        if self._pretend:
+            self.desc_mode = "Pretend-Mad Max"
+        elif self._mode == "trial":
+            self.desc_mode = "Trial-Mad Max"
+        elif self._mode:
+            self.desc_mode = "Mad Max"
+        else:
+            self.desc_mode = "No Max"
+        self.flagbit = 0 if self._pretend else FL.MAD
 
     def get_mad_thresholds(self):
         """MAD thresholds above are either a list, or empty. Each time we access the list, we pop the first element,
@@ -109,7 +115,7 @@ class Flagger(object):
         nbad = int(baddies.sum())
         self.stats.chunk.num_mad_flagged += nbad
 
-        if nbad:
+        if nbad or self._plot_baselines:
             if nbad < flags_arr.size * self.flag_warning_threshold:
                 warning, color = "", "blue"
             else:
@@ -122,14 +128,14 @@ class Flagger(object):
                 per_bl = []
                 total_elements = float(n_tim * n_fre)
                 interesting_fraction = self.GD['madmax']['plot-frac-above']*total_elements
-                plot_explicit_baseline = None
+                plot_explicit_baselines = []
                 for p in xrange(n_ant):
                     for q in xrange(p + 1, n_ant):
                         n_flagged = baddies[:, :, p, q].sum()
                         if n_flagged and n_flagged >= interesting_fraction:
                             per_bl.append((n_flagged, p, q))
-                        if self.GD['madmax']['plot-bl'] == self.metadata.baseline_name[p,q]:
-                            plot_explicit_baseline = (n_flagged, p ,q)
+                        if self.metadata.baseline_name[p,q] in self._plot_baselines:
+                            plot_explicit_baselines.append(((n_flagged, p, q), "--madmax-plot-bl"))
                 per_bl = sorted(per_bl, reverse=True)
                 # print
                 per_bl_str = ["{} ({}m): {} ({:.2%})".format(self.metadata.baseline_name[p,q],
@@ -143,8 +149,7 @@ class Flagger(object):
                         baselines_to_plot.append((per_bl[0], "worst baseline"))
                     if len(per_bl)>2:
                         baselines_to_plot.append((per_bl[len(per_bl)//2], "median baseline"))
-                    if plot_explicit_baseline:
-                        baselines_to_plot.append((plot_explicit_baseline,"--madmax-plot-bl"))
+                    baselines_to_plot += plot_explicit_baselines
                     import pylab
                     for (n_flagged, p, q), baseline_label in baselines_to_plot:
                         # make subplots
@@ -152,27 +157,35 @@ class Flagger(object):
                         for c1,x1 in enumerate(self.metadata.feeds.upper()):
                             for c2,x2 in enumerate(self.metadata.feeds.upper()):
                                 mm = mad[0,p,q,c1,c2] if self.mad_per_corr else mad[0,p,q]
-                                subplot_titles[c1,c2] = "{}{} residuals (MAD {:.2f})".format(x1, x2, mm)
-                        figure = plots.make_dual_absres_plot(absres, flags_arr!=0, baddies, p, q, self.metadata, subplot_titles)
-                        # make plot title with some info
-                        fraction = n_flagged / total_elements
-                        blname = self.metadata.baseline_name[p,q]
-                        bllen  = int(self.metadata.baseline_length[p,q])
-                        pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({})".format(max_label,
-                                        method, blname, bllen, n_flagged, fraction, baseline_label))
-                        # save or show plot
-                        if self.GD['madmax']['plot'] == 'show':
-                            pylab.show()
-                        else:
-                            filename = self.get_plot_filename()
-                            figure.savefig(filename, dpi=300)
-                            print>>log(1),"{}: saving Mad Max flagging plot to {}".format(self.chunk_label,filename)
-                        pylab.close(figure)
-                        del figure
-                        made_plots = True
+                                subplot_titles[c1,c2] = "{}{} residuals (MAD {:.3g})".format(x1, x2, 0 if mm is np.ma.masked else mm) 
+                        try:
+                            figure = plots.make_dual_absres_plot(absres, flags_arr!=0, baddies, p, q, self.metadata, subplot_titles)
+                            # make plot title with some info
+                            fraction = n_flagged / total_elements
+                            blname = self.metadata.baseline_name[p,q]
+                            bllen  = int(self.metadata.baseline_length[p,q])
+                            pylab.suptitle("{} {}: baseline {} ({}m), {} ({:.2%}) visibilities killed ({})".format(max_label,
+                                            method, blname, bllen, n_flagged, fraction, baseline_label))
+                            # save or show plot
+                            if self.GD['madmax']['plot'] == 'show':
+                                pylab.show()
+                            else:
+                                filename = self.get_plot_filename()
+                                figure.savefig(filename, dpi=300)
+                                print>>log(1),"{}: saving Mad Max flagging plot to {}".format(self.chunk_label,filename)
+                            pylab.close(figure)
+                            del figure
+                            made_plots = True
+                        except Exception as exc:
+                            traceback.print_exc()
+                            print>>log(1, "red"), "WARNING: {}: exception {} raised while generating Mad Max waterfall plot for baseline {} ({})".format(
+                                            self.chunk_label, exc, blname, baseline_label)
+                            print>>log(1), "Although harmless, this may indicate a problem with the data, or a bug in CubiCal."
+                            print>>log(1), "Please see stack trace above, and report if you think this is a bug."
         else:
             print>> log(2),"{} {} abides".format(max_label, method)
-        return made_plots
+
+        return made_plots, nbad>0
 
 
     @profile
@@ -180,7 +193,14 @@ class Flagger(object):
         """This function implements MAD-based flagging on residuals"""
         if not threshold and not med_threshold:
             return False
-        n_mod, _, _, n_ant, n_ant, n_cor, n_cor = resid_arr.shape
+        # residuals can pe per-model (when invoked from solver) or not, when invoked on final residuals.
+        # cope with both cases
+        if resid_arr.ndim == 7:
+            n_mod, _, _, n_ant, n_ant, n_cor, n_cor = resid_arr.shape
+        else:
+            _, _, n_ant, n_ant, n_cor, n_cor = resid_arr.shape
+            n_mod = 1
+            resid_arr = resid_arr.reshape([1]+list(resid_arr.shape))
 
         import cubical.kernels
         cymadmax = cubical.kernels.import_kernel("cymadmax")
@@ -195,9 +215,13 @@ class Flagger(object):
         if mad.mask.all():
             return
         # estimate median MAD
-        medmad = np.ma.median(mad, axis=(1,2))
+        ### want to do this:
+        ## medmad = np.ma.median(mad, axis=(1,2))
+        ### but this seems to thrown an error on earlier numpys (1.11?), so let's be defensive and reshape into one axis:
+        shape1 = [mad.shape[0], mad.shape[1]*mad.shape[2]] + list(mad.shape[3:])
+        medmad = np.ma.median(mad.reshape(shape1), axis=1)
         # all this was worth it, just so I could type "mad.max()" as legit code
-        print>>log(2),"{} per-baseline MAD min {:.2f}, max {:.2f}, median {:.2f}".format(max_label, mad.min(), mad.max(), np.ma.median(medmad))
+        print>>log(2),"{} per-baseline MAD min {:.3g}, max {:.3g}, median {:.3g} to {:.3g}".format(max_label, mad.min(), mad.max(), medmad.min(), medmad.max())
         if log.verbosity() > 4:
             for imod in xrange(n_mod):
                 if self.mad_per_corr:
@@ -205,19 +229,20 @@ class Flagger(object):
                         for ic2,c2 in enumerate(self.metadata.feeds):
                             per_bl = [(mad[imod,p,q,ic1,ic2], p, q) for p in xrange(n_ant)
                                       for q in xrange(p+1, n_ant) if not mad.mask[imod,p,q,ic1,ic2]]
-                            per_bl = ["{} ({}m): {:.2f}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
+                            per_bl = ["{} ({}m): {:.3g}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
                                       for x, p, q in sorted(per_bl)[::-1]]
                             print>>log(4),"{} model {} {}{} MADs are {}".format(max_label, imod,
                                                                                 c1.upper(), c2.upper(), ", ".join(per_bl))
                 else:
                     per_bl = [(mad[imod,p,q,], p, q) for p in xrange(n_ant)
                               for q in xrange(p+1, n_ant) if not mad.mask[imod,p,q]]
-                    per_bl = ["{} ({}m) {:.2f}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
+                    per_bl = ["{} ({}m) {:.3g}".format(self.metadata.baseline_name[p,q], int(self.metadata.baseline_length[p,q]), x)
                               for x, p, q in sorted(per_bl)[::-1]]
                     print>>log(4),"{} model {} MADs are {}".format(max_label, imod, ", ".join(per_bl))
 
 
-        made_plots = False
+        made_plots = flagged_something = False
+
         thr = np.zeros((n_mod, n_ant, n_ant, n_cor, n_cor), dtype=np.float32)
         # apply per-baseline MAD threshold
         if threshold:
@@ -227,12 +252,14 @@ class Flagger(object):
                 thr[:] = threshold * mad[...,np.newaxis,np.newaxis] / SIGMA_MAD
             baddies = cymadmax.threshold_mad(absres, thr, flags_arr, self.flagbit, goodies,
                                              diag=self.mad_diag, offdiag=self.mad_offdiag)
-            made_plots = self.report_carnage(absres, mad, baddies, flags_arr,
+            made_plots, flagged_something  = self.report_carnage(absres, mad, baddies, flags_arr,
                                                 "baseline-based Mad Max ({} sigma)".format(threshold), max_label)
             if not self._pretend:
                 baddies = baddies.astype(bool)
-                model_arr[:,:,baddies,:,:] = 0
-                data_arr[:,baddies,:,:] = 0
+                if model_arr is not None:
+                    model_arr[:,:,baddies,:,:] = 0
+                if data_arr is not None:
+                    data_arr[:,baddies,:,:] = 0
 
         # apply global median MAD threshold
         if med_threshold:
@@ -243,13 +270,20 @@ class Flagger(object):
                 thr[:] = med_thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis]
             baddies = cymadmax.threshold_mad(absres, thr, flags_arr, self.flagbit, goodies,
                                              diag=self.mad_diag, offdiag=self.mad_offdiag)
-            made_plots = made_plots or \
+
+            made, flagged = \
                 self.report_carnage(absres, mad, baddies, flags_arr,
                                        "global Mad Max ({} sigma)".format(med_threshold), max_label)
+
+            made_plots = made_plots or made
+            flagged_something = flagged_something or flagged
+
             if not self._pretend:
                 baddies = baddies.astype(bool)
-                model_arr[:, :, baddies, :, :] = 0
-                data_arr[:, baddies, :, :] = 0
+                if model_arr is not None:
+                    model_arr[:, :, baddies, :, :] = 0
+                if data_arr is not None:
+                    data_arr[:, baddies, :, :] = 0
         else:
             med_thr = None
 
@@ -257,29 +291,41 @@ class Flagger(object):
         if made_plots:
             import pylab
             outflags, figure = plots.make_baseline_mad_plot(mad, medmad, med_thr, metadata=self.metadata,
-                                max_label=max_label,
+                                max_label=max_label, chunk_label=self.chunk_label,
                                 antenna_mad_threshold=self.GD['madmax']['flag-ant-thr'])
             if outflags.any():
+                flagged_something = True
                 if self.mad_per_corr:
                     outflags = outflags.any(axis=(-1,-2))
                 if self.GD['madmax']['flag-ant'] and not self._pretend:
                     print>>log(0, "red"),"{} baselines {}flagged on mad residuals (--madmax-flag-ant 1)".format(
                                             outflags.sum()/2, "trial-" if self._trial else "")
                     flags_arr[:,:,outflags] |= self.flagbit
-                    model_arr[:,:,:,:,outflags,:,:] = 0
-                    data_arr[:,:,:,outflags,:,:] = 0
+                    if model_arr is not None:
+                        model_arr[:,:,:,:,outflags,:,:] = 0
+                    if data_arr is not None:
+                        data_arr[:,:,:,outflags,:,:] = 0
                 else:
-                    print>>log(0, "red"),"{} baselines would have been flagged due to mad residuals (use --madmax-flag-ant)".format(outflags.sum()/2)
+                    print>>log(0, "red"),"{} baselines would have been flagged due to mad residuals (use --madmax-flag-ant to enable this)".format(outflags.sum()/2)
 
-            if self.GD['madmax']['plot'] == 'show':
-                pylab.show()
-            else:
-                filename = self.get_plot_filename('mads')
-                print>>log(1),"{}: saving MAD distribution plot to {}".format(self.chunk_label,filename)
-                figure.savefig(filename, dpi=300)
-                import cPickle
-                pickle_file = filename+".cp"
-                cPickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "w"), 2)
-                print>>log(1),"{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file)
-            pylab.close(figure)
-            del figure
+            try:
+                if self.GD['madmax']['plot'] == 'show':
+                    pylab.show()
+                else:
+                    filename = self.get_plot_filename('mads')
+                    print>>log(1),"{}: saving MAD distribution plot to {}".format(self.chunk_label,filename)
+                    figure.savefig(filename, dpi=300)
+                    import cPickle
+                    pickle_file = filename+".cp"
+                    cPickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "w"), 2)
+                    print>>log(1),"{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file)
+                pylab.close(figure)
+                del figure
+            except Exception as exc:
+                traceback.print_exc()
+                print>> log(1,"red"), "WARNING: {}: exception {} raised while rendering Mad Max summary plot".format(
+                                        self.chunk_label, exc)
+                print>> log(1), "Although harmless, this may indicate a problem with the data, or a bug in CubiCal."
+                print>> log(1), "Please see stack trace above, and report if you think this is a bug."
+
+        return flagged_something and not self._pretend

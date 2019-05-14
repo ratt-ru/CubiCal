@@ -36,21 +36,45 @@ class Complex2x2Gains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
+        # note that this sets up self.cykernel
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
-                                  chunk_ts, chunk_fs, chunk_label, options,
-                                  self.get_kernel(options))
+                                  chunk_ts, chunk_fs, chunk_label, options)
 
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel approriate to Jones options"""
-        if options['diag-diag']:
-            return cubical.kernels.import_kernel('cydiagdiag_complex')
-        elif options['type'] == 'complex-2x2':
-            return cubical.kernels.import_kernel('cyfull_complex')
-        elif options['type'] == 'complex-diag':
-            return cubical.kernels.import_kernel('cydiag_complex')
-        else:
-            raise RuntimeError("unknown machine type '{}'".format(options['type']))
+        # try guesstimating the PZD
+        self._estimate_pzd = options["estimate-pzd"]
+        self._offdiag_only = options["offdiag-only"]
+#        if label == "D":
+#            self.gains[:,:,:,:,1,1] = -1
+
+    @classmethod
+    def determine_diagonality(cls, options):
+        """Returns true if the machine class, given the options, represents a diagonal gain"""
+        return options['type'] == 'complex-diag' or options['update-type'] != 'full'
+
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
+        """
+        """
+        PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
+
+        if self._estimate_pzd:
+            marr = model_arr[...,(0,1),(1,0)][:,0].sum(0)
+            darr = data_arr[...,(0,1),(1,0)][0]
+            mask = (flags_arr[...,np.newaxis]!=0)|(marr==0)
+            dm = darr*(np.conj(marr)/abs(marr))
+            dabs = np.abs(darr)
+            dm[mask] = 0
+            dabs[mask] = 0
+            # collapse time/freq axis into intervals and sum antenna axes
+            dm_sum = self.interval_sum(dm).sum(axis=(2,3))
+            dabs_sum = self.interval_sum(dabs).sum(axis=(2,3))
+            # sum off-diagonal terms
+            dm_sum = dm_sum[...,0] + np.conj(dm_sum[...,1])
+            dabs_sum = dabs_sum[...,0] + np.conj(dabs_sum[...,1])
+            pzd = np.angle(dm_sum/dabs_sum)
+            pzd[dabs_sum==0] = 0
+
+            print>>log(2),"{}: PZD estimate {}".format(self.chunk_label, pzd)
+            self.gains[:,:,:,:,1,1] = np.exp(-1j*pzd)[np.newaxis,:,:,np.newaxis]
 
 
     def compute_js(self, obser_arr, model_arr):
@@ -78,18 +102,26 @@ class Complex2x2Gains(PerIntervalGains):
 
         jh = self.get_new_jh(model_arr)
 
-        self.cykernel.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.cykernel_solve.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        if self._offdiag_only:
+            jh[...,(0,1),(0,1)] = 0
 
         jhr = self.get_new_jhr()
         r = self.get_obs_or_res(obser_arr, model_arr)
 
-        self.cykernel.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
+        if self._offdiag_only:
+            r[...,(0,1),(0,1)] = 0
+
+        self.cykernel_solve.cycompute_jhr(jh, r, jhr, self.t_int, self.f_int)
 
         jhj, jhjinv = self.get_new_jhj()
 
-        self.cykernel.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
+        self.cykernel_solve.cycompute_jhj(jh, jhj, self.t_int, self.f_int)
 
-        flag_count = self.cykernel.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        flag_count = self.cykernel_solve.cycompute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        
+#         if flag_count:
+#             import pdb; pdb.set_trace()
 
         return jhr, jhjinv, flag_count
 
@@ -105,10 +137,14 @@ class Complex2x2Gains(PerIntervalGains):
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
         update = self.init_update(jhr)
-        self.cykernel.cycompute_update(jhr, jhjinv, update)
+
+        self.cykernel_solve.cycompute_update(jhr, jhjinv, update)
 
         if self.dd_term and self.n_dir > 1:
             update += self.gains
+
+        if self._offdiag_only:
+            update[...,(0,1),(0,1)] = 1
 
         if self.iters % 2 == 0 or self.n_dir > 1:
             self.gains += update
@@ -128,5 +164,5 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:
-            phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
-            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]
+            phase = np.angle(self.gains[...,self.ref_ant,0,0])
+            self.gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]

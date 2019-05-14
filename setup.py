@@ -137,7 +137,7 @@ else:
                     'futures', 
                     'python-casacore>=2.1.2', 
                     'sharedarray', 
-                    'matplotlib',
+                    'matplotlib<3.0',
                     'cython',
                     'scipy',
                     'astro-tigger-lsm']
@@ -145,7 +145,7 @@ else:
 setup(name='cubical',
       version=cubical.VERSION,
       description='Fast calibration implementation exploiting complex optimisation.',
-      url='https://github.com/JSKenyon/phd-code',
+      url='https://github.com/ratt-ru/CubiCal',
       classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Science/Research",
@@ -174,7 +174,8 @@ setup(name='cubical',
       include_package_data=True,
       zip_safe=False,
       ext_modules = extensions,
-      entry_points={'console_scripts': ['gocubical = cubical.main:main']},           
+      scripts = ['cubical/bin/print-cubical-stats'],
+      entry_points={'console_scripts': ['gocubical = cubical.main:main']},
 )
 
 

@@ -357,7 +357,7 @@ def cycompute_weights(complex3264 [:,:,:,:,:,:,:] r,
                      complex3264 [:,:] cov,
                      complex3264[:,:,:,:,:,:] w,
                      float v,
-                     int npol):
+                     float npol):
     """
     This function updates the weights, using the 
     expression w[i] = (v+2*npol)/(v + 2*r[i].T.cov.r[i])

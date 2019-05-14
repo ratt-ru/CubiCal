@@ -673,8 +673,8 @@ class Parameter(object):
                     outmask[ox] = arse.array.mask[ix]
 
         # return array, throwing out unneeded axes
-        output_array = output_array[output_reduction]
-        output_mask  = output_mask[output_reduction]
+        output_array = output_array[tuple(output_reduction)]
+        output_mask  = output_mask[tuple(output_reduction)]
         output_array[output_mask] = self.empty
 
         print>> log(1), "{} solutions: interpolation results in {}/{} missing values".format(self.name,

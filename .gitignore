@@ -80,3 +80,12 @@ test/SUBSET-D147-output.MS/table.*
 docs/_build/
 docs/_templates/
 
+# microsoft visual studio project files
+.vscode
+# kdevelop project files
+*.kdev4
+
+*.orig
+
+# databases
+*_db

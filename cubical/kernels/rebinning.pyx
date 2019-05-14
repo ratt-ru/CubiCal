@@ -127,7 +127,10 @@ def rebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
         for f0 in xrange(n_fre0):
             f = rebin_chan_map[f0]
             for c in xrange(n_cor0):
-                flag[row, f, c] &= flag0[row0, f0, c]
+		# output flags accumulate all input flags across the bin with bitwise-OR,
+		# however below we'll clear them if at least one unflagged
+		# visibility was present
+                flag[row, f, c] |= flag0[row0, f0, c]  
                 if not flag0[row0, f0, c]:
                     # accumulate weights
                     if num_weights:
@@ -150,6 +153,7 @@ def rebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
             for f in xrange(n_fre):
                 for c in xrange(n_cor0):
                     if sum_ww[row, f, c]:
+                        flag[row, f, c] = 0
                         vis[row, f, c] /= sum_ww[row, f, c]
 
 
@@ -159,7 +163,6 @@ def rebin_vis(fcomplex [:,:,:] vis,  const fcomplex [:,:,:] vis0,
 @cython.nonecheck(False)
 def rebin_model(fcomplex [:,:,:] model,  const fcomplex [:,:,:] model0,
                   const flag_t [:,:,:] flag0,
-                  const wfloat [:,:,:]  weights0, int has_weights,
                   const index_t [:] rebin_row_map, const index_t [:] rebin_chan_map):
     """
     Rebins a model column, following a rebin_row_map precomputed by cyrebin_vis
@@ -168,13 +171,12 @@ def rebin_model(fcomplex [:,:,:] model,  const fcomplex [:,:,:] model0,
     cdef int i, t, f, f0, c
     cdef int n_row0, n_row, n_fre0, n_cor0, n_fre, n_cor, ts_in, ts_out, a1, a2, row0, row
     cdef int conjugate
-    cdef wfloat ww=1
 
     n_row0, n_fre0, n_cor0 = model0.shape[0], model0.shape[1], model0.shape[2]
     n_row, n_fre, n_cor = model.shape[0], model0.shape[1], n_cor0
 
-    sum_ww0 = np.zeros((n_row,n_fre,n_cor), np.float32)    # sum of weights per each output visibility
-    cdef np.float32_t [:,:,:] sum_ww = sum_ww0
+    counts0 = np.zeros((n_row,n_fre,n_cor), np.int64)    # counts per each model visibility
+    cdef np.int64_t [:,:,:] counts = counts0
 
     for row0 in xrange(n_row0):
         row = rebin_row_map[row0]
@@ -186,15 +188,13 @@ def rebin_model(fcomplex [:,:,:] model,  const fcomplex [:,:,:] model0,
             f = rebin_chan_map[f0]
             for c in xrange(n_cor0):
                 if not flag0[row0, f0, c]:
-                    if has_weights:
-                        ww = weights0[row0, f0, c]
-                    sum_ww[row, f, c] += ww
-                    model[row, f, c] += ww*model0[row0, f0, c].conjugate() if conjugate else ww*model0[row0, f0, c]
+                    counts[row, f, c] += 1
+                    model[row, f, c] += model0[row0, f0, c].conjugate() if conjugate else model0[row0, f0, c]
 
-    # now normalize by sums of the weights
+    # now normalize by counts
     for row in xrange(n_row):
         for f in xrange(n_fre):
             for c in xrange(n_cor):
-                if sum_ww[row, f, c]:
-                    model[row, f, c] /= sum_ww[row, f, c]
+                if counts[row, f, c]:
+                    model[row, f, c] /= counts[row, f, c]
 

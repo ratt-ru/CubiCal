@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+from __future__ import print_function
+import cubical
+from cubical.tools import logger
+import numpy as np
+# set the base name of the logger. This must happen before any other loggers are instantiated
+# (Thus before anything else that uses the logger is imported!)
+logger.init("cc")
+
+log = logger.getLogger("print-stats")
+
+if __name__ == '__main__':
+
+    import argparse
+    import os, os.path
+    from cubical.statistics import SolverStats
+    from cubical.tools import ModColor
+
+    parser = argparse.ArgumentParser(description="""
+        Prints solution statistics from a CubiCal run.
+        Available fields: chi2, init_chi2, final_chi2, init_noise, noise, iters, 
+                          num_intervals, num_converged, num_stalled,
+                          num_sol_flagged, num_mad_flagged
+        """,
+                                    formatter_class=argparse.RawTextHelpFormatter)
+
+    parser.add_argument("-n","--num-columns", type=int, default=8,
+                      help="number of columns to use.")
+    parser.add_argument("-s", "--stats", action="append", metavar="FIELD", default=["chi2:.3f"],
+                        help="which fields to print. May be given multiple times.\n" +
+                             "Use field name, or a full format string e.g. '{chi2:.3f} {iters:3}'"
+                             "Default is %(default)s.")
+    parser.add_argument("-t", "--threshold", action="append", metavar="FIELD:THR", default=["chi2:10"],
+                        help="highlight if value of field exceeds threshold. May be given multiple times.\n" +
+                        "Default is %(default)s.")
+    parser.add_argument("-p", "--precision", metavar="DIGITS", default=3,
+                        help="default precision for floating-point values. Default is %(default)s.")
+    parser.add_argument("-a", "--all", action="store_true",
+                        help="print all fields.")
+    parser.add_argument("-r", "--recent", metavar="NRECENT", type=int, default=1,
+                        help="how many recent stats files to print, if none explcitly given.")
+    parser.add_argument("files", nargs="*",
+                      help="""One or more stats files. If none given, prints NLATEST latest ones.""")
+
+    options = parser.parse_args()
+
+    if not options.files:
+        statfiles = sorted([(os.path.getmtime(name), name) for name in os.listdir('.') if name.endswith(".stats.pickle")])
+        num_files = min(options.recent, len(statfiles))
+        print("command line does not specify any stat files", file=log(0))
+        print("current directory contains {} files: will use {} most recent".format(len(statfiles), num_files), file=log(0))
+        options.files = [name for _,name in statfiles[-num_files:]]
+
+    for filename in options.files:
+        print("reading {}".format(filename), file=log(0))
+        stats = SolverStats(open(filename))
+
+        if options.all:
+            print_stats = stats.get_notrivial_chunk_statfields()
+        else:
+            print_stats = options.stats
+
+        thresholds = []
+        for thr in options.threshold:
+            field, value = thr.split(":")
+            thresholds.append((field, float(value)))
+            print("will highlight when {}>{}".format(field, float(value)), file=log(0))
+
+        for field in print_stats:
+            if "{" not in field:
+                if isinstance(stats.chunk[field][0,0], np.floating):
+                    field = "{{{}:.{}}}".format(field, options.precision)
+                else:
+                    field = "{{{}}}".format(field)
+            lines = stats.format_chunk_stats(field, ncol=options.num_columns, threshold=thresholds)
+            print("{}:\n  {}\n -".format(ModColor.Str(field, "blue"), "\n  ".join(lines)), file=log(0))
+
+

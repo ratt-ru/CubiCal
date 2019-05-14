@@ -23,7 +23,7 @@ class FL(object):
 
     PRIOR    = dtype(1<<0)    # prior flags (i.e. from MS)
     MISSING  = dtype(1<<1)    # missing data or solution
-    INVALID  = dtype(1<<2)    # invalid data or model (inf, nan)
+    INVALID  = dtype(1<<2)    # invalid data (zero, inf, nan)
     ILLCOND  = dtype(1<<3)    # solution ill conditioned - bad inverse
     NOCONV   = dtype(1<<4)    # no convergence
     CHISQ    = dtype(1<<5)    # excessive chisq
@@ -32,9 +32,11 @@ class FL(object):
     GNULL    = dtype(1<<8)    # gain solution gone to zero.
     LOWSNR   = dtype(1<<9)    # prior SNR too low for gain solution
     GVAR     = dtype(1<<10)   # posterior variance too low for gain solution
-    NULLDATA = dtype(1<<11)   # null data
-    NULLWGHT = dtype(1<<12)   # null weight
-    MAD      = dtype(1<<13)  # residual exceeds MAD-based threshold
+    INVMODEL = dtype(1<<11)   # invalid model (zero, inf, nan)
+    INVWGHT  = dtype(1<<12)   # invalid weight (inf or nan)
+    NULLWGHT = dtype(1<<13)   # null weight
+
+    MAD      = dtype(1<<14)   # residual exceeds MAD-based threshold
     SKIPSOL  = dtype(1<<15)   # omit this data point from the solver
 
     @staticmethod

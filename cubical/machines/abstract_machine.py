@@ -11,6 +11,8 @@ from cubical import param_db
 from cubical.database.casa_db_adaptor import casa_db_adaptor
 
 from cubical.tools import logger, ModColor
+from cubical.main import expand_templated_name
+
 log = logger.getLogger("gain_machine")
 
 class MasterMachine(object):
@@ -24,7 +26,7 @@ class MasterMachine(object):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, jones_label, data_arr, ndir, nmod, times, freqs, chunk_label, options):
+    def __init__(self, jones_label, data_arr, ndir, nmod, times, freqs, chunk_label, options, diagonal=None):
         """
         Initializes a gain machine.
         
@@ -62,8 +64,12 @@ class MasterMachine(object):
                 Frequencies for the data being processsed.
             chunk_label (str):
                 Label of the data chunk being processed, for messages
-            options (dict): 
-                Dictionary of options. 
+            options (dict):
+                Dictionary of options.
+            diagonal (bool or None):
+                Set to False or True or False if the gains are (non)diagonal. If None, calls the
+                determine_diagonality() class method instead
+
         """
         import cubical.kernels
         self.cygenerics = cubical.kernels.import_kernel('cygenerics')
@@ -73,12 +79,17 @@ class MasterMachine(object):
         self.times = times
         self.freqs = freqs
         self.options = options
+        self._is_diagonal = self.determine_diagonality(options)
+        self._allocate_vis_array, self._allocate_flag_array, self._allocate_gain_array = self.determine_allocators(options)
 
         self.solvable = options.get('solvable')
         self._dd_term = options.get('dd-term')
         self._maxiter = options.get('max-iter', 0)
 
         self._prop_flags = options.get('prop-flags', 'default')
+
+        self._epsilon = options.get('epsilon')
+        self._delta_chi = options.get('delta-chi')
 
         self.n_dir, self.n_mod = ndir if self._dd_term else 1, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
@@ -92,15 +103,53 @@ class MasterMachine(object):
     def jones_label(self):
         return self._jones_label
 
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel appropriate to the set of machine options"""
+    @property
+    def is_diagonal(self):
+        """Returns true if this machine instance represents a diagonal gain term"""
+        return self._is_diagonal
+
+    @property
+    def allocate_vis_array(self):
+        """Returns visibility allocator function for this machine"""
+        return self._allocate_vis_array
+
+    @property
+    def allocate_flag_array(self):
+        """Returns flag allocator function for this machine"""
+        return self._allocate_flag_array
+
+    @property
+    def allocate_gain_array(self):
+        """Returns flag allocator function for this machine"""
+        return self._allocate_gain_array
+
+    @classmethod
+    def determine_allocators(cls, options):
+        """
+        Returns allocation functions appropriate to the machine class and set of machine options.
+        Different machines may prefer different memory layouts, so other code needs to know up front which allocators
+        to use.
+        Returns tuple of vis_allocator, flag_allocator.
+        """
+        return NotImplementedError
+
+    @classmethod
+    def determine_diagonality(cls, options):
+        """Returns true if the machine class, given the options, represents a diagonal gain"""
         return NotImplementedError
 
     @property
     def dd_term(self):
-        """This property is true if the machine represents a direction-dependent"""
+        """This property is true if the machine represents a direction-dependent gain"""
         return self._dd_term
+
+    @property
+    def epsilon(self):
+        return self._epsilon
+
+    @property
+    def delta_chi(self):
+        return self._delta_chi
 
     @property
     def propagates_flags(self):
@@ -187,7 +236,7 @@ class MasterMachine(object):
         return flag_count
 
     @abstractmethod
-    def compute_residual(self, obser_arr, model_arr, resid_arr):
+    def compute_residual(self, obser_arr, model_arr, resid_arr, full2x2=True):
         """
         This method should compute the residual at the the full time-frequency resolution of the
         data. Must populate resid_arr with the values of the residual. Function signature must be 
@@ -203,12 +252,15 @@ class MasterMachine(object):
             resid_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array in which to place the 
                 residual values.
+            full2x2 (bool):
+                If True, a full 2x2 residual is required. If False, only the terms used in the solution
+                (e.g. the diagonals) are required.
         """
 
         return NotImplementedError
 
     @abstractmethod
-    def apply_inv_gains(self, obser_arr, corr_vis=None):
+    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, di_only=False):
         """
         This method should be able to apply the inverse of the gains associated with the gain
         machines to an array at full time-frequency resolution. Should populate an input array with
@@ -222,6 +274,11 @@ class MasterMachine(object):
             corr_vis (np.ndarray or None, optional):
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array to fill with the corrected 
                 visibilities.
+            full2x2 (bool):
+                If True, gains should be applied to the full 2x2 matrix. If False, only the terms used in the solution
+                (e.g. the diagonals) are required.
+            di_only (bool):
+                If True, only DI terms are applied (leftmost block of DI terms, in a chain machine). Not implemented for now.
 
         Returns:
             2-element tuple
@@ -233,7 +290,7 @@ class MasterMachine(object):
         return NotImplementedError
 
     @abstractmethod
-    def apply_gains(self, model_arr):
+    def apply_gains(self, model_arr, full2x2=True, dd_only=False):
         """
         This method should be able to apply the gains associated with the gain
         to an array at full time-frequency resolution. 
@@ -242,6 +299,11 @@ class MasterMachine(object):
         Args:
             model_arr (np.ndarray):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model visibilities.
+            full2x2 (bool):
+                If True, gains should be applied to the full 2x2 matrix. If False, only the terms used in the solution
+                (e.g. the diagonals) are required.
+            dd_only (bool):
+                If True, only DD terms are applied, beginning with the leftmost. Not implemented for now.
         """
 
         return NotImplementedError
@@ -255,16 +317,22 @@ class MasterMachine(object):
         return False
 
     @property
+    def num_solutions(self):
+        """
+        This property gives the number of solutions (e.g. intervals) defined by the machine
+        """
+        return 0
+
+    @property
     def num_converged_solutions(self):
         """
         This property gives the number of currently converged solutions defined by the machine
         """
         return 0
 
-    def _update_equation_counts(self, unflagged):
+    def update_equation_counts(self, unflagged):
         """
-        Internal method used by precompute_attributes() and propagate_gflags() to set up equation 
-        counters and chi-sq normalization factors. Sets up the following attributes:
+        Sets up equation counters and normalization factors. Sets up the following attributes:
         
             - eqs_per_tf_slot (np.ndarray):
                 Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
@@ -272,6 +340,9 @@ class MasterMachine(object):
                 Shape (n_ant, ) array containing a count of equations per antenna.
 
         Also sets up corresponding chi-sq normalization factors.
+
+        Normally called form precompute_attributes() to set things up. Should also be called every time
+        the flags change (otherwise chi-sq normalization will go off)
 
         Args:
             unflagged (np.ndarray):
@@ -332,7 +403,7 @@ class MasterMachine(object):
 
         return chisq, chisq_per_tf_slot, chisq_tot
 
-    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """
         This method is called before starting a solution. The base version computes a variety of useful 
         parameters regarding the conditioning and degrees of freedom of the current time-frequency chunk. 
@@ -340,6 +411,8 @@ class MasterMachine(object):
         iteration).
 
         Args:
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed visibilities.
             model_arr (np.ndarray):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model visibilities.
             flags_arr (np.ndarray):
@@ -351,7 +424,7 @@ class MasterMachine(object):
             bool np.ndarray, shape (n_tim, n_fre, n_ant, n_ant), indicating the inverse of flags
         """
         unflagged = flags_arr==0
-        self._update_equation_counts(unflagged)
+        self.update_equation_counts(unflagged)
         return unflagged
 
     @abstractmethod
@@ -409,10 +482,12 @@ class MasterMachine(object):
         behaviour required for multiple Jones terms. Default version just bumps the iteration counter.
         
         Returns:
-            Value of iteration counter
+            Tuple of two values
+                - value of iteration counter
+                - True/False hint indicating if a "major" step was taken
         """
         self._iters += 1
-        return self.iters
+        return self.iters, False
 
     @abstractmethod
     def restrict_solution(self):
@@ -605,12 +680,12 @@ class MasterMachine(object):
             # initialize solution databases
             self.init_solutions()
 
-        def get_kernel(self):
+        def get_allocators(self):
             """
-            Returns kernel appropriate for the class of the gain machine.
-            This is the kernel used to allocate data etc.
+            Returns allocation functions appropriate for the class of the gain machine.
+            Returns tuple of vis_allocator, flag_allocator.
             """
-            return self.machine_class.get_kernel(self.jones_options)
+            return self.machine_class.get_allocators(self.jones_options)
 
         def init_solutions(self):
             """
@@ -643,20 +718,8 @@ class MasterMachine(object):
                     Expanded filename
                 
             """
-            if not filename:
-                return None
-            try:
-                # substitute recursively, but up to a limit
-                for i in xrange(10):
-                    fname = filename.format(JONES=jones_label or self.jones_label, **self.global_options)
-                    if fname == filename:
-                        break
-                    filename = fname
-                return filename
-            except Exception, exc:
-                print>> log,"{}({})\n {}".format(type(exc).__name__, exc, traceback.format_exc())
-                print>>log,ModColor.Str("Error parsing filename '{}', see above".format(filename))
-                raise ValueError(filename)
+            return expand_templated_name(filename,
+                                         JONES=jones_label or self.jones_label)
 
         def _init_solutions(self, label, load_from, interpolate, save_to, exportables):
             """
@@ -714,8 +777,8 @@ class MasterMachine(object):
                 selfield = self.global_options["sel"]["field"]
                 assert type(selfield) is int, "Currently only supports single field data selection"
                 selddid = self.global_options["sel"]["ddid"]
-                assert ((type(selddid) is list) and (all([type(t) is int for t in selddid]))) or \
-                       (type(selddid) is int) or selddid is None, "SPW should be a list of ints or int or None. This is a bug"
+                #assert ((type(selddid) is list) and (all([type(t) is int for t in selddid]))) or \
+                #       (type(selddid) is int) or selddid is None, "SPW should be a list of ints or int or None. This is a bug"
                 meta = {"field": selfield}
                 self._save_sols_byname[save_to] = db = param_db.create(save_to, metadata=meta, backup=True)
             self._save_sols[name] = db
@@ -826,3 +889,6 @@ class MasterMachine(object):
             for db in self._save_sols_byname.values():
                 db.export_CASA_gaintable = self.global_options["out"].get("casa-gaintables", True)
                 db.set_metadata(src)
+
+        def determine_allocators(self):
+            return self.machine_class.determine_allocators(self.jones_options)
