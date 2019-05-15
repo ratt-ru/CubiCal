@@ -1,3 +1,5 @@
+from __future__ import print_function
+from __future__ import division
 import numpy as np
 import timeit
 import numpy.random
@@ -39,8 +41,8 @@ class UnorderedArrays(object):
             self.m = np.zeros((nd,nm,nt,nf,na,na,2,2), dtype)
             self.r = np.zeros((nm,nt,nf,na,na,2,2), dtype)
         # intervals?
-        nt1 = nt/t_int + (1 if nt%t_int else 0)
-        nf1 = nf/f_int + (1 if nf%f_int else 0)
+        nt1 = nt//t_int + (1 if nt%t_int else 0)
+        nf1 = nf//f_int + (1 if nf%f_int else 0)
         self._intshape = [nd,nt1,nf1,na,2,2]
         self._fullshape = [nd,nt,nf,na,2,2]
         self._paramgain = (pshape is not None)

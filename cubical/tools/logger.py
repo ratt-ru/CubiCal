@@ -6,7 +6,7 @@
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
-
+from __future__ import print_function
 import logging, logging.handlers, os, re, sys, multiprocessing
 from . import ModColor
 
@@ -270,7 +270,7 @@ def init(app_name):
     global _app_name
     global _root_logger
     if _root_logger is None:
-        logging.basicConfig(level=logging.DEBUG, fmt=_fmt, datefmt=_datefmt)
+        logging.basicConfig(level=logging.DEBUG, format=_fmt, datefmt=_datefmt)
         _app_name = app_name
         _root_logger = logging.getLogger(app_name)
         _root_logger.setLevel(logging.DEBUG)

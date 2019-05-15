@@ -5,7 +5,7 @@
 """
 Implements the solver loop.
 """
-
+from __future__ import print_function
 import numpy as np
 import os, os.path
 import traceback
@@ -49,7 +49,7 @@ except AttributeError:
     builtins.profile = profile
 
 
-@profile
+@builtins.profile
 def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     Main body of the GN/LM method. Handles iterations and convergence tests.

@@ -5,9 +5,12 @@
 """
 Defines database interface
 """
+from six import add_metaclass
 import abc
 
-class iface_database(object, metaclass=abc.ABCMeta):
+
+@add_metaclass(abc.ABCMeta)
+class iface_database:
     @abc.abstractmethod
     def __init__(self):
         raise NotImplementedError("To be defined")

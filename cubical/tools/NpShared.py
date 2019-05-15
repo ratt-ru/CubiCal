@@ -8,6 +8,7 @@
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
 #import sharedarray.SharedArray as SharedArray
+from __future__ import print_function
 import SharedArray
 from . import ModColor
 from . import logger

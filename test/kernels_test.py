@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os, sys, os.path
 
 def logprint(arg):

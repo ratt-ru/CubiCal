@@ -13,7 +13,7 @@ Main code body. Handles options, invokes solvers and manages multiprocessing.
 #         logging.root.removeHandler(handler)
 #     logging.getLogger('vext').setLevel(logging.WARNING)
 ##
-
+from __future__ import print_function
 import pickle
 import os, os.path
 import sys

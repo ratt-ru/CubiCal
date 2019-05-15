@@ -5,7 +5,8 @@
 
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
-
+from __future__ import print_function
+from six import string_types
 import sys, re, optparse
 from collections import OrderedDict
 
@@ -129,7 +130,7 @@ class DynamicOptionParser(object):
             group, name = self._parse_dest_key(key)
             group_dict = self._defaults[group]
             attrs = self._attributes.get(group, {}).get(name, {})
-            if type(value) is str:
+            if isinstance(value, string_types):
                 value, _ = parsets.parse_config_string(value, name=name, extended=False, type=attrs.get('type'))
             group_dict[name] = value
             alias = attrs.get('alias') or attrs.get('alias_of')
@@ -193,7 +194,7 @@ class DynamicOptionParser(object):
             setattr(parser.values, option.dest, value)
         print("callback invoked for {}".format(value), file=log(2))
         # get template contents
-        if type(value) is str:
+        if isinstance(value, string_types):
             value = value.split(",")
         elif type(value) is not list:
             raise TypeError("list or string expected for {}, got {}".format(opt_str, type(value)))

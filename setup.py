@@ -133,7 +133,8 @@ if on_rtd:
                     'matplotlib',
                     'scipy']
 else:
-    requirements = ['numpy', 
+    requirements = ['future',
+                    'numpy',
                     'futures', 
                     'python-casacore>=2.1.2', 
                     'sharedarray', 

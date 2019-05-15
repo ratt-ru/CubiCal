@@ -1,5 +1,5 @@
 #!/usr/bin/python
-
+from __future__ import print_function
 import os, os.path, sys
 from casacore.tables import table
 import numpy as np

@@ -2,6 +2,8 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
+from six import add_metaclass
 from abc import ABCMeta, abstractmethod, abstractproperty
 import numpy as np
 from numpy.ma import masked_array
@@ -15,7 +17,9 @@ from cubical.main import expand_templated_name
 
 log = logger.getLogger("gain_machine")
 
-class MasterMachine(object, metaclass=ABCMeta):
+
+@add_metaclass(ABCMeta)
+class MasterMachine:
     """
     This is a base class for all solution machines. It is completely generic and lays out the basic
     requirements for all machines.
