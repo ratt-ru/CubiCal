@@ -652,7 +652,7 @@ class MSTile(object):
                         wcol = wcol_cache.get(weight_col)
                         if wcol is None:
                             print("model {} weights {}: reading from {}{}".format(imod, iwcol, weight_col, mean_corr), file=log(0))
-                            wcol = table_subset.getcol(weight_col)
+                            wcol = table_subset.getcol(str(weight_col))
                             # support two shapes of wcol: either same as data (a-la WEIGHT_SPECTRUM), or missing
                             # a frequency axis (a-la WEIGHT)
                             if wcol.ndim == 3:

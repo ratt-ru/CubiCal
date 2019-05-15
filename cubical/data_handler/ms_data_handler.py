@@ -759,7 +759,7 @@ class MSDataHandler:
                 Result of getcol(\*args, \*\*kwargs).
         """
 
-        return (subset or self.data).getcol(colname, first_row, nrows)
+        return (subset or self.data).getcol(str(colname), first_row, nrows)
 
     def fetchslice(self, column, startrow=0, nrows=-1, subset=None):
         """
@@ -826,7 +826,7 @@ class MSDataHandler:
         # if no slicing, just use putcol to put the whole thing. This always works,
         # unless the MS is screwed up
         if self._ms_blc == None:
-            return subset.putcol(column, value, startrow, nrows)
+            return subset.putcol(str(column), value, startrow, nrows)
         if nrows<0:
             nrows = subset.nrows()
 
