@@ -51,7 +51,7 @@ class PickledDatabase(iface_database):
         self.do_backup = backup
         self.metadata = OrderedDict(mode=self.MODE_FRAGMENTED, time=time.time(), **metadata)
         # we'll write to a temp file, and do a backup on successful closure
-        self._fobj = open(filename + ".tmp", 'w')
+        self._fobj = open(filename + ".tmp", 'wb')
         pickle.dump(self.metadata, self._fobj)
         self._fobj.flush()
         self._parameters = {}
@@ -123,7 +123,7 @@ class PickledDatabase(iface_database):
         for key in list(self._parameters.keys()):
             if not self._parameters[key]._populated:
                 del self._parameters[key]
-        pickle.dump(self._parameters, open(self.filename + ".skel", 'w'), 2)
+        pickle.dump(self._parameters, open(self.filename + ".skel", 'wb'), 2)
         print("saved updated parameter skeletons to {}".format(self.filename + ".skel"), file=log(0))
 
     def _backup_and_rename(self, backup):
@@ -175,7 +175,7 @@ class PickledDatabase(iface_database):
 
     class _Unpickler(Iterator):
         def __init__(self, filename):
-            self.fobj = open(filename)
+            self.fobj = open(filename, 'rb')
             self.metadata = pickle.load(self.fobj)
             if type(self.metadata) is not OrderedDict or not "mode" in self.metadata:
                 raise IOError("{}: invalid metadata entry".format(filename))
@@ -186,6 +186,9 @@ class PickledDatabase(iface_database):
                 return pickle.load(self.fobj)
             except EOFError:
                 raise StopIteration
+
+        def next(self):
+            return self.__next__()
 
     def _load(self, filename):
         """
@@ -231,7 +234,7 @@ class PickledDatabase(iface_database):
             print(ModColor.Str("{} older than this code: will try to rebuild".format(descfile)), file=log(0))
         else:
             try:
-                self._parameters = pickle.load(open(descfile, 'r'))
+                self._parameters = pickle.load(open(descfile, 'rb'))
             except:
                 traceback.print_exc()
                 print(ModColor.Str("error loading {}, will try to rebuild".format(descfile)), file=log(0))

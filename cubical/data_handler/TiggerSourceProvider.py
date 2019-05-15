@@ -5,7 +5,7 @@
 """
 Source provider for reading source information from a Tigger lsm.
 """
-
+from six import string_types
 import logging
 import numpy as np
 
@@ -241,7 +241,7 @@ def cluster_sources(sm, dde_tag):
         if dde_tag:
             tagvalue = src.getTag(dde_tag)
             if tagvalue:
-                if type(tagvalue) is str:
+                if isinstance(tagvalue, string_types):
                     dde_cluster = tagvalue
                 else:
                     dde_cluster = src.getTag('cluster')

@@ -14,6 +14,7 @@ Main code body. Handles options, invokes solvers and manages multiprocessing.
 #     logging.getLogger('vext').setLevel(logging.WARNING)
 ##
 from __future__ import print_function
+from six import string_types
 import pickle
 import os, os.path
 import sys
@@ -219,7 +220,7 @@ def main(debugging=False):
             GD["out"]["name"] = basename
 
             # "GD" is a global defaults dict, containing options set up from parset + command line
-            pickle.dump(GD, open("cubical.last", "w"))
+            pickle.dump(GD, open("cubical.last", "wb"))
 
             # save parset with all settings. We refuse to clobber a parset with itself
             # (so e.g. "gocubical test.parset --Section-Option foo" does not overwrite test.parset)
@@ -270,7 +271,7 @@ def main(debugging=False):
         solver_opts = GD["sol"]
         debug_opts  = GD["debug"]
         sol_jones = solver_opts["jones"]
-        if type(sol_jones) is str:
+        if isinstance(sol_jones, string_types):
             sol_jones = set(sol_jones.split(','))
         jones_opts = [GD[j.lower()] for j in sol_jones]
         # collect list of options from enabled Jones matrices
@@ -382,7 +383,7 @@ def main(debugging=False):
             if type(subdirs) is int:
                 subdirs = [subdirs]
             if subdirs:
-                if type(subdirs) is str:
+                if isinstance(subdirs, string_types):
                     try:
                         if ',' in subdirs:
                             subdirs = list(map(int, subdirs.split(",")))
@@ -431,7 +432,7 @@ def main(debugging=False):
         # set up chunking
 
         chunk_by = GD["data"]["chunk-by"]
-        if type(chunk_by) is str:
+        if isinstance(chunk_by, string_types):
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 

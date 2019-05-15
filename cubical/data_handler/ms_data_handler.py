@@ -3,6 +3,7 @@
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from __future__ import print_function
+from six import string_types
 import numpy as np
 from collections import OrderedDict
 import pyrap.tables as pt
@@ -124,7 +125,7 @@ def _parse_bin(binspec, units, default_int=None, default_float=None, kind='bin')
         return default_int, default_float
     elif type(binspec) is int:
         return binspec, default_float
-    elif type(binspec) is str:
+    elif isinstance(binspec, string_types):
         for unit, multiplier in list(units.items()):
             if binspec.endswith(unit) and len(binspec) > len(unit):
                 xval = binspec[:-len(unit)]
@@ -935,7 +936,7 @@ class MSDataHandler:
 
         # count of rows in output
         nrow_out = 0                                     # number of rows allocated in output
-        chunk_end_ts = chunk_end_time = None             # current end-of-chunk boundary
+        chunk_end_ts = chunk_end_time = -1             # current end-of-chunk boundary
 
         # set chunk-by boundaries, if specified
         boundaries = np.zeros_like(time_col, bool)
@@ -1059,9 +1060,7 @@ class MSDataHandler:
         print("  generated {} row chunks based on time and DDID".format(len(chunklist)), file=log)
 
         # re-sort these row chunks into naturally increasing order (by first row of each chunk)
-        def _compare_chunks(a, b):
-            return cmp(a.rows[0], b.rows[0])
-        chunklist.sort(cmp=_compare_chunks)
+        chunklist.sort(key=lambda x: x.rows[0])
 
         if log.verbosity() > 2:
             print("  row chunks: {}".format(", ".join(["{} {}:{}".format(ch.tchunk, min(ch.rows0), max(ch.rows0)+1) for ch in chunklist])), file=log(3))
@@ -1168,7 +1167,7 @@ class MSDataHandler:
             bitflags = flagging.Flagsets(self.ms)
 
         if auto_init:
-            if type(auto_init) is not str:
+            if not isinstance(auto_init, string_types):
                 raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
             if auto_init in bitflags.names():
                 print("  bitflag '{}' already exists, will not auto-fill".format(auto_init), file=log(0))
@@ -1197,7 +1196,7 @@ class MSDataHandler:
                 # --flags-apply specified as a bitmask, or a single string, or a single negated string, or a list of strings
                 if type(apply_flags) is int:
                     self._apply_bitflags = apply_flags
-                elif type(apply_flags) is not str:
+                elif not isinstance(apply_flags, string_types):
                     raise ValueError("Illegal --flags-apply setting -- string or bitmask values expected")
                 else:
                     print("  BITFLAG column defines the following flagsets: {}".format(
