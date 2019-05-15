@@ -9,10 +9,10 @@
 import sys, re, optparse
 from collections import OrderedDict
 
-import parsets
-import ModColor
-import ClassPrint
-import logger
+from . import parsets
+from . import ModColor
+from . import ClassPrint
+from . import logger
 log = logger.getLogger("dynoptparse")
 
 
@@ -51,7 +51,7 @@ class DynamicOptionParser(object):
 
     def _make_parser(self, parser_class=optparse.OptionParser):
         parser = parser_class(**self._parser_kws)
-        for label, (title, option_list) in self._groups.iteritems():
+        for label, (title, option_list) in self._groups.items():
             # create group, unless label is None
             group = optparse.OptionGroup(parser, title) if label is not None else None
             # populate group, or else top level
@@ -125,7 +125,7 @@ class DynamicOptionParser(object):
         parser = self._make_parser()
         self._options, self._arguments = parser.parse_args()
         # propagate results back into defaults dict
-        for key, value in vars(self._options).iteritems():
+        for key, value in vars(self._options).items():
             group, name = self._parse_dest_key(key)
             group_dict = self._defaults[group]
             attrs = self._attributes.get(group, {}).get(name, {})
@@ -146,9 +146,9 @@ class DynamicOptionParser(object):
 
     def write_to_parset(self, parset_filename):
         with open(parset_filename, "w") as f:
-            for group, group_dict in self._defaults.iteritems():
+            for group, group_dict in self._defaults.items():
                 f.write('[{}]\n'.format(group))
-                for name, value in group_dict.iteritems():
+                for name, value in group_dict.items():
                     attrs = self._attributes.get(group, {}).get(name, {})
                     if not attrs.get('cmdline_only') and not attrs.get('alias_of'):
                         f.write('{} = {}\n'.format(name, value))
@@ -156,26 +156,26 @@ class DynamicOptionParser(object):
 
     def print_config(self, skip_groups=[], dest=sys.stdout):
         P = ClassPrint.ClassPrint(HW=50)
-        print>>dest, ModColor.Str(" Selected Options:")
-        for group, group_dict in self._defaults.iteritems():
+        print(ModColor.Str(" Selected Options:"), file=dest)
+        for group, group_dict in self._defaults.items():
             if group in skip_groups or '_NameTemplate' in group_dict:
                 continue
     
             title = self._groups.get(group, (group, None))[0]
-            print>>dest, ModColor.Str("[{}] {}".format(group, title), col="green")
+            print(ModColor.Str("[{}] {}".format(group, title), col="green"), file=dest)
     
-            for name, value in group_dict.iteritems():
+            for name, value in group_dict.items():
                 if name[0] != "_":   # skip "internal" values such as "_Help"
                     attrs = self._attributes.get(group).get(name, {})
                     if not attrs.get('alias_of') and not attrs.get('cmdline_only') and not attrs.get('no_print'): # and V!="":
                         P.Print(name, value, dest=dest)
-            print>>dest
+            print(file=dest)
 
     def _add_section(self, section, values, attrs):
         # "_Help" value in each section is its documentation string
         help = values.get("_Help", section)
         self.start_group(help, section)
-        for name, value in values.iteritems():
+        for name, value in values.items():
             if not name[0] == "_" and not attrs.get(name, {}).get("no_cmdline"):
                 section_template = self._templated_sections.get((section, name))
                 if section_template:
@@ -191,12 +191,12 @@ class DynamicOptionParser(object):
         # store value in parser
         if parser is not None:
             setattr(parser.values, option.dest, value)
-        print>>log(2),"callback invoked for {}".format(value)
+        print("callback invoked for {}".format(value), file=log(2))
         # get template contents
         if type(value) is str:
             value = value.split(",")
         elif type(value) is not list:
-            raise TypeError,"list or string expected for {}, got {}".format(opt_str, type(value))
+            raise TypeError("list or string expected for {}, got {}".format(opt_str, type(value)))
         for num, label in enumerate(value):
             substitutions = dict(LABEL=label, NUM=num)
             # init values from templated section
@@ -204,7 +204,7 @@ class DynamicOptionParser(object):
             # section name is templated
             section = values["_NameTemplate"].format(**substitutions).lower()
             if section in self._instantiated_sections:
-                print>> log(2), "section {} already exists".format(section)
+                print("section {} already exists".format(section), file=log(2))
                 continue
             # if section is already instatiated in the parset, update
             if section in self._defaults:
@@ -224,7 +224,7 @@ class DynamicOptionParser(object):
             values["_Templated"] = True
             attrs["_Templated"] = dict(no_cmdline=True, no_print=True)
             # add to parser
-            print>> log(2), "adding section {}".format(section)
+            print("adding section {}".format(section), file=log(2))
             self._add_section(section, values, attrs)
 
     def _init_from_defaults(self):
@@ -237,11 +237,11 @@ class DynamicOptionParser(object):
 
         # split defaults into "regular" sections and "templated" sections
         normal_sections = []
-        for section, values in self._defaults.iteritems():
+        for section, values in self._defaults.items():
             if '_NameTemplate' in values:
                 match = re.match("^--(.+)-(.+)$", values["_ExpandedFrom"])
                 if not match:
-                    raise ValueError,"Unrecognized _ExpandedFrom item in [{}]".format(section)
+                    raise ValueError("Unrecognized _ExpandedFrom item in [{}]".format(section))
                 sec, var = match.groups()
                 self._templated_sections[sec, var] = section
             else:

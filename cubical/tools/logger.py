@@ -5,10 +5,10 @@
 
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
-from __future__ import print_function
+
 
 import logging, logging.handlers, os, re, sys, multiprocessing
-import ModColor
+from . import ModColor
 
 # dict of logger wrappers created by the application
 _loggers = {}
@@ -29,7 +29,7 @@ def logToFile(filename, append=False):
         _file_handler.setLevel(logging.DEBUG)
         _file_handler.setFormatter(_logfile_formatter)
         # set it as the target for the existing wrappers' handlers
-        for wrapper in _loggers.itervalues():
+        for wrapper in _loggers.values():
             wrapper.logfile_handler.setTarget(_file_handler)
 
 def getLogFilename():

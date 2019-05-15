@@ -64,7 +64,7 @@ def _is_unity(rr, ll):
 #def make_ifrgain_plots(filename="$STEFCAL_DIFFGAIN_SAVE", prefix="IG", feed="$IFRGAIN_PLOT_FEED", msname="$MS"):
 def make_ifrgain_plots(ig, ms, GD, basename):
     """Makes a set of ifrgain plots from the specified saved file."""
-    print>>log(0),"generating plots for suggested baseline-based corrections (BBCs)"
+    print("generating plots for suggested baseline-based corrections (BBCs)", file=log(0))
 
     metadata = ms.metadata
     import pylab
@@ -73,13 +73,13 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         pylab.gcf().set_size_inches(min(width, 10000 / DPI), min(height, 10000 / DPI))
         filename = "{}.{}.png".format(basename, name)
         pylab.savefig(filename, dpi=DPI)
-        print>> log, "saved plot " + filename
+        print("saved plot " + filename, file=log)
         if GD["out"]["plots"] == "show":
             pylab.show()
         pylab.figure()
 
     # load baseline info, if MS is available
-    antpos = zip(ms.antnames, ms.antpos)
+    antpos = list(zip(ms.antnames, ms.antpos))
     # make dictionary of IFR name: baseline length
     baseline = { metadata.baseline_name[p,q]: metadata.baseline_length[p,q] 
                  for p in range(ms.nants) for q in range(p+1, ms.nants) }
@@ -107,7 +107,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         for l, (x, xe), (y, ye) in content:
             b = baseline.get(l, None)
             if b is None:
-                print>>log(0, "red"),"baseline '{}' not found in MS ANTENNA table".format(l)
+                print("baseline '{}' not found in MS ANTENNA table".format(l), file=log(0, "red"))
             else:
                 lab += ["%s:%s" % (l, feeds[0]), "%s:%s" % (l, feeds[1])]
                 col += ["blue", "red"]
@@ -200,8 +200,8 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         # collect a list of valid RR/LL and RL/LR pairs (i.e. ones not all unity)
         valid_igs = []
         ifr_pairs = {}
-        for p in xrange(nant):
-            for q in xrange(p+1, nant):
+        for p in range(nant):
+            for q in range(p+1, nant):
                 ifrname = ms.metadata.baseline_name[p,q]
                 rr = ig[:, p, q, i1, j1]
                 ll = ig[:, p, q, i2, j2]

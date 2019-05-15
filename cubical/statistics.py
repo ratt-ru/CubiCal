@@ -8,7 +8,7 @@ Handles solver statistics.
 
 import math
 import numpy as np
-import cPickle
+import pickle
 
 from cubical.tools import logger
 from cubical.tools import ModColor
@@ -97,7 +97,7 @@ class SolverStats (object):
                 Name for pickled file.
         """
 
-        cPickle.dump(
+        pickle.dump(
             (self.chanant, self.timeant, self.timechan, self.chunk), open(filename, 'w'), 2)
 
     def load(self, fileobj):
@@ -105,7 +105,7 @@ class SolverStats (object):
         Loads contents from file object
         """
 
-        self.chanant, self.timeant, self.timechan, self.chunk = cPickle.load(fileobj)
+        self.chanant, self.timeant, self.timechan, self.chunk = pickle.load(fileobj)
 
     def estimate_noise (self, data, flags, residuals=False):
         """
@@ -207,14 +207,14 @@ class SolverStats (object):
     def add_records(recarray, recarray2):
         """ Adds two record-type arrays together. """
         
-        for field in recarray.dtype.fields.iterkeys():
+        for field in recarray.dtype.fields.keys():
             recarray[field] += recarray2[field]
 
     @staticmethod
     def normalize_records(recarray):
         """ Normalizes record-type arrays by dividing each field 'X' by the field 'Xn'. """
 
-        for field in recarray.dtype.fields.iterkeys():
+        for field in recarray.dtype.fields.keys():
             if field[-1] != 'n':
                 nval = recarray[field+'n']
                 mask = nval!=0
@@ -234,8 +234,8 @@ class SolverStats (object):
         
         # Get lists of unique time and channel indices occurring in the dict.
         
-        times = sorted(set([time for time, _ in stats.iterkeys()]))
-        chans = sorted(set([chan for _, chan in stats.iterkeys()]))
+        times = sorted(set([time for time, _ in stats.keys()]))
+        chans = sorted(set([chan for _, chan in stats.keys()]))
 
         # Concatenate and add up cumulative stats.
         
@@ -337,16 +337,16 @@ class SolverStats (object):
         n_tim, n_ddid, n_fre = flag3.shape
         flag3 = flag3.reshape((n_tim, n_ddid*n_fre))
 
-        FIELDS = self.timeant.dtype.fields.keys()
+        FIELDS = list(self.timeant.dtype.fields.keys())
 
         flagged_times = flag3.all(axis=1)
         flagged_chans = flag3.all(axis=0)
 
-        print>>log,"adjusting statistics based on output flags"
-        print>>log,"  {:.2%} of all timeslots are flagged".format(
-                                        flagged_times.sum()/float(flagged_times.size))
-        print>>log,"  {:.2%} of all channels are flagged".format(
-                                        flagged_chans.sum()/float(flagged_chans.size))
+        print("adjusting statistics based on output flags", file=log)
+        print("  {:.2%} of all timeslots are flagged".format(
+                                        flagged_times.sum()/float(flagged_times.size)), file=log)
+        print("  {:.2%} of all channels are flagged".format(
+                                        flagged_chans.sum()/float(flagged_chans.size)), file=log)
 
         for field in FIELDS:
             self.chanant[field][flagged_chans, :] = 0

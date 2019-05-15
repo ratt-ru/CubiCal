@@ -1,7 +1,7 @@
 import os, sys, os.path
 
 def logprint(arg):
-    print>>sys.stderr,arg
+    print(arg, file=sys.stderr)
 
 
 def kernels_test():

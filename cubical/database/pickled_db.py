@@ -6,7 +6,7 @@
 Handles parameter databases which can contain solutions and other relevant values. 
 """
 
-import cPickle, os, os.path
+import pickle, os, os.path
 import numpy as np
 import traceback
 from cubical.tools import logger, ModColor
@@ -15,7 +15,7 @@ import time
 from collections import OrderedDict, Iterator
 
 from cubical.database.parameter import Parameter, _Record
-from iface_database import iface_database
+from .iface_database import iface_database
 class _ParmSegment(_Record):
     """
     A ParmSegment is just a Record -- we just want it to be a special type so that it
@@ -52,11 +52,11 @@ class PickledDatabase(iface_database):
         self.metadata = OrderedDict(mode=self.MODE_FRAGMENTED, time=time.time(), **metadata)
         # we'll write to a temp file, and do a backup on successful closure
         self._fobj = open(filename + ".tmp", 'w')
-        cPickle.dump(self.metadata, self._fobj)
+        pickle.dump(self.metadata, self._fobj)
         self._fobj.flush()
         self._parameters = {}
         self._parm_written = set()
-        print>> log(0), "creating {} in {} mode".format(self.filename, self.metadata['mode'])
+        print("creating {} in {} mode".format(self.filename, self.metadata['mode']), file=log(0))
 
     def define_param(self, *args, **kw):
         """
@@ -95,13 +95,13 @@ class PickledDatabase(iface_database):
         assert (parm is not None)
         # dump parm to DB the first time a slice shows up
         if name not in self._parm_written:
-            cPickle.dump(parm, self._fobj, 2)
+            pickle.dump(parm, self._fobj, 2)
             self._parm_written.add(name)
         # update axis shapes and grids based on slice
         parm._update_shape(array.shape, grid)
         # dump slice to DB
         item = _ParmSegment(name=name, array=np.ma.asarray(array), grid=grid)
-        cPickle.dump(item, self._fobj, 2)
+        pickle.dump(item, self._fobj, 2)
 
     def close(self):
         """ Closes the database. """
@@ -118,13 +118,13 @@ class PickledDatabase(iface_database):
     def _save_desc(self):
         """ Helper function. Writes accumulated parameter descriptions to filename.desc. """
 
-        for desc in self._parameters.itervalues():
+        for desc in self._parameters.values():
             desc._finalize_shape()
-        for key in self._parameters.keys():
+        for key in list(self._parameters.keys()):
             if not self._parameters[key]._populated:
                 del self._parameters[key]
-        cPickle.dump(self._parameters, open(self.filename + ".skel", 'w'), 2)
-        print>> log(0), "saved updated parameter skeletons to {}".format(self.filename + ".skel")
+        pickle.dump(self._parameters, open(self.filename + ".skel", 'w'), 2)
+        print("saved updated parameter skeletons to {}".format(self.filename + ".skel"), file=log(0))
 
     def _backup_and_rename(self, backup):
         """
@@ -138,15 +138,15 @@ class PickledDatabase(iface_database):
             if backup:
                 backup_filename = os.path.join(os.path.dirname(self.filename),
                                                "~" + os.path.basename(self.filename))
-                print>> log(0), "previous DB will be backed up as " + backup_filename
+                print("previous DB will be backed up as " + backup_filename, file=log(0))
                 if os.path.exists(backup_filename):
-                    print>> log(0), "  removing old backup " + backup_filename
+                    print("  removing old backup " + backup_filename, file=log(0))
                     os.unlink(backup_filename)
                 os.rename(self.filename, backup_filename)
             else:
                 os.unlink(self.filename)
         os.rename(self.filename + ".tmp", self.filename)
-        print>> log(0), "wrote {} in {} mode".format(self.filename, self.metadata['mode'])
+        print("wrote {} in {} mode".format(self.filename, self.metadata['mode']), file=log(0))
 
     def save(self, filename=None, backup=True):
         """
@@ -162,10 +162,10 @@ class PickledDatabase(iface_database):
         self.metadata['mode'] = self.MODE_CONSOLIDATED
         filename = filename or self.filename
         with open(filename + ".tmp", 'w') as fobj:
-            cPickle.dump(self.metadata, fobj, 2)
-            for parm in self._parameters.itervalues():
+            pickle.dump(self.metadata, fobj, 2)
+            for parm in self._parameters.values():
                 parm.release_cache()
-            cPickle.dump(self._parameters, fobj, 2)
+            pickle.dump(self._parameters, fobj, 2)
         # successfully written? Backup and rename
         self.filename = filename
         self._backup_and_rename(backup)
@@ -176,14 +176,14 @@ class PickledDatabase(iface_database):
     class _Unpickler(Iterator):
         def __init__(self, filename):
             self.fobj = open(filename)
-            self.metadata = cPickle.load(self.fobj)
+            self.metadata = pickle.load(self.fobj)
             if type(self.metadata) is not OrderedDict or not "mode" in self.metadata:
                 raise IOError("{}: invalid metadata entry".format(filename))
             self.mode = self.metadata['mode']
 
-        def next(self):
+        def __next__(self):
             try:
-                return cPickle.load(self.fobj)
+                return pickle.load(self.fobj)
             except EOFError:
                 raise StopIteration
 
@@ -201,19 +201,19 @@ class PickledDatabase(iface_database):
         self.filename = filename
 
         db = self._Unpickler(filename)
-        print>> log(0), "reading {} in {} mode".format(self.filename, db.mode)
+        print("reading {} in {} mode".format(self.filename, db.mode), file=log(0))
         self.metadata = db.metadata
-        for key, value in self.metadata.iteritems():
+        for key, value in self.metadata.items():
             if key != "mode":
-                print>> log(1), "  metadata '{}': {}".format(key, value)
+                print("  metadata '{}': {}".format(key, value), file=log(1))
 
         # now load differently depending on mode
         # in consolidated mode, just unpickle the parameter objects
         if db.mode == PickledDatabase.MODE_CONSOLIDATED:
-            self._parameters = db.next()
-            for parm in self._parameters.itervalues():
-                print>> log(1), "  read {} of shape {}".format(parm.name,
-                                                               'x'.join(map(str, parm.shape)))
+            self._parameters = next(db)
+            for parm in self._parameters.values():
+                print("  read {} of shape {}".format(parm.name,
+                                                               'x'.join(map(str, parm.shape))), file=log(1))
             return
 
         # otherwise we're in fragmented mode
@@ -224,17 +224,17 @@ class PickledDatabase(iface_database):
         descfile = filename + '.skel'
         self._parameters = None
         if not os.path.exists(descfile):
-            print>> log(0), ModColor.Str("{} does not exist, will try to rebuild".format(descfile))
+            print(ModColor.Str("{} does not exist, will try to rebuild".format(descfile)), file=log(0))
         elif os.path.getmtime(descfile) < os.path.getmtime(self.filename):
-            print>> log(0), ModColor.Str("{} older than database: will try to rebuild".format(descfile))
+            print(ModColor.Str("{} older than database: will try to rebuild".format(descfile)), file=log(0))
         elif os.path.getmtime(descfile) < os.path.getmtime(__file__):
-            print>> log(0), ModColor.Str("{} older than this code: will try to rebuild".format(descfile))
+            print(ModColor.Str("{} older than this code: will try to rebuild".format(descfile)), file=log(0))
         else:
             try:
-                self._parameters = cPickle.load(open(descfile, 'r'))
+                self._parameters = pickle.load(open(descfile, 'r'))
             except:
                 traceback.print_exc()
-                print>> log(0), ModColor.Str("error loading {}, will try to rebuild".format(descfile))
+                print(ModColor.Str("error loading {}, will try to rebuild".format(descfile)), file=log(0))
         # rebuild the skeletons, if they weren't loaded
         if self._parameters is None:
             self._parameters = {}
@@ -248,7 +248,7 @@ class PickledDatabase(iface_database):
             self._save_desc()
 
         # initialize arrays
-        for parm in self._parameters.itervalues():
+        for parm in self._parameters.values():
             parm._init_arrays()
 
         # go over all slices to paste them into the arrays
@@ -259,19 +259,19 @@ class PickledDatabase(iface_database):
             elif type(item) is _ParmSegment:
                 parm = self._parameters.get(item.name)
                 if parm is None:
-                    raise IOError, "{}: no parm found for {}'".format(filename, item.name)
+                    raise IOError("{}: no parm found for {}'".format(filename, item.name))
                 parm._paste_slice(item)
             else:
                 raise IOError("{}: unknown item type '{}'".format(filename, type(item)))
 
         # ok, now arrays and flags each contain a full-sized array. Break it up into slices.
-        for parm in self._parameters.itervalues():
+        for parm in self._parameters.values():
             parm._finalize_arrays()
 
     def names(self):
         """ Returns names of all defined parameters. """
 
-        return self._parameters.keys()
+        return list(self._parameters.keys())
 
     def __contains__(self, name):
         return name in self._parameters

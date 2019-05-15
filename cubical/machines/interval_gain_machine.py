@@ -2,7 +2,7 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
-from __future__ import print_function
+
 import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
@@ -69,8 +69,8 @@ class PerIntervalGains(MasterMachine):
         # n_tim and n_fre are the time and frequency dimensions of the data arrays.
         # n_timint and n_freint are the time and frequency dimensions of the gains.
 
-        self.t_bins = range(0, self.n_tim, self.t_int)
-        self.f_bins = range(0, self.n_fre, self.f_int)
+        self.t_bins = list(range(0, self.n_tim, self.t_int))
+        self.f_bins = list(range(0, self.n_fre, self.f_int))
 
         self.n_timint = len(self.t_bins)
         self.n_freint = len(self.f_bins)
@@ -699,7 +699,7 @@ class PerIntervalGains(MasterMachine):
                 if self.dd_term:
                     string += " {} dirs".format(self.n_dir)
                 string += " {}/{} ants, MGE {}".format(anteqs, self.n_ant,
-                    " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in xrange(self.n_dir)]))
+                    " ".join(["{:.3}".format(self.prior_gain_error[idir, :].max()) for idir in range(self.n_dir)]))
                 if self._n_flagged_on_max_error is not None:
                     string += ", NFMGE {}".format(" ".join(map(str,self._n_flagged_on_max_error)))
 
@@ -713,7 +713,7 @@ class PerIntervalGains(MasterMachine):
         """Returns a string describing per-flagset statistics"""
         fstats = []
 
-        for flag, mask in FL.categories().iteritems():
+        for flag, mask in FL.categories().items():
             n_flag = ((self.gflags & mask) != 0).sum()
             if n_flag:
                 fstats.append("{}:{}({:.2%})".format(flag, n_flag, n_flag/float(self.gflags.size)))
@@ -738,7 +738,7 @@ class PerIntervalGains(MasterMachine):
             string += ", max update {:.4}".format(self.max_update)
             if self.posterior_gain_error is not None:
                 string += ", PGE " + " ".join(["{:.3}".format(self.posterior_gain_error[idir, :].max())
-                                               for idir in xrange(self.n_dir)])
+                                               for idir in range(self.n_dir)])
             return string
         else:
             return "{}: n/s{}".format(self.jones_label, ", loaded" if self._gains_loaded else "")
@@ -758,7 +758,7 @@ class PerIntervalGains(MasterMachine):
                 string += ", d/fl {:.2%}".format(self.missing_gain_fraction)
             if self.posterior_gain_error is not None:
                 string += ", PGE " + " ".join(["{:.3}".format(self.posterior_gain_error[idir, :].max())
-                                               for idir in xrange(self.n_dir)])
+                                               for idir in range(self.n_dir)])
             if self._n_flagged_on_max_posterior_error is not None:
                 string += ", NFPGE {}".format(" ".join(map(str,self._n_flagged_on_max_posterior_error)))
             return string

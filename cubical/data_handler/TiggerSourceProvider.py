@@ -44,7 +44,7 @@ class TiggerSourceProvider(SourceProvider):
         self._freqs = None
 
         self._clusters = cluster_sources(self._sm, dde_tag)
-        self._cluster_keys = self._clusters.keys()
+        self._cluster_keys = list(self._clusters.keys())
         self._nclus = len(self._cluster_keys)
 
         self._target_key = 0

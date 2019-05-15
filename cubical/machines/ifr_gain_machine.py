@@ -36,35 +36,35 @@ class IfrGainMachine(object):
         self._ifrgains_per_chan = ifrgain_opts['per-chan']
         self._ifrgain = None
         self._nfreq = gmfactory.grid["freq"]
-        nfreq, nant, ncorr = [len(gmfactory.grid[axis]) for axis in "freq", "ant", "corr"]
+        nfreq, nant, ncorr = [len(gmfactory.grid[axis]) for axis in ("freq", "ant", "corr")]
         if load_from:
             filename = load_from
-            print>> log(0), ModColor.Str("applying baseline-based corrections (BBCs) from {}".format(filename),
-                                         col="green")
+            print(ModColor.Str("applying baseline-based corrections (BBCs) from {}".format(filename),
+                                         col="green"), file=log(0))
             if "//" in filename:
                 filename, prefix = filename.rsplit("//", 1)
             else:
                 filename, prefix = filename, "BBC"
             parm = param_db.load(filename).get(prefix)
             if parm is None:
-                print>> log(0), ModColor.Str("  no solutions for '{}' in {}".format(prefix, filename))
+                print(ModColor.Str("  no solutions for '{}' in {}".format(prefix, filename)), file=log(0))
             else:
                 self._ifrgain = parm.reinterpolate(freq=gmfactory.grid["freq"]).filled()
                 if tuple(self._ifrgain.shape) != (nfreq, nant, nant, ncorr, ncorr):
-                    print>> log(0), ModColor.Str("  invalid BBC shape {}, will ignore".format(self._ifrgain.shape))
+                    print(ModColor.Str("  invalid BBC shape {}, will ignore".format(self._ifrgain.shape)), file=log(0))
                     self._ifrgain = None
                 else:
-                    print>> log(0), "  loaded per-channel BBCs of shape {}".format(filename, self._ifrgain.shape)
+                    print("  loaded per-channel BBCs of shape {}".format(filename, self._ifrgain.shape), file=log(0))
                     if not self._ifrgains_per_chan:
-                        print>> log(0), "  using one mean value across band"
+                        print("  using one mean value across band", file=log(0))
                         self._ifrgain[np.newaxis,...] = self._ifrgain.mean(axis=0)
                     # reset off-diagonal values, if needed
                     if ifrgain_opts["apply-2x2"]:
-                        print>> log(0), ModColor.Str(
-                            "  using full 2x2 BBCs. You'd better know what you're doing!",col="green")
+                        print(ModColor.Str(
+                            "  using full 2x2 BBCs. You'd better know what you're doing!",col="green"), file=log(0))
                     else:
                         self._ifrgain[..., (0, 1), (1, 0)] = 1
-                        print>>log(0),"  using parallel-hand BBCs only"
+                        print("  using parallel-hand BBCs only", file=log(0))
         if save_to and compute:
             self._compute_2x2 = ifrgain_opts["compute-2x2"]
             # setup axes for IFR-based gains
@@ -77,9 +77,9 @@ class IfrGainMachine(object):
             self._mdh_sum = np.ma.zeros(parm.shape, gmfactory.ctype, fill_value=0)
             self._ddh_sum = np.ma.zeros(parm.shape, gmfactory.ctype, fill_value=0)
             #
-            print>> log(0), "will compute & save suggested baseline-based corrections (BBCs) to {}".format(
-                            self._save_filename)
-            print>> log(0), "  (these can optionally be applied in a subsequent CubiCal run)"
+            print("will compute & save suggested baseline-based corrections (BBCs) to {}".format(
+                            self._save_filename), file=log(0))
+            print("  (these can optionally be applied in a subsequent CubiCal run)", file=log(0))
         else:
             self._ifrgains_grid = None
 

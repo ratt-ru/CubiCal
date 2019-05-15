@@ -58,14 +58,14 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
     outflags = np.zeros(mad.shape[1:],bool)
 
     # sort baselines by length and form up index list
-    baselines = [ (p,q) for p in xrange(n_ant) for q in xrange(p+1, n_ant) ]
+    baselines = [ (p,q) for p in range(n_ant) for q in range(p+1, n_ant) ]
     # sort arrays by baseline length
     indices_pq = sorted([(metadata.baseline_length[p, q], p, q) for p, q in baselines])
 
     from cubical.madmax.flagger import SIGMA_MAD
 
     def make_antenna_mads(mad_threshold):
-        print>>log(3),"make_baseline_mad_plot: plotting antennas"
+        print("make_baseline_mad_plot: plotting antennas", file=log(3))
         # compute per-antenna MAD
         if per_corr:
             ## again, wanted to do this
@@ -76,7 +76,7 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
             medant = np.ma.median(mad[0,...].reshape(shape1), axis=1)
         else:
             medant = np.ma.median(mad[0,...], axis=1)
-        antnum = np.ma.masked_array(xrange(n_ant), medant.mask)
+        antnum = np.ma.masked_array(range(n_ant), medant.mask)
         if not medant.mask.all():
             medmed = np.ma.median(medant)
             madmed = np.ma.median(abs(medant-medmed))
@@ -90,7 +90,7 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
                     thresholds.append((mad_threshold, "red"))
                 for thr,color in thresholds:
                     pylab.axhline(medmed+thr*SIGMA_MAD*madmed, color=color, ls=':')
-                for p in xrange(n_ant):
+                for p in range(n_ant):
                     if antnum.mask is np.ma.nomask or not antnum.mask[p]:
                         pylab.axvline(antnum[p], color="0.9")
                         color = "black"
@@ -103,19 +103,19 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
                 pylab.ylabel("MAD residual over baselines")
             except Exception as exc:
                 traceback.print_exc()
-                print>> log(1,"red"), "WARNING: {}: exception {} raised while generating Mad Max antenna-MAD plot".format(
-                                        chunk_label, exc)
-                print>> log(1), "Although harmless, this may indicate a problem with the data, or a bug in CubiCal."
-                print>> log(1), "Please see stack trace above, and report if you think this is a bug."
+                print("WARNING: {}: exception {} raised while generating Mad Max antenna-MAD plot".format(
+                                        chunk_label, exc), file=log(1,"red"))
+                print("Although harmless, this may indicate a problem with the data, or a bug in CubiCal.", file=log(1))
+                print("Please see stack trace above, and report if you think this is a bug.", file=log(1))
 
 
             if mad_threshold:
                 antmask = medant > medmed + mad_threshold*SIGMA_MAD*madmed
                 if antmask.any():
-                    print>>log(0,"red"), "{}: antennas {} have mad residuals, refer to Mad Max plots".format(max_label,
-                                                ",".join([metadata.antenna_name[p] for p,fl in enumerate(antmask) if fl]))
+                    print("{}: antennas {} have mad residuals, refer to Mad Max plots".format(max_label,
+                                                ",".join([metadata.antenna_name[p] for p,fl in enumerate(antmask) if fl])), file=log(0,"red"))
                 else:
-                    print>>log(1),"{}: no antennas with mad residuals".format(max_label)
+                    print("{}: no antennas with mad residuals".format(max_label), file=log(1))
                 outflags[antmask,:] = True
                 outflags[:,antmask] = True
                 if per_corr:
@@ -130,7 +130,7 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
     def make_baseline_mads():
         # remake indices, since flagged (masked) baselines may have changed
         if per_corr:
-            indices = [(bl,p,q,c1,c2) for bl,p,q in indices_pq for c1 in xrange(n_cor) for c2 in xrange(n_cor)]
+            indices = [(bl,p,q,c1,c2) for bl,p,q in indices_pq for c1 in range(n_cor) for c2 in range(n_cor)]
             mask = [mad.mask[0,p,q,c1,c2] for _,p,q,c1,c2 in indices]
             blmad = np.ma.masked_array([(mad[0,p,q,c1,c2] or 0) for _,p,q,c1,c2 in indices],mask)
         else:
@@ -144,7 +144,7 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
 
         # for every baseline, compute local MMAD
         from cubical.madmax.flagger import SIGMA_MAD
-        print>>log(3),"make_baseline_mad_plot: computing LMMAD"
+        print("make_baseline_mad_plot: computing LMMAD", file=log(3))
         lmmad = {}
         for i,(_,p,q,_,_) in enumerate(indices):
             if (p,q) not in lmmad:
@@ -163,7 +163,7 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
 
         lmmad_ad = np.ma.masked_array([abs((blmad1 or 0) - lmmad.get((p,q), 0)) for (_,p,q,_,_),blmad1 in zip(indices,blmad)], blmad.mask)
         lmmad_madmad = np.ma.median(lmmad_ad)
-        print>>log(3),"make_baseline_mad_plot: plotting baselines"
+        print("make_baseline_mad_plot: plotting baselines", file=log(3))
 
 
         xlim = [0, 0]
@@ -191,8 +191,8 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
                         pylab.text(0, med_thr[0], "threshold", color="black",
                                    ha='right', va='center', size='x-small')
 
-            for p in xrange(n_ant):
-                for q in xrange(p + 1, n_ant):
+            for p in range(n_ant):
+                for q in range(p + 1, n_ant):
                     if not mad.mask[0, p, q].all():
                         uvdist = metadata.baseline_length[p, q]
                         xlim[1] = max(xlim[1], uvdist)
@@ -231,10 +231,10 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
             pylab.title("{}: MAD residuals".format(max_label))
         except Exception as exc:
             traceback.print_exc()
-            print>> log(1, "red"), "WARNING: {}: exception {} raised while generating Mad Max baseline-MAD plot".format(
-                chunk_label, exc)
-            print>> log(1), "Although harmless, this may indicate a problem with the data, or a bug in CubiCal."
-            print>> log(1), "Please see stack trace above, and report if you think this is a bug."
+            print("WARNING: {}: exception {} raised while generating Mad Max baseline-MAD plot".format(
+                chunk_label, exc), file=log(1, "red"))
+            print("Although harmless, this may indicate a problem with the data, or a bug in CubiCal.", file=log(1))
+            print("Please see stack trace above, and report if you think this is a bug.", file=log(1))
 
 
     figure = pylab.figure(figsize=(16, 10))
@@ -250,7 +250,7 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
     pylab.subplot(2,2,3)
     make_antenna_mads(antenna_mad_threshold)
 
-    print>>log(3),"make_baseline_mad_plot: done"
+    print("make_baseline_mad_plot: done", file=log(3))
 
     return outflags, figure
 

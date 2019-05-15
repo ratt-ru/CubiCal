@@ -234,7 +234,7 @@ class ColumnSinkProvider(SinkProvider):
         else:
             sel = slice(None)
 
-        for ddid_ind in xrange(self._nddid):
+        for ddid_ind in range(self._nddid):
             offset = ddid_ind*rows_per_ddid
             lr = lower + offset
             ur = upper + offset

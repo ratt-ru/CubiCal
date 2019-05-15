@@ -1,4 +1,4 @@
-from __future__ import print_function
+
 
 import pyrap.quanta as pq
 import pyrap.measures
@@ -193,7 +193,7 @@ class parallactic_machine(object):
         
         nrow = 100000
         nchunk = int(np.ceil(vis.shape[0] / float(nrow)))
-        for c in xrange(nchunk):
+        for c in range(nchunk):
             lb, ub = c * nrow, min((c + 1) * nrow, vis.shape[0])
             if ub - lb == 0: 
                 break

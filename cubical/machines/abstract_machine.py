@@ -15,7 +15,7 @@ from cubical.main import expand_templated_name
 
 log = logger.getLogger("gain_machine")
 
-class MasterMachine(object):
+class MasterMachine(object, metaclass=ABCMeta):
     """
     This is a base class for all solution machines. It is completely generic and lays out the basic
     requirements for all machines.
@@ -23,8 +23,6 @@ class MasterMachine(object):
     It also provides a Factory class that takes care of creating machines and interfacing with 
     solution tables on disk.
     """
-
-    __metaclass__ = ABCMeta
 
     def __init__(self, jones_label, data_arr, ndir, nmod, times, freqs, chunk_label, options, diagonal=None):
         """
@@ -609,26 +607,26 @@ class MasterMachine(object):
         """
         sols = {}
         # collect importable solutions from DB, interpolate
-        for label, grids in self.importable_solutions().iteritems():
+        for label, grids in self.importable_solutions().items():
             db, prefix, interpolate = init_sols.get(self.jones_label, (None, None, False))
             name = "{}:{}".format(prefix, label)
             if db is not None:
                 if name in db:
                     if interpolate:
-                        print>>log,"{}: interpolating {} from {}".format(self.chunk_label, name, db.filename)
+                        print("{}: interpolating {} from {}".format(self.chunk_label, name, db.filename), file=log)
                         sols[label] = sol = db[name].reinterpolate(**grids)
                     else:
                         if not db[name].match_grids(**grids):
                             raise ValueError("{} does not define {} on the correct grid. Consider using "
                                              "-xfer-from rather than -load-from".format(name, db.filename))
-                        print>> log, "{}: loading {} from {}".format(self.chunk_label, name, db.filename)
+                        print("{}: loading {} from {}".format(self.chunk_label, name, db.filename), file=log)
                         sols[label] = sol = db[name].lookup(**grids)
                     if sol.count() != sol.size:
-                        print>>log, "{}: {:.2%} valid {} slots populated".format(
-                            self.chunk_label, sol.count()/float(sol.size), name)
+                        print("{}: {:.2%} valid {} slots populated".format(
+                            self.chunk_label, sol.count()/float(sol.size), name), file=log)
                     db[name].release_cache()
                 else:
-                    print>>log,"{}: {} not in {}".format(self.chunk_label, name, db.filename)
+                    print("{}: {} not in {}".format(self.chunk_label, name, db.filename), file=log)
         # if anything at all was loaded from DB, import
         if sols:
             self.import_solutions(sols)
@@ -741,7 +739,7 @@ class MasterMachine(object):
             """
             # init solutions from database
             if load_from:
-                print>>log(0, "blue"), "{} solutions will be initialized from {}".format(label, load_from)
+                print("{} solutions will be initialized from {}".format(label, load_from), file=log(0, "blue"))
                 if "//" in load_from:
                     filename, prefix = load_from.rsplit("//", 1)
                 else:
@@ -750,9 +748,9 @@ class MasterMachine(object):
             # create database to save to
             if save_to:
                 # define parameters in DB
-                for sol_label, (empty_value, axes) in exportables.iteritems():
+                for sol_label, (empty_value, axes) in exportables.items():
                     self.define_param(save_to, "{}:{}".format(label, sol_label), empty_value, axes)
-                print>> log(0), "{} solutions will be saved to {}".format(label, save_to)
+                print("{} solutions will be saved to {}".format(label, save_to), file=log(0))
 
         def define_param(self, save_to, name, empty_value, axes,
                           interpolation_axes=("time", "freq")):
@@ -822,7 +820,7 @@ class MasterMachine(object):
             # has the gain machine added a prefix to the names already (as the chain machine does)
             is_prefixed = sols.pop('prefixed', False)
             # populate values subdictionary
-            for label, (value, grid) in sols.iteritems():
+            for label, (value, grid) in sols.items():
                 name = label if is_prefixed else "{}:{}".format(gm.jones_label, label)
                 subdict[name] = value.data
                 subdict["{}:grid__".format(name)]  = grid
@@ -844,19 +842,19 @@ class MasterMachine(object):
                     Shared dictionary to be saved. This is presumed to be populated by export_solutions() above.
             """
             # add slices for all parameters
-            for name in subdict.iterkeys():
+            for name in subdict.keys():
                 if not name.endswith("__") and name in self._save_sols:
                     sd = subdict["{}:grid__".format(name)]
-                    grids = {key: sd[key] for key in sd.iterkeys()}
+                    grids = {key: sd[key] for key in sd.keys()}
                     self.get_solution_db(name).add_chunk(name, masked_array(subdict[name],
                                                                        subdict[name+":flags__"]), grids)
         def close(self):
             """
             Closes all solution databases and releases various caches.
             """
-            for db, prefix, _ in self._init_sols.values():
+            for db, prefix, _ in list(self._init_sols.values()):
                 db.close()
-            for db in self._save_sols_byname.values():
+            for db in list(self._save_sols_byname.values()):
                 db.close()
             self._init_sols = {}
             self._save_sols = {}
@@ -886,7 +884,7 @@ class MasterMachine(object):
             Args:
                 src: instance of cubical.data_handler
             """
-            for db in self._save_sols_byname.values():
+            for db in list(self._save_sols_byname.values()):
                 db.export_CASA_gaintable = self.global_options["out"].get("casa-gaintables", True)
                 db.set_metadata(src)
 

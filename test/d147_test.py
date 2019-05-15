@@ -11,14 +11,14 @@ def kw_to_args(**kw):
         cmd = "--sol-jones {} ".format(kw.pop("sol_jones"))
     else:
         cmd = ""
-    cmd += " ".join(["--{} {}".format(name.replace("_", "-"), value) for name, value in kw.items()])
+    cmd += " ".join(["--{} {}".format(name.replace("_", "-"), value) for name, value in list(kw.items())])
     return cmd
 
 
 basedir = os.path.dirname(__file__)
 
 def logprint(arg):
-    print>>sys.stderr,arg
+    print(arg, file=sys.stderr)
 
 class SolverVerification(object):
     def __init__(self, msname, refmsname, parset, workdir="."):

@@ -256,7 +256,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             root = vvals[np.argmin(np.abs(fvals))]
 
             if self.iters % 5 == 0 or self.iters == 1:
-                print>> log(2), "{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root)
+                print("{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root), file=log(2))
             
             return root
 
