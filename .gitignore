@@ -89,3 +89,7 @@ docs/_templates/
 
 # databases
 *_db
+
+# virtualenvs
+.venv*/
+.virtualenv*/
