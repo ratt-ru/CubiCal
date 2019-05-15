@@ -53,7 +53,7 @@ class casa_caltable_factory(object):
             os.rename(os.path.join(basedir, BLANK_TABLE_NAME), filename)
 
             antorder = [db.antnames.index(an) for an in solants]
-            with tbl("%s::ANTENNA" % filename, ack=False, readonly=False) as t:
+            with tbl("%s::ANTENNA" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.anttype))
                 t.putcol("OFFSET", db.antoffset[antorder])
                 t.putcol("POSITION", db.antpos[antorder])
@@ -67,7 +67,7 @@ class casa_caltable_factory(object):
             assert "field" in db.metadata, "Solver field not passed in metadata. This is a bug"
             assert type(db.metadata["field"]) is int, "Currently only supports single field"
             selfield = np.arange(len(db.fieldname)) == db.metadata["field"]
-            with tbl("%s::FIELD" % filename, ack=False, readonly=False) as t:
+            with tbl("%s::FIELD" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=field_ndir)
                 t.putcol("DELAY_DIR", np.tile(db.fielddelaydirs[selfield], (field_ndir, 1)))
                 t.putcol("PHASE_DIR", np.tile(db.fieldphasedirs[selfield], (field_ndir, 1)))
@@ -78,7 +78,7 @@ class casa_caltable_factory(object):
                 t.putcol("SOURCE_ID", np.tile(db.fieldsrcid[selfield], (field_ndir, 1)) + np.arange(field_ndir).T)
                 t.putcol("TIME", np.tile(db.fieldtime[selfield], (field_ndir, 1)))
     
-            with tbl("%s::OBSERVATION" % filename, ack=False, readonly=False) as t:
+            with tbl("%s::OBSERVATION" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.obsobserver))
                 (len(db.obstimerange) != 0) and t.putcol("TIME_RANGE", db.obstimerange)
                 (len(db.obslog) != 0) and t.putcol("LOG", db.obslog)
@@ -89,7 +89,7 @@ class casa_caltable_factory(object):
                 (len(db.obsreleasedate) != 0) and t.putcol("RELEASE_DATE", db.obsreleasedate)
                 (len(db.obstelescopename) != 0) and t.putcol("TELESCOPE_NAME", db.obstelescopename)
             
-            with tbl("%s::SPECTRAL_WINDOW" % filename, ack=False, readonly=False) as t:
+            with tbl("%s::SPECTRAL_WINDOW" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.sel_ddids))
                 # Per DDID determine solution spacing in frequency
                 for iddid, ddid in enumerate(db.sel_ddids):
@@ -124,7 +124,7 @@ class casa_caltable_factory(object):
                     t.putcell("NUM_CHAN", iddid, ddsolfreqs.size)
                     t.putcell("TOTAL_BANDWIDTH", iddid, maxfreq - minfreq)
                     
-            with tbl(filename, ack=False, readonly=False) as t:
+            with tbl(str(filename), ack=False, readonly=False) as t:
                 t.putkeyword("ParType", "Complex" if is_complex else "Float")
                 t.putkeyword("VisCal", viscal_label)
                 
@@ -241,7 +241,7 @@ class casa_caltable_factory(object):
                            field_ndir=ndir,
                            viscal_label="B Jones" if diag else "D Jones")
             
-            with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
+            with tbl(str(db.filename) + ".%s.casa" % outname, ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
                 
                 for iddid, ddid in enumerate(db.sel_ddids):
