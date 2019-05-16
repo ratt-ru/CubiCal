@@ -98,7 +98,7 @@ class SolverStats (object):
         """
 
         pickle.dump(
-            (self.chanant, self.timeant, self.timechan, self.chunk), open(filename, 'w'), 2)
+            (self.chanant, self.timeant, self.timechan, self.chunk), open(filename, 'wb'), 2)
 
     def load(self, fileobj):
         """
