@@ -2,7 +2,7 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
-
+from builtins import range
 from cubical.database.pickled_db import PickledDatabase
 from cubical.data_handler.ms_data_handler import MSDataHandler
 from cubical.tools import logger

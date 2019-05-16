@@ -5,16 +5,9 @@
 """
 Handles the interface between measurement sets, CubiCal and Montblanc.
 """
-
-import collections
-import functools
-import types
-
+from builtins import range
 import numpy as np
-import pyrap.tables as pt
-
 import montblanc
-import logging
 import montblanc.util as mbu
 import montblanc.impl.rime.tensorflow.ms.ms_manager as MS
 

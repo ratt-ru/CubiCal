@@ -9,6 +9,7 @@
 
 #import sharedarray.SharedArray as SharedArray
 from __future__ import print_function
+from builtins import range
 import SharedArray
 from . import ModColor
 from . import logger

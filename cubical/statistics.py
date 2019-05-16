@@ -6,9 +6,10 @@
 Handles solver statistics.
 """
 from __future__ import print_function
+from builtins import range
 import math
 import numpy as np
-import pickle
+from future.moves import pickle
 
 from cubical.tools import logger
 from cubical.tools import ModColor

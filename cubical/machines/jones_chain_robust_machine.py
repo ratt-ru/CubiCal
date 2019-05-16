@@ -3,6 +3,7 @@
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from __future__ import print_function
+from builtins import range
 from cubical.machines.abstract_machine import MasterMachine
 from cubical.machines.complex_W_2x2_machine import ComplexW2x2Gains
 import numpy as np

@@ -6,6 +6,7 @@
 Creates summary plots using the solver stats.
 """
 from __future__ import print_function
+from builtins import range
 import numpy as np
 from cubical.tools import logger
 log = logger.getLogger("plots")

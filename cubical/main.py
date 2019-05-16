@@ -14,8 +14,9 @@ Main code body. Handles options, invokes solvers and manages multiprocessing.
 #     logging.getLogger('vext').setLevel(logging.WARNING)
 ##
 from __future__ import print_function
+from builtins import range
 from six import string_types
-import pickle
+from future.moves import pickle
 import os, os.path
 import sys
 import warnings

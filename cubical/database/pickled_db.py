@@ -6,7 +6,8 @@
 Handles parameter databases which can contain solutions and other relevant values. 
 """
 from __future__ import print_function
-import pickle, os, os.path
+from future.moves import pickle
+import os, os.path
 import numpy as np
 import traceback
 from cubical.tools import logger, ModColor

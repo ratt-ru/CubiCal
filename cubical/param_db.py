@@ -5,7 +5,6 @@
 """
 Handles parameter databases which can contain solutions and other relevant values. 
 """
-
 import numpy as np
 from cubical.tools import logger
 log = logger.getLogger("param_db")

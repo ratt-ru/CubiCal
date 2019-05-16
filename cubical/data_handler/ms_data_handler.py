@@ -3,11 +3,12 @@
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 from __future__ import print_function
+from builtins import range
 from six import string_types
 import numpy as np
 from collections import OrderedDict
 import pyrap.tables as pt
-import pickle
+from future.moves import pickle
 import re
 import traceback
 import math

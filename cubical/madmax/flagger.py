@@ -1,4 +1,5 @@
 from __future__ import print_function
+from builtins import range
 import numpy as np
 import os, os.path
 import traceback
@@ -315,7 +316,7 @@ class Flagger(object):
                     filename = self.get_plot_filename('mads')
                     print("{}: saving MAD distribution plot to {}".format(self.chunk_label,filename), file=log(1))
                     figure.savefig(filename, dpi=300)
-                    import pickle
+                    from future.moves import pickle
                     pickle_file = filename+".cp"
                     pickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "w"), 2)
                     print("{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file), file=log(1))

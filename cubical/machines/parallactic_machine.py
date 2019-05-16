@@ -1,5 +1,6 @@
 
 from __future__ import print_function
+from builtins import range
 import pyrap.quanta as pq
 import pyrap.measures
 pm = pyrap.measures.measures()

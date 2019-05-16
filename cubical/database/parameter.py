@@ -6,6 +6,7 @@
 Handles parameter databases which can contain solutions and other relevant values. 
 """
 from __future__ import print_function
+from builtins import range
 import numpy as np
 from numpy.ma import masked_array
 from cubical.tools import logger

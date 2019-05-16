@@ -1,4 +1,5 @@
 from __future__ import print_function
+from builtins import range
 import multiprocessing, os, sys, traceback
 import concurrent.futures as cf
 import re
