@@ -134,7 +134,6 @@ if on_rtd:
                     'scipy']
 else:
     requirements = ['future',
-                    'builtins',
                     'numpy',
                     'futures', 
                     'python-casacore>=2.1.2', 
