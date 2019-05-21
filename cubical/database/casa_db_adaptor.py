@@ -167,7 +167,7 @@ class casa_caltable_factory(object):
                            field_ndir=ndir,
                            viscal_label="G Jones")
             
-            with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
+            with tbl(str(db.filename + ".%s.casa" % outname), ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
                 for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
@@ -321,7 +321,7 @@ class casa_caltable_factory(object):
                            is_complex=False,
                            viscal_label="K Jones")
             
-            with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
+            with tbl(str(db.filename + ".%s.casa" % outname), ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
                 for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
