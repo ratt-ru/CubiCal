@@ -56,6 +56,22 @@ try:
 except ImportError:
     cythonize = None
 
+preinstall_dependencies = ["'six >= 1.12.0'"]
+try:
+    import six
+except ImportError as e:
+    import subprocess
+    import pip
+    subprocess.call(["cd .. && pip install %s" %
+                    (" ".join(preinstall_dependencies)), ""], shell=True)
+    subprocess.call(["cd .. && pip3 install %s" %
+                    (" ".join(preinstall_dependencies)), ""], shell=True)
+    try:
+        import six
+    except ImportError as e:
+        raise ImportError("Six autoinstall failed. Please install Python 2.x compatibility package six before running Cubical install")
+
+
 cmpl_args = ['-ffast-math',
              '-O2', 
              '-march=native',  
@@ -107,7 +123,7 @@ class gocythonize(Command):
                           extra_link_args=link_args_omp if omp else link_args,
                           language="c++" if cpp else "c"))
 
-        cythonize(extensions, compiler_directives={'binding': True}, annotate=True, force=self.force)
+        cythonize(extensions, compiler_directives={'binding': True, 'language_level' : "3" if six.PY3 else "2"}, annotate=True, force=self.force)
 
 
 extensions = []
