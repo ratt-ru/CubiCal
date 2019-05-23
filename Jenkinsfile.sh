@@ -10,6 +10,7 @@ docker build -f ${WORKSPACE_ROOT}/projects/Cubical/.jenkins/1804.py2.docker -t c
 docker run --rm cubical.1804.py2:${BUILD_NUMBER}
 docker build -f ${WORKSPACE_ROOT}/projects/Cubical/.jenkins/1804.py3.docker -t cubical.1804.py3:${BUILD_NUMBER} ${WORKSPACE_ROOT}/projects/Cubical/
 docker run --rm cubical.1804.py3:${BUILD_NUMBER}
+
 #run tests
 for img in 1604.py2 1804.py2 1804.py3;
 do
