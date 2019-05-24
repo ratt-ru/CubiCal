@@ -31,8 +31,10 @@ ADD rtd_requirements.txt /src/cubical/rtd_requirements.txt
 ADD setup.py /src/cubical/setup.py
 
 WORKDIR /src/cubical
-
+RUN pip install -U pip setuptools wheel
 RUN pip install -r requirements.txt
+RUN apt-get install -y git
+RUN pip install -r requirements.test.txt
 RUN python setup.py gocythonize
 RUN pip install -U .
 

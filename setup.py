@@ -152,7 +152,7 @@ else:
     requirements = ['future',
                     'numpy',
                     'futures', 
-                    'python-casacore>=2.1.2', 
+                    'python-casacore>=2.1.2' if six.PY2 else 'python-casacore<=3.0.0', 
                     'sharedarray', 
                     'matplotlib<3.0',
                     'cython',

@@ -4,7 +4,6 @@ MAINTAINER Ben Hugo "bhugo@ska.ac.za"
 ENV DEB_DEPENDENCIES casacore-dev \
                      casacore-data \
                      build-essential \
-                     python3.7 \
                      python3-pip \ 
                      libboost-all-dev \ 
                      wcslib-dev \
@@ -26,15 +25,17 @@ ADD HEADER /src/cubical/HEADER
 ADD LICENSE.md /src/cubical/LICENSE.md
 ADD MANIFEST.in /src/cubical/MANIFEST.in
 ADD README.md /src/cubical/README.md
-ADD requirements.txt /src/cubical/requirements.txt
+ADD requirements3.txt /src/cubical/requirements3.txt
 ADD requirements.test.txt /src/cubical/requirements.test.txt
 ADD rtd_requirements.txt /src/cubical/rtd_requirements.txt
 ADD setup.py /src/cubical/setup.py
 
 WORKDIR /src/cubical
-RUN pip3 install -r requirements.txt
-RUN python3 setup.py gocythonize
-RUN pip3 install -U .
+RUN python3.6 -m pip install -r requirements3.txt
+RUN apt-get install -y git
+RUN python3.6 -m pip install -r requirements.test.txt
+RUN python3.6 setup.py gocythonize
+RUN python3.6 -m pip install -U .
 
 ENTRYPOINT ["gocubical"]
 CMD ["--help"]

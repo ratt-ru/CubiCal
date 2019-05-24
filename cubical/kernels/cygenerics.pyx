@@ -189,7 +189,7 @@ def half_baselines(int n_ant):
     global _half_baselines_view
     cdef int i
     if n_ant != _half_baselines_nant:
-        nbl = n_ant*(n_ant-1)/2
+        nbl = n_ant*(n_ant-1)//2
         _half_baselines = np.empty((nbl,2),np.int32)
         _half_baselines_view = _half_baselines
         i = 0

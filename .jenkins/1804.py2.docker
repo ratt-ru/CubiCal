@@ -33,6 +33,8 @@ ADD setup.py /src/cubical/setup.py
 WORKDIR /src/cubical
 
 RUN pip install -r requirements.txt
+RUN apt-get install -y git
+RUN pip install -r requirements.test.txt
 RUN python2.7 setup.py gocythonize
 RUN pip install -U .
 

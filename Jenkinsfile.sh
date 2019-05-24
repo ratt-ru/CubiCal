@@ -23,5 +23,5 @@ do
                         -v ${TEST_OUTPUT_DIR}:/root/tmp \
                         --entrypoint /bin/bash \
                         cubical.${img}:${BUILD_NUMBER} \
-                        -c "cd /src/cubical && apt-get install -y git && pip install -r requirements.test.txt && nosetests --with-xunit --xunit-file /workspace/nosetests.xml test"
+                        -c "cd /src/cubical && nosetests --with-xunit --xunit-file /workspace/nosetests.xml test"
 done
