@@ -54,23 +54,17 @@ try:
     from Cython.Build import cythonize
     import Cython.Compiler.Options as CCO
 except ImportError:
-    cythonize = None
+    raise ImportError("Please install cython before running install. If you're using pip 19 to install this package you should not be seeing this message")
 
-preinstall_dependencies = ["'six >= 1.12.0'"]
 try:
     import six
-except ImportError as e:
-    import subprocess
-    import pip
-    subprocess.call(["cd .. && pip install %s" %
-                    (" ".join(preinstall_dependencies)), ""], shell=True)
-    subprocess.call(["cd .. && pip3 install %s" %
-                    (" ".join(preinstall_dependencies)), ""], shell=True)
-    try:
-        import six
-    except ImportError as e:
-        raise ImportError("Six autoinstall failed. Please install Python 2.x compatibility package six before running Cubical install")
+except ImportError:
+    raise ImportError("Please install six before running install. If you're using pip 19 to install this package you should not be seeing this message")
 
+try:
+    import numpy
+except ImportError:
+    raise ImportError("Please install numpy before running install. If you're using pip 19 to install this package you should not be seeing this message")
 
 cmpl_args = ['-ffast-math',
              '-O2', 
@@ -153,11 +147,15 @@ else:
                     'numpy',
                     'futures', 
                     'python-casacore>=2.1.2' if six.PY2 else 'python-casacore<=3.0.0', 
-                    'sharedarray', 
+                    'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
                     'matplotlib<3.0',
                     'cython',
                     'scipy',
-                    'astro-tigger-lsm']
+                    'astro-tigger-lsm',
+                    'six',
+                    'montblanc @ git+https://github.com/ska-sa/montblanc.git@ddfacet']
+    if six.PY2:
+        requirements.append('futures')
 
 setup(name='cubical',
       version=cubical.VERSION,

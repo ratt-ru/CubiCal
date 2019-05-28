@@ -132,7 +132,7 @@ class MSTile(object):
                 # Given data, we need to make sure that it looks the way MB wants it to.
                 # First step - check the number of rows.
 
-                n_bl = (self.nants * (self.nants - 1)) / 2
+                n_bl = (self.nants * (self.nants - 1)) // 2
                 uniq_times = np.unique(self.times)
                 ntime = len(uniq_times)
                 uniq_time_col = np.unique(self.time_col)
@@ -147,8 +147,16 @@ class MSTile(object):
                 ddid_index, uniq_ddids, _ = data_handler.uniquify(self.ddid_col)
 
                 self._freqs = np.array([self.tile.dh.chanfreqs[ddid] for ddid in uniq_ddids])
+                
+                def timestep_index(times, tol=1.0e-9):
+                    """ Compute the prescan operation to find the unique timestep idenfiers for
+                        a TIME_CENTROID array """
+                    tindx = np.zeros_like(times, dtype=np.int64)
+                    tindx[1:] = np.abs(times[1:] - times[:-1]) > tol
+                    tindx = np.add.accumulate(tindx)
+                    return tindx
 
-                self._row_identifiers = ddid_index * n_bl * ntime + (self.times - self.times[0]) * n_bl + \
+                self._row_identifiers = ddid_index * n_bl * ntime + timestep_index(self.times) * n_bl + \
                                   (-0.5 * self.antea ** 2 + (self.nants - 1.5) * self.antea + self.anteb - 1).astype(
                                       np.int32)
 

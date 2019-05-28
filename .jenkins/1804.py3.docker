@@ -7,6 +7,7 @@ ENV DEB_DEPENDENCIES casacore-dev \
                      python3-pip \ 
                      libboost-all-dev \ 
                      wcslib-dev \
+                     git \
                      libcfitsio-dev
 RUN apt-get update
 RUN apt-get install -y $DEB_DEPENDENCIES
@@ -25,17 +26,12 @@ ADD HEADER /src/cubical/HEADER
 ADD LICENSE.md /src/cubical/LICENSE.md
 ADD MANIFEST.in /src/cubical/MANIFEST.in
 ADD README.md /src/cubical/README.md
-ADD requirements3.txt /src/cubical/requirements3.txt
-ADD requirements.test.txt /src/cubical/requirements.test.txt
 ADD rtd_requirements.txt /src/cubical/rtd_requirements.txt
 ADD setup.py /src/cubical/setup.py
+ADD pyproject.toml /src/cubical/pyproject.toml
 
 WORKDIR /src/cubical
-RUN python3.6 -m pip install -r requirements3.txt
-RUN apt-get install -y git
-RUN python3.6 -m pip install -r requirements.test.txt
-RUN python3.6 setup.py gocythonize
-RUN python3.6 -m pip install -U .
+RUN python3.6 -m pip install .
 
 ENTRYPOINT ["gocubical"]
 CMD ["--help"]
