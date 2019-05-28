@@ -37,7 +37,7 @@ class SolverVerification(object):
         if retcode:
             raise RuntimeError("gocubical failed, return code {}".format(retcode))
 
-    def verify(self, refcolname, args=[], tolerance=1e-6, **kw):
+    def verify(self, refcolname, args=[], mean_tolerance=-30, ninetyfifth_tolerance=-25, **kw):
         cmd = self.cmdline + kw_to_args(data_ms=self.msname, out_column="CORRECTED_DATA", out_name="test_"+refcolname+"/cc", **kw) + \
                 " " + " ".join(args)
         logprint("*** running {}".format(cmd))
@@ -48,10 +48,15 @@ class SolverVerification(object):
         if not np.isfinite(cd).all():
             raise RuntimeError("{}: NaNs/INFs detected in output data".format(cmd))
         c0 = table(self.refmsname).getcol(refcolname)
-        diff = abs(cd-c0).max()
-        logprint("*** max diff between CORRECTED_DATA and {} is {}".format(refcolname, diff))
-        if not diff <= tolerance:
-            raise RuntimeError("{}: diff {} exceeds tolerance of {}".format(cmd, diff, tolerance))
+        diff = abs(abs(cd-c0)/abs(c0))
+        diffmean = 10*np.log10(np.nanmean(diff))
+        logprint("*** mean relative diff between CORRECTED_DATA and {} is {} dB".format(refcolname, diffmean))
+        if diffmean > mean_tolerance:
+            raise RuntimeError("{}: diff {} dB exceeds tolerance of {} dB".format(cmd, diffmean, mean_tolerance))
+        diff95 = 10*np.log10(np.nanpercentile(diff, 95.0))
+        logprint("*** ninety fifth percentile relative diff between CORRECTED_DATA and {} is {} dB".format(refcolname, diff95))
+        if diff95 > ninetyfifth_tolerance:
+            raise RuntimeError("{}: diff {} dB exceeds tolerance of {} dB".format(cmd, diff95, ninetyfifth_tolerance))
 
 d147_test_list = [
     ("GSOL_DATA", dict()),
