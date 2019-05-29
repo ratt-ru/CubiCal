@@ -95,8 +95,8 @@ class gocythonize(Command):
     def finalize_options(self):
         self.force = self.force or 0
 
-    def run(self):
-
+    @classmethod
+    def populate_extensions(cls):
         if not cythonize:
             raise Exception("Cython not available, please install first.")
         
@@ -116,17 +116,49 @@ class gocythonize(Command):
                           extra_compile_args=cmpl_args_omp if omp else cmpl_args,
                           extra_link_args=link_args_omp if omp else link_args,
                           language="c++" if cpp else "c"))
+        
+        return extensions
 
+    def run(self):
+        extensions = gocythonize.populate_extensions()
         cythonize(extensions, compiler_directives={'binding': True, 'language_level' : "3" if six.PY3 else "2"}, annotate=True, force=self.force)
 
+# the default build_ext only builds extensions specified through the ext_modules list
+# however to be absolutely safe for wheel building from source using pip v19 cythonization
+# must be invoked to check that all the necessary cxx and c files have been created,
+# otherwise they need to be first created before the extension modules are compiled using
+# the normal cxx and c compiler invoked by the Extension class of setuptools
 
-extensions = []
+class custom_build_ext(build_ext, gocythonize):
+    """ Build all extension modules """
+    
+    description = 'Cythonise CubiCal kernels and build thereafter with the c/cxx compiler'
+
+    user_options = [('force', 'f', 'Force cythonisation.')]
+
+    def __init__(self, *args, **kwargs):
+        build_ext.__init__(self, *args, **kwargs)
+    
+    def initialize_options(self):
+        build_ext.initialize_options(self)
+        gocythonize.initialize_options(self)
+
+    def finalize_options(self):
+        build_ext.finalize_options(self)
+        gocythonize.finalize_options(self)
+        
+    def run(self):
+        gocythonize.run(self) # first cythonize (if needed)
+        build_ext.run(self) # then GNU build
+
+
+c_cpp_extensions = []
 for source in glob.glob("cubical/kernels/*.pyx"): 
     name, _ = os.path.splitext(source)
     is_cpp = any([s in name for s in cpp_extensions])
     is_omp = name.endswith("_omp")
 
-    extensions.append(
+    c_cpp_extensions.append(
         Extension(name.replace("/","."), [name + ".cpp" if is_cpp else name + ".c"],
                   include_dirs=[include_path],
                   extra_compile_args=cmpl_args_omp if is_omp else cmpl_args,
@@ -139,23 +171,22 @@ on_rtd = os.environ.get('READTHEDOCS') == 'True'
 if on_rtd:
     requirements = ['numpy', 
                     'cython', 
-                    'futures', 
+                    'futures; python_version <= "2.7"', 
                     'matplotlib',
                     'scipy']
 else:
     requirements = ['future',
                     'numpy',
-                    'futures', 
-                    'python-casacore>=2.1.2' if six.PY2 else 'python-casacore<=3.0.0', 
+                    'python-casacore>=2.1.2; python_version <= "2.7"',
+                    'python-casacore<=3.0.0; python_version >= "3.0"', 
                     'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
                     'matplotlib<3.0',
                     'cython',
                     'scipy',
                     'astro-tigger-lsm',
                     'six',
+                    'futures; python_version <= "2.7"',
                     'montblanc @ git+https://github.com/ska-sa/montblanc.git@ddfacet']
-    if six.PY2:
-        requirements.append('futures')
 
 setup(name='cubical',
       version=cubical.VERSION,
@@ -174,7 +205,7 @@ setup(name='cubical',
       long_description=long_description,
       long_description_content_type='text/markdown',
 
-      cmdclass={'build_ext': build_ext,
+      cmdclass={'build_ext': custom_build_ext,
                 'gocythonize': gocythonize},
 
       packages=['cubical', 
@@ -185,10 +216,11 @@ setup(name='cubical',
                 'cubical.plots',
                 'cubical.database',
                 'cubical.madmax'],
+      python_requires='<3.0' if six.PY2 else ">=3.0", #build a py2 or py3 specific wheel depending on environment (due to cython backend)
       install_requires=requirements,
       include_package_data=True,
       zip_safe=False,
-      ext_modules = extensions,
+      ext_modules = c_cpp_extensions,
       scripts = ['cubical/bin/print-cubical-stats'],
       entry_points={'console_scripts': ['gocubical = cubical.main:main']},
 )
