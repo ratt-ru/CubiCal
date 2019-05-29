@@ -10,6 +10,7 @@ from collections import OrderedDict
 from cubical.tools import shared_dict
 from cubical.flagging import FL
 from cubical import data_handler
+from cubical.tools import dtype_checks as dtc
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("data_handler")
@@ -125,6 +126,12 @@ class MSTile(object):
 
             from . import MBTiggerSim
             from montblanc.impl.rime.tensorflow.sources import CachedSourceProvider, FitsBeamSourceProvider
+            assert dtc.assert_isint(self.times), self.times.dtype
+            assert dtc.assert_isint(self.antea), self.antea.dtype
+            assert dtc.assert_isint(self.nants)
+            assert dtc.assert_isint(self.anteb), self.anteb.dtype
+            assert dtc.assert_isfp(self.time_col), self.time_col.dtype
+            assert dtc.assert_isint(self.ddid_col), self.ddid_col.dtype
 
             # setup montblanc machinery once per subset (may be called multiple times for different models)
             if not self._mb_measet_src:
@@ -148,18 +155,13 @@ class MSTile(object):
 
                 self._freqs = np.array([self.tile.dh.chanfreqs[ddid] for ddid in uniq_ddids])
                 
-                def timestep_index(times, tol=1.0e-9):
-                    """ Compute the prescan operation to find the unique timestep idenfiers for
-                        a TIME_CENTROID array """
-                    tindx = np.zeros_like(times, dtype=np.int64)
-                    tindx[1:] = np.abs(times[1:] - times[:-1]) > tol
-                    tindx = np.add.accumulate(tindx)
-                    return tindx
-
-                self._row_identifiers = ddid_index * n_bl * ntime + timestep_index(self.times) * n_bl + \
+                
+                assert dtc.assert_isint(n_bl)
+                assert dtc.assert_isint(ddid_index)
+                
+                self._row_identifiers = ddid_index * n_bl * ntime + (self.times - self.times[0]) * n_bl + \
                                   (-0.5 * self.antea ** 2 + (self.nants - 1.5) * self.antea + self.anteb - 1).astype(
                                       np.int32)
-
                 # make full list of row indices in Montblanc-compliant order (ddid-time-ant1-ant2)
                 full_index = [(p, q, t, d) for d in range(len(uniq_ddids)) for t in uniq_times
                               for p in range(self.nants) for q in range(self.nants)

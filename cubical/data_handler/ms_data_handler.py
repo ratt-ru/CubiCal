@@ -88,9 +88,9 @@ def _parse_range(arg, nmax):
 
     Raises:
         TypeError:
-            If the type of arg is not understood. 
+            If the type of arg is not log = logger.getLogger("data_handler")erstood. 
         ValueError:
-            If the range cannot be parsed.
+            If the range cannot be parlog = logger.getLogger("data_handler").
     """
 
     fullrange = list(range(nmax))

@@ -14,7 +14,7 @@ def uniquify(values):
 
     Returns tuple of indices, unique_values, rmap
     """
-    uniq = np.array(sorted(set(values)))
+    uniq = np.unique(values) #np.array(sorted(set(values)))
     rmap = {x: i for i, x in enumerate(uniq)}
     # apply this map to the time column to construct a timestamp column
     indices  = np.fromiter(list(map(rmap.__getitem__, values)), int)
