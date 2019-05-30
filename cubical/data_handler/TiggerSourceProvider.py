@@ -219,7 +219,7 @@ class TiggerSourceProvider(SourceProvider):
     def phase_centre(self, context):
         """ Sets the MB phase direction """
         radec = np.array([self._phase_center[...,-2], 
-                          self._phase_center[...,-1]], np.float32)
+                          self._phase_center[...,-1]], np.float64)
         return radec
 
 def cluster_sources(sm, dde_tag):
