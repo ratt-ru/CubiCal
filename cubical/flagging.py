@@ -148,6 +148,9 @@ class Flagsets (object):
                 If there are too many flagsets to create a new one.
         """
 
+        # Cludge for python2/3 interoperability.
+        name = str(name)
+
         # lookup flagbit, return if found
         if self.order is None:
             raise TypeError("MS does not contain a BITFLAG column. Please run the addbitflagcol" \
@@ -315,7 +318,7 @@ def flag_chisq (st, GD, basename, nddid):
         pylab.colorbar()
 
     # reshape flag array into time, ddid, channel
-    flag3 = flag.reshape((nt, nddid, nf / nddid))
+    flag3 = flag.reshape((nt, nddid, nf // nddid))
 
     # flag entire DDIDs with overdense flagging
     maxcount = nt*nf/nddid
