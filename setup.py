@@ -186,7 +186,7 @@ else:
                     'astro-tigger-lsm',
                     'six',
                     'futures; python_version <= "2.7"',
-                    'montblanc @git+https://github.com/ska-sa/montblanc.git@0.6']
+                    'montblanc @git+https://github.com/ska-sa/montblanc.git@0.6.1']
 
 setup(name='cubical',
       version=cubical.VERSION,
