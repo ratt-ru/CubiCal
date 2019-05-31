@@ -2,6 +2,7 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 from scipy import special
@@ -256,7 +257,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             root = vvals[np.argmin(np.abs(fvals))]
 
             if self.iters % 5 == 0 or self.iters == 1:
-                print>> log(2), "{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root)
+                print("{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root), file=log(2))
             
             return root
 

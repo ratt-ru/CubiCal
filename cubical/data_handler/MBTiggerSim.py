@@ -5,16 +5,9 @@
 """
 Handles the interface between measurement sets, CubiCal and Montblanc.
 """
-
-import collections
-import functools
-import types
-
+from builtins import range
 import numpy as np
-import pyrap.tables as pt
-
 import montblanc
-import logging
 import montblanc.util as mbu
 import montblanc.impl.rime.tensorflow.ms.ms_manager as MS
 
@@ -234,7 +227,7 @@ class ColumnSinkProvider(SinkProvider):
         else:
             sel = slice(None)
 
-        for ddid_ind in xrange(self._nddid):
+        for ddid_ind in range(self._nddid):
             offset = ddid_ind*rows_per_ddid
             lr = lower + offset
             ur = upper + offset

@@ -1,7 +1,7 @@
-import complex_2x2_machine
-import complex_W_2x2_machine
-import phase_diag_machine
-import slope_machine
+from . import complex_2x2_machine
+from . import complex_W_2x2_machine
+from . import phase_diag_machine
+from . import slope_machine
 
 
 # this provides a map from string "Jones type" identifiers to specific GainMachine classes

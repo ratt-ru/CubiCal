@@ -1,4 +1,5 @@
 import numpy as np
+from builtins import range
 
 # these control the layout of saved plots
 DPI = 150.  # resolution: determines size of text relative to plots
@@ -35,5 +36,5 @@ def make_summary_plots(st, ms, GD, basename):
     """
     stats.make_stats_plots(st, GD, basename, ms.metadata)
 
-import ifrgains, stats
+from . import ifrgains, stats
 

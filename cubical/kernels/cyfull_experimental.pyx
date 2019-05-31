@@ -137,9 +137,9 @@ def cycompute_residual(complex3264 [:,:,:,:,:,:,:,:] m,
             for ab in xrange(n_ant):
                 for i in xrange(n_mod):
                     for t in xrange(n_tim):
-                        rr = t/t_int
+                        rr = t//t_int
                         for f in xrange(n_fre):
-                            rc = f/f_int
+                            rc = f//f_int
                             for d in xrange(n_dir):
                                 r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
                                 g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
@@ -211,9 +211,9 @@ def cycompute_residual_nomp(complex3264 [:,:,:,:,:,:,:,:] m,
         for ab in xrange(n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         for d in xrange(n_dir):
                             r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
                             g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
@@ -297,9 +297,9 @@ def cycompute_residual_nomp_conj1(complex3264 [:,:,:,:,:,:,:,:] m,
         for ab in xrange(aa+1,n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         for d in xrange(n_dir):
                             r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
                             g[d,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0]*gh[d,rr,rc,ab,0,0] + \
@@ -373,9 +373,9 @@ def cycompute_residual_nomp_conj3(complex3264 [:,:,:,:,:,:,:,:] m,
         for ab in xrange(aa+1,n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         for d in xrange(n_dir):
                             subtract_mat_product(&r[i,t,f,aa,ab,0,0], &g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
                             mat_conjugate(&r[i,t,f,ab,aa,0,0], &r[i,t,f,aa,ab,0,0])
@@ -426,9 +426,9 @@ def cycompute_residual_nomp_conj2(complex3264 [:,:,:,:,:,:,:,:] m,
         for ab in xrange(n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         if aa<ab:
                             for d in xrange(n_dir):
                                 r[i,t,f,aa,ab,0,0] = r[i,t,f,aa,ab,0,0] - (
@@ -503,9 +503,9 @@ def cycompute_residual_dmtfaa_xdir(complex3264 [:,:,:,:,:,:,:,:] m,
 
     for i in xrange(n_mod):
         for t in xrange(n_tim):
-            rr = t/t_int
+            rr = t//t_int
             for f in xrange(n_fre):
-                rc = f/f_int
+                rc = f//f_int
                 for aa in xrange(n_ant):
                     for ab in xrange(n_ant):
                         for d in xrange(n_dir):
@@ -575,9 +575,9 @@ def cycompute_residual_dmtfaa_conj(complex3264 [:,:,:,:,:,:,:,:] m,
 
     for i in xrange(n_mod):
         for t in xrange(n_tim):
-            rr = t/t_int
+            rr = t//t_int
             for f in xrange(n_fre):
-                rc = f/f_int
+                rc = f//f_int
                 for aa in xrange(n_ant-1):
                     for ab in xrange(aa,n_ant):
                         for d in xrange(n_dir):
@@ -658,9 +658,9 @@ def cycompute_jh(complex3264 [:,:,:,:,:,:,:,:] m,
             for ab in xrange(n_ant):
                 for i in xrange(n_mod):
                     for t in xrange(n_tim):
-                        rr = t/t_int
+                        rr = t//t_int
                         for f in xrange(n_fre):
-                            rc = f/f_int
+                            rc = f//f_int
                             for d in xrange(n_dir):
                                 gd = d%g_dir
                                 jh[d,i,t,f,aa,ab,0,0] = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
@@ -719,9 +719,9 @@ def cycompute_jh_nomp(complex3264 [:,:,:,:,:,:,:,:] m,
         for ab in xrange(n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         for d in xrange(n_dir):
                             gd = d%g_dir
                             jh[d,i,t,f,aa,ab,0,0] = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
@@ -784,9 +784,9 @@ def cycompute_jhr(complex3264 [:,:,:,:,:,:,:,:] jh,
             for ab in xrange(n_ant):
                 for i in xrange(n_mod):
                     for t in xrange(n_tim):
-                        rr = t/t_int
+                        rr = t//t_int
                         for f in xrange(n_fre):
-                            rc = f/f_int
+                            rc = f//f_int
                             for d in xrange(n_dir):
                                 jhr[d,rr,rc,aa,0,0] = jhr[d,rr,rc,aa,0,0] + \
                                                         r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,0] + \
@@ -845,9 +845,9 @@ def cycompute_jhr_nomp(complex3264 [:,:,:,:,:,:,:,:] jh,
         for ab in xrange(n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         for d in xrange(n_dir):
                             jhr[d,rr,rc,aa,0,0] = jhr[d,rr,rc,aa,0,0] + \
                                                     r[i,t,f,aa,ab,0,0]*jh[d,i,t,f,ab,aa,0,0] + \
@@ -905,9 +905,9 @@ def cycompute_jhj(complex3264 [:,:,:,:,:,:,:,:] jh,
             for ab in xrange(n_ant):
                 for i in xrange(n_mod):
                     for t in xrange(n_tim):
-                        rr = t/t_int
+                        rr = t//t_int
                         for f in xrange(n_fre):
-                            rc = f/f_int
+                            rc = f//f_int
                             for d in xrange(n_dir):
                                 jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
                                 jh[d,i,t,f,ab,aa,0,0].conjugate()*jh[d,i,t,f,ab,aa,0,0] + \
@@ -962,9 +962,9 @@ def cycompute_jhj_nomp(complex3264 [:,:,:,:,:,:,:,:] jh,
         for ab in xrange(n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         for d in xrange(n_dir):
                             jhj[d,rr,rc,aa,0,0] = jhj[d,rr,rc,aa,0,0] + \
                             jh[d,i,t,f,ab,aa,0,0].conjugate()*jh[d,i,t,f,ab,aa,0,0] + \
@@ -1276,9 +1276,9 @@ def cycompute_corrected(complex3264 [:,:,:,:,:,:] o,
         for aa in prange(n_ant, schedule='static'):
             for ab in xrange(n_ant):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         corr[t,f,aa,ab,0,0] = \
                         g[0,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[0,rr,rc,ab,0,0] + \
                         g[0,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[0,rr,rc,ab,0,0] + \
@@ -1344,9 +1344,9 @@ def cycompute_corrected_nomp(complex3264 [:,:,:,:,:,:] o,
     for aa in xrange(n_ant):
         for ab in xrange(n_ant):
             for t in xrange(n_tim):
-                rr = t/t_int
+                rr = t//t_int
                 for f in xrange(n_fre):
-                    rc = f/f_int
+                    rc = f//f_int
                     corr[t,f,aa,ab,0,0] = \
                     g[0,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[0,rr,rc,ab,0,0] + \
                     g[0,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[0,rr,rc,ab,0,0] + \
@@ -1413,9 +1413,9 @@ def cycompute_corrected_conj(complex3264 [:,:,:,:,:,:] o,
     for aa in xrange(n_ant-1):
         for ab in xrange(aa,n_ant):
             for t in xrange(n_tim):
-                rr = t/t_int
+                rr = t//t_int
                 for f in xrange(n_fre):
-                    rc = f/f_int
+                    rc = f//f_int
                     corr[t,f,aa,ab,0,0] = \
                     g[0,rr,rc,aa,0,0]*o[t,f,aa,ab,0,0]*gh[0,rr,rc,ab,0,0] + \
                     g[0,rr,rc,aa,0,1]*o[t,f,aa,ab,1,0]*gh[0,rr,rc,ab,0,0] + \
@@ -1492,9 +1492,9 @@ def cyapply_gains(complex3264 [:,:,:,:,:,:,:,:] m,
             for ab in xrange(n_ant):
                 for i in xrange(n_mod):
                     for t in xrange(n_tim):
-                        rr = t/t_int
+                        rr = t//t_int
                         for f in xrange(n_fre):
-                            rc = f/f_int
+                            rc = f//f_int
                             for d in xrange(n_dir):
                                 gd = d%g_dir
                                 gmtmp1 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
@@ -1569,9 +1569,9 @@ def cyapply_gains_nomp(complex3264 [:,:,:,:,:,:,:,:] m,
         for ab in xrange(n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         for d in xrange(n_dir):
                             gd = d%g_dir
                             gmtmp1 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
@@ -1646,9 +1646,9 @@ def cyapply_gains_conj(complex3264 [:,:,:,:,:,:,:,:] m,
         for ab in xrange(aa,n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         for d in xrange(n_dir):
                             gd = d%g_dir
                             gmtmp1 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
@@ -1728,9 +1728,9 @@ def cyapply_gains_conj2(complex3264 [:,:,:,:,:,:,:,:] m,
         for ab in xrange(aa,n_ant):
             for i in xrange(n_mod):
                 for t in xrange(n_tim):
-                    rr = t/t_int
+                    rr = t//t_int
                     for f in xrange(n_fre):
-                        rc = f/f_int
+                        rc = f//f_int
                         for d in xrange(n_dir):
                             gd = d%g_dir
                             gmtmp1 = g[gd,rr,rc,aa,0,0]*m[d,i,t,f,aa,ab,0,0] + \
@@ -1813,9 +1813,9 @@ def cyapply_gains_conj3(complex3264 [:,:,:,:,:,:,:,:] m,
         gd = d%g_dir
         for i in xrange(n_mod):
             for t in xrange(n_tim):
-                rr = t/t_int
+                rr = t//t_int
                 for f in xrange(n_fre):
-                    rc = f/f_int
+                    rc = f//f_int
                     for aa in xrange(n_ant-1):
                         for ab in xrange(aa+1,n_ant):
                             inplace_mat_product(&g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
@@ -1869,9 +1869,9 @@ def cyapply_gains_conj4(complex3264 [:,:,:,:,:,:,:,:] m,
             for aa in xrange(n_ant-1):
                 for ab in xrange(aa+1,n_ant):
                     for t in xrange(n_tim):
-                        rr = t/t_int
+                        rr = t//t_int
                         for f in xrange(n_fre):
-                            rc = f/f_int
+                            rc = f//f_int
                             inplace_mat_product(&g[d,rr,rc,aa,0,0], &m[d,i,t,f,aa,ab,0,0], &gh[d,rr,rc,ab,0,0])
                             mat_conjugate(&m[d,i,t,f,ab,aa,0,0], &m[d,i,t,f,aa,ab,0,0])
 

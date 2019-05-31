@@ -5,7 +5,7 @@
 """
 Source provider for reading source information from a Tigger lsm.
 """
-
+from six import string_types
 import logging
 import numpy as np
 
@@ -44,7 +44,7 @@ class TiggerSourceProvider(SourceProvider):
         self._freqs = None
 
         self._clusters = cluster_sources(self._sm, dde_tag)
-        self._cluster_keys = self._clusters.keys()
+        self._cluster_keys = list(self._clusters.keys())
         self._nclus = len(self._cluster_keys)
 
         self._target_key = 0
@@ -100,7 +100,7 @@ class TiggerSourceProvider(SourceProvider):
         for ind, source in enumerate(self._pnt_sources[lp:up]):
 
             ra, dec = source.pos.ra, source.pos.dec
-            lm[ind,0], lm[ind,1] = radec_to_lm(ra, dec, self._phase_center)
+            lm[ind,0], lm[ind,1] = ra, dec #radec_to_lm(ra, dec, self._phase_center)
 
         return lm
 
@@ -168,7 +168,7 @@ class TiggerSourceProvider(SourceProvider):
         for ind, source in enumerate(self._gau_sources[lg:ug]):
 
             ra, dec = source.pos.ra, source.pos.dec
-            lm[ind, 0], lm[ind, 1] = radec_to_lm(ra, dec, self._phase_center)
+            lm[ind, 0], lm[ind, 1] = ra, dec #radec_to_lm(ra, dec, self._phase_center)
 
         return lm
 
@@ -215,6 +215,12 @@ class TiggerSourceProvider(SourceProvider):
 
         return [('npsrc', self._npsrc),
                 ('ngsrc', self._ngsrc)]
+    
+    def phase_centre(self, context):
+        """ Sets the MB phase direction """
+        radec = np.array([self._phase_center[...,-2], 
+                          self._phase_center[...,-1]], context.dtype)
+        return radec
 
 def cluster_sources(sm, dde_tag):
     """
@@ -241,7 +247,7 @@ def cluster_sources(sm, dde_tag):
         if dde_tag:
             tagvalue = src.getTag(dde_tag)
             if tagvalue:
-                if type(tagvalue) is str:
+                if isinstance(tagvalue, string_types):
                     dde_cluster = tagvalue
                 else:
                     dde_cluster = src.getTag('cluster')
@@ -252,29 +258,31 @@ def cluster_sources(sm, dde_tag):
 
     return clus
 
-def radec_to_lm(ra, dec, phase_center):
-    """
-    Convert right-ascension and declination to direction cosines.
+# def radec_to_lm(ra, dec, phase_center):
+#     """
+#     DEPRICATED: Montblanc now implements WCS conversions internally
 
-    Args:
-        ra (float):
-            Right-ascension in radians.
-        dec (float):
-            Declination in radians.
-        phase_center (np.ndarray):
-            The coordinates of the phase center.
+#     Convert right-ascension and declination to direction cosines.
 
-    Returns:
-        tuple:
-            l and m coordinates.
+#     Args:
+#         ra (float):
+#             Right-ascension in radians.
+#         dec (float):
+#             Declination in radians.
+#         phase_center (np.ndarray):
+#             The coordinates of the phase center.
 
-    """
+#     Returns:
+#         tuple:
+#             l and m coordinates.
 
-    delta_ra = ra - phase_center[...,-2]
-    dec_0 = phase_center[...,-1]
+#     """
 
-    l = np.cos(dec)*np.sin(delta_ra)
-    m = np.sin(dec)*np.cos(dec_0) -\
-        np.cos(dec)*np.sin(dec_0)*np.cos(delta_ra)
+#     delta_ra = ra - phase_center[...,-2]
+#     dec_0 = phase_center[...,-1]
 
-    return l, m
+#     l = np.cos(dec)*np.sin(delta_ra)
+#     m = np.sin(dec)*np.cos(dec_0) -\
+#         np.cos(dec)*np.sin(dec_0)*np.cos(delta_ra)
+
+#     return l, m

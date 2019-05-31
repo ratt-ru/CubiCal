@@ -20,7 +20,7 @@ from cubical.tools import BREAK  # useful: can set static breakpoints by putting
 #warnings.simplefilter('error', UserWarning)
 #warnings.simplefilter('error', RuntimeWarning)
 
-from madmax.flagger import Flagger
+from .madmax.flagger import Flagger
 
 log = logger.getLogger("solver")
 #log.verbosity(2)
@@ -40,16 +40,16 @@ ifrgain_machine = None
 # set to true for old-style (version <= 1.2.1) weight averaging, where 2x2 weights are collapsed into a single number
 legacy_version12_weights = False
 
-import __builtin__
+import builtins
 try:
-    __builtin__.profile
+    builtins.profile
 except AttributeError:
     # No line profiler, provide a pass-through version
     def profile(func): return func
-    __builtin__.profile = profile
+    builtins.profile = profile
 
 
-@profile
+@builtins.profile
 def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
     Main body of the GN/LM method. Handles iterations and convergence tests.
@@ -104,7 +104,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         """Returns a string describing per-flagset statistics"""
         fstats = []
 
-        for flag, mask in FL.categories().iteritems():
+        for flag, mask in FL.categories().items():
             n_flag = ((flags_arr & mask) != 0).sum()
             if n_flag:
                 fstats.append("{}:{}({:.2%})".format(flag, n_flag, n_flag/float(flags_arr.size)))
@@ -607,7 +607,7 @@ class SolverMachine(object):
         if self.stats.chunk.num_sol_flagged:
             # also for up message with flagging stats
             fstats = []
-            for flagname, mask in FL.categories().iteritems():
+            for flagname, mask in FL.categories().items():
                 if mask != FL.MISSING:
                     n_flag, n_tot = self.gm.num_gain_flags(mask)
                     if n_flag:
@@ -855,7 +855,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
         return solver_machine.stats
 
-    except Exception, exc:
+    except Exception as exc:
         log.error("Solver for tile {} chunk {} failed with exception: {}".format(itile, label, exc))
         log.print(traceback.format_exc())
         raise

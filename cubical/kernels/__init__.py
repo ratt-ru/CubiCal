@@ -89,7 +89,7 @@ def import_kernel(name):
             except ImportError:
                 if not name.endswith("_omp"):
                     raise
-                print("import_kernel({}): failed, trying fallback".format(name))
+                print(("import_kernel({}): failed, trying fallback".format(name)))
     finally:
         _omp_import.pop()
 

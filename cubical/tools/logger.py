@@ -5,10 +5,11 @@
 
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
-from __future__ import print_function
 
+from __future__ import print_function
+from six import string_types
 import logging, logging.handlers, os, re, sys, multiprocessing
-import ModColor
+from . import ModColor
 
 # dict of logger wrappers created by the application
 _loggers = {}
@@ -29,7 +30,7 @@ def logToFile(filename, append=False):
         _file_handler.setLevel(logging.DEBUG)
         _file_handler.setFormatter(_logfile_formatter)
         # set it as the target for the existing wrappers' handlers
-        for wrapper in _loggers.itervalues():
+        for wrapper in _loggers.values():
             wrapper.logfile_handler.setTarget(_file_handler)
 
 def getLogFilename():
@@ -270,7 +271,7 @@ def init(app_name):
     global _app_name
     global _root_logger
     if _root_logger is None:
-        logging.basicConfig(level=logging.DEBUG, fmt=_fmt, datefmt=_datefmt)
+        logging.basicConfig(level=logging.DEBUG, format=_fmt, datefmt=_datefmt)
         _app_name = app_name
         _root_logger = logging.getLogger(app_name)
         _root_logger.setLevel(logging.DEBUG)
@@ -300,7 +301,7 @@ def setGlobalVerbosity(verbosity):
     # ensure verbosity is turned into a list.
     if type(verbosity) is int:
         verbosity = [verbosity]
-    elif type(verbosity) is str:
+    elif isinstance(verbosity, string_types):
         verbosity = verbosity.split(",")
     elif not isinstance(verbosity, (list, tuple)):
         raise TypeError("can't parse verbosity specification of type '{}'".format(type(verbosity)))
@@ -325,7 +326,7 @@ def setGlobalLogVerbosity(verbosity):
     # ensure verbosity is turned into a list.
     if type(verbosity) is int:
         verbosity = [verbosity]
-    elif type(verbosity) is str:
+    elif isinstance(verbosity, string_types):
         verbosity = verbosity.split(",")
     elif not isinstance(verbosity, (list, tuple)):
         raise TypeError("can't parse verbosity specification of type '{}'".format(type(verbosity)))
@@ -347,7 +348,7 @@ def setGlobalLogVerbosity(verbosity):
 def setSilent(Lname):
     """Silences the specified sublogger(s)"""
     log.print(ModColor.Str("set silent: %s" % Lname, col="red"))
-    if type(Lname) is str:
+    if isinstance(Lname, string_types):
         getLogger(Lname).logger.setLevel(logging.CRITICAL)
     elif type(Lname) is list:
         for name in Lname:
@@ -357,7 +358,7 @@ def setSilent(Lname):
 def setLoud(Lname):
     """Un-silences the specified sublogger(s)"""
     log.print(ModColor.Str("set loud: %s" % Lname, col="green"))
-    if type(Lname) is str:
+    if isinstance(Lname, string_types):
         getLogger(Lname).logger.setLevel(logging.DEBUG)
     elif type(Lname) is list:
         for name in Lname:
