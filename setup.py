@@ -177,7 +177,7 @@ if on_rtd:
 else:
     requirements = ['future',
                     'numpy',
-                    'python-casacore>=2.1.2; python_version <= "2.7"',
+                    'python-casacore<=3.0.0; python_version <= "2.7"',
                     'python-casacore<=3.0.0; python_version >= "3.0"', 
                     'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
                     'matplotlib<3.0',
@@ -185,8 +185,8 @@ else:
                     'scipy',
                     'astro-tigger-lsm',
                     'six',
-                    'futures; python_version <= "2.7"',
-                    'montblanc @git+https://github.com/ska-sa/montblanc.git@0.6.1']
+                    'futures; python_version <= "2.7"'
+                    ]
 
 setup(name='cubical',
       version=cubical.VERSION,
@@ -223,6 +223,9 @@ setup(name='cubical',
       ext_modules = c_cpp_extensions,
       scripts = ['cubical/bin/print-cubical-stats'],
       entry_points={'console_scripts': ['gocubical = cubical.main:main']},
+      extras_require={
+          'lsm-support': ['montblanc @git+https://github.com/ska-sa/montblanc.git@0.6.1'],
+      }
 )
 
 
