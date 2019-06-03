@@ -37,6 +37,7 @@ from cubical.tools import logger
 logger.init("cc")
 
 import logging
+import warnings
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 GD = None
@@ -234,6 +235,9 @@ def main(debugging=False):
             parser.write_to_parset(save_parset)
 
         enable_pdb = GD["debug"]["pdb"]
+        if GD["debug"]["escalate-warnings"]:
+            warnings.filterwarnings("error")
+
         # clean up shared memory from any previous runs
         shm_utils.cleanupStaleShm()
 
