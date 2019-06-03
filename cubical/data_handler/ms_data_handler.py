@@ -861,7 +861,7 @@ class MSDataHandler:
                 shape = (nrows, self._nchan0_orig[ddid], self.nmscorrs)
                 value0 = np.zeros(shape, value.dtype)
             value0[:, self._channel_slice, self._corr_slice] = value
-            return subset.putcol(column, value0, startrow, nrows)
+            return subset.putcol(str(column), value0, startrow, nrows)
 
     def define_chunk(self, chunk_time, rebin_time, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """
@@ -1364,10 +1364,10 @@ class MSDataHandler:
             # new column needs to be inserted -- get column description from column 'like_col'
             print("  inserting new column %s" % (col_name), file=log)
             desc = self.ms.getcoldesc(like_col)
-            desc['name'] = col_name
-            desc['comment'] = desc['comment'].replace(" ", "_")  # got this from Cyril, not sure why
+            desc['name'] = str(col_name)
+            desc['comment'] = str(desc['comment'].replace(" ", "_"))  # got this from Cyril, not sure why
             dminfo = self.ms.getdminfo(like_col)
-            dminfo["NAME"] =  "{}-{}".format(dminfo["NAME"], col_name)
+            dminfo["NAME"] =  str("{}-{}".format(dminfo["NAME"], col_name))
             # if a different type is specified, insert that
             if like_type:
                 desc['valueType'] = like_type

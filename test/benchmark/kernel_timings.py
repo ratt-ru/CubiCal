@@ -469,6 +469,16 @@ if __name__ == "__main__":
                 benchmark_function('cyapply_gains', (mod, o.g, o.gh, t_int, f_int),
                               setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
 
+                mod = o.m.copy()
+
+                benchmark_function('cyapply_gains_1', (mod, o.g, o.gh, t_int, f_int),
+                              setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
+
+                mod = o.m.copy()
+
+                benchmark_function('cyapply_gains_2', (mod, o.g, o.gh, t_int, f_int),
+                              setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
+
             args.pdb and nfailed and pdb.set_trace()
 
 
