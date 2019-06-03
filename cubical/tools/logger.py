@@ -271,7 +271,7 @@ def init(app_name):
     global _app_name
     global _root_logger
     if _root_logger is None:
-        logging.basicConfig(level=logging.DEBUG, format=_fmt, datefmt=_datefmt)
+        logging.basicConfig(level=logging.DEBUG, datefmt=_datefmt)
         _app_name = app_name
         _root_logger = logging.getLogger(app_name)
         _root_logger.setLevel(logging.DEBUG)
