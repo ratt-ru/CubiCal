@@ -153,6 +153,7 @@ class Flagger(object):
                     baselines_to_plot += plot_explicit_baselines
                     import pylab
                     for (n_flagged, p, q), baseline_label in baselines_to_plot:
+                        blname = self.metadata.baseline_name[p, q] 
                         # make subplots
                         subplot_titles = {}
                         for c1,x1 in enumerate(self.metadata.feeds.upper()):

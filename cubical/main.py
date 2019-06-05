@@ -236,7 +236,10 @@ def main(debugging=False):
 
         enable_pdb = GD["debug"]["pdb"]
         if GD["debug"]["escalate-warnings"]:
-            warnings.filterwarnings("error")
+            warnings.simplefilter('error', UserWarning)
+            np.seterr(all='raise')
+            if GD["debug"]["escalate-warnings"] > 1:
+                warnings.filterwarnings("error")
 
         # clean up shared memory from any previous runs
         shm_utils.cleanupStaleShm()
@@ -567,7 +570,8 @@ def main(debugging=False):
             import traceback
             print(ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__,
                                                                     exc, traceback.format_exc())), file=log)
-            if enable_pdb and not type(exc) is UserInputError:
+            if enable_pdb and type(exc) is not UserInputError:
+                warnings.filterwarnings("default")  # in case pdb itself throws a warning
                 from cubical.tools import pdb
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)
