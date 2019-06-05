@@ -10,7 +10,7 @@ import cubical.kernels
 import time
 
 from cubical.tools import logger
-log = logger.getLogger("solver")  #TODO check this "complex_2x2"
+log = logger.getLogger("robust_2x2")  #TODO check this "complex_2x2"
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -192,19 +192,20 @@ class ComplexW2x2Gains(PerIntervalGains):
           
         else:
 
-            unflagged = self.new_flags==False
-        
-            num_init_unflaged_eqs = np.sum(unflagged)
+            unflagged = self.new_flags==False 
 
-            Nvis = num_init_unflaged_eqs/2. #only half of the visibilties are used for covariance computation
+            Nvis = np.sum(unflagged)/2. #only half of the visibilties are used for covariance computation
 
             ompstd = np.zeros((4,4), dtype=self.dtype)
 
             self.cykernel.cycompute_cov(self.residuals, ompstd, self.weights)
 
+            #---if the covariance and variance are close the residuals are dominated by sources---#
+            
+
             # removing the offdiagonal correlations
 
-            std = np.diagonal(ompstd/Nvis) + self.eps**2 # To avoid division by zero
+            std = np.diagonal(ompstd/norm) + self.eps**2 # To avoid division by zero
 
             covinv = np.eye(4, dtype=self.dtype)
 
@@ -284,12 +285,12 @@ class ComplexW2x2Gains(PerIntervalGains):
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
         norm = np.average(w_nzero) 
   
-        self.weights = w/norm
+        self.weights = w #/norm removed normalisation
         
         #-----------computing the v parameter---------------------#
         # This computation is only done after a certain number of iterations. Default is 5
         if self.iters % self.v_int == 0 or self.iters == 1:
-            wn = w_nzero/norm 
+            wn = w_nzero #/norm 
             self.v = _brute_solve_v(wn)
         
         return 
