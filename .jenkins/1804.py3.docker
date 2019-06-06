@@ -31,7 +31,7 @@ ADD setup.py /src/cubical/setup.py
 ADD pyproject.toml /src/cubical/pyproject.toml
 
 WORKDIR /src/cubical
-RUN python3.6 -m pip install .
+RUN python3.6 -m pip install "/src/cubical[lsm-support]"
 
 ENTRYPOINT ["gocubical"]
 CMD ["--help"]
