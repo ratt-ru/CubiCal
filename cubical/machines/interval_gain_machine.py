@@ -153,7 +153,7 @@ class PerIntervalGains(MasterMachine):
                 return cubical.kernels.import_kernel('cydiag_complex')
             # (c) data and gains both 2x2: use full kernel
             else:
-                return cubical.kernels.import_kernel('cyfull_complex')
+                return cubical.kernels.import_kernel('full_complex')
 
 
     def get_conj_gains(self):
@@ -169,7 +169,7 @@ class PerIntervalGains(MasterMachine):
             self._ginv = np.empty_like(self.gains)
             self._ghinv = np.empty_like(self.gains)
         if self._ghinv_update:
-            self._ghinv_flag_count = self.cykernel_solve.cyinvert_gains(
+            self._ghinv_flag_count = self.cykernel_solve.invert_gains(
                 self.gains, self._ginv, self.gflags, self.eps, FL.ILLCOND)
             np.conj(self._ginv.transpose(0, 1, 2, 3, 5, 4), out=self._ghinv)
             self._ghinv_update = False
@@ -269,7 +269,7 @@ class PerIntervalGains(MasterMachine):
 
         np.copyto(resid_arr, obser_arr)
 
-        (self.cykernel if full2x2 else self.cykernel_solve).cycompute_residual(model_arr,
+        (self.cykernel if full2x2 else self.cykernel_solve).compute_residual(model_arr,
                                                                                self.gains, gains_h, resid_arr, *self.gain_intervals)
 
         return resid_arr
@@ -278,7 +278,7 @@ class PerIntervalGains(MasterMachine):
     def apply_gains(self, model_arr, full2x2=True):
         gains_h = self.get_conj_gains()
 
-        (self.cykernel if full2x2 else self.cykernel_solve).cyapply_gains(model_arr,
+        (self.cykernel if full2x2 else self.cykernel_solve).apply_gains(model_arr,
                                                                           self.gains, gains_h, *self.gain_intervals)
 
         return model_arr
@@ -289,7 +289,7 @@ class PerIntervalGains(MasterMachine):
         if corr_vis is None:
             corr_vis = np.empty_like(obser_arr)
 
-        (self.cykernel if full2x2 else self.cykernel_solve).cycompute_corrected(obser_arr,
+        (self.cykernel if full2x2 else self.cykernel_solve).compute_corrected(obser_arr,
                                                                                 g_inv, gh_inv, corr_vis, *self.gain_intervals)
 
         return corr_vis, flag_count

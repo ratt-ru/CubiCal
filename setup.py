@@ -36,9 +36,6 @@ from setuptools import Command
 with open('README.md') as f:
     long_description = f.read()
 
-with open('README.md') as f:
-    long_description = f.read()
-
 # Try get location of numpy headers. Compilation requires these headers. 
 
 try:
@@ -54,17 +51,17 @@ try:
     from Cython.Build import cythonize
     import Cython.Compiler.Options as CCO
 except ImportError:
-    raise ImportError("Please install cython before running install. If you're using pip 19 to install this package you should not be seeing this message")
+    raise ImportError("Please install cython before running install. If you're using pip 19 to install this package you should not be seeing this message.")
 
 try:
     import six
 except ImportError:
-    raise ImportError("Please install six before running install. If you're using pip 19 to install this package you should not be seeing this message")
+    raise ImportError("Please install six before running install. If you're using pip 19 to install this package you should not be seeing this message.")
 
 try:
     import numpy
 except ImportError:
-    raise ImportError("Please install numpy before running install. If you're using pip 19 to install this package you should not be seeing this message")
+    raise ImportError("Please install numpy before running install. If you're using pip 19 to install this package you should not be seeing this message.")
 
 cmpl_args = ['-ffast-math',
              '-O2', 
@@ -123,11 +120,11 @@ class gocythonize(Command):
         extensions = gocythonize.populate_extensions()
         cythonize(extensions, compiler_directives={'binding': True, 'language_level' : "3" if six.PY3 else "2"}, annotate=True, force=self.force)
 
-# the default build_ext only builds extensions specified through the ext_modules list
-# however to be absolutely safe for wheel building from source using pip v19 cythonization
-# must be invoked to check that all the necessary cxx and c files have been created,
-# otherwise they need to be first created before the extension modules are compiled using
-# the normal cxx and c compiler invoked by the Extension class of setuptools
+# The default build_ext only builds extensions specified through the ext_modules list.
+# However, to be absolutely safe for wheel building from source using pip v19, cythonization
+# must be invoked to check that all the necessary cxx and c files have been created.
+# If not, they need to be created before the extension modules are compiled using
+# the normal cxx and c compiler invoked by the Extension class of setuptools.
 
 class custom_build_ext(build_ext, gocythonize):
     """ Build all extension modules """
@@ -169,7 +166,8 @@ for source in glob.glob("cubical/kernels/*.pyx"):
 on_rtd = os.environ.get('READTHEDOCS') == 'True'
 
 if on_rtd:
-    requirements = ['numpy', 
+    requirements = ['numpy',
+                    'numba', 
                     'cython', 
                     'futures; python_version <= "2.7"', 
                     'matplotlib',
@@ -177,6 +175,7 @@ if on_rtd:
 else:
     requirements = ['future',
                     'numpy',
+                    'numba',
                     'python-casacore>=2.1.2; python_version <= "2.7"',
                     'python-casacore<=3.0.0; python_version >= "3.0"', 
                     'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
