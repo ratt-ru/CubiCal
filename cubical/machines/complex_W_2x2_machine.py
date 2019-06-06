@@ -201,7 +201,12 @@ class ComplexW2x2Gains(PerIntervalGains):
             self.cykernel.cycompute_cov(self.residuals, ompstd, self.weights)
 
             #---if the covariance and variance are close the residuals are dominated by sources---#
+            #---scaling the variance in this case improves the robust solver performance----------#
             
+            if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
+                norm = 2*self.npol*Nvis
+            else:
+                norm = Nvis
 
             # removing the offdiagonal correlations
 
