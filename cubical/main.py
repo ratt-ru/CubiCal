@@ -367,7 +367,8 @@ def main(debugging=False):
                        GD["weight"]["column"].split(",") if GD["weight"]["column"] else None,
                        fill_offdiag_weights=GD["weight"]["fill-offdiag"],
                        mb_opts=GD["montblanc"],
-                       use_ddes=have_dd_jones and dde_mode != 'never')
+                       use_ddes=have_dd_jones and dde_mode != 'never'
+                       degrid_opts=GD["degrid"])
 
         if len(ms.model_directions) < 2 and have_dd_jones and dde_mode == 'auto':
             raise UserInputError("--model-list does not specify directions. "

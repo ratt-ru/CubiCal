@@ -37,6 +37,17 @@ def import_montblanc():
     except:
         return None, sys.exc_info()
 
+# Try to import montblanc: if not successful, remember error for later.
+def import_ddfacet():
+    """
+    Tries to import montblanc. Returns tuple of montblanc_module, None on success, or
+    None, exc_info on error
+    """
+    try:
+        import DDFacet
+        return DDFacet, None
+    except:
+        return None, sys.exc_info()
 
 class Metadata(object):
     """This class holds metadata from an MS"""

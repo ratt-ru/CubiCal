@@ -603,7 +603,7 @@ class MSDataHandler:
             self.parallactic_machine = None
         pass
 
-    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False):
+    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False, degrid_opts={}):
         """Parses the model list and initializes internal structures"""
 
         # ensure we have as many weights as models
@@ -621,6 +621,8 @@ class MSDataHandler:
         self.model_directions = set() # keeps track of directions in Tigger models
         global montblanc
         montblanc = None
+        global DDFacet
+        DDFacet = None
 
         for imodel, (model, weight_col) in enumerate(zip(models, weights)):
             # list of per-direction models
@@ -642,27 +644,47 @@ class MSDataHandler:
                         dirmodels.setdefault(idirtag, []).append((1, None, subtract))
                     # else check for an LSM component
                     elif component.startswith("./") or component not in self.ms.colnames():
-                        # check if LSM ends with @tag specification
-                        if "@" in component:
-                            component, tag = component.rsplit("@",1)
-                        else:
-                            tag = None
-                        if os.path.exists(component):
-                            if montblanc is None:
-                                montblanc, exc = data_handler.import_montblanc()
+                        if ".DicoModel" in component: #DDFacet model
+                            clustercat = None
+                            if "@" in component:
+                                component, clustercat = component.rsplit("@",1)
+                            if os.path.exists(component):
+                                DDFacet, exc = data_handler.import_ddfacet()
                                 if montblanc is None:
-                                    print(ModColor.Str("Error importing Montblanc: "), file=log)
+                                    print(ModColor.Str("Error importing DDFacet: "), file=log)
                                     for line in traceback.format_exception(*exc):
                                         print("  " + ModColor.Str(line), file=log)
-                                    print(ModColor.Str("Without Montblanc, LSM functionality is not available."), file=log)
-                                    raise RuntimeError("Error importing Montblanc")
-                            self.use_montblanc = True
-                            from . import TiggerSourceProvider
-                            component = TiggerSourceProvider.TiggerSourceProvider(component, self.phadir,
-                                                                                  dde_tag=use_ddes and tag)
-                            for key in component._cluster_keys:
-                                dirname = idirtag if key == 'die' else key
-                                dirmodels.setdefault(dirname, []).append((component, key, subtract))
+                                    print(ModColor.Str("Without DDFacet, DicoModel functionality is not available."), file=log)
+                                    raise RuntimeError("Error importing DDFacet")
+                                from .DicoSourceProvider import DicoSourceProvider
+                                component = DicoSourceProvider(component,
+                                                               self.phadir,
+                                                               clustercat)
+                                for key in component._cluster_keys:
+                                    dirname = idirtag if key == 'die' else key
+                                    dirmodels.setdefault(dirname, []).append((component, key, subtract))                            
+                        else: #LSM
+                            # check if LSM ends with @tag specification
+                            if "@" in component:
+                                component, tag = component.rsplit("@",1)
+                            else:
+                                tag = None
+                            if os.path.exists(component):
+                                if montblanc is None:
+                                    montblanc, exc = data_handler.import_montblanc()
+                                    if montblanc is None:
+                                        print(ModColor.Str("Error importing Montblanc: "), file=log)
+                                        for line in traceback.format_exception(*exc):
+                                            print("  " + ModColor.Str(line), file=log)
+                                        print(ModColor.Str("Without Montblanc, LSM functionality is not available."), file=log)
+                                        raise RuntimeError("Error importing Montblanc")
+                                self.use_montblanc = True
+                                from . import TiggerSourceProvider
+                                component = TiggerSourceProvider.TiggerSourceProvider(component, self.phadir,
+                                                                                    dde_tag=use_ddes and tag)
+                                for key in component._cluster_keys:
+                                    dirname = idirtag if key == 'die' else key
+                                    dirmodels.setdefault(dirname, []).append((component, key, subtract))
                         else:
                             raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
                     # else it is a visibility column component
@@ -705,7 +727,10 @@ class MSDataHandler:
             mblogger.propagate = False
             # NB: this assume that the first handler of the Montblanc logger is the console logger
             mblogger.handlers[0].setLevel(getattr(logging, mb_opts["verbosity"]))
-
+        if DDFacet is not None:
+            self.degrid_opts = degrid_opts
+            ddlogger = logging.getLogger("DDFacet")
+            ddlogger.propagate = False
 
 
     def build_taql(self, taql=None, fid=None, ddid=None):
