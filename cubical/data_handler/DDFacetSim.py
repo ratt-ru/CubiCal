@@ -1,6 +1,8 @@
 try:
     from DDFacet.Imager import ClassDDEGridMachine
     from DDFacet.cbuild.Gridder import _pyGridderSmearPolsClassic
+    from DDFacet.ToolsDir.ModToolBox import EstimateNpix
+
 except ImportError:
     raise ImportError("Could not import DDFacet")
 
@@ -84,7 +86,7 @@ class DDFacetSim(object):
         gmach = ClassDDEGridMachine(GD,
                                     ChanFreq = data_chan_freqs,
                                     Npix = self.__direction,
-                                    lmshift = src.get_direction_pxoffset * GD["Image"]["Cell"],
+                                    lmshift = np.deg2rad(src.get_direction_pxoffset * src.pixel_scale / 3600),
                                     IDFacet = src.direction,
                                     SpheNorm = True, # Depricated, set ImToGrid True in .get!!
                                     NFreqBands = dh.degrid_opts["NFreqBands"],
@@ -96,6 +98,8 @@ class DDFacetSim(object):
                                     bda_grid=None, bda_degrid=None)
 
     def simulate(self, src, dh, tile, poltype):
+        """ Predicts model data for the set direction of the dico source provider """
+        src.pad_clusters(dh.degrid_opts["Padding"])
         gm = self.__init_grid_machine(src, dh, tile, poltype)
         
         

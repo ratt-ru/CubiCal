@@ -659,7 +659,9 @@ class MSDataHandler:
                                 from .DicoSourceProvider import DicoSourceProvider
                                 component = DicoSourceProvider(component,
                                                                self.phadir,
-                                                               clustercat)
+                                                               clustercat,
+                                                               facet_padding_factor=degrid_opts["Padding"])
+
                                 for key in component._cluster_keys:
                                     dirname = idirtag if key == 'die' else key
                                     dirmodels.setdefault(dirname, []).append((component, key, subtract))                            

@@ -54,6 +54,10 @@ class BoundingConvexHull():
     @property
     def name(self):
         return self._name
+    
+    @name.setter
+    def name(self, v):
+        self._name = v
 
     @property
     def global_data(self):
@@ -138,10 +142,11 @@ class BoundingConvexHull():
         return np.abs(360 - np.rad2deg(dot)) < 1.0e-6
 
 class BoundingBox(BoundingConvexHull):
-    def __init__(self, xl, xu, yl, yu, name, imdata):
+    def __init__(self, xl, xu, yl, yu, name, imdata=None):
         BoundingConvexHull.__init__(self,
                                     [[xl,yl],[xl,yu],[xu,yu],[xu,yl]],
-                                    name)
+                                    name,
+                                    imdata=imdata)
         self.__xnpx = abs(xu - xl) + 1
         self.__ynpx = abs(xu - xl) + 1
     
@@ -150,16 +155,65 @@ class BoundingBox(BoundingConvexHull):
         return (self.__xnpx, self.__ynpx)
 
     @classmethod                                
-    def AxisAlignedBoundingBox(self, convex_hull_object):
-        """ Constructs an axis aligned square bounding box around convex hull """
+    def AxisAlignedBoundingBox(cls, convex_hull_object, square=False, enforce_odd=True):
+        """ Constructs an axis aligned bounding box around convex hull """
         if not isinstance(convex_hull_object, BoundingConvexHull):
             raise TypeError("Convex hull object passed in constructor is not of type BoundingConvexHull")
-        boxdiam = np.max(np.sum((convex_hull_object.corners - 
-                                 convex_hull_object.centre[None, :])**2, axis=1))
-        cx, cy = convex_hull_object.centre
-        xl = cx - boxdiam
-        xu = cx + boxdiam
-        yl = cy - boxdiam
-        yu = cy + boxdiam
-        BoundingBox.__init__(self, xl, xu, yl, yu,
-                             convex_hull_object.name)
+        if square:
+            boxdiam = np.max(np.sum((convex_hull_object.corners - 
+                                    convex_hull_object.centre[None, :])**2, axis=1))
+            cx, cy = convex_hull_object.centre
+            xl = cx - boxdiam
+            xu = cx + boxdiam
+            yl = cy - boxdiam
+            yu = cy + boxdiam
+        else:
+            xl = np.min(convex_hull_object.corners[:, 0])
+            xu = np.max(convex_hull_object.corners[:, 0])
+            yl = np.min(convex_hull_object.corners[:, 1])
+            yu = np.max(convex_hull_object.corners[:, 1])
+
+        xu += (xu - xl + 1) % 2 if enforce_odd else 0
+        yu += (yu - yl + 1) % 2 if enforce_odd else 0
+
+        return BoundingBox(xl, xu, yl, yu,
+                           convex_hull_object.name,
+                           imdata=convex_hull_object.global_data)
+
+    @classmethod
+    def SplitBox(cls, bounding_box_object, nsubboxes=1):
+        """ Split a axis-aligned bounding box into smaller boxes """
+        if not isinstance(bounding_box_object, BoundingBox):
+            raise TypeError("Expected bounding box object")
+        xl = np.min(bounding_box_object.corners[:, 0])
+        xu = np.max(bounding_box_object.corners[:, 0])
+        yl = np.min(bounding_box_object.corners[:, 1])
+        yu = np.max(bounding_box_object.corners[:, 1])
+        
+        # construct a nonregular meshgrid bound to xu and yu
+        x = xl + np.arange(0, nsubboxes) * int(np.ceil((xu - xl + 1) / float(nsubboxes)))
+        x[-1] = min(xu, x[-1])
+        y = yl + np.arange(0, nsubboxes) * int(np.ceil((yu - yl + 1) / float(nsubboxes)))
+        y[-1] = min(yu, y[-1])
+        xx, yy = np.meshgrid(np.arange(xl, xl + int(np.ceil((xu+1 - xl) / float(nsubboxes))) * nsubboxes),
+                             np.arange(yl, yl + int(np.ceil((yu+1 - yl) / float(nsubboxes))) * nsubboxes), 
+                             sparse=False)
+        xls = xx[0:-1:2]
+        xus = xx[1::2]
+        yls = yy[0:-1:2]
+        yus = yy[1::2]
+        
+        #coordinates for all the contained boxes, anti-clockwise wound
+        bl = zip(xls, yls)
+        br = zip(xus, yls)
+        ur = zip(xus, yus)
+        ul = zip(xls, yus)
+        contained_boxes = zip(bl, br, ur, ul)
+
+        #finally create bbs for each of the contained boxes
+        new_regions = [BoundingBox(bl, br, ur, ul,
+                                   bounding_box_object.name,
+                                   imdata=bounding_box_object.global_data)
+                       for bl, br, ur, ul in contained_boxes]
+        return new_regions
+

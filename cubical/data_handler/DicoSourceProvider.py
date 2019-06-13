@@ -1,5 +1,6 @@
 try:
     from DDFacet.Imager import ModModelMachine
+    from DDFacet.ToolsDir.ModToolBox import EstimateNpix
 except ImportError:
     raise ImportError("Cannot import DDFacet")
 
@@ -11,19 +12,27 @@ class DicoSourceProvider(object):
     def __init__(self,
                  fn,
                  phasedir,
+                 facet_padding_factor,
                  clustercat=None):
         self.__dicomodel = ModModelMachine().GiveInitialisedMMFromFile(fn)
+        # assume GD is stored in the Dico... this is only true for DDF versions 0.4.1 and beyond
+        self.__pxscale = self.__dicomodel.GD["Image"]["Cell"] # in arcseconds
         nchan, npol, nx, ny = self.__dicomodel.ModelShape
         self.__phasedir = phasedir
         if clustercat:
-            self.__clustercat = self.__read_regions_file(clustercat, nx//2, ny//2)
+            self.__clustercat = self.__read_regions_file(clustercat, nx//2, ny//2, facet_padding_factor)
         else: self.__clustercat = None
         self.__current_direction = 0
         self.__degridcube = None
         self.__degridfreqs = None
+        self.__padding_factor = facet_padding_factor
+
+    @property
+    def pixel_scale(self):
+        return self.__pxscale
 
     @classmethod
-    def __read_regions_file(cls, fn, offsetx, offsety):
+    def __read_regions_file(cls, fn, offsetx, offsety, padding_factor):
         clusters = []
         with open(fn) as f:
             parser = DS9Parser(f.read())
@@ -32,9 +41,33 @@ class DicoSourceProvider(object):
                 assert coords % 2 == 0, "Number of region coords must be multiple of 2-tuple"
                 coords = coords.reshape([coords // 2, 2])
                 coords += np.array([offsetx, offsety])[None, 2]
-                clusters += BoundingBox.AxisAlignedBoundingBox(
-                                       BoundingConvexHull(coords,
-                                                          name=regi))
+                clusters += BoundingConvexHull(coords,
+                                               name=regi)
+        
+        # now create axis aligned bounding boxes for each of the regions
+        # and further split them to the maximum permitted facet size
+        clusters = [BoundingBox.AxisAlignedBoundingBox(c) for c in clusters]
+        clusters = [BoundingBox.AxisAlignedBoundingBox(aasubbox, square=True) 
+                    for aasubbox in BoundingBox.SplitBox(c) for c in clusters]
+        
+        def pad_cluster(c):
+            npx,_ = c.box_npx # square facet at this point
+            # this returns an odd npix:
+            npixunpadded, npixpadded = EstimateNpix(npx, Padding=padding_factor)
+            xc, yc = c.centre
+            xl = xc - npixpadded // 2 
+            xu = xc + npixpadded // 2
+            yl = yc - npixpadded // 2 
+            yu = yc + npixpadded // 2
+            return BoundingBox(xl, xu, yl, yu,
+                               c.name,
+                               imdata=c.global_data)
+        clusters = map(pad_cluster, clusters)
+        
+        #finally rename them to be unique
+        for ci, c in enumerate(clusters):
+            c.name = ci
+    
         return clusters
 
     @property
