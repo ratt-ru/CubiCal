@@ -2,29 +2,42 @@ try:
     from DDFacet.Imager import ClassDDEGridMachine
     from DDFacet.cbuild.Gridder import _pyGridderSmearPolsClassic
     from DDFacet.ToolsDir.ModToolBox import EstimateNpix
-
+    from DDFacet.Array import shared_dict
+    from DDFacet.ToolsDir import ModFFTW
 except ImportError:
     raise ImportError("Could not import DDFacet")
 
+from . import DicoSourceProvider
+from cubical.tools import logger, ModColor
+log = logger.getLogger("DDFacetSim")
 import numpy as np
+import math
 
 class DDFacetSim(object):
     __degridding_semaphores = None
     __initted_CF_directions = []
-    __CF_dict = {}
+    __CF_dict = shared_dict.SharedDict("convfilters.cubidegrid")
     __should_init_sems = True
 
     def __init__(self):
         """ 
             Initializes a DDFacet model predictor
         """
-        self.__direction = 0
+        self.__direction = None
+        self.__model = None
         self.init_sems()
 
     def set_direction(self, val):
         """ sets the direction in the cubical model cube to pack model data into """
         self.__direction = val
     
+    def set_model_provider(self, model):
+        """ sets the model provider """
+        if not isinstance(model, DicoSourceProvider.DicoSourceProvider):
+            raise TypeError("Model provider must be a DicoSourceProvider")
+        log.info("Model predictor is switching to model '{0:s}'".format(str(model)))
+        self.__model = model
+
     @classmethod
     def init_sems(cls, NSemaphores = 3373):
         """ Init semaphores """
@@ -50,13 +63,15 @@ class DDFacetSim(object):
         """
         band_frequencies = np.linspace(np.min(vis_freqs), np.max(vis_freqs), nbands)
         def find_nearest(array, value):
-            array = np.asarray(array)
-            idx = (np.abs(array - value)).argmin()
-            return idx
+            idx = np.searchsorted(array, value, side="left")
+            if idx > 0 and (idx == len(array) or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx])):
+                return idx - 1
+            else:
+                return idx
         freq_mapping = [find_nearest(band_frequencies, v) for v in vis_freqs]
         return band_frequencies, freq_mapping
 
-    def __init_grid_machine(self, src, dh, tile, poltype):
+    def __init_grid_machine(self, src, dh, tile, poltype, freqs):
         """ initializes a grid machine for this direction """
         if self.__degridding_semaphores is None:
             raise RuntimeError("Need to initialize degridding semaphores first. Call init_sems")
@@ -67,16 +82,16 @@ class DDFacetSim(object):
         else:
             raise ValueError("Only supports linear or circular for now")
 
-        should_init_cf = self.__direction not in self.__initted_CF_directions
+        should_init_cf = "dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction)) not in self.__initted_CF_directions
         
         # Kludge up a DDF GD
-        GD = {}
+        GD = dict(RIME={}, Facets={}, CF={}, Image={}, DDESolutions={}, Comp={})
         GD["RIME"]["Precision"] = "S"
         GD["Facets"]["Padding"] = dh.degrid_opts["Padding"]
         GD["CF"]["OverS"] = dh.degrid_opts["OverS"]
         GD["CF"]["Support"] = dh.degrid_opts["Support"]
         GD["CF"]["Nw"] = dh.degrid_opts["Nw"]
-        GD["Image"]["Cell"] = dh.degrid_opts["Cell"]
+        GD["Image"]["Cell"] = src.pixel_scale
         GD["DDESolutions"]["JonesMode"] = "Full" 	  # #options:Scalar|Diag|Full
         GD["DDESolutions"]["Type"] = "Nearest" # Deprecated? #options:Krigging|Nearest
         GD["DDESolutions"]["Scale"] = 1.      # Deprecated? #metavar:DEG
@@ -95,55 +110,65 @@ class DDFacetSim(object):
         GD["RIME"]["ForwardMode"] = "Classic" # Only classic for now... why would you smear unnecessarily in a model predict??
         
         # INIT degridder machine from DDF
-        band_frequencies, freq_mapping = self.bandmapping(tile._freqs, dh.degrid_opts["NFreqBands"])
+        band_frequencies, freq_mapping = self.bandmapping(freqs, dh.degrid_opts["NDegridBand"])
         src.set_frequency(band_frequencies)
-        wmax = np.max(dh.metadata.baseline_length)
+        wmax = np.max([dh.metadata.baseline_length[k] for k in dh.metadata.baseline_length])
 
         if should_init_cf:
-            self.__initted_CF_directions.append(self.__direction)
+            log.info("This is the first time predicting for '{0:s}' direction '{1:s}'. "
+                     "Initializing degridder - this may take a wee bit of time.".format(str(self.__model), str(self.__direction)))
+            self.__initted_CF_directions.append("dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction)))
             cf_dict = self.__CF_dict
         else:
             cf_dict = None
-
-        gmach = ClassDDEGridMachine(GD,
-                                    ChanFreq = tile._freqs,
-                                    Npix = self.__direction,
-                                    lmshift = np.deg2rad(src.get_direction_pxoffset * src.pixel_scale / 3600),
+        gmach = ClassDDEGridMachine.ClassDDEGridMachine(GD,
+                                    ChanFreq = freqs,
+                                    Npix = src.get_direction_npix(),
+                                    lmShift = np.deg2rad(src.get_direction_pxoffset() * src.pixel_scale / 3600),
                                     IDFacet = src.direction,
                                     SpheNorm = True, # Depricated, set ImToGrid True in .get!!
-                                    NFreqBands = dh.degrid_opts["NFreqBands"],
+                                    NFreqBands = dh.degrid_opts["NDegridBand"],
                                     DataCorrelationFormat=DataCorrelationFormat,
                                     ExpectedOutputStokes=[1], # Stokes I
                                     ListSemaphores=self.__degridding_semaphores,
                                     cf_dict=cf_dict, compute_cf=should_init_cf,
                                     wmax=wmax,
                                     bda_grid=None, bda_degrid=None)
+        #gmach.FT = ModFFTW.FFTW_2Donly_np(src.degrid_cube_shape, np.complex64, ncores = 1).fft
+        return gmach
 
-    def simulate(self, src, dh, tile, poltype, uvwco, flagged):
+    def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs):
         """ Predicts model data for the set direction of the dico source provider 
             returns a ndarray model of shape nrow x nchan x 4
         """
-        src.pad_clusters(dh.degrid_opts["Padding"])
-        band_frequencies, freq_mapping = self.bandmapping(tile._freqs, dh.degrid_opts["NFreqBands"])
-        gm = self.__init_grid_machine(src, dh, tile, poltype)
+        if self.__direction is None:
+            raise RuntimeError("Direction has not been set. Please set direction before simulating")
+        if self.__model is None:
+            raise RuntimeError("Model has not been set. Please set model before simulating")
+        freqs = freqs.ravel()
+        src = self.__model
+        src.set_direction(self.__direction)
+        band_frequencies, freq_mapping = self.bandmapping(freqs, dh.degrid_opts["NDegridBand"])
+        gm = self.__init_grid_machine(src, dh, tile, poltype, freqs)
         nrow = uvwco.shape[0]
-        nfreq = tile._freqs
+        nfreq = len(freqs)
         ncorr = 4 # assume cubical expects 2x2 models
         model = np.zeros((nrow, nfreq, 4), np.complex64)
-
+        flagged = np.zeros_like(model, dtype=np.bool)
         # now we predict for this direction
+        log.info("Predicting direction '{0:s}'...".format(str(self.__direction)))
         model = gm.get(
-            times=tile.time_col, 
+            times=tile_subset.time_col, 
             uvw=uvwco, 
             visIn=model, 
             flag=flagged, 
-            A0A1=[tile.antea, tile.anteb], 
+            A0A1=[tile_subset.antea, tile_subset.anteb], 
             ModelImage=src.get_degrid_model(), 
             PointingID=src.direction,
             Row0Row1=(0, -1),
             DicoJonesMatrices=None, 
-            freqs=tile._freqs, 
-            ImToGrid=True,
+            freqs=freqs, 
+            ImToGrid=False,
             TranformModelInput="FT", 
             ChanMapping=freq_mapping, 
             sparsification=None)

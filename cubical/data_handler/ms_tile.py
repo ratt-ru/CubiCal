@@ -116,7 +116,7 @@ class MSTile(object):
             return data[self.rebin_row_map[:, np.newaxis],
                         self.rebin_chan_map[np.newaxis, :], None].reshape(shape)
 
-        def load_ddfacet_models(self, uvwco, flags, loaded_models, model_source, cluster, imod, idir):
+        def load_ddfacet_models(self, uvwco, loaded_models, model_source, cluster, imod, idir):
             """
             Invoke DDFacet degridder to compute model visibilities
             for all directions. 
@@ -126,7 +126,6 @@ class MSTile(object):
 
             Args:
                 uvwco: uvws for this tile
-                flags: flags for this tile (saves us predicting already fully flagged rows)
                 loaded_models: dictionary of all loaded models including clusters
                 model_source: cluster object
                 cluster: cluster direction name to use as return value
@@ -137,22 +136,21 @@ class MSTile(object):
                 ndarray of shape nrow x nchan x ncorr for name specified in "cluster"
             """
             from .DDFacetSim import DDFacetSim
-
+            ddid_index, uniq_ddids, _ = data_handler.uniquify(self.ddid_col)
+            self._freqs = np.array([self.tile.dh.chanfreqs[ddid] for ddid in uniq_ddids])
             ddfsim = DDFacetSim()
             ndirs = model_source._nclus
-            ddfsource = cluster
-            print("  computing visibilities for {}".format(model_source), file=log(0))
             loaded_models[model_source] = {}
-            for idir, clus in enumerate(tigger_source._cluster_keys):
-                ddfsource.set_direction(clus)
-                ddfsource.set_frequency(self._freqs)
-                column_snk.set_direction(clus)
-                model = DDFacetSim.simulate(model_source, 
-                                            self.tile.dh, 
-                                            self.tile, 
-                                            polarisation_type=self.tile.dh._poltype, 
-                                            uvwco, 
-                                            flags)
+            ddfsim.set_model_provider(model_source)
+            for idir, clus in enumerate(model_source._cluster_keys):
+                model_source.set_frequency(self._freqs)
+                ddfsim.set_direction(clus)
+                model = ddfsim.simulate(self.tile.dh, 
+                                        self.tile,
+                                        self,
+                                        self.tile.dh._poltype, 
+                                        uvwco,
+                                        self._freqs)
                 loaded_models[model_source][clus] = model[self._row_identifiers, :, :]
 
             # finally return the direction requested in cluster
@@ -965,12 +963,12 @@ class MSTile(object):
                                         #                                                 angles=subset._angles)
                                     loaded_models.setdefault(model_source, {})[None] = model
                                 # else evaluate a Tigger model with Montblanc
-                                elif TiggerSourceProvider is not None and isinstance(cluster, TiggerSourceProvider):
+                                elif TiggerSourceProvider is not None and isinstance(model_source, TiggerSourceProvider):
                                     model = subset.load_montblanc_models(uvwco, loaded_models, model_source, cluster, imod, idir)
-                                elif DicoSourceProvider is not None and isinstance(cluster, DicoSourceProvider):
-                                    model = subset.load_ddfacet_models(uvwco, flags, loaded_models, model_source, cluster, imod, idir)
+                                elif DicoSourceProvider is not None and isinstance(model_source, DicoSourceProvider):
+                                    model = subset.load_ddfacet_models(uvwco, loaded_models, model_source, cluster, imod, idir)
                                 else:
-                                    raise TypeError("Unknown cluster of type {0:s}".format(type(cluster)))
+                                    raise TypeError("Unknown cluster of type {0:s}".format(type(model_source)))
                                 # finally, add model in at correct slot
                                 if subtract:
                                     movis[idir, imod, ...] -= model

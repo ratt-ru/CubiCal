@@ -650,7 +650,7 @@ class MSDataHandler:
                                 component, clustercat = component.rsplit("@",1)
                             if os.path.exists(component):
                                 DDFacet, exc = data_handler.import_ddfacet()
-                                if montblanc is None:
+                                if DDFacet is None:
                                     print(ModColor.Str("Error importing DDFacet: "), file=log)
                                     for line in traceback.format_exception(*exc):
                                         print("  " + ModColor.Str(line), file=log)
@@ -659,13 +659,13 @@ class MSDataHandler:
                                 from .DicoSourceProvider import DicoSourceProvider
                                 component = DicoSourceProvider(component,
                                                                self.phadir,
-                                                               clustercat,
-                                                               facet_padding_factor=degrid_opts["Padding"])
+                                                               degrid_opts["Padding"],
+                                                               clustercat)
 
                                 for key in component._cluster_keys:
                                     dirname = idirtag if key == 'die' else key
                                     dirmodels.setdefault(dirname, []).append((component, key, subtract))                            
-                        else: #LSM
+                        elif ".lsm" in component or ".txt" in component: #LSM
                             # check if LSM ends with @tag specification
                             if "@" in component:
                                 component, tag = component.rsplit("@",1)

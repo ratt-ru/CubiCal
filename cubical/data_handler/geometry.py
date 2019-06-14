@@ -7,7 +7,7 @@ from astropy import wcs
 
 DEBUG = False
 
-class BoundingConvexHull():
+class BoundingConvexHull(object):
     def __init__(self, list_hulls, name, imdata = None):
         self._data = imdata
         self._name = name
@@ -33,18 +33,39 @@ class BoundingConvexHull():
             sel_indx = np.logical_and(np.logical_and(bounding_mesh[0]>=min(x1, x2),
                                                      bounding_mesh[0]<=max(x1, x2)),
                                       np.logical_and(bounding_mesh[1]>=min(y1, y2),
-                                                     bounding_mesh[1]<=max(y1, y2))) 
+                                                     bounding_mesh[1]<=max(y1, y2)))
             region_selected[sel_indx] = True
-        self._data[: , :, miny:maxy, minx:maxx][region_selected] = np.nan
+
+        pad_left = max(0, 0 - minx)
+        pad_bottom = max(0, 0 - miny)
+        pad_right = max(0, maxx - self._data.shape[3])
+        pad_top = max(0, maxy - self._data.shape[2])
+        cube_selected = np.tile(np.tile(region_selected[pad_bottom:region_selected.shape[0]-pad_top,
+                                                pad_left:region_selected.shape[1]-pad_right],
+                                        (self._data.shape[1], 1, 1)),
+                                (self._data.shape[0], 1, 1, 1))
+        self._data[: , :, pad_bottom+miny:maxy-pad_top, pad_left+minx:maxx-pad_right][cube_selected] = np.nan
         if DEBUG:
             from matplotlib import pyplot as plt
             plt.figure
-            plt.imshow(self._data[miny:maxy, minx:maxx])
+            plt.imshow(self._data[pad_bottom+miny:maxy-pad_top, pad_left+minx:maxx-pad_right])
             plt.show()
-        selected_data = self._data[:, :, miny:maxy, minx:maxx][np.logical_not(np.isnan(
-            self._data[:, :, miny:maxy, minx:maxx]))]
-        return selected_data
-        
+        selected_data = self._data[:, :, pad_bottom+miny:maxy-pad_top, pad_left+minx:maxx-pad_right][np.logical_not(np.isnan(
+            self._data[:, :, pad_bottom+miny:maxy-pad_top, pad_left+minx:maxx-pad_right]))].reshape(
+            (self._data.shape[0], self._data.shape[1], maxy-pad_top - (pad_bottom+miny), maxx-pad_right - (pad_left+minx)))
+        if any(np.array([pad_left, pad_bottom, pad_right, pad_top]) > 0):
+            dcp_selected_data = np.zeros((self._data.shape[0],
+                                          self._data.shape[1],
+                                          maxy - miny,
+                                          maxx - minx), dtype=selected_data.dtype)
+            dcp_selected_data[:, :, 
+                              pad_bottom:pad_bottom+selected_data.shape[2], 
+                              pad_left:pad_left+selected_data.shape[3]] = \
+                selected_data
+        else:
+            dcp_selected_data = selected_data.copy()
+        return dcp_selected_data
+
 
     @property
     def area(self):
@@ -60,11 +81,15 @@ class BoundingConvexHull():
         self._name = v
 
     @property
-    def global_data(self):
+    def globaldata(self):
         return self._data.view()
 
-    @global_data.setter
-    def global_data(self, v):
+    @globaldata.setter
+    def globaldata(self, v):
+        if not isinstance(v, np.ndarray):
+            raise TypeError("data cube must be ndarray")
+        if not v.ndim == 4:
+            raise ValueError("data cube must be 4 dimensional")
         self._data = v
 
     @property
@@ -124,7 +149,7 @@ class BoundingConvexHull():
     @property
     def centre(self):
         # Barycentre of polygon
-        return np.mean(self._vertices, axis=0)
+        return map(lambda x: int(x), np.mean(self._vertices, axis=0))
 
     def __contains__(self, s):
         if not isinstance(s, Tigger.Models.SkyModel.Source):
@@ -147,8 +172,8 @@ class BoundingBox(BoundingConvexHull):
                                     [[xl,yl],[xl,yu],[xu,yu],[xu,yl]],
                                     name,
                                     imdata=imdata)
-        self.__xnpx = abs(xu - xl) + 1
-        self.__ynpx = abs(xu - xl) + 1
+        self.__xnpx = abs(xu - xl)
+        self.__ynpx = abs(xu - xl)
     
     @property
     def box_npx(self):
@@ -178,7 +203,7 @@ class BoundingBox(BoundingConvexHull):
 
         return BoundingBox(xl, xu, yl, yu,
                            convex_hull_object.name,
-                           imdata=convex_hull_object.global_data)
+                           imdata=convex_hull_object.globaldata)
 
     @classmethod
     def SplitBox(cls, bounding_box_object, nsubboxes=1):
@@ -213,7 +238,7 @@ class BoundingBox(BoundingConvexHull):
         #finally create bbs for each of the contained boxes
         new_regions = [BoundingBox(bl, br, ur, ul,
                                    bounding_box_object.name,
-                                   imdata=bounding_box_object.global_data)
+                                   imdata=bounding_box_object.globaldata)
                        for bl, br, ur, ul in contained_boxes]
         return new_regions
 

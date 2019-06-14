@@ -185,7 +185,8 @@ else:
                     'scipy',
                     'astro-tigger-lsm',
                     'six',
-                    'futures; python_version <= "2.7"'
+                    'futures; python_version <= "2.7"',
+                    'regions'
                     ]
 
 setup(name='cubical',
