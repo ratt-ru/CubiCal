@@ -12,9 +12,14 @@ class DDFacetSim(object):
     __degridding_semaphores = None
     __initted_CF_directions = []
     __CF_dict = {}
-    
+    __should_init_sems = True
+
     def __init__(self):
+        """ 
+            Initializes a DDFacet model predictor
+        """
         self.__direction = 0
+        self.init_sems()
 
     def set_direction(self, val):
         """ sets the direction in the cubical model cube to pack model data into """
@@ -23,6 +28,9 @@ class DDFacetSim(object):
     @classmethod
     def init_sems(cls, NSemaphores = 3373):
         """ Init semaphores """
+        if not cls.__should_init_sems:
+            return
+        cls.__should_init_sems = False
         cls.__degridding_semaphores = ["Semaphore.cubidegrid{0:d}".format(i) for i in
                                         range(NSemaphores)]
         _pyGridderSmearPolsClassic.pySetSemaphores(cls.__degridding_semaphores)
@@ -32,6 +40,21 @@ class DDFacetSim(object):
         """ Deinit semaphores """
         _pyGridderSmearPolsClassic.pyDeleteSemaphore()
         cls.__degridding_semaphores = None
+
+    def bandmapping(self, vis_freqs, nbands):
+        """ 
+            Gives the frequency mapping for visibility to degrid band 
+            For now we assume linear regular spacing, so we may end up
+            with a completely empty band somewhere in the middle
+            if we have spws that are separated in frequency
+        """
+        band_frequencies = np.linspace(np.min(vis_freqs), np.max(vis_freqs), nbands)
+        def find_nearest(array, value):
+            array = np.asarray(array)
+            idx = (np.abs(array - value)).argmin()
+            return idx
+        freq_mapping = [find_nearest(band_frequencies, v) for v in vis_freqs]
+        return band_frequencies, freq_mapping
 
     def __init_grid_machine(self, src, dh, tile, poltype):
         """ initializes a grid machine for this direction """
@@ -72,8 +95,7 @@ class DDFacetSim(object):
         GD["RIME"]["ForwardMode"] = "Classic" # Only classic for now... why would you smear unnecessarily in a model predict??
         
         # INIT degridder machine from DDF
-        data_chan_freqs = tile._freqs
-        band_frequencies = np.linspace(np.min(data_chan_freqs), np.max(data_chan_freqs), dh.degrid_opts["NFreqBands"])
+        band_frequencies, freq_mapping = self.bandmapping(tile._freqs, dh.degrid_opts["NFreqBands"])
         src.set_frequency(band_frequencies)
         wmax = np.max(dh.metadata.baseline_length)
 
@@ -84,7 +106,7 @@ class DDFacetSim(object):
             cf_dict = None
 
         gmach = ClassDDEGridMachine(GD,
-                                    ChanFreq = data_chan_freqs,
+                                    ChanFreq = tile._freqs,
                                     Npix = self.__direction,
                                     lmshift = np.deg2rad(src.get_direction_pxoffset * src.pixel_scale / 3600),
                                     IDFacet = src.direction,
@@ -97,9 +119,40 @@ class DDFacetSim(object):
                                     wmax=wmax,
                                     bda_grid=None, bda_degrid=None)
 
-    def simulate(self, src, dh, tile, poltype):
-        """ Predicts model data for the set direction of the dico source provider """
+    def simulate(self, src, dh, tile, poltype, uvwco, flagged):
+        """ Predicts model data for the set direction of the dico source provider 
+            returns a ndarray model of shape nrow x nchan x 4
+        """
         src.pad_clusters(dh.degrid_opts["Padding"])
+        band_frequencies, freq_mapping = self.bandmapping(tile._freqs, dh.degrid_opts["NFreqBands"])
         gm = self.__init_grid_machine(src, dh, tile, poltype)
+        nrow = uvwco.shape[0]
+        nfreq = tile._freqs
+        ncorr = 4 # assume cubical expects 2x2 models
+        model = np.zeros((nrow, nfreq, 4), np.complex64)
+
+        # now we predict for this direction
+        model = gm.get(
+            times=tile.time_col, 
+            uvw=uvwco, 
+            visIn=model, 
+            flag=flagged, 
+            A0A1=[tile.antea, tile.anteb], 
+            ModelImage=src.get_degrid_model(), 
+            PointingID=src.direction,
+            Row0Row1=(0, -1),
+            DicoJonesMatrices=None, 
+            freqs=tile._freqs, 
+            ImToGrid=True,
+            TranformModelInput="FT", 
+            ChanMapping=freq_mapping, 
+            sparsification=None)
         
-        
+        return model
+
+import atexit
+
+def _cleanup_degridder_semaphores():
+    DDFacetSim.del_sems()
+
+atexit.register(_cleanup_degridder_semaphores)

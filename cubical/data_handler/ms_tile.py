@@ -14,6 +14,14 @@ from cubical.tools import dtype_checks as dtc
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("data_handler")
+try:
+    from .TiggerSourceProvider import TiggerSourceProvider
+except ImportError:
+    TiggerSourceProvider = None
+try:
+    from .DicoSourceProvider import DicoSourceProvider
+except ImportError:
+    DicoSourceProvider = None
 
 ## TERMINOLOGY:
 ## A "chunk" is data for one DDID, a range of timeslots (thus, a subset of the MS rows), and a
@@ -107,6 +115,53 @@ class MSTile(object):
             print("upsampling to {} rows and {} channels".format(shape[0], shape[1]), file=log(1))
             return data[self.rebin_row_map[:, np.newaxis],
                         self.rebin_chan_map[np.newaxis, :], None].reshape(shape)
+
+        def load_ddfacet_models(self, uvwco, flags, loaded_models, model_source, cluster, imod, idir):
+            """
+            Invoke DDFacet degridder to compute model visibilities
+            for all directions. 
+            
+            Postcondition of loaded_models is a new entry
+            of model_source cluster object with all directions predicted.
+
+            Args:
+                uvwco: uvws for this tile
+                flags: flags for this tile (saves us predicting already fully flagged rows)
+                loaded_models: dictionary of all loaded models including clusters
+                model_source: cluster object
+                cluster: cluster direction name to use as return value
+                imod: index of this model provider (only used for printing)
+                idir: index of global direction
+
+            Returns:
+                ndarray of shape nrow x nchan x ncorr for name specified in "cluster"
+            """
+            from .DDFacetSim import DDFacetSim
+
+            ddfsim = DDFacetSim()
+            ndirs = model_source._nclus
+            ddfsource = cluster
+            print("  computing visibilities for {}".format(model_source), file=log(0))
+            loaded_models[model_source] = {}
+            for idir, clus in enumerate(tigger_source._cluster_keys):
+                ddfsource.set_direction(clus)
+                ddfsource.set_frequency(self._freqs)
+                column_snk.set_direction(clus)
+                model = DDFacetSim.simulate(model_source, 
+                                            self.tile.dh, 
+                                            self.tile, 
+                                            polarisation_type=self.tile.dh._poltype, 
+                                            uvwco, 
+                                            flags)
+                loaded_models[model_source][clus] = model[self._row_identifiers, :, :]
+
+            # finally return the direction requested in cluster
+            model = loaded_models[model_source][cluster]
+            print("  using {}{} for model {} direction {}".format(model_source,
+                                "" if not cluster else ("()" if cluster == 'die' else "({})".format(cluster)),
+                                imod, idir), file=log(1))
+
+            return model
 
         def load_montblanc_models(self, uvwco, loaded_models, model_source, cluster, imod, idir):
             """
@@ -910,9 +965,12 @@ class MSTile(object):
                                         #                                                 angles=subset._angles)
                                     loaded_models.setdefault(model_source, {})[None] = model
                                 # else evaluate a Tigger model with Montblanc
-                                else:
+                                elif TiggerSourceProvider is not None and isinstance(cluster, TiggerSourceProvider):
                                     model = subset.load_montblanc_models(uvwco, loaded_models, model_source, cluster, imod, idir)
-
+                                elif DicoSourceProvider is not None and isinstance(cluster, DicoSourceProvider):
+                                    model = subset.load_ddfacet_models(uvwco, flags, loaded_models, model_source, cluster, imod, idir)
+                                else:
+                                    raise TypeError("Unknown cluster of type {0:s}".format(type(cluster)))
                                 # finally, add model in at correct slot
                                 if subtract:
                                     movis[idir, imod, ...] -= model

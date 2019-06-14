@@ -71,7 +71,7 @@ class DicoSourceProvider(object):
         return clusters
 
     @property
-    def _clusterkeys(self):
+    def _cluster_keys(self):
         """ returns list of cluster name keys if there are any clusters
             otherwise ["die"] if no dE clusters were specified upon construction
         """
@@ -82,6 +82,10 @@ class DicoSourceProvider(object):
         """ sets the cluster (direction) index to predict from """
         self.__current_direction
     
+    @property
+    def _nclus(self):
+        return len(self.__clustercat)
+
     @property
     def direction(self):
         return self.__current_direction
