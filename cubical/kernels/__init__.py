@@ -10,8 +10,8 @@ import importlib
 # number of OMP threads to run, for OMP-related kernels
 num_omp_threads = 0
 
-use_parallel = True
-use_cache = True
+use_parallel = False
+use_cache = False
 
 def allocate_reordered_array(shape, dtype, order, zeros=False):
     """
