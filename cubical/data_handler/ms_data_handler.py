@@ -660,6 +660,7 @@ class MSDataHandler:
                                 component = DicoSourceProvider(component,
                                                                self.phadir,
                                                                degrid_opts["Padding"],
+                                                               degrid_opts["MaxFacetSize"],
                                                                clustercat)
 
                                 for key in component._cluster_keys:

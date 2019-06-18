@@ -16,6 +16,8 @@ import math
 class DDFacetSim(object):
     __degridding_semaphores = None
     __initted_CF_directions = []
+    __direction_CFs = {}
+    __ifacet = 0
     __CF_dict = shared_dict.SharedDict("convfilters.cubidegrid")
     __should_init_sems = True
 
@@ -37,6 +39,15 @@ class DDFacetSim(object):
             raise TypeError("Model provider must be a DicoSourceProvider")
         log.info("Model predictor is switching to model '{0:s}'".format(str(model)))
         self.__model = model
+
+    @classmethod
+    def dealloc_degridders(cls):
+        """ resets CF allocation state of all degridders """
+        cls.__initted_CF_directions = []
+        cls.__direction_CFs = {}
+        cls.__ifacet = 0
+        cls.__CF_dict.DelAll()
+        cls.__should_init_sems = True
 
     @classmethod
     def init_sems(cls, NSemaphores = 3373):
@@ -113,29 +124,37 @@ class DDFacetSim(object):
         band_frequencies, freq_mapping = self.bandmapping(freqs, dh.degrid_opts["NDegridBand"])
         src.set_frequency(band_frequencies)
         wmax = np.max([dh.metadata.baseline_length[k] for k in dh.metadata.baseline_length])
-
+        
+        gmachines = []
+        dname = "dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction))
         if should_init_cf:
             log.info("This is the first time predicting for '{0:s}' direction '{1:s}'. "
-                     "Initializing degridder - this may take a wee bit of time.".format(str(self.__model), str(self.__direction)))
-            self.__initted_CF_directions.append("dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction)))
+                     "Initializing degridder for {2:d} facets - this may take a wee bit of time.".format(
+                         str(self.__model), str(self.__direction), src.subregion_count))
+            self.__initted_CF_directions.append(dname)
             cf_dict = self.__CF_dict
+            self.__direction_CFs[dname] = self.__direction_CFs.get(dname, []) + list(self.__ifacet + np.arange(src.subregion_count)) #unique facet index for this subregion
+            self.__ifacet += src.subregion_count
         else:
             cf_dict = None
-        gmach = ClassDDEGridMachine.ClassDDEGridMachine(GD,
-                                    ChanFreq = freqs,
-                                    Npix = src.get_direction_npix(),
-                                    lmShift = np.deg2rad(src.get_direction_pxoffset() * src.pixel_scale / 3600),
-                                    IDFacet = src.direction,
-                                    SpheNorm = True, # Depricated, set ImToGrid True in .get!!
-                                    NFreqBands = dh.degrid_opts["NDegridBand"],
-                                    DataCorrelationFormat=DataCorrelationFormat,
-                                    ExpectedOutputStokes=[1], # Stokes I
-                                    ListSemaphores=self.__degridding_semaphores,
-                                    cf_dict=cf_dict, compute_cf=should_init_cf,
-                                    wmax=wmax,
-                                    bda_grid=None, bda_degrid=None)
-        #gmach.FT = ModFFTW.FFTW_2Donly_np(src.degrid_cube_shape, np.complex64, ncores = 1).fft
-        return gmach
+
+        for subregion_index in range(src.subregion_count):
+            gmach = ClassDDEGridMachine.ClassDDEGridMachine(GD,
+                        ChanFreq = freqs,
+                        Npix = src.get_direction_npix(subregion_index=subregion_index),
+                        lmShift = np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * src.pixel_scale / 3600),
+                        IDFacet = self.__direction_CFs[dname][subregion_index],
+                        SpheNorm = True, # Depricated, set ImToGrid True in .get!!
+                        NFreqBands = dh.degrid_opts["NDegridBand"],
+                        DataCorrelationFormat=DataCorrelationFormat,
+                        ExpectedOutputStokes=[1], # Stokes I
+                        ListSemaphores=self.__degridding_semaphores,
+                        cf_dict=cf_dict, compute_cf=should_init_cf,
+                        wmax=wmax,
+                        bda_grid=None, bda_degrid=None)
+            #gmach.FT = ModFFTW.FFTW_2Donly_np(src.degrid_cube_shape, np.complex64, ncores = 1).fft
+            gmachines.append(gmach)
+        return gmachines
 
     def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs):
         """ Predicts model data for the set direction of the dico source provider 
@@ -149,35 +168,40 @@ class DDFacetSim(object):
         src = self.__model
         src.set_direction(self.__direction)
         band_frequencies, freq_mapping = self.bandmapping(freqs, dh.degrid_opts["NDegridBand"])
-        gm = self.__init_grid_machine(src, dh, tile, poltype, freqs)
+        gmacs = self.__init_grid_machine(src, dh, tile, poltype, freqs)
         nrow = uvwco.shape[0]
         nfreq = len(freqs)
         ncorr = 4 # assume cubical expects 2x2 models
-        model = np.zeros((nrow, nfreq, 4), np.complex64)
-        flagged = np.zeros_like(model, dtype=np.bool)
+        region_model = np.zeros((nrow, nfreq, 4), np.complex64)
+        flagged = np.zeros_like(region_model, dtype=np.bool)
         # now we predict for this direction
-        log.info("Predicting direction '{0:s}'...".format(str(self.__direction)))
-        model = gm.get(
-            times=tile_subset.time_col, 
-            uvw=uvwco, 
-            visIn=model, 
-            flag=flagged, 
-            A0A1=[tile_subset.antea, tile_subset.anteb], 
-            ModelImage=src.get_degrid_model(), 
-            PointingID=src.direction,
-            Row0Row1=(0, -1),
-            DicoJonesMatrices=None, 
-            freqs=freqs, 
-            ImToGrid=False,
-            TranformModelInput="FT", 
-            ChanMapping=freq_mapping, 
-            sparsification=None)
+        log.info("Predicting {1:d} facets for direction '{0:s}'...".format(
+            str(self.__direction), src.subregion_count))
+
+        for gm, subregion_index in zip(gmacs, range(src.subregion_count)):
+            model = np.zeros((nrow, nfreq, 4), np.complex64)
+            region_model += -1 * gm.get( #default of the degridder is to subtract from the previous model
+                times=tile_subset.time_col, 
+                uvw=uvwco, 
+                visIn=model, 
+                flag=flagged, 
+                A0A1=[tile_subset.antea, tile_subset.anteb], 
+                ModelImage=src.get_degrid_model(subregion_index=subregion_index), 
+                PointingID=src.direction,
+                Row0Row1=(0, -1),
+                DicoJonesMatrices=None, 
+                freqs=freqs, 
+                ImToGrid=False,
+                TranformModelInput="FT", 
+                ChanMapping=freq_mapping, 
+                sparsification=None)
         
         return model
 
 import atexit
 
-def _cleanup_degridder_semaphores():
+def _cleanup_degridders():
     DDFacetSim.del_sems()
+    DDFacetSim.dealloc_degridders()
 
-atexit.register(_cleanup_degridder_semaphores)
+atexit.register(_cleanup_degridders)

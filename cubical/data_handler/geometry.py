@@ -82,7 +82,7 @@ class BoundingConvexHull(object):
 
     @property
     def globaldata(self):
-        return self._data.view()
+        return self._data
 
     @globaldata.setter
     def globaldata(self, v):
@@ -172,8 +172,8 @@ class BoundingBox(BoundingConvexHull):
                                     [[xl,yl],[xl,yu],[xu,yu],[xu,yl]],
                                     name,
                                     imdata=imdata)
-        self.__xnpx = abs(xu - xl)
-        self.__ynpx = abs(xu - xl)
+        self.__xnpx = abs(np.array(xu) - np.array(xl))
+        self.__ynpx = abs(np.array(xu) - np.array(xl))
     
     @property
     def box_npx(self):
@@ -185,8 +185,10 @@ class BoundingBox(BoundingConvexHull):
         if not isinstance(convex_hull_object, BoundingConvexHull):
             raise TypeError("Convex hull object passed in constructor is not of type BoundingConvexHull")
         if square:
-            boxdiam = np.max(np.sum((convex_hull_object.corners - 
-                                    convex_hull_object.centre[None, :])**2, axis=1))
+            boxdiam = np.sqrt(np.max(np.sum((convex_hull_object.corners - 
+                                             np.array(convex_hull_object.centre)[None, :])**2, 
+                                    axis=1)))
+            boxdiam = int(np.ceil(boxdiam))
             cx, cy = convex_hull_object.centre
             xl = cx - boxdiam
             xu = cx + boxdiam
@@ -216,18 +218,14 @@ class BoundingBox(BoundingConvexHull):
         yu = np.max(bounding_box_object.corners[:, 1])
         
         # construct a nonregular meshgrid bound to xu and yu
-        x = xl + np.arange(0, nsubboxes) * int(np.ceil((xu - xl + 1) / float(nsubboxes)))
-        x[-1] = min(xu, x[-1])
-        y = yl + np.arange(0, nsubboxes) * int(np.ceil((yu - yl + 1) / float(nsubboxes)))
-        y[-1] = min(yu, y[-1])
-        xx, yy = np.meshgrid(np.arange(xl, xl + int(np.ceil((xu+1 - xl) / float(nsubboxes))) * nsubboxes),
-                             np.arange(yl, yl + int(np.ceil((yu+1 - yl) / float(nsubboxes))) * nsubboxes), 
-                             sparse=False)
-        xls = xx[0:-1:2]
-        xus = xx[1::2]
-        yls = yy[0:-1:2]
-        yus = yy[1::2]
-        
+        x = xl + np.arange(0, nsubboxes + 1) * int(np.ceil((xu - xl + 1) / float(nsubboxes)))
+        y = yl + np.arange(0, nsubboxes + 1) * int(np.ceil((yu - yl + 1) / float(nsubboxes)))
+        xls = x[0:-1].ravel()
+        xus = x[1:].ravel() + 1
+        yls = y[0:-1].ravel()
+        yus = y[1:].ravel() + 1
+        xus[-1] = min(xus[-1], xu)
+        yus[-1] = min(yus[-1], yu)
         #coordinates for all the contained boxes, anti-clockwise wound
         bl = zip(xls, yls)
         br = zip(xus, yls)
