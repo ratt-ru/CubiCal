@@ -46,7 +46,7 @@ class DDFacetSim(object):
         cls.__initted_CF_directions = []
         cls.__direction_CFs = {}
         cls.__ifacet = 0
-        cls.__CF_dict.DelAll()
+        del cls.__CF_dict # cleans out /dev/shm allocated memory
         cls.__should_init_sems = True
 
     @classmethod
@@ -131,12 +131,10 @@ class DDFacetSim(object):
             log.info("This is the first time predicting for '{0:s}' direction '{1:s}'. "
                      "Initializing degridder for {2:d} facets - this may take a wee bit of time.".format(
                          str(self.__model), str(self.__direction), src.subregion_count))
-            self.__initted_CF_directions.append(dname)
-            cf_dict = self.__CF_dict
+            self.__initted_CF_directions.append(dname)    
             self.__direction_CFs[dname] = self.__direction_CFs.get(dname, []) + list(self.__ifacet + np.arange(src.subregion_count)) #unique facet index for this subregion
             self.__ifacet += src.subregion_count
-        else:
-            cf_dict = None
+        
 
         for subregion_index in range(src.subregion_count):
             gmach = ClassDDEGridMachine.ClassDDEGridMachine(GD,
@@ -149,14 +147,14 @@ class DDFacetSim(object):
                         DataCorrelationFormat=DataCorrelationFormat,
                         ExpectedOutputStokes=[1], # Stokes I
                         ListSemaphores=self.__degridding_semaphores,
-                        cf_dict=cf_dict,
+                        cf_dict=self.__CF_dict,
                         compute_cf=should_init_cf,
                         wmax=wmax)
             #gmach.FT = ModFFTW.FFTW_2Donly_np(src.degrid_cube_shape, np.complex64, ncores = 1).fft
             gmachines.append(gmach)
         return gmachines
 
-    def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs):
+    def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs, model_type):
         """ Predicts model data for the set direction of the dico source provider 
             returns a ndarray model of shape nrow x nchan x 4
         """
@@ -171,7 +169,9 @@ class DDFacetSim(object):
         gmacs = self.__init_grid_machine(src, dh, tile, poltype, freqs)
         nrow = uvwco.shape[0]
         nfreq = len(freqs)
-        ncorr = 4 # assume cubical expects 2x2 models
+        if model_type not in ["cplx2x2", "cplxdiag", "cplxscalar"]:
+            raise ValueError("Only supports cplx2x2 or cplxdiag or cplxscalar models at the moment")
+        ncorr = 4
         region_model = np.zeros((nrow, nfreq, 4), np.complex64)
         flagged = np.zeros_like(region_model, dtype=np.bool)
         # now we predict for this direction
@@ -180,23 +180,33 @@ class DDFacetSim(object):
 
         for gm, subregion_index in zip(gmacs, range(src.subregion_count)):
             model = np.zeros((nrow, nfreq, 4), np.complex64)
+            model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64)
+            # for some reason the degridder is transposed
+            model_image[...] = np.swapaxes(model_image, 2, 3) # facet is guaranteed to be square,
+            model_image[...] = model_image[:, :, ::-1, :]
+            model_image = model_image.copy() # degridder ignores ndarray strides. Must create a reordered array in memory
+            # apply normalization factors for FFT
+            model_image[...] *= model_image.shape[3] ** 2
+            # TODO: still some missing factors here. Possibly convolution filter crap due to using denormalized filters ????
             region_model += -1 * gm.get( #default of the degridder is to subtract from the previous model
                 times=tile_subset.time_col, 
-                uvw=uvwco, 
-                visIn=model, 
+                uvw=uvwco.astype(dtype=np.float64), 
+                visIn=model.astype(dtype=np.complex64), 
                 flag=flagged, 
-                A0A1=[tile_subset.antea, tile_subset.anteb], 
-                ModelImage=src.get_degrid_model(subregion_index=subregion_index), 
+                A0A1=[tile_subset.antea.astype(dtype=np.int32), tile_subset.anteb.astype(dtype=np.int32)], 
+                ModelImage=model_image, 
                 PointingID=src.direction,
                 Row0Row1=(0, -1),
                 DicoJonesMatrices=None, 
-                freqs=freqs, 
+                freqs=freqs.astype(dtype=np.float64), 
                 ImToGrid=False,
                 TranformModelInput="FT", 
-                ChanMapping=freq_mapping, 
+                ChanMapping=np.array(freq_mapping, dtype=np.int32), 
                 sparsification=None)
-        
-        return region_model
+        model_corr_slice = np.s_[0] if model_type == "cplxscalar" else \
+                           np.s_[0::3] if model_type == "cplxdiag" else \
+                           np.s_[:] # if model_type == "cplx2x2"
+        return region_model[:, :, model_corr_slice]
 
 import atexit
 

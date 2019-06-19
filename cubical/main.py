@@ -271,6 +271,7 @@ def main(debugging=False):
 
         solver_opts = GD["sol"]
         debug_opts  = GD["debug"]
+        out_opts = GD["out"]
         sol_jones = solver_opts["jones"]
         if isinstance(sol_jones, string_types):
             sol_jones = set(sol_jones.split(','))
@@ -478,7 +479,7 @@ def main(debugging=False):
 
         t0 = time()
 
-        stats_dict = workers.run_process_loop(ms, tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts)
+        stats_dict = workers.run_process_loop(ms, tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts, out_opts)
 
 
         print(ModColor.Str("Time taken for {}: {} seconds".format(solver_mode_name, time() - t0), col="green"), file=log)

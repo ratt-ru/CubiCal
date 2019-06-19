@@ -1,0 +1,227 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+"""
+Source provider for reading source information from a Tigger lsm.
+"""
+from six import string_types
+import logging
+import numpy as np
+import DDFacet
+import montblanc
+
+from montblanc.impl.rime.tensorflow.sources import SourceProvider
+
+import Tigger
+import pyrap.tables as pt
+
+
+class DDFSourceProvider(SourceProvider):
+    """
+        A DDFacet facet-based degridding model provider that is capable of applying 
+        patchwise-constant apriori-known DD terms, e.g the E Jones gains
+    """
+    def __init__(self, dicofile, phase_center, model_ref_freqs, dde_tag="dE"):
+        """
+        Initialises this source provider.
+
+        Args:
+            lsm (str):
+                Filename containing the sky model
+            phase_center (tuple):
+                Observation phase centre, as a RA, Dec tuple
+            dde_tag (str or None):
+                If set, sources are grouped into multiple directions using the specified tag.
+
+        """
+
+        self.filename = dicofile
+        # From DicoModel
+        ModConstructor = ddfacet.Imager.ClassModModelMachine(GD=None)
+        self.MM=ModConstructor.GiveInitialisedMMFromFile(component)
+        model_freqs=model_eval_freqs
+        self._original_freqs=model_ref_freqs
+
+        self._phase_center = phase_center
+        self._use_ddes = bool(dde_tag)
+        self._dde_tag = dde_tag
+
+        self._freqs = None
+        
+        # only one cluster per DDF model
+        self._cluster_keys = [dde_tag]
+        self._nclus = 1
+
+    def set_direction(self, idir):
+        """Sets current direction being simulated.
+
+        Args:
+            idir (int):
+                Direction number, from 0 to n_dir-1
+        """
+
+        self._target_key = idir
+        self._target_cluster = self._cluster_keys[self._target_key]
+        self._pnt_sources = self._clusters[self._target_cluster]["pnt"]
+        self._npsrc = len(self._pnt_sources)
+        self._gau_sources = self._clusters[self._target_cluster]["gau"]
+        self._ngsrc = len(self._gau_sources)
+
+    def set_frequency(self, frequency):
+        """Sets simulated frequencies
+
+        Args:
+            frequency (ndarray):
+                Array of frequencies associated with a DDID
+        """
+        self._freqs = frequency
+        self.MM.setFreqMachine(self._original_freqs, self._freqs)
+
+        self._target_key = 0
+        self._target_cluster = self._cluster_keys[self._target_key]
+
+        self._pnt_sources = self._clusters[self._target_cluster]["pnt"]
+        self._npsrc = len(self._pnt_sources)
+        self._gau_sources = self._clusters[self._target_cluster]["gau"]
+        self._ngsrc = len(self._gau_sources)
+
+    def name(self):
+        """ Returns name of assosciated source provider. This is just the filename, in this case."""
+        return self.filename
+
+    def point_lm(self, context):
+        """ Returns an lm coordinate array to Montblanc. """
+
+        lm = np.empty(context.shape, context.dtype)
+
+        # Print the array schema
+        #Montblanc.log.info(context.array_schema.shape)
+        # Print the space of iteration
+        #Montblanc.log.info(context.iter_args)
+
+        # Get the extents of the time, baseline and chan dimension
+        (lp, up) = context.dim_extents('npsrc')
+        assert lm.shape == (up-lp, 2)
+
+        for ind, source in enumerate(self._pnt_sources[lp:up]):
+
+            ra, dec = source.pos.ra, source.pos.dec
+            lm[ind,0], lm[ind,1] = radec_to_lm(ra, dec, self._phase_center)
+
+        return lm
+
+    def source_spectrum(self, source, freqs):
+        """
+        Calculate a spectrum for the source. If source.spectrum attribute is missing,
+        returns flat spectrum
+
+        Args:
+            source (:obj:`~Tigger.Models.SkyModel.Source`):
+                Tigger source
+            freq (`numpy.ndarray`):
+                array of frequencies of shape `(chan,)`
+
+        Returns:
+            `numpy.ndarray`:
+                spectrum of shape `(chan,)`
+        """
+        if hasattr(source, 'spectrum') and source.spectrum is not None:
+            rf = getattr(source.spectrum, 'freq0', 1e+9)
+            alpha = source.spectrum.spi
+            frf = freqs / rf
+            if not isinstance(alpha, (list, tuple)):
+                alpha = [alpha]
+            logfr = np.log10(frf)
+            spectrum = frf ** sum([a * np.power(logfr, n) for n, a in enumerate(alpha)])
+
+            ## broadcast into the time dimension.
+            return spectrum
+        else:
+            return np.ones_like(freqs)
+
+    def point_stokes(self, context):
+        """ Returns a stokes parameter array to Montblanc. """
+
+        # Get the extents of the time, baseline and chan dimension
+        (lp, up), (lt, ut), (lc, uc) = context.dim_extents('npsrc',
+                                                           'ntime',
+                                                           'nchan')
+        # (npsrc, ntime, nchan, 4)
+        stokes = np.empty(context.shape, context.dtype)
+
+        f = self._freqs[lc:uc]
+
+        for ind, source in enumerate(self._pnt_sources[lp:up]):
+            spectrum = self.source_spectrum(source, f)[None, :]
+
+            # Multiply flux into the spectrum,
+            # broadcasting into the time dimension
+            stokes[ind, :, :, 0] = source.flux.I*spectrum
+            stokes[ind, :, :, 1] = source.flux.Q*spectrum
+            stokes[ind, :, :, 2] = source.flux.U*spectrum
+            stokes[ind, :, :, 3] = source.flux.V*spectrum
+
+        return stokes
+
+    def gaussian_lm(self, context):
+        """ Returns an lm coordinate array to Montblanc. """
+
+        lm = np.empty(context.shape, context.dtype)
+
+        # Get the extents of the time, baseline and chan dimension
+        (lg, ug) = context.dim_extents('ngsrc')
+
+        for ind, source in enumerate(self._gau_sources[lg:ug]):
+
+            ra, dec = source.pos.ra, source.pos.dec
+            lm[ind, 0], lm[ind, 1] = radec_to_lm(ra, dec, self._phase_center)
+
+        return lm
+
+    def gaussian_stokes(self, context):
+        """ Return a stokes parameter array to Montblanc """
+
+        # Get the extents of the source, time and channel dims
+        (lg, ug), (lt, ut), (lc, uc) = context.dim_extents('ngsrc',
+                                                           'ntime',
+                                                           'nchan')
+        # (npsrc, ntime, nchan, 4)
+        stokes = np.empty(context.shape, context.dtype)
+
+        f = self._freqs[lc:uc]
+
+        for ind, source in enumerate(self._gau_sources[lg:ug]):
+            spectrum = self.source_spectrum(source, f)[None, :]
+
+            # Multiply flux into the spectrum,
+            # broadcasting into the time dimension
+            stokes[ind, :, :, 0] = source.flux.I*spectrum
+            stokes[ind, :, :, 1] = source.flux.Q*spectrum
+            stokes[ind, :, :, 2] = source.flux.U*spectrum
+            stokes[ind, :, :, 3] = source.flux.V*spectrum
+
+        return stokes
+
+    def gaussian_shape(self, context):
+        """ Returns a Gaussian shape array to Montblanc """
+
+        shapes = np.empty(context.shape, context.dtype)
+
+        (lg, ug) = context.dim_extents('ngsrc')
+
+        for ind, source in enumerate(self._gau_sources[lg:ug]):
+            shapes[0, ind] = source.shape.ex * np.sin(source.shape.pa)
+            shapes[1, ind] = source.shape.ex * np.cos(source.shape.pa)
+            shapes[2, ind] = source.shape.ey/source.shape.ex
+
+        return shapes
+
+    def updated_dimensions(self):
+        """ Informs Montblanc of updated dimension sizes. """
+
+        return [('npsrc', self._npsrc),
+                ('ngsrc', self._ngsrc)]
+
+    def phase_centre(self, context):
+        return self._phase_center

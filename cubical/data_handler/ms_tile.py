@@ -116,7 +116,7 @@ class MSTile(object):
             return data[self.rebin_row_map[:, np.newaxis],
                         self.rebin_chan_map[np.newaxis, :], None].reshape(shape)
 
-        def load_ddfacet_models(self, uvwco, loaded_models, model_source, cluster, imod, idir):
+        def load_ddfacet_models(self, uvwco, loaded_models, model_source, cluster, imod, idir, model_type):
             """
             Invoke DDFacet degridder to compute model visibilities
             for all directions. 
@@ -130,8 +130,8 @@ class MSTile(object):
                 model_source: cluster object
                 cluster: cluster direction name to use as return value
                 imod: index of this model provider (only used for printing)
-                idir: index of global direction
-
+                idir: index of global direction (only used for printing)
+                model_type: Either 'cplx2x2' or 'cplxdiag' or 'cplxscalar' supported at the moment
             Returns:
                 ndarray of shape nrow x nchan x ncorr for name specified in "cluster"
             """
@@ -150,8 +150,9 @@ class MSTile(object):
                                         self,
                                         self.tile.dh._poltype, 
                                         uvwco,
-                                        self._freqs)
-                loaded_models[model_source][clus] = model[self._row_identifiers, :, :]
+                                        self._freqs,
+                                        model_type)
+                loaded_models[model_source][clus] = model
 
             # finally return the direction requested in cluster
             model = loaded_models[model_source][cluster]
@@ -966,7 +967,16 @@ class MSTile(object):
                                 elif TiggerSourceProvider is not None and isinstance(model_source, TiggerSourceProvider):
                                     model = subset.load_montblanc_models(uvwco, loaded_models, model_source, cluster, imod, idir)
                                 elif DicoSourceProvider is not None and isinstance(model_source, DicoSourceProvider):
-                                    model = subset.load_ddfacet_models(uvwco, loaded_models, model_source, cluster, imod, idir)
+                                    
+                                    if self.dh.ncorr == 4:
+                                        model_type="cplx2x2"
+                                    elif self.dh.ncorr == 2:
+                                        model_type="cplxdiag"
+                                    elif self.dh.ncorr == 1:
+                                        model_type="cplxscalar"
+                                    else:
+                                        raise RuntimeError("Visibilities have correlations other than 4, 2 or 1. At present this is not supported")
+                                    model = subset.load_ddfacet_models(uvwco, loaded_models, model_source, cluster, imod, idir, model_type)
                                 else:
                                     raise TypeError("Unknown cluster of type {0:s}".format(type(model_source)))
                                 # finally, add model in at correct slot
@@ -1176,13 +1186,16 @@ class MSTile(object):
         for key in soldict.keys():
             yield soldict[key]
 
-    def save(self, final=False):
+    def save(self, final=False, only_save=["output", "model", "weight", "flag", "bitflag"]):
         """
         Saves 'corrected' column, and any updated flags, back to MS.
 
         Args:
             final (bool, optional):
                 If True, tells the MS handler that this is the final tile.
+            only_save (list, optional):
+                Only saves "output", "model", "weight" "flag" or "bitflag". This is useful for
+                predicting
         """
         data0 = shared_dict.attach(self._data_dict_name)
 
@@ -1214,33 +1227,39 @@ class MSTile(object):
             table_subset = self.dh.data.selectrows(subset.rows0)
 
             if self.dh.output_column and data0['updated'][0]:
-                covis = data['covis']
-                # if self.dh.parallactic_machine is not None:
-                #     covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb,
-                #                                                  angles=subset._angles)
-                covis = subset.upsample(covis)
-                print("  writing {} column".format(self.dh.output_column), file=log)
-                self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
-
+                if ("output" in only_save):
+                    covis = data['covis']
+                    # if self.dh.parallactic_machine is not None:
+                    #     covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb,
+                    #                                                  angles=subset._angles)
+                    covis = subset.upsample(covis)
+                    print("  writing {} column".format(self.dh.output_column), file=log)
+                    self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
+                else:
+                    print("  skipping {} column per user request".format(self.dh.output_column), file=log)
             subset._angles = None
 
             if self.dh.output_model_column and 'movis' in data:
-                # take first mode, and sum over directions if needed
-                model = data['movis'][:, 0]
-                if model.shape[0] == 1:
-                    model = model.reshape(model.shape[1:])
+                if ("model" in only_save):
+                    # take first mode, and sum over directions if needed
+                    model = data['movis'][:, 0]
+                    if model.shape[0] == 1:
+                        model = model.reshape(model.shape[1:])
+                    else:
+                        model = model.sum(axis=0)
+                    model = subset.upsample(model)
+                    print("  writing {} column".format(self.dh.output_model_column), file=log)
+                    self.dh.putslice(self.dh.output_model_column, model, subset=table_subset)
                 else:
-                    model = model.sum(axis=0)
-                model = subset.upsample(model)
-                print("  writing {} column".format(self.dh.output_model_column), file=log)
-                self.dh.putslice(self.dh.output_model_column, model, subset=table_subset)
-
+                    print("  skipping {} column per user request".format(self.dh.output_model_column), file=log)
             #writing outputs weights if any
             if self.dh.output_weight_column and data0['updated'][2]:
-                outweights = subset.upsample(data['outweights'])
-                print("  writing {} weight column".format(self.dh.output_weight_column), file=log)
-                self.dh.putslice(self.dh.output_weight_column, outweights, subset=table_subset)
-
+                if ("weight" in only_save):
+                    outweights = subset.upsample(data['outweights'])
+                    print("  writing {} weight column".format(self.dh.output_weight_column), file=log)
+                    self.dh.putslice(self.dh.output_weight_column, outweights, subset=table_subset)
+                else:
+                    print("  skipping {} weight column per user request".format(self.dh.output_weight_column), file=log)
             # write flags if (a) solver has generated flags, and we're saving them, (b) always, if auto-filling BITFLAG column
             #
             flag_col = None     # if not None, FLAG/FLAG_ROW will be saved
@@ -1290,29 +1309,39 @@ class MSTile(object):
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
             if bflag_col is not None:
-                self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
-                totflags = (self.bflagcol != 0).sum()
-                self.dh.flagcounts['OUT'] += totflags
-                print("  updated BITFLAG column ({:.2%} visibilities flagged)".format(totflags / float(self.bflagcol.size)), file=log)
-                self.bflagrow = np.bitwise_and.reduce(self.bflagcol, axis=(-1, -2))
-                table_subset.putcol("BITFLAG_ROW", self.bflagrow)
-                print("  updated BITFLAG_ROW column ({:.2%} rows flagged)".format(
-                    (self.bflagrow!=0).sum()/float(self.bflagrow.size)), file=log)
+                if ("bitflag" in only_save):
+                    self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
+                    totflags = (self.bflagcol != 0).sum()
+                    self.dh.flagcounts['OUT'] += totflags
+                    print("  updated BITFLAG column ({:.2%} visibilities flagged)".format(totflags / float(self.bflagcol.size)), file=log)
+                    self.bflagrow = np.bitwise_and.reduce(self.bflagcol, axis=(-1, -2))
+                    table_subset.putcol("BITFLAG_ROW", self.bflagrow)
+                    print("  updated BITFLAG_ROW column ({:.2%} rows flagged)".format(
+                        (self.bflagrow!=0).sum()/float(self.bflagrow.size)), file=log)
+                else:
+                    totflags = (self.bflagcol != 0).sum()
+                    print("  skipping BITFLAG column per user request ({:.2%} visibilities would have been flagged otherwise)".format(totflags / float(self.bflagcol.size)), file=log)
+                    print("  skipping BITFLAG column per user request ({:.2%} visibilities would have been flagged otherwise)".format(totflags / float(self.bflagcol.size)), file=log)
 
             #prevents memory leak by clearing
             self.bflagcol = self.bflagrow = None
 
             # this is set if FLAG/FLAG_ROW is to be written out
             if flag_col is not None:
-                self.dh.putslice("FLAG", flag_col, subset=table_subset)
-                totflags = flag_col.sum()
-                if bflag_col is None:                  # only count if not counted above
-                    self.dh.flagcounts['OUT'] += totflags
-                print("  updated FLAG column ({:.2%} visibilities flagged)".format(totflags / float(flag_col.size)), file=log)
-                flag_row = flag_col.all(axis=(-1, -2))
-                table_subset.putcol("FLAG_ROW", flag_row)
-                print("  updated FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum() / float(flag_row.size)), file=log)
-
+                if ("flag" in only_save):
+                    self.dh.putslice("FLAG", flag_col, subset=table_subset)
+                    totflags = flag_col.sum()
+                    if bflag_col is None:                  # only count if not counted above
+                        self.dh.flagcounts['OUT'] += totflags
+                    print("  updated FLAG column ({:.2%} visibilities flagged)".format(totflags / float(flag_col.size)), file=log)
+                    flag_row = flag_col.all(axis=(-1, -2))
+                    table_subset.putcol("FLAG_ROW", flag_row)
+                    print("  updated FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum() / float(flag_row.size)), file=log)
+                else:
+                    totflags = flag_col.sum()
+                    flag_row = flag_col.all(axis=(-1, -2))
+                    print("  skipping FLAG column per user request ({:.2%} visibilities would have been flagged otherwise)".format(totflags / float(flag_col.size)), file=log)
+                    print("  skipping FLAG_ROW column per user request ({:.2%} rows would have been flagged otherwise)".format(flag_row.sum() / float(flag_row.size)), file=log)
             if final:
                 self.dh.finalize()
                 self.dh.unlock()

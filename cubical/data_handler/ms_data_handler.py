@@ -665,7 +665,9 @@ class MSDataHandler:
 
                                 for key in component._cluster_keys:
                                     dirname = idirtag if key == 'die' else key
-                                    dirmodels.setdefault(dirname, []).append((component, key, subtract))                            
+                                    dirmodels.setdefault(dirname, []).append((component, key, subtract))
+                            else:
+                                raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
                         elif ".lsm" in component or ".txt" in component: #LSM
                             # check if LSM ends with @tag specification
                             if "@" in component:
@@ -691,8 +693,10 @@ class MSDataHandler:
                         else:
                             raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
                     # else it is a visibility column component
-                    else:
+                    elif component in self.ms.colnames():
                         dirmodels.setdefault(idirtag, []).append((component, None, subtract))
+                    else:
+                        raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
             self.model_directions.update(iter(dirmodels.keys()))
         # Now, each model is a dict of dirmodels, keyed by direction name (unnamed directions are _dir0, _dir1, etc.)
         # Get all possible direction names
