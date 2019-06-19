@@ -149,9 +149,9 @@ class DDFacetSim(object):
                         DataCorrelationFormat=DataCorrelationFormat,
                         ExpectedOutputStokes=[1], # Stokes I
                         ListSemaphores=self.__degridding_semaphores,
-                        cf_dict=cf_dict, compute_cf=should_init_cf,
-                        wmax=wmax,
-                        bda_grid=None, bda_degrid=None)
+                        cf_dict=cf_dict,
+                        compute_cf=should_init_cf,
+                        wmax=wmax)
             #gmach.FT = ModFFTW.FFTW_2Donly_np(src.degrid_cube_shape, np.complex64, ncores = 1).fft
             gmachines.append(gmach)
         return gmachines
@@ -196,7 +196,7 @@ class DDFacetSim(object):
                 ChanMapping=freq_mapping, 
                 sparsification=None)
         
-        return model
+        return region_model
 
 import atexit
 
