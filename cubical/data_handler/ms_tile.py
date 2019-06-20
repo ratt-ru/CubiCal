@@ -957,15 +957,16 @@ class MSTile(object):
                                             model = model0
                                         model0 = None
                                         # apply rotation (*after* rebinning: subset.time_col is rebinned version!)
-                                        # if self.dh.parallactic_machine is not None:
-                                        #     subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
-                                        #     model = self.dh.parallactic_machine.rotate(subset.time_col, model,
-                                        #                                                 subset.antea, subset.anteb,
-                                        #                                                 angles=subset._angles)
+                                        if self.dh.parallactic_machine is not None:
+                                            subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                                            model = self.dh.parallactic_machine.rotate(subset.time_col, model,
+                                                                                        subset.antea, subset.anteb,
+                                                                                        angles=subset._angles)
                                     loaded_models.setdefault(model_source, {})[None] = model
                                 # else evaluate a Tigger model with Montblanc
                                 elif TiggerSourceProvider is not None and isinstance(model_source, TiggerSourceProvider):
                                     model = subset.load_montblanc_models(uvwco, loaded_models, model_source, cluster, imod, idir)
+                                    # montblanc applies the PA rotation matrix internally
                                 elif DicoSourceProvider is not None and isinstance(model_source, DicoSourceProvider):
                                     
                                     if self.dh.ncorr == 4:
@@ -977,6 +978,11 @@ class MSTile(object):
                                     else:
                                         raise RuntimeError("Visibilities have correlations other than 4, 2 or 1. At present this is not supported")
                                     model = subset.load_ddfacet_models(uvwco, loaded_models, model_source, cluster, imod, idir, model_type)
+                                    if self.dh.parallactic_machine is not None:
+                                            subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                                            model = self.dh.parallactic_machine.rotate(subset.time_col, model,
+                                                                                        subset.antea, subset.anteb,
+                                                                                        angles=subset._angles)
                                 else:
                                     raise TypeError("Unknown cluster of type {0:s}".format(type(model_source)))
                                 # finally, add model in at correct slot
@@ -1012,12 +1018,14 @@ class MSTile(object):
             # Create a placeholder if using the Robust solver with save weights activated
             if self.dh.output_weight_column is not None:
                 data.addSharedArray('outweights', data['obvis'].shape, self.dh.wtype)
-
-        # compute PA rotation angles, if needed
-        if self.dh.parallactic_machine is not None:
-            angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
-            data.addSharedArray('pa', angles.shape, np.float64)
-            data['pa'][:] = angles
+        
+        # @oms this  is wrong - the apply needs to happen per sub model in the load step
+        # otherwise the various sub-switches could lead to double applying the PA
+        # # compute PA rotation angles, if needed
+        # if self.dh.parallactic_machine is not None:
+        #     angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+        #     data.addSharedArray('pa', angles.shape, np.float64)
+        #     data['pa'][:] = angles
 
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
@@ -1076,15 +1084,17 @@ class MSTile(object):
                                        reqdims=6, allocator=allocator)
         if 'movis' in data:
             ### APPLY ROTATION HERE
-            if self.dh.rotate_model:
-                model = data['movis']
-                angles = data['pa'][rows]
-                for idir in range(model.shape[0]):
-                    for imod in range(model.shape[1]):
-                        submod = model[idir, imod, rows, freq_slice]
-                        submod[:] = self.dh.parallactic_machine.rotate(subset.time_col[rows], submod,
-                                                           subset.antea[rows], subset.anteb[rows],
-                                                           angles=angles)
+            # @ oms this is wrong when mixing and matching predictors and very likely leeds
+            # to doubly applying the PA model rotation.
+            # if self.dh.rotate_model:
+            #     model = data['movis']
+            #     angles = data['pa'][rows]
+            #     for idir in range(model.shape[0]):
+            #         for imod in range(model.shape[1]):
+            #             submod = model[idir, imod, rows, freq_slice]
+            #             submod[:] = self.dh.parallactic_machine.rotate(subset.time_col[rows], submod,
+            #                                                subset.antea[rows], subset.anteb[rows],
+            #                                                angles=angles)
 
             mod_arr = subset._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, ctype,
                                            reqdims=8, allocator=allocator)

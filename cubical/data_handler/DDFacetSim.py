@@ -46,7 +46,7 @@ class DDFacetSim(object):
         cls.__initted_CF_directions = []
         cls.__direction_CFs = {}
         cls.__ifacet = 0
-        del cls.__CF_dict # cleans out /dev/shm allocated memory
+        cls.__CF_dict.delete() # cleans out /dev/shm allocated memory
         cls.__should_init_sems = True
 
     @classmethod
@@ -154,6 +154,23 @@ class DDFacetSim(object):
             gmachines.append(gmach)
         return gmachines
 
+    @classmethod
+    def __detaper_model(cls, gm, model_image):
+        """ Detapers model image by the fourier inverse of the convolution kernel 
+            Assertions that the tapering function is larger than the model facet,
+            both are square and odd sized
+        """
+        assert all(np.array(gm.ifzfCF.shape[2:3]) % 2 == 1) 
+        assert all(np.array(model_image.shape[2:3]) % 2 == 1) 
+        assert model_image.shape[2] == model_image.shape[3]
+        assert all(np.array(gm.ifzfCF.shape[2:3]) >= np.array(model_image.shape[2:3])) # must be able to centre model facet in the tapering function
+        centre = np.array(gm.ifzfCF.shape[0]) // 2
+        model_image.real /= gm.ifzfCF.real[None, 
+                                           None,
+                                           centre-model_image.shape[2]//2:centre+model_image.shape[2]//2+1, 
+                                           centre-model_image.shape[3]//2:centre+model_image.shape[3]//2+1]
+        return model_image
+
     def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs, model_type):
         """ Predicts model data for the set direction of the dico source provider 
             returns a ndarray model of shape nrow x nchan x 4
@@ -184,10 +201,11 @@ class DDFacetSim(object):
             # for some reason the degridder is transposed
             model_image[...] = np.swapaxes(model_image, 2, 3) # facet is guaranteed to be square,
             model_image[...] = model_image[:, :, ::-1, :]
+            model_image = DDFacetSim.__detaper_model(gm, model_image.view())
             model_image = model_image.copy() # degridder ignores ndarray strides. Must create a reordered array in memory
             # apply normalization factors for FFT
-            model_image[...] *= model_image.shape[3] ** 2
-            # TODO: still some missing factors here. Possibly convolution filter crap due to using denormalized filters ????
+            model_image[...] *= (model_image.shape[3] ** 2) * (gm.WTerm.OverS ** 2) 
+            
             region_model += -1 * gm.get( #default of the degridder is to subtract from the previous model
                 times=tile_subset.time_col, 
                 uvw=uvwco.astype(dtype=np.float64), 
