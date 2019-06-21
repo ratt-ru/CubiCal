@@ -2,47 +2,58 @@ import numpy as np
 import scipy.stats as sstats
 import scipy.signal as ssig
 import scipy.spatial as spat
+import copy
 
-DEBUG = False
+DEBUG = True
 
 class BoundingConvexHull(object):
-    def __init__(self, list_hulls, name="unnamed", imdata = None, mask = None):
+    def __init__(self, list_hulls, name="unnamed", mask = None):
         if mask is not None:
             if not isinstance(mask, list):
                 raise TypeError("Mask must be list")
             if not (hasattr(mask, "__len__") and (len(mask) == 0 or (hasattr(mask[0], "__len__") and len(mask[0]) == 2))):
                 raise TypeError("Mask must be a sparse mask of 2 element values")
-        self._data = imdata
         self._name = name
+        self._cached_filled_mask = None
         self._vertices = points = np.vstack([b.corners
             if hasattr(b, "corners") else [b[0], b[1]] for b in list_hulls])
         self._hull = spat.ConvexHull(points)
         if mask is None:
             self._mask = self.init_mask()
         else: 
-            self._mask = filter(lambda c: c in self, mask)
+            self._mask = copy.deepcopy(filter(lambda c: (c[1], c[0]) in self, mask))
+
+    def invalidate_cached_masks(self):
+        """ Invalidates the cached masks (sparse or regular) """
+        self._cached_filled_mask = None
+        self.init_mask()
 
     def __str__(self):
         return ",".join(["({0:d},{1:d})".format(x,y) for (x,y) in self.corners])
     
     def init_mask(self):
-        """ creates a sparse mask of the convex hull """
+        """ creates a sparse mask of the convex hull of the form (y, x) tuples """
         lines = np.hstack([self.corners, np.roll(self.corners, -1, axis=0)])
         minx = np.min(lines[:, 0:4:2]); maxx = np.max(lines[:, 0:4:2])
         miny = np.min(lines[:, 1:4:2]); maxy = np.max(lines[:, 1:4:2])
-        x = np.arange(minx, maxx, 1)
-        y = np.arange(miny, maxy, 1)
-        meshgrid = np.meshgrid(x, y)
-        bounding_mesh = zip(*map(lambda x: np.ravel(x), np.meshgrid(x, y)))
-        sparse_mask = filter(lambda c: c in self, bounding_mesh)
+        x = np.arange(minx, maxx + 1, 1) #upper limit inclusive
+        y = np.arange(miny, maxy + 1, 1)
+        meshgrid = np.meshgrid(y, x)
+        bounding_mesh = zip(*map(lambda x: np.ravel(x), np.meshgrid(y, x)))
+        sparse_mask = filter(lambda c: c[::-1] in self, bounding_mesh)
         return sparse_mask
 
     @property
     def sparse_mask(self):
+        """ returns a sparse mask (y, x) values of all points in the masked region """
         return self._mask
     
     @property
     def mask(self):
+        """ Creates a filled rectangular mask grid of size y, x """
+        if self._cached_filled_mask is not None:
+            return self._cached_filled_mask
+
         lines = np.hstack([self.corners, np.roll(self.corners, -1, axis=0)])
         minx = np.min(lines[:, 0:4:2]); maxx = np.max(lines[:, 0:4:2])
         miny = np.min(lines[:, 1:4:2]); maxy = np.max(lines[:, 1:4:2])
@@ -50,73 +61,88 @@ class BoundingConvexHull(object):
         ny = maxy - miny + 1
         mesh = np.zeros(nx*ny, dtype=np.bool)
         if nx==0 or ny==0 or len(self.sparse_mask) == 0: 
-            return mesh
+            self._cached_filled_mask = mesh.reshape((ny, nx))
         else:
             sparse_mask = np.array(self.sparse_mask)
-            sel = np.logical_and(np.logical_and(sparse_mask[:, 0] >= minx,
-                                                sparse_mask[:, 0] <= maxx),
-                                 np.logical_and(sparse_mask[:, 1] >= miny,
-                                                sparse_mask[:, 1] <= maxy))
+            sel = np.logical_and(np.logical_and(sparse_mask[:, 1] >= minx,
+                                                sparse_mask[:, 1] <= maxx),
+                                 np.logical_and(sparse_mask[:, 0] >= miny,
+                                                sparse_mask[:, 0] <= maxy))
 
-            sparse_mask[sel]
-            flat_index = (sparse_mask[sel][:, 1] - miny) + (sparse_mask[sel][:, 0] - minx)*ny
+            flat_index = (sparse_mask[sel][:, 0] - miny)*nx + (sparse_mask[sel][:, 1] - minx)
             mesh[flat_index] = 1
-            return mesh.reshape((nx, ny)).T
+            self._cached_filled_mask = mesh.reshape((ny, nx))
+        return self._cached_filled_mask
 
-    @property
-    def regional_data(self):
-        """ 2D array containing all values within convex hull """
-        lines = np.hstack([self.corners, np.roll(self.corners, -1, axis=0)])
+    @classmethod
+    def regional_data(cls, sel_region, data_cube, axes=(2, 3), oob_value=0):
+        """ 2D array containing all values within convex hull 
+            sliced out along axes provided as argument. Portions of sel_region
+            that are outside of the data_cube is set to oob_value
+
+            assumes the last value of axes is the fastest varying axis
+        """
+        if not isinstance(sel_region, BoundingConvexHull):
+            raise TypeError("Object passed in is not of type BoundingConvexHull")
+        if not (hasattr(axes, "__len__") and len(axes) == 2):
+            raise ValueError("Expected a tupple of axes along which to slice out a region")
+        axes = sorted(axes)
+
+        lines = np.hstack([sel_region.corners, np.roll(sel_region.corners, -1, axis=0)])
         minx = np.min(lines[:, 0:4:2]); maxx = np.max(lines[:, 0:4:2])
         miny = np.min(lines[:, 1:4:2]); maxy = np.max(lines[:, 1:4:2])
-        x = np.arange(minx, maxx, 1)
-        y = np.arange(miny, maxy, 1)
-        bounding_mesh = np.meshgrid(x, y)
-        # inverted mask
-        region_selected = np.zeros((y.shape[0], x.shape[0]), dtype=np.bool)
-        for x1, y1, x2, y2 in lines:
-            sel_indx = np.logical_and(np.logical_and(bounding_mesh[0]>=min(x1, x2),
-                                                     bounding_mesh[0]<=max(x1, x2)),
-                                      np.logical_and(bounding_mesh[1]>=min(y1, y2),
-                                                     bounding_mesh[1]<=max(y1, y2)))
-            region_selected[sel_indx] = True
+        x = np.arange(minx, maxx + 1, 1)
+        y = np.arange(miny, maxy + 1, 1)
 
         pad_left = max(0, 0 - minx)
         pad_bottom = max(0, 0 - miny)
-        pad_right = max(0, maxx - self._data.shape[3])
-        pad_top = max(0, maxy - self._data.shape[2])
-        cube_selected = np.tile(np.tile(region_selected[pad_bottom:region_selected.shape[0]-pad_top,
-                                                pad_left:region_selected.shape[1]-pad_right],
-                                        (self._data.shape[1], 1, 1)),
-                                (self._data.shape[0], 1, 1, 1))
-        self._data[: , :, pad_bottom+miny:maxy-pad_top, pad_left+minx:maxx-pad_right][cube_selected] = np.nan
-        if DEBUG:
-            from matplotlib import pyplot as plt
-            plt.figure
-            plt.imshow(self._data[pad_bottom+miny:maxy-pad_top, pad_left+minx:maxx-pad_right])
-            plt.show()
-        selected_data = self._data[:, :, pad_bottom+miny:maxy-pad_top, pad_left+minx:maxx-pad_right][np.logical_not(np.isnan(
-            self._data[:, :, pad_bottom+miny:maxy-pad_top, pad_left+minx:maxx-pad_right]))].reshape(
-            (self._data.shape[0], self._data.shape[1], maxy-pad_top - (pad_bottom+miny), maxx-pad_right - (pad_left+minx)))
+        pad_right = max(0, maxx - data_cube.shape[axes[1]] + 1) #inclusive of upper limit
+        pad_top = max(0, maxy - data_cube.shape[axes[0]] + 1)
+
+        # extract data, pad if necessary
+        slc_data = [slice(None)] * len(data_cube.shape)
+        for (start, end), axis in zip([(miny + pad_bottom, maxy - pad_top + 1), 
+                                       (minx + pad_left, maxx - pad_right + 1)], axes):
+            slc_data[axis] = slice(start, end)
+        slc_padded = [slice(None)] * len(data_cube.shape)
+        for (start, end), axis in zip([(pad_bottom, -miny + maxy + 1 - pad_top), 
+                                       (pad_left, -minx + maxx + 1 - pad_right)], axes):
+            slc_padded[axis] = slice(start, end)
+
+        selected_data = data_cube[tuple(slc_data)]
+        new_shape = list(data_cube.shape)
+        new_shape[axes[0]] = pad_bottom + (maxy - miny + 1) + pad_top
+        new_shape[axes[1]] = pad_left + (maxx - minx + 1) + pad_right
+
         if any(np.array([pad_left, pad_bottom, pad_right, pad_top]) > 0):
-            dcp_selected_data = np.zeros((self._data.shape[0],
-                                          self._data.shape[1],
-                                          maxy - miny,
-                                          maxx - minx), dtype=selected_data.dtype)
-            dcp_selected_data[:, :, 
-                              pad_bottom:pad_bottom+selected_data.shape[2], 
-                              pad_left:pad_left+selected_data.shape[3]] = \
-                selected_data
+            padded_data = np.zeros(tuple(new_shape), dtype=selected_data.dtype) * oob_value
+            padded_data[tuple(slc_padded)] = selected_data.copy()
         else:
-            dcp_selected_data = selected_data.copy()
-        return dcp_selected_data
+            padded_data = selected_data.copy()
 
+        # finally apply mask
+        slc_mask = [slice(None)] * len(padded_data.shape)
+        for (start, end), axis in zip([(0, maxy - miny + 1),  #mask starts at origin in the padded image
+                                       (0, maxx - minx + 1)], axes):
+            slc_mask[axis] = slice(start, end)
+        assert padded_data[tuple(slc_mask)].size == sel_region.mask.size
+        mask = sel_region.mask.astype(np.float32)
+        mask[mask == 0] = oob_value
+        padded_data[tuple(slc_mask)] *= mask
+        window_extents = [- pad_left, maxx + pad_right + pad_left - 1, 
+                          - pad_bottom, maxy + pad_top + pad_bottom - 1]
+        return padded_data, window_extents
 
+    @property
+    def circumference(self):
+        """ area contained in hull """
+        lines = self.edges
+        return np.sum(np.linalg.norm(lines[:, 1, :] - lines[:, 0, :], axis=1) + 1)
     @property
     def area(self):
         """ area contained in hull """
         lines = np.hstack([self.corners, np.roll(self.corners, -1, axis=0)])
-        return 0.5 * np.abs(np.sum([x1*y2-x2*y1 for x1,y1,x2,y2 in lines]))
+        return 0.5 * np.abs(np.sum([x1*(y2)-(x2)*y1 for x1,y1,x2,y2 in lines])) + 0.5 * self.circumference - 1
 
     @property
     def name(self):
@@ -125,18 +151,6 @@ class BoundingConvexHull(object):
     @name.setter
     def name(self, v):
         self._name = v
-
-    @property
-    def globaldata(self):
-        return self._data
-
-    @globaldata.setter
-    def globaldata(self, v):
-        if not isinstance(v, np.ndarray):
-            raise TypeError("data cube must be ndarray")
-        if not v.ndim == 4:
-            raise ValueError("data cube must be 4 dimensional")
-        self._data = v
 
     @property
     def corners(self):
@@ -183,7 +197,7 @@ class BoundingConvexHull(object):
         """ right normals to the edges of the hull """
         return self.normals(left=False)
     
-    def overlaps_with(self, other, min_sep_dist=1.0e-4):
+    def overlaps_with(self, other, min_sep_dist=0.5): #less than half a pixel away
         """ 
             Implements the separating lines collision detection theorem 
             to test whether the hull intersects with 'other' hull
@@ -220,28 +234,35 @@ class BoundingConvexHull(object):
         else:
             return np.mean(self._vertices, axis=0)
 
-    def __contains__(self, s):
+    def __contains__(self, s, tolerance=0.5): #less than half a pixel away
         """ tests whether a point s(x,y) is in the convex hull """
+        # there are three cases to consider
+        # CASE 1:
+        # scalar projection  between all inner pointing right normals (clockwise winding) 
+        # and the point must be positive if the point were to lie inside
+        # the region (true)
+        # CASE 2:
+        # point is on an edge - the scalar projection onto the axis is 0 for that edge
+        # and greater than 0 for the other edges (true)
+        # CASE 3:
+        # it is outside (false)
         x, y = s
         isin = True
         normals = self.rnormals 
         xyvec = np.array([x, y])[None, :] - np.array(self.corners)
-        # scalar projection  between all inner pointing right normals (clockwise winding) 
-        # and the point must be positive if the point were to lie inside
-        # the region         
+        
         dot = np.einsum("ij,ij->i", normals, xyvec)
-        return np.all(dot >= 0)
+        return np.all(dot > -tolerance)
 
 class BoundingBox(BoundingConvexHull):
-    def __init__(self, xl, xu, yl, yu, name="unnamed", imdata=None, mask=None):
+    def __init__(self, xl, xu, yl, yu, name="unnamed", mask=None):
         if not all(map(lambda x: isinstance(x, int), [xl, xu, yl, yu])):
             raise ValueError("Box limits must be integers")
-        self.__xnpx = abs(xu - xl)
-        self.__ynpx = abs(yu - yl)
+        self.__xnpx = abs(xu - xl + 1) #inclusive of the upper pixel
+        self.__ynpx = abs(yu - yl + 1)
         BoundingConvexHull.__init__(self,
                                     [[xl,yl],[xl,yu],[xu,yu],[xu,yl]],
                                     name,
-                                    imdata=imdata,
                                     mask=mask)
 
     def __contains__(self, s):
@@ -250,20 +271,6 @@ class BoundingBox(BoundingConvexHull):
         minx = np.min(lines[:, 0:4:2]); maxx = np.max(lines[:, 0:4:2])
         miny = np.min(lines[:, 1:4:2]); maxy = np.max(lines[:, 1:4:2])
         return s[0] >= minx and s[0] <= maxx and s[1] >= miny and s[1] <= maxy
-
-    def init_mask(self):
-        """ creates a sparse mask of the box 
-            since this is a box we can cheat a bit, making masks for general hulls is a lot
-            more computationally expensive. We do however store the coordinates of the mask
-            for self consistency
-        """
-        lines = np.hstack([self.corners, np.roll(self.corners, -1, axis=0)])
-        minx = np.min(lines[:, 0:4:2]); maxx = np.max(lines[:, 0:4:2])
-        miny = np.min(lines[:, 1:4:2]); maxy = np.max(lines[:, 1:4:2])
-        x = np.arange(minx, maxx, 1)
-        y = np.arange(miny, maxy, 1)
-        bounding_mesh = zip(*map(lambda x: np.ravel(x), np.meshgrid(x, y)))
-        return bounding_mesh
 
     @property
     def box_npx(self):
@@ -290,12 +297,11 @@ class BoundingBox(BoundingConvexHull):
             yl = np.min(convex_hull_object.corners[:, 1])
             yu = np.max(convex_hull_object.corners[:, 1])
 
-        xu += (xu - xl + 1) % 2 if enforce_odd else 0
-        yu += (yu - yl + 1) % 2 if enforce_odd else 0
+        xu += (xu - xl) % 2 if enforce_odd else 0
+        yu += (yu - yl) % 2 if enforce_odd else 0
 
         return BoundingBox(xl, xu, yl, yu,
                            convex_hull_object.name,
-                           imdata=convex_hull_object.globaldata,
                            mask=convex_hull_object.sparse_mask)
 
     @classmethod
@@ -316,18 +322,16 @@ class BoundingBox(BoundingConvexHull):
         xx, yy = np.meshgrid(x, y)
 
         # split into boxes
-        xls = xx[0:-1, 0:-1]
-        xus = xx[1:, 1:]
-        yls = yy[0:-1, 0:-1]
-        yus = yy[1:, 1:]
+        xls = xx[0:-1, 0:-1].copy()
+        xus = xx[1:, 1:].copy()
+        yls = yy[0:-1, 0:-1].copy()
+        yus = yy[1:, 1:].copy()
 
         # make sure no boxes overlap
-        xus[:, :-1] -= 1
-        yus[:-1, :] -= 1
+        xus = xus - 1
+        yus = yus - 1
 
         # clamp the final coordinate to the upper end (may result in rectanglular box at the end)
-        xls[:, 0] = max(xl, min(xls[-1, 0], xl)) 
-        yls[0, :] = max(yl, min(yls[0, -1], yl))
         xus[:, -1] = max(xu, min(xus[0, -1], xu)) 
         yus[-1, :] = max(yu, min(yus[-1, 0], yu))
         
@@ -344,94 +348,163 @@ class BoundingBox(BoundingConvexHull):
 
         #finally create bbs for each of the contained boxes with the mask
         #chopped up between the boxes by the convex hull initializer
-        new_regions = [BoundingBox(bl[0], br[0], ur[0], ul[0],
+        new_regions = [BoundingBox(bl[0], br[0], bl[1], ul[1],
                                    bounding_box_object.name,
-                                   imdata=bounding_box_object.globaldata,
                                    mask=bounding_box_object.sparse_mask)
                        for bl, br, ur, ul in contained_boxes]
 
         return new_regions
 
-if __name__ == "__main__":
-    import numpy as np
-    from matplotlib import pyplot as plt
+    @classmethod
+    def PadBox(cls, bounding_box_object, desired_nx, desired_ny):
+        """ Creates a box with a padded border around a axis-aligned bounding box """
+        if not isinstance(bounding_box_object, BoundingBox):
+            raise TypeError("Expected bounding box object")
+        nx, ny = bounding_box_object.box_npx
+        if desired_nx - nx < 0 or desired_ny - ny < 0:
+            raise ValueError("Padded box must be bigger than original box")
+        pad_left = desired_nx // 2
+        pad_right = desired_nx - pad_left - 1
+        pad_bottom = desired_ny // 2
+        pad_top = desired_ny - pad_bottom - 1
+        cx, cy = bounding_box_object.centre
+        xl = cx - pad_left
+        xu = cx + pad_right
+        yl = cy - pad_bottom
+        yu = cy + pad_top
+        return BoundingBox(xl, xu, yl, yu,
+                           c.name, 
+                           mask=bounding_box_object.sparse_mask) #mask unchanged in the new shape, border frame discarded
+if __name__ == "__main__":    
+    # test case 1
+    vals = np.array([[50, 60], [20, 40], [-74, 50], [-95, +10], [20, 60]])
+    bh = BoundingConvexHull(vals)
+    mask = bh.mask 
+    assert mask.shape == (np.max(vals[:, 1]) - np.min(vals[:, 1]) + 1, np.max(vals[:, 0]) - np.min(vals[:, 0]) + 1)
+    assert np.abs(mask.sum() - bh.area) / bh.area < 0.05 # integral mask area needs to be close to true area
+    normalized_normals = bh.rnormals / np.linalg.norm(bh.rnormals, axis=1)[:, None]
+    # test case 2
+    for e, n in zip(bh.edges, normalized_normals):
+        edge_vec = e[1] - e[0]
+        assert np.all(np.abs(np.dot(edge_vec, n)) < 1.0e-8)
+
+    # test case 3
+    valsextract = np.array([[-10, 120], [90, 268], [293, 110],[40, -30]])
+    bh_extract = BoundingConvexHull(valsextract)
+    sinc_npx = 255
+    sinc = np.sinc(np.linspace(-10, 10, sinc_npx))
+    sinc2d = np.outer(sinc, sinc).reshape((1, 1, sinc_npx, sinc_npx))
+    extracted_data, extracted_window_extents = BoundingConvexHull.regional_data(bh_extract, sinc2d, oob_value=np.nan)
+    assert extracted_window_extents == [-10, 341, -30, 311]
+    sparse_mask = np.array(bh_extract.sparse_mask)
+    lines = np.hstack([bh_extract.corners, np.roll(bh_extract.corners, -1, axis=0)])
+    minx = np.min(lines[:, 0:4:2]); maxx = np.max(lines[:, 0:4:2])
+    miny = np.min(lines[:, 1:4:2]); maxy = np.max(lines[:, 1:4:2])
+    sel = np.logical_and(np.logical_and(sparse_mask[:, 1] >= 0,
+                                        sparse_mask[:, 1] < 255),
+                         np.logical_and(sparse_mask[:, 0] >= 0,
+                                        sparse_mask[:, 0] < 255))
     
-    # # test case 1
-    # vals = np.array([[50, 60], [20, 40], [-74, 50], [-95, +10], [20, 60]])
-    # bh = BoundingConvexHull(vals)
-    # mask = bh.mask 
-    # assert np.abs(mask.sum() - bh.area) / bh.area < 0.01 # integral mask area needs to be close to true area
-    # normalized_normals = bh.rnormals / np.linalg.norm(bh.rnormals, axis=1)[:, None]
+    flat_index = (sparse_mask[sel][:, 0])*sinc_npx + (sparse_mask[sel][:, 1])
+    assert np.abs(np.sum(sinc2d.ravel()[flat_index]) - np.nansum(extracted_data.ravel())) < 1.0e-8
 
-    # # test case 2
-    # for e, n in zip(bh.edges, normalized_normals):
-    #     edge_vec = e[1] - e[0]
-    #     assert np.all(np.abs(np.dot(edge_vec, n)) < 1.0e-8)
-
-    # # test case 3
-    # vals2 = np.array([[-20, 40], [-40, 0], [20, 30]])
-    # bh2 = BoundingConvexHull(vals2)
-
-    # vals3 = np.array([[-20, 58], [-40, 80], [20, 100]])
-    # bh3 = BoundingConvexHull(vals3)
-    # assert bh.overlaps_with(bh2)
-    # assert not bh.overlaps_with(bh3)
-    # assert not bh2.overlaps_with(bh3)
-
-    # # test case 4
-    # assert (-1000, -1000) not in bh
-    # assert (30, 0) not in bh
-    # assert (0, 0) not in bh
-    # assert (-40, 30) in bh
-
-    # # visual inspection
-    # plt.figure(figsize=(7, 2.5))
-    # for h in [bh, bh2, bh3]:
-    #     for ei, e in enumerate(h.edges):
-    #         plt.plot(e[:, 0], e[:, 1], "r--")
-    #         plt.text(e[0, 0], e[0, 1], str(ei))
-    
-    # plt.plot(bh.edge_midpoints[:, 0], bh.edge_midpoints[:, 1], "ko")
-    # for e, n in zip(bh.edge_midpoints, normalized_normals):
-    #     p0 = e 
-    #     p = e + n*6
-    #     plt.plot([p0[0], p[0]], [p0[1], p[1]], "b--", lw=2)
-    
-    # plt.scatter(vals[:, 0], vals[:, 1])    
-    # plt.imshow(mask, extent=[np.min(vals[:, 0]), np.max(vals[:, 0]), np.max(vals[:, 1]), np.min(vals[:, 1])])
-
-    # plt.grid(True)
-    # plt.show(False)
+    # test case 4
+    vals2 = np.array([[-20, -120], [0, 60], [40, -60]])
+    vals3 = np.array([[-20, 58], [-40, 80], [20, 100]])
+    bh2 = BoundingConvexHull(vals2)
+    bh3 = BoundingConvexHull(vals3)
+    assert bh.overlaps_with(bh2)
+    assert not bh.overlaps_with(bh3)
+    assert not bh2.overlaps_with(bh3)
 
     # test case 5
-    bb = BoundingBox(-14, 21, 30, 50)
-    assert bb.centre == [3, 40]
+    assert (-1000, -1000) not in bh
+    assert (30, 0) not in bh
+    assert (0, 0) not in bh
+    assert (-40, 30) in bh
+
+    # test case 6
+    bb = BoundingBox(-14, 20, 30, 49)
+    assert bb.centre == [3, 39]
     assert bb.box_npx == (35, 20)
+    assert bb.mask.shape == bb.box_npx[::-1]
     assert bb.area == 35 * 20
+    
     assert np.sum(bb.mask) == bb.area
     assert (-15, 35) not in bb
     assert (0, 35) in bb
-    # bb2 = BoundingBox.AxisAlignedBoundingBox(bb) #enforce odd
-    # assert bb2.centre == [3, 40]
-    # assert bb2.box_npx == (35, 21)
-    # assert bb2.area == 35 * 21
-    # assert bb.sparse_mask == bb2.sparse_mask
-    # assert (-15, 35) not in bb2
-    # assert (0, 35) in bb2
-    # bb3 = BoundingBox.AxisAlignedBoundingBox(bb, square=True) #enforce odd
-    # assert bb3.centre == [3, 40]
-    # assert bb3.box_npx[0] == bb3.box_npx[1]
-    # assert bb3.box_npx[0] % 2 == 1 #enforce odd
-    # assert bb3.area == bb3.box_npx[0]**2
-    # assert bb.sparse_mask == bb2.sparse_mask
-    # assert (-15, 35) not in bb2
-    # assert (0, 35) in bb2
 
-    # test case 6
+    bb2 = BoundingBox.AxisAlignedBoundingBox(bb) #enforce odd
+    assert bb2.box_npx == (35, 21)
+    assert bb2.area == 35 * 21
+    assert bb.sparse_mask == bb2.sparse_mask
+    assert (-15, 35) not in bb2
+    assert (0, 35) in bb2
+
+    bb3 = BoundingBox.AxisAlignedBoundingBox(bb, square=True) #enforce odd
+    assert bb3.box_npx[0] == bb3.box_npx[1]
+    assert bb3.box_npx[0] % 2 == 1 #enforce odd
+    assert bb3.area == bb3.box_npx[0]**2
+    assert bb.sparse_mask == bb3.sparse_mask
+    assert (-15, 35) not in bb2
+    assert (0, 35) in bb2
+
+    # test case 7
     bb4s = BoundingBox.SplitBox(bb, nsubboxes=3)
+    assert len(bb4s) == 9
+    xlims = [(np.min(c.corners[:, 0]), np.max(c.corners[:, 0])) for c in bb4s][0:3]
+    ylims = [(np.min(c.corners[:, 1]), np.max(c.corners[:, 1])) for c in bb4s][0::3]
+    assert np.all(xlims == np.array([(-14, -3), (-2, 9), (10, 20)]))
+    assert np.all(ylims == np.array([(30, 36), (37, 43), (44, 49)]))
     assert np.sum([b.area for b in bb4s]) == bb.area
 
     for bb4 in bb4s:
         assert bb4.area == np.sum(bb4.mask)
+
+    # test case 8
+    bb5 = BoundingBox(-14, 20, 30, 50)
+    assert bb5.box_npx == (35, 21)
+    bb6 = BoundingBox.PadBox(bb5, 41, 27)
+    assert bb6.box_npx == (41, 27)
+    assert bb5.centre == bb6.centre
+    assert np.sum(bb5.mask) == np.sum(bb6.mask)
+    bb7s = map(lambda x: BoundingBox.PadBox(x, 17, 11), bb4s)
+    assert all([b.box_npx == (17, 11) for b in bb7s])
+    assert np.sum([np.sum(b.mask) for b in bb7s]) == np.sum([np.sum(b.mask) for b in bb4s])
+
+    # visual inspection
+    if DEBUG:
+        from matplotlib import pyplot as plt
+        plt.figure(figsize=(7, 2.5))
+        for h in [bh, bh2, bh3]:
+            for ei, e in enumerate(h.edges):
+                plt.plot(e[:, 0], e[:, 1], "r--")
+                plt.text(e[0, 0], e[0, 1], str(ei))
+        
+        plt.plot(bh.edge_midpoints[:, 0], bh.edge_midpoints[:, 1], "ko")
+        for e, n in zip(bh.edge_midpoints, normalized_normals):
+            p0 = e 
+            p = e + n*6
+            plt.plot([p0[0], p[0]], [p0[1], p[1]], "b--", lw=2)
+        
+        plt.scatter(vals[:, 0], vals[:, 1])    
+        plt.imshow(mask, extent=[np.min(vals[:, 0]), np.max(vals[:, 0]), np.max(vals[:, 1]), np.min(vals[:, 1])])
+
+        plt.grid(True)
+        plt.figure(figsize=(7, 2.5))
+        for h in [bh_extract]:
+            for ei, e in enumerate(h.edges):
+                plt.plot(e[:, 0], e[:, 1], "r--")
+        plt.imshow(sinc2d[0, 0, :, :], extent=[0, sinc_npx, sinc_npx, 0])
+        plt.grid(True)
+
+        plt.figure(figsize=(7, 2.5))
+        for h in [bh_extract]:
+            for ei, e in enumerate(h.edges):
+                plt.plot(e[:, 0], e[:, 1], "r--")
+        plt.imshow(extracted_data[0, 0, :, :], 
+            extent=[extracted_window_extents[0], extracted_window_extents[1],
+                    extracted_window_extents[3], extracted_window_extents[2]])
+        plt.show(True)
 
 
