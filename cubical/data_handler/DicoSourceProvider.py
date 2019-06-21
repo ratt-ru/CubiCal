@@ -72,7 +72,7 @@ class DicoSourceProvider(object):
                     clusters += BoundingConvexHull(coords,
                                                    name=regi)
         else: # die case
-            clusters = [BoundingBox(0, nx + 1, 0, ny + 1, name="die")]
+            clusters = [BoundingBox(0, nx, 0, ny, name="die")]
 
         # now create axis aligned bounding boxes for each of the regions
         # and further split them to the maximum permitted facet size
@@ -98,7 +98,7 @@ class DicoSourceProvider(object):
             yl = yc - npixpadded // 2 
             yu = yc + npixpadded // 2
             return BoundingBox(xl, xu + 1, yl, yu + 1,
-                               c.name)
+                               c.name, mask=c.sparse_mask) #mask unchanged in the new shape, border frame discarded
 
         clusters = map(lambda c: __pad_cluster(c, padding_factor), clusters)
         
