@@ -53,7 +53,7 @@ class BoundingConvexHull(object):
         self._mask = copy.deepcopy(filter(lambda c: (c[1], c[0]) in self, mask))
     
     @property
-    def mask(self):
+    def mask(self, dtype=np.float64):
         """ Creates a filled rectangular mask grid of size y, x """
         if self._cached_filled_mask is not None:
             return self._cached_filled_mask
@@ -63,7 +63,7 @@ class BoundingConvexHull(object):
         miny = np.min(lines[:, 1:4:2]); maxy = np.max(lines[:, 1:4:2])
         nx = maxx - minx + 1 # inclusive
         ny = maxy - miny + 1
-        mesh = np.zeros(nx*ny, dtype=np.bool)
+        mesh = np.zeros(nx*ny, dtype=dtype)
         if nx==0 or ny==0 or len(self.sparse_mask) == 0: 
             self._cached_filled_mask = mesh.reshape((ny, nx))
         else:
@@ -130,7 +130,7 @@ class BoundingConvexHull(object):
                                        (0, maxx - minx + 1)], axes):
             slc_mask[axis] = slice(start, end)
         assert padded_data[tuple(slc_mask)].size == sel_region.mask.size
-        mask = sel_region.mask.astype(np.float32)
+        mask = sel_region.mask.copy()
         mask[mask == 0] = oob_value
         padded_data[tuple(slc_mask)] *= mask
         window_extents = [minx, maxx, 
@@ -307,6 +307,61 @@ class BoundingBox(BoundingConvexHull):
                                                 sparse_mask[:, 0] <= maxy))
             self._mask = [tuple(mc) for mc in sparse_mask[sel]]
 
+    @classmethod
+    def project_regions(cls, regional_data_list, regions_list, axes=(2, 3), dtype=np.float64):
+        """ Projects individial regions back onto a single contiguous cube """
+        if not (hasattr(regional_data_list, "__len__") and hasattr(regions_list, "__len__") and \
+            len(regions_list) == len(regional_data_list)):
+            raise TypeError("Region data list and regions lists must be lists of equal length")
+        if not all(map(lambda x: isinstance(x, np.ndarray), regional_data_list)):
+            raise TypeError("Region data list must be a list of ndarrays")
+        if not all(map(lambda x: isinstance(x, BoundingBox), regions_list)):
+            raise TypeError("Region list must be a list of Axis Aligned Bounding Boxes")
+        if regions_list == []:
+            return np.empty((0))
+        if not all([reg.ndim == regional_data_list[0].ndim for reg in regional_data_list]):
+            raise ValueError("All data cubes must be of equal dimension")
+        axes = tuple(sorted(axes))
+
+        minx = np.min([np.min(f.corners[:, 0]) for f in regions_list])
+        maxx = np.max([np.max(f.corners[:, 0]) for f in regions_list])
+        miny = np.min([np.min(f.corners[:, 1]) for f in regions_list])
+        maxy = np.max([np.max(f.corners[:, 1]) for f in regions_list])
+        npxx = maxx - minx + 1
+        npxy = maxy - miny + 1
+        global_offsetx = -min(0, minx)
+        global_offsety = -min(0, miny)
+
+        projected_image_size = list(regional_data_list[0].shape)
+        projected_image_size[axes[0]] = npxy
+        projected_image_size[axes[1]] = npxx
+        stitched_img = np.zeros(tuple(projected_image_size), dtype=dtype)
+
+        combined_mask = []
+        for f, freg in zip(regional_data_list, regions_list):
+            f[np.isnan(f)] = 0
+            xl = max(0, global_offsetx+np.min(freg.corners[:, 0]))
+            xu = min(global_offsetx+np.max(freg.corners[:, 0]) + 1, npxx)
+            yl = max(0, global_offsety+np.min(freg.corners[:, 1]))
+            yu = min(global_offsety+np.max(freg.corners[:, 1]) + 1, npxy)
+            fnx = xu - xl + 1 # inclusive
+            fny = yu - yl + 1 # inclusive
+            if f.shape[axes[0]] != fny - 1 or f.shape[axes[1]] != fnx - 1:
+                raise ValueError("One or more bounding box descriptors does not match shape of corresponding data cubes")
+            slc_data = [slice(None)] * len(stitched_img.shape)
+            for (start, end), axis in zip([(yl, yu), (xl, xu)], axes):
+                slc_data[axis] = slice(start, end)
+                
+            stitched_img[tuple(slc_data)] += f * freg.mask
+            combined_mask += freg.sparse_mask
+
+        return stitched_img, BoundingBox(minx, maxx, miny, maxy, mask=combined_mask)
+
+########################################################################
+## Factories
+########################################################################
+
+class BoundingBoxFactory(object):
     @classmethod                                
     def AxisAlignedBoundingBox(cls, convex_hull_object, square=False, enforce_odd=True):
         """ Constructs an axis aligned bounding box around convex hull """
@@ -406,6 +461,7 @@ class BoundingBox(BoundingConvexHull):
         return BoundingBox(xl, xu, yl, yu,
                            bounding_box_object.name, 
                            mask=bounding_box_object.sparse_mask) #mask unchanged in the new shape, border frame discarded
+
 if __name__ == "__main__":    
     # test case 1
     vals = np.array([[50, 60], [20, 40], [-74, 50], [-95, +10], [20, 60]])
@@ -439,6 +495,14 @@ if __name__ == "__main__":
     flat_index = (sparse_mask[sel][:, 0])*sinc_npx + (sparse_mask[sel][:, 1])
     sinc_integral = np.sum(sinc2d.ravel()[flat_index]) 
     assert np.abs(sinc_integral - np.nansum(extracted_data.ravel())) < 1.0e-8
+    v = np.nanargmax(extracted_data)
+    vx = v % extracted_data.shape[3]; vy = v // extracted_data.shape[3]
+    cextracted = (extracted_window_extents[0] + vx,
+                  extracted_window_extents[2] + vy)
+    v = np.nanargmax(sinc2d)
+    sincvx = v % sinc_npx; sincvy = v // sinc_npx
+    csinc = tuple([sincvx, sincvy]) 
+    assert csinc == cextracted
     
     # test case 4
     vals2 = np.array([[-20, -120], [0, 60], [40, -60]])
@@ -466,14 +530,14 @@ if __name__ == "__main__":
     assert (-15, 35) not in bb
     assert (0, 35) in bb
 
-    bb2 = BoundingBox.AxisAlignedBoundingBox(bb) #enforce odd
+    bb2 = BoundingBoxFactory.AxisAlignedBoundingBox(bb) #enforce odd
     assert bb2.box_npx == (35, 21)
     assert bb2.area == 35 * 21
     assert bb.sparse_mask == bb2.sparse_mask
     assert (-15, 35) not in bb2
     assert (0, 35) in bb2
 
-    bb3 = BoundingBox.AxisAlignedBoundingBox(bb, square=True) #enforce odd
+    bb3 = BoundingBoxFactory.AxisAlignedBoundingBox(bb, square=True) #enforce odd
     assert bb3.box_npx[0] == bb3.box_npx[1]
     assert bb3.box_npx[0] % 2 == 1 #enforce odd
     assert bb3.area == bb3.box_npx[0]**2
@@ -482,7 +546,7 @@ if __name__ == "__main__":
     assert (0, 35) in bb2
 
     # test case 7
-    bb4s = BoundingBox.SplitBox(bb, nsubboxes=3)
+    bb4s = BoundingBoxFactory.SplitBox(bb, nsubboxes=3)
     assert len(bb4s) == 9
     xlims = [(np.min(c.corners[:, 0]), np.max(c.corners[:, 0])) for c in bb4s][0:3]
     ylims = [(np.min(c.corners[:, 1]), np.max(c.corners[:, 1])) for c in bb4s][0::3]
@@ -496,21 +560,26 @@ if __name__ == "__main__":
     # test case 8
     bb5 = BoundingBox(-14, 20, 30, 50)
     assert bb5.box_npx == (35, 21)
-    bb6 = BoundingBox.PadBox(bb5, 41, 27)
+    bb6 = BoundingBoxFactory.PadBox(bb5, 41, 27)
     assert bb6.box_npx == (41, 27)
     assert bb5.centre == bb6.centre
     assert np.sum(bb5.mask) == np.sum(bb6.mask)
-    bb7s = map(lambda x: BoundingBox.PadBox(x, 17, 11), bb4s)
+    bb7s = map(lambda x: BoundingBoxFactory.PadBox(x, 17, 11), bb4s)
     assert all([b.box_npx == (17, 11) for b in bb7s])
     assert np.sum([np.sum(b.mask) for b in bb7s]) == np.sum([np.sum(b.mask) for b in bb4s])
 
     # test case 9
-    facet_regions = map(lambda f: BoundingBox.PadBox(f, 63, 63), 
-                        BoundingBox.SplitBox(BoundingBox.AxisAlignedBoundingBox(bh_extract), nsubboxes=5))
+    facet_regions = map(lambda f: BoundingBoxFactory.PadBox(f, 63, 63), 
+                        BoundingBoxFactory.SplitBox(BoundingBoxFactory.AxisAlignedBoundingBox(bh_extract), nsubboxes=5))
     facets = map(lambda pf: BoundingConvexHull.regional_data(pf, sinc2d, oob_value=np.nan),
                  facet_regions)
-                 
+    stitched_image, stitched_region = BoundingBox.project_regions([f[0] for f in facets], facet_regions)
     assert np.abs(sinc_integral - np.nansum([np.nansum(f[0]) for f in facets])) < 1.0e-8
+    assert np.abs(sinc_integral - np.sum(stitched_image)) < 1.0e-8
+    v = np.argmax(stitched_image)
+    vx = v % stitched_image.shape[3]; vy = v // stitched_image.shape[3]
+    cstitched = (np.min(stitched_region.corners[:, 0]) + vx, np.min(stitched_region.corners[:, 1]) + vy)
+    assert cstitched == csinc
 
     # visual inspection
     if DEBUG:
@@ -554,26 +623,12 @@ if __name__ == "__main__":
         for h in [bh_extract]:
             for ei, e in enumerate(h.edges):
                 plt.plot(e[:, 0], e[:, 1], "r--")
+        for f in facet_regions:
+            for ei, e in enumerate(f.edges):
+                plt.plot(e[:, 0], e[:, 1], "co--")
         
-        minx = np.min([np.min(f.corners[:, 0]) for f in facet_regions])
-        maxx = np.max([np.max(f.corners[:, 0]) for f in facet_regions])
-        miny = np.min([np.min(f.corners[:, 1]) for f in facet_regions])
-        maxy = np.max([np.max(f.corners[:, 1]) for f in facet_regions])
-        npxx = maxx - minx + 1
-        npxy = maxy - miny + 1
-        global_offsetx = -min(0, minx)
-        global_offsety = -min(0, miny)
-        stitched_img = np.zeros((npxy, npxx))
-        for (f, fext), freg in zip(facets, facet_regions):
-            f[np.isnan(f)] = 0
-            xl = max(0, global_offsetx+np.min(freg.corners[:, 0]))
-            xu = min(global_offsetx+np.max(freg.corners[:, 0]) + 1, npxx)
-            yl = max(0, global_offsety+np.min(freg.corners[:, 1]))
-            yu = min(global_offsety+np.max(freg.corners[:, 1]) + 1, npxy)
-            f_off = f[0, 0, :, :]
-            stitched_img[yl:yu, xl:xu] += f_off
 
-        plt.imshow(stitched_img[:, :], 
+        plt.imshow(stitched_image[0, 0, :, :], 
             extent=[minx, maxx,
                     maxy, miny])
         plt.show(True)
