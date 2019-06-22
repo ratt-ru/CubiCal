@@ -8,11 +8,6 @@ DEBUG = True
 
 class BoundingConvexHull(object):
     def __init__(self, list_hulls, name="unnamed", mask = None):
-        if mask is not None:
-            if not isinstance(mask, list):
-                raise TypeError("Mask must be list")
-            if not (hasattr(mask, "__len__") and (len(mask) == 0 or (hasattr(mask[0], "__len__") and len(mask[0]) == 2))):
-                raise TypeError("Mask must be a sparse mask of 2 element values")
         self._name = name
         self._cached_filled_mask = None
         self._vertices = points = np.vstack([b.corners
@@ -21,7 +16,7 @@ class BoundingConvexHull(object):
         if mask is None:
             self._mask = self.init_mask()
         else: 
-            self._mask = copy.deepcopy(filter(lambda c: (c[1], c[0]) in self, mask))
+            self.sparse_mask = mask
 
     def invalidate_cached_masks(self):
         """ Invalidates the cached masks (sparse or regular) """
@@ -47,6 +42,15 @@ class BoundingConvexHull(object):
     def sparse_mask(self):
         """ returns a sparse mask (y, x) values of all points in the masked region """
         return self._mask
+
+    @sparse_mask.setter
+    def sparse_mask(self, mask):
+        """ Sets the mask of the hull from a sparse mask - list of (y, x) coordinates """
+        if not isinstance(mask, list):
+            raise TypeError("Mask must be list")
+        if not (hasattr(mask, "__len__") and (len(mask) == 0 or (hasattr(mask[0], "__len__") and len(mask[0]) == 2))):
+            raise TypeError("Mask must be a sparse mask of 2 element values")
+        self._mask = copy.deepcopy(filter(lambda c: (c[1], c[0]) in self, mask))
     
     @property
     def mask(self):
@@ -111,8 +115,8 @@ class BoundingConvexHull(object):
 
         selected_data = data_cube[tuple(slc_data)]
         new_shape = list(data_cube.shape)
-        new_shape[axes[0]] = pad_bottom + (maxy - miny + 1) + pad_top
-        new_shape[axes[1]] = pad_left + (maxx - minx + 1) + pad_right
+        new_shape[axes[0]] = (maxy - miny + 1)
+        new_shape[axes[1]] = (maxx - minx + 1)
 
         if any(np.array([pad_left, pad_bottom, pad_right, pad_top]) > 0):
             padded_data = np.zeros(tuple(new_shape), dtype=selected_data.dtype) * oob_value
@@ -129,8 +133,8 @@ class BoundingConvexHull(object):
         mask = sel_region.mask.astype(np.float32)
         mask[mask == 0] = oob_value
         padded_data[tuple(slc_mask)] *= mask
-        window_extents = [- pad_left, maxx + pad_right + pad_left - 1, 
-                          - pad_bottom, maxy + pad_top + pad_bottom - 1]
+        window_extents = [minx, maxx, 
+                          miny, maxy]
         return padded_data, window_extents
 
     @property
@@ -276,6 +280,33 @@ class BoundingBox(BoundingConvexHull):
     def box_npx(self):
         return (self.__xnpx, self.__ynpx)
 
+    @property
+    def sparse_mask(self):
+        """ returns a sparse mask (y, x) values of all points in the masked region """
+        return self._mask
+
+    @sparse_mask.setter
+    def sparse_mask(self, mask):
+        """ Sets the mask of the hull from a sparse mask - list of (y, x) coordinates """
+        if not isinstance(mask, list):
+            raise TypeError("Mask must be list")
+        if not (hasattr(mask, "__len__") and (len(mask) == 0 or (hasattr(mask[0], "__len__") and len(mask[0]) == 2))):
+            raise TypeError("Mask must be a sparse mask of 2 element values")
+        if mask == []:
+            self._mask = []
+        else:
+            lines = np.hstack([self.corners, np.roll(self.corners, -1, axis=0)])
+            minx = np.min(lines[:, 0:4:2]); maxx = np.max(lines[:, 0:4:2])
+            miny = np.min(lines[:, 1:4:2]); maxy = np.max(lines[:, 1:4:2])
+            nx = maxx - minx + 1 # inclusive
+            ny = maxy - miny + 1
+            sparse_mask = np.asarray(mask)
+            sel = np.logical_and(np.logical_and(sparse_mask[:, 1] >= minx,
+                                                sparse_mask[:, 1] <= maxx),
+                                np.logical_and(sparse_mask[:, 0] >= miny,
+                                                sparse_mask[:, 0] <= maxy))
+            self._mask = [tuple(mc) for mc in sparse_mask[sel]]
+
     @classmethod                                
     def AxisAlignedBoundingBox(cls, convex_hull_object, square=False, enforce_odd=True):
         """ Constructs an axis aligned bounding box around convex hull """
@@ -373,7 +404,7 @@ class BoundingBox(BoundingConvexHull):
         yl = cy - pad_bottom
         yu = cy + pad_top
         return BoundingBox(xl, xu, yl, yu,
-                           c.name, 
+                           bounding_box_object.name, 
                            mask=bounding_box_object.sparse_mask) #mask unchanged in the new shape, border frame discarded
 if __name__ == "__main__":    
     # test case 1
@@ -392,10 +423,10 @@ if __name__ == "__main__":
     valsextract = np.array([[-10, 120], [90, 268], [293, 110],[40, -30]])
     bh_extract = BoundingConvexHull(valsextract)
     sinc_npx = 255
-    sinc = np.sinc(np.linspace(-10, 10, sinc_npx))
+    sinc = np.sinc(np.linspace(-7, 7, sinc_npx))
     sinc2d = np.outer(sinc, sinc).reshape((1, 1, sinc_npx, sinc_npx))
     extracted_data, extracted_window_extents = BoundingConvexHull.regional_data(bh_extract, sinc2d, oob_value=np.nan)
-    assert extracted_window_extents == [-10, 341, -30, 311]
+    assert extracted_window_extents == [-10, 293, -30, 268]
     sparse_mask = np.array(bh_extract.sparse_mask)
     lines = np.hstack([bh_extract.corners, np.roll(bh_extract.corners, -1, axis=0)])
     minx = np.min(lines[:, 0:4:2]); maxx = np.max(lines[:, 0:4:2])
@@ -406,8 +437,9 @@ if __name__ == "__main__":
                                         sparse_mask[:, 0] < 255))
     
     flat_index = (sparse_mask[sel][:, 0])*sinc_npx + (sparse_mask[sel][:, 1])
-    assert np.abs(np.sum(sinc2d.ravel()[flat_index]) - np.nansum(extracted_data.ravel())) < 1.0e-8
-
+    sinc_integral = np.sum(sinc2d.ravel()[flat_index]) 
+    assert np.abs(sinc_integral - np.nansum(extracted_data.ravel())) < 1.0e-8
+    
     # test case 4
     vals2 = np.array([[-20, -120], [0, 60], [40, -60]])
     vals3 = np.array([[-20, 58], [-40, 80], [20, 100]])
@@ -472,10 +504,19 @@ if __name__ == "__main__":
     assert all([b.box_npx == (17, 11) for b in bb7s])
     assert np.sum([np.sum(b.mask) for b in bb7s]) == np.sum([np.sum(b.mask) for b in bb4s])
 
+    # test case 9
+    facet_regions = map(lambda f: BoundingBox.PadBox(f, 63, 63), 
+                        BoundingBox.SplitBox(BoundingBox.AxisAlignedBoundingBox(bh_extract), nsubboxes=5))
+    facets = map(lambda pf: BoundingConvexHull.regional_data(pf, sinc2d, oob_value=np.nan),
+                 facet_regions)
+                 
+    assert np.abs(sinc_integral - np.nansum([np.nansum(f[0]) for f in facets])) < 1.0e-8
+
     # visual inspection
     if DEBUG:
         from matplotlib import pyplot as plt
         plt.figure(figsize=(7, 2.5))
+        plt.title("Winding, normals and masking check")
         for h in [bh, bh2, bh3]:
             for ei, e in enumerate(h.edges):
                 plt.plot(e[:, 0], e[:, 1], "r--")
@@ -492,6 +533,7 @@ if __name__ == "__main__":
 
         plt.grid(True)
         plt.figure(figsize=(7, 2.5))
+        plt.title("Data extraction check (global)")
         for h in [bh_extract]:
             for ei, e in enumerate(h.edges):
                 plt.plot(e[:, 0], e[:, 1], "r--")
@@ -499,12 +541,41 @@ if __name__ == "__main__":
         plt.grid(True)
 
         plt.figure(figsize=(7, 2.5))
+        plt.title("Data extraction check (local)")
         for h in [bh_extract]:
             for ei, e in enumerate(h.edges):
                 plt.plot(e[:, 0], e[:, 1], "r--")
-        plt.imshow(extracted_data[0, 0, :, :], 
+        plt.imshow(extracted_data[0, 0, :, :],
             extent=[extracted_window_extents[0], extracted_window_extents[1],
-                    extracted_window_extents[3], extracted_window_extents[2]])
+                   extracted_window_extents[3], extracted_window_extents[2]])
+        
+        plt.figure(figsize=(7, 2.5))
+        plt.title("Faceting check")
+        for h in [bh_extract]:
+            for ei, e in enumerate(h.edges):
+                plt.plot(e[:, 0], e[:, 1], "r--")
+        
+        minx = np.min([np.min(f.corners[:, 0]) for f in facet_regions])
+        maxx = np.max([np.max(f.corners[:, 0]) for f in facet_regions])
+        miny = np.min([np.min(f.corners[:, 1]) for f in facet_regions])
+        maxy = np.max([np.max(f.corners[:, 1]) for f in facet_regions])
+        npxx = maxx - minx + 1
+        npxy = maxy - miny + 1
+        global_offsetx = -min(0, minx)
+        global_offsety = -min(0, miny)
+        stitched_img = np.zeros((npxy, npxx))
+        for (f, fext), freg in zip(facets, facet_regions):
+            f[np.isnan(f)] = 0
+            xl = max(0, global_offsetx+np.min(freg.corners[:, 0]))
+            xu = min(global_offsetx+np.max(freg.corners[:, 0]) + 1, npxx)
+            yl = max(0, global_offsety+np.min(freg.corners[:, 1]))
+            yu = min(global_offsety+np.max(freg.corners[:, 1]) + 1, npxy)
+            f_off = f[0, 0, :, :]
+            stitched_img[yl:yu, xl:xu] += f_off
+
+        plt.imshow(stitched_img[:, :], 
+            extent=[minx, maxx,
+                    maxy, miny])
         plt.show(True)
 
 
