@@ -14,14 +14,14 @@ class BoundingConvexHull(object):
             if hasattr(b, "corners") else [b[0], b[1]] for b in list_hulls])
         self._hull = spat.ConvexHull(points)
         if mask is None:
-            self._mask = self.init_mask()
+            self._mask, self._mask_weights = self.init_mask()
         else: 
             self.sparse_mask = mask
 
     def invalidate_cached_masks(self):
         """ Invalidates the cached masks (sparse or regular) """
         self._cached_filled_mask = None
-        self.init_mask()
+        self._mask, self._mask_weights = self.init_mask()
 
     def __str__(self):
         return ",".join(["({0:d},{1:d})".format(x,y) for (x,y) in self.corners])
@@ -36,7 +36,13 @@ class BoundingConvexHull(object):
         meshgrid = np.meshgrid(y, x)
         bounding_mesh = zip(*map(lambda x: np.ravel(x), np.meshgrid(y, x)))
         sparse_mask = filter(lambda c: c[::-1] in self, bounding_mesh)
-        return sparse_mask
+        mask_weights = np.ones(len(sparse_mask)) #initialize to unity, this should be modified when coadding
+        return sparse_mask, mask_weights
+
+    @property
+    def sprase_mask_weights(self):
+        """ returns sparse mask weights """
+        return self._mask_weights
 
     @property
     def sparse_mask(self):
@@ -72,9 +78,8 @@ class BoundingConvexHull(object):
                                                 sparse_mask[:, 1] <= maxx),
                                  np.logical_and(sparse_mask[:, 0] >= miny,
                                                 sparse_mask[:, 0] <= maxy))
-
             flat_index = (sparse_mask[sel][:, 0] - miny)*nx + (sparse_mask[sel][:, 1] - minx)
-            mesh[flat_index] = 1
+            mesh[flat_index] = self._mask_weights[sel]
             self._cached_filled_mask = mesh.reshape((ny, nx))
         return self._cached_filled_mask
 
@@ -306,6 +311,7 @@ class BoundingBox(BoundingConvexHull):
                                 np.logical_and(sparse_mask[:, 0] >= miny,
                                                 sparse_mask[:, 0] <= maxy))
             self._mask = [tuple(mc) for mc in sparse_mask[sel]]
+            self._mask_weights = np.ones(len(self._mask))
 
     @classmethod
     def project_regions(cls, regional_data_list, regions_list, axes=(2, 3), dtype=np.float64):
