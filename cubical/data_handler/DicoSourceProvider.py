@@ -6,7 +6,9 @@ except ImportError:
 
 from regions import DS9Parser
 import numpy as np
-from geometry import BoundingConvexHull, BoundingBox
+from geometry import BoundingConvexHull, BoundingBox, BoundingBoxFactory
+from cubical.tools import logger, ModColor
+log = logger.getLogger("DDFacetSim")
 
 class DicoSourceProvider(object):
     def __init__(self,
@@ -15,6 +17,8 @@ class DicoSourceProvider(object):
                  facet_padding_factor,
                  max_facet_size,
                  clustercat=None):
+        log.info("Initializing new source provider for DDFacet model '{0:s}' into regions specified by '{1:s}'.".format(
+            fn, clustercat if clustercat is not None else 'die'))
         self.__dicofn = fn
         self.__dicomodel = MMM.ClassModModelMachine().GiveInitialisedMMFromFile(fn)
         # assume GD is stored in the Dico... this is only true for DDF versions 0.4.1 and beyond
@@ -26,6 +30,7 @@ class DicoSourceProvider(object):
         self.__degridcube = None
         self.__degridfreqs = None
         self.__padding_factor = facet_padding_factor
+        log.info("Initialization sequence of source provider '{0:s}' completed".format(fn))
 
     def __str__(self):
         return self.__dicofn
@@ -72,36 +77,34 @@ class DicoSourceProvider(object):
                     clusters += BoundingConvexHull(coords,
                                                    name=regi)
         else: # die case
-            clusters = [BoundingBox(0, nx, 0, ny, name="die")]
-
+            clusters = [BoundingBox(0, nx, 0, ny, name="die", check_mask_outofbounds=False)]
+        log.info("\tInitialized bounding boxes for regions. There are {0:d} region(s)".format(len(clusters)))
         # now create axis aligned bounding boxes for each of the regions
         # and further split them to the maximum permitted facet size
-        clusters = [BoundingBox.AxisAlignedBoundingBox(c) for c in clusters]
+        clusters = [BoundingBoxFactory.AxisAlignedBoundingBox(c, check_mask_outofbounds=False) for c in clusters]
         def __split_regular_region(reg, max_size):
             if max_size < 0:
                 raise ValueError("Expected positive value for min_size")
             reg_size_deg = np.max(np.array(reg.box_npx) * self.pixel_scale / 3600.0)
             nsplit = max(1, int(np.ceil(reg_size_deg / max_size)))
-            return BoundingBox.SplitBox(reg, nsubboxes=nsplit)
-
+            return BoundingBoxFactory.SplitBox(reg, nsubboxes=nsplit, check_mask_outofbounds=False)
+        log.info("\tSplitting regions into facetted regions, with maximum unpadded size of {0:.2f} degrees per facet".format(max_size))
         clusters = [aasubreg for aareg in map(lambda reg: __split_regular_region(reg, max_size), clusters) 
                     for aasubreg in aareg]
-        clusters = map(lambda reg: BoundingBox.AxisAlignedBoundingBox(reg, square=True), clusters)
+        clusters = map(lambda reg: BoundingBoxFactory.AxisAlignedBoundingBox(reg, square=True, check_mask_outofbounds=False), clusters)
         
         def __pad_cluster(c, padding_factor):
             npx,_ = c.box_npx # square facet at this point
             # this returns an odd npix:
             npixunpadded, npixpadded = EstimateNpix(npx, Padding=padding_factor)
-            xc, yc = c.centre
-            xl = xc - npixpadded // 2
-            xu = xc + npixpadded // 2
-            yl = yc - npixpadded // 2 
-            yu = yc + npixpadded // 2
-            return BoundingBox(xl, xu + 1, yl, yu + 1,
-                               c.name, mask=c.sparse_mask) #mask unchanged in the new shape, border frame discarded
-
+            return BoundingBoxFactory.PadBox(c, npixpadded, npixpadded, check_mask_outofbounds=False)
+        log.info("\tPadding all facets by a minimum factor of {0:.2f}x".format(padding_factor))
         clusters = map(lambda c: __pad_cluster(c, padding_factor), clusters)
-        
+        #TODO: need to rethink this: 
+        #log.info("\tNormalizing regional weights")
+        #BoundingConvexHull.normalize_masks(clusters)
+        log.info("\tCaching regional weight maps for future predicts")
+        map(lambda x: x.mask, clusters) # cache mask
         dirs = {} 
         for c in clusters:
             dirs[c.name] = dirs.get(c.name, []) + [c]
@@ -166,5 +169,6 @@ class DicoSourceProvider(object):
             raise IndexError("Index {0:d} is out of bounds for region {1:s} which contains {2:d} subregions".format(
                 subregion_index, self.__current_direction, len(self.__clustercat[self.__current_direction])))
         self.__clustercat[self.__current_direction][subregion_index].globaldata = self.__degridcube
-        reg_data = self.__clustercat[self.__current_direction][subregion_index].regional_data
+        reg_data, reg_extents = BoundingConvexHull.regional_data(self.__clustercat[self.__current_direction][subregion_index],
+                                                                 self.__degridcube)
         return reg_data
