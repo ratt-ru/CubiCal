@@ -57,6 +57,7 @@ class BoundingConvexHull(object):
         if not (hasattr(mask, "__len__") and (len(mask) == 0 or (hasattr(mask[0], "__len__") and len(mask[0]) == 2))):
             raise TypeError("Mask must be a sparse mask of 2 element values")
         self._mask = copy.deepcopy(filter(lambda c: (c[1], c[0]) in self, mask))
+        self._mask_weights = np.ones(len(self._mask))
     
     @property
     def mask(self, dtype=np.float64):
@@ -141,6 +142,32 @@ class BoundingConvexHull(object):
         window_extents = [minx, maxx, 
                           miny, maxy]
         return padded_data, window_extents
+    
+    @classmethod
+    def normalize_masks(cls, regions):
+        if not all(map(lambda reg: isinstance(reg, BoundingConvexHull), regions)):
+            raise TypeError("Expected a list of bounding convex hulls")
+        # Implements painters-like algorithm to
+        # count the number of times a pixel coordinate falls within masks
+        # The overlapping sections of regions can then be normalized
+        # For now all regions have equal contribution
+        allmasks = []
+        for reg in regions:
+            allmasks += reg.sparse_mask
+        unique_pxls = set(allmasks)
+        allmasks = np.array(allmasks)
+        paint_count = dict(zip(unique_pxls, np.zeros(len(unique_pxls))))
+        for px in unique_pxls:
+            paint_count[px] += np.sum(np.logical_and(allmasks[:, 0] == px[0], 
+                                                     allmasks[:, 1] == px[1]))
+        for px in unique_pxls:
+            paint_count[px] = 1.0 / paint_count[px]
+        for reg in regions:
+            reg._cached_filled_mask = None # invalidate
+            for px in unique_pxls:
+                if px in reg.sparse_mask:
+                    sel = reg.sparse_mask.index(px) 
+                    reg._mask_weights[sel] = paint_count[px]
 
     @property
     def circumference(self):
@@ -239,7 +266,9 @@ class BoundingConvexHull(object):
     def centre(self, integral=True):
         """ Barycentre of hull """
         if integral:
-            return map(lambda x: int(x), np.mean(self._vertices, axis=0))
+            def rnd(x):
+                return int(np.floor(x) if x >= 0 else np.ceil(x))
+            return map(lambda x: rnd(x), np.mean(self._vertices, axis=0))
         else:
             return np.mean(self._vertices, axis=0)
 
@@ -335,8 +364,8 @@ class BoundingBox(BoundingConvexHull):
         maxy = np.max([np.max(f.corners[:, 1]) for f in regions_list])
         npxx = maxx - minx + 1
         npxy = maxy - miny + 1
-        global_offsetx = -min(0, minx)
-        global_offsety = -min(0, miny)
+        global_offsetx = -minx #-min(0, minx)
+        global_offsety = -miny #-min(0, miny)
 
         projected_image_size = list(regional_data_list[0].shape)
         projected_image_size[axes[0]] = npxy
@@ -358,7 +387,7 @@ class BoundingBox(BoundingConvexHull):
             for (start, end), axis in zip([(yl, yu), (xl, xu)], axes):
                 slc_data[axis] = slice(start, end)
                 
-            stitched_img[tuple(slc_data)] += f * freg.mask
+            stitched_img[tuple(slc_data)] += f
             combined_mask += freg.sparse_mask
 
         return stitched_img, BoundingBox(minx, maxx, miny, maxy, mask=combined_mask)
@@ -587,6 +616,23 @@ if __name__ == "__main__":
     cstitched = (np.min(stitched_region.corners[:, 0]) + vx, np.min(stitched_region.corners[:, 1]) + vy)
     assert cstitched == csinc
 
+    # test case 10
+    olap_box1 = BoundingBox(110, 138, 110, 135)
+    olap_box2 = BoundingBox(115, 150, 109, 150)
+    olap_box3 = BoundingBox(125, 130, 125, 130)
+    BoundingConvexHull.normalize_masks([olap_box1, olap_box2, olap_box3])
+    ext1 = BoundingConvexHull.regional_data(olap_box1, sinc2d)[0]
+    ext2 = BoundingConvexHull.regional_data(olap_box2, sinc2d)[0]
+    ext3 = BoundingConvexHull.regional_data(olap_box3, sinc2d)[0]
+    olaps_stitched_image, olaps_stitched_region = BoundingBox.project_regions([ext1, ext2, ext3], 
+                                                                              [olap_box1, olap_box2, olap_box3])
+    v = np.nanargmax(olaps_stitched_image)
+    vx = v % olaps_stitched_image.shape[3]; vy = v // olaps_stitched_image.shape[3]
+    cstitched_olap = (np.min(olaps_stitched_region.corners[:, 0]) + vx, 
+                      np.min(olaps_stitched_region.corners[:, 1]) + vy)
+    assert cstitched_olap == csinc
+    assert np.abs(1.0 - np.nanmax(olaps_stitched_image)) < 1.0e-8
+
     # visual inspection
     if DEBUG:
         from matplotlib import pyplot as plt
@@ -635,8 +681,23 @@ if __name__ == "__main__":
         
 
         plt.imshow(stitched_image[0, 0, :, :], 
-            extent=[minx, maxx,
-                    maxy, miny])
+            extent=[np.min(stitched_region.corners[:, 0]), np.max(stitched_region.corners[:, 0]),
+                    np.max(stitched_region.corners[:, 1]), np.min(stitched_region.corners[:, 1])])
+
+        plt.figure(figsize=(7, 2.5))
+        plt.title("Overlapping faceting check")
+        for f in [olap_box1, olap_box2, olap_box3]:
+            for ei, e in enumerate(f.edges):
+                plt.plot(e[:, 0], e[:, 1], "co--")
+        
+
+        plt.imshow(olaps_stitched_image[0, 0, :, :], 
+            extent=[np.min(olaps_stitched_region.corners[:, 0]), np.max(olaps_stitched_region.corners[:, 0]),
+                    np.max(olaps_stitched_region.corners[:, 1]), np.min(olaps_stitched_region.corners[:, 1])])
+        plt.xlim((np.min(olaps_stitched_region.corners[:, 0]) - 15, 
+                  np.max(olaps_stitched_region.corners[:, 0]) + 15))
+        plt.ylim((np.min(olaps_stitched_region.corners[:, 1]) - 15, 
+                  np.max(olaps_stitched_region.corners[:, 1]) + 15))
         plt.show(True)
 
 
