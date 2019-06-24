@@ -903,6 +903,12 @@ class MSTile(object):
                     data['weigh'] = weights0
                 del obvis0, uvw0, weights0
 
+            # compute PA rotation angles, if needed
+            if self.dh.parallactic_machine is not None:
+                angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                data.addSharedArray('pa', angles.shape, np.float64)
+                data['pa'][:] = angles
+
             # The following either reads model visibilities from the measurement set, or uses an lsm
             # and Montblanc to simulate them. Data may need to be massaged to be compatible with
             # Montblanc's strict requirements.
@@ -979,10 +985,11 @@ class MSTile(object):
                                         raise RuntimeError("Visibilities have correlations other than 4, 2 or 1. At present this is not supported")
                                     model = subset.load_ddfacet_models(uvwco, loaded_models, model_source, cluster, imod, idir, model_type)
                                     if self.dh.parallactic_machine is not None:
-                                            subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                                            #subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                                            subset._angles = data['pa'][:]
                                             model = self.dh.parallactic_machine.rotate(subset.time_col, model,
-                                                                                        subset.antea, subset.anteb,
-                                                                                        angles=subset._angles)
+                                                                                       subset.antea, subset.anteb,
+                                                                                       angles=subset._angles)
                                 else:
                                     raise TypeError("Unknown cluster of type {0:s}".format(type(model_source)))
                                 # finally, add model in at correct slot
@@ -1018,14 +1025,6 @@ class MSTile(object):
             # Create a placeholder if using the Robust solver with save weights activated
             if self.dh.output_weight_column is not None:
                 data.addSharedArray('outweights', data['obvis'].shape, self.dh.wtype)
-        
-        # @oms this  is wrong - the apply needs to happen per sub model in the load step
-        # otherwise the various sub-switches could lead to double applying the PA
-        # # compute PA rotation angles, if needed
-        # if self.dh.parallactic_machine is not None:
-        #     angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
-        #     data.addSharedArray('pa', angles.shape, np.float64)
-        #     data['pa'][:] = angles
 
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
