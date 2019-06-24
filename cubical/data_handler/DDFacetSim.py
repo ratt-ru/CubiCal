@@ -140,9 +140,9 @@ class DDFacetSim(object):
             gmach = ClassDDEGridMachine.ClassDDEGridMachine(GD,
                         ChanFreq = freqs,
                         Npix = src.get_direction_npix(subregion_index=subregion_index),
-                        lmShift = np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * src.pixel_scale / 3600),
+                        lmShift = np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * src.pixel_scale / 3600.0),
                         IDFacet = self.__direction_CFs[dname][subregion_index],
-                        SpheNorm = True, # Depricated, set ImToGrid True in .get!!
+                        SpheNorm = False, # Depricated, set ImToGrid True in .get!!
                         NFreqBands = dh.degrid_opts["NDegridBand"],
                         DataCorrelationFormat=DataCorrelationFormat,
                         ExpectedOutputStokes=[1], # Stokes I
@@ -201,11 +201,8 @@ class DDFacetSim(object):
             if not np.any(model_image):
                 log.info("Facet {0:d} is empty. Skipping".format(subregion_index))
                 continue
-            # for some reason the degridder is transposed
-            model_image[...] = np.swapaxes(model_image, 2, 3) # facet is guaranteed to be square,
-            model_image[...] = model_image[:, :, ::-1, :]
-            model_image = DDFacetSim.__detaper_model(gm, model_image.view())
-            model_image = model_image.copy() # degridder ignores ndarray strides. Must create a reordered array in memory
+            model_image = DDFacetSim.__detaper_model(gm, model_image.view()).copy() # degridder ignores ndarray strides. Must create a reordered array in memory
+            
             # apply normalization factors for FFT
             model_image[...] *= (model_image.shape[3] ** 2) * (gm.WTerm.OverS ** 2) 
             
@@ -224,6 +221,7 @@ class DDFacetSim(object):
                 TranformModelInput="FT", 
                 ChanMapping=np.array(freq_mapping, dtype=np.int32), 
                 sparsification=None)
+            break
         model_corr_slice = np.s_[0] if model_type == "cplxscalar" else \
                            np.s_[0::3] if model_type == "cplxdiag" else \
                            np.s_[:] # if model_type == "cplx2x2"

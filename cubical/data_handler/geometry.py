@@ -429,15 +429,15 @@ class BoundingBoxFactory(object):
         if not isinstance(convex_hull_object, BoundingConvexHull):
             raise TypeError("Convex hull object passed in constructor is not of type BoundingConvexHull")
         if square:
-            boxdiam = np.sqrt(np.max(np.sum((convex_hull_object.corners - 
-                                             np.array(convex_hull_object.centre)[None, :])**2, 
-                                    axis=1)))
-            boxdiam = int(np.ceil(boxdiam))
+            nx = np.max(convex_hull_object.corners[:, 0]) - np.min(convex_hull_object.corners[:, 0]) + 1 #inclusive
+            ny = np.max(convex_hull_object.corners[:, 1]) - np.min(convex_hull_object.corners[:, 1]) + 1 #inclusive
+            boxdiam = max(nx, ny)
+            boxrad = boxdiam // 2
             cx, cy = convex_hull_object.centre
-            xl = cx - boxdiam
-            xu = cx + boxdiam
-            yl = cy - boxdiam
-            yu = cy + boxdiam
+            xl = cx - boxrad
+            xu = cx + boxdiam - boxrad - 1
+            yl = cy - boxrad
+            yu = cy + boxdiam - boxrad - 1
         else:
             xl = np.min(convex_hull_object.corners[:, 0])
             xu = np.max(convex_hull_object.corners[:, 0])

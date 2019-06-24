@@ -77,7 +77,7 @@ class DicoSourceProvider(object):
                     clusters += BoundingConvexHull(coords,
                                                    name=regi)
         else: # die case
-            clusters = [BoundingBox(0, nx, 0, ny, name="die", check_mask_outofbounds=False)]
+            clusters = [BoundingBox(0, nx - 1, 0, ny - 1, name="die", check_mask_outofbounds=False)]
         log.info("\tInitialized bounding boxes for regions. There are {0:d} region(s)".format(len(clusters)))
         # now create axis aligned bounding boxes for each of the regions
         # and further split them to the maximum permitted facet size
@@ -140,10 +140,14 @@ class DicoSourceProvider(object):
         """ Sets the model prediction frequencies. This initializes the model degridding bands """
         self.__degridfreqs = freqs.copy()
         self.__degridcube = self.__dicomodel.GiveModelImage(FreqIn=self.__degridfreqs)
+        # for some reason the degridder is transposed
+        # need to to a global model transpose before carving it into facets
+        self.__degridcube[...] = np.swapaxes(self.__degridcube, 2, 3) # facet is guaranteed to be square
+        self.__degridcube[...] = self.__degridcube[:, :, ::-1, :]
         for c in self.__clustercat:
             for csub in self.__clustercat[c]:
                 csub.globaldata = self.__degridcube
-
+        
     def get_direction_npix(self, subregion_index=0):
         if subregion_index >= len(self.__clustercat[self.__current_direction]):
             raise IndexError("Index {0:d} is out of bounds for region {1:s} which contains {2:d} subregions".format(
@@ -157,7 +161,8 @@ class DicoSourceProvider(object):
                 subregion_index, self.__current_direction, len(self.__clustercat[self.__current_direction])))
 
         nchan, npol, nx, ny = self.__dicomodel.ModelShape
-        ctr = self.__clustercat[self.__current_direction][subregion_index].centre
+        cluster = self.__clustercat[self.__current_direction][subregion_index]
+        ctr = cluster.centre
         offset = ctr - np.array([ny//2, nx//2])
         return offset
 

@@ -37,10 +37,10 @@ def import_montblanc():
     except:
         return None, sys.exc_info()
 
-# Try to import montblanc: if not successful, remember error for later.
+# Try to import ddfacet: if not successful, remember error for later.
 def import_ddfacet():
     """
-    Tries to import montblanc. Returns tuple of montblanc_module, None on success, or
+    Tries to import ddfacet. Returns tuple of ddfacet_module, None on success, or
     None, exc_info on error
     """
     try:
