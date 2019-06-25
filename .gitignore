@@ -79,6 +79,8 @@ test/SUBSET-D147-output.MS/table.*
 #docs/_static/
 docs/_build/
 docs/_templates/
+.pytest_cache
+pip-wheel-metadata/
 
 # microsoft visual studio project files
 .vscode
