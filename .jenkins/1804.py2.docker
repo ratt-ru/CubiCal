@@ -32,7 +32,7 @@ ADD pyproject.toml /src/cubical/pyproject.toml
 
 WORKDIR /src/cubical
 
-RUN pip install .
+RUN pip install "/src/cubical[lsm-support]"
 
 ENTRYPOINT ["gocubical"]
 CMD ["--help"]
