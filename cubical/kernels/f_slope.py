@@ -32,9 +32,13 @@ import numpy as np
 from numba import jit, prange
 import generics
 
+import cubical.kernels
 import diag_complex
 import phase_only
 import tf_plane
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
 
 # Allocators same as for generic full kernel.
 allocate_vis_array = tf_plane.allocate_vis_array
@@ -42,6 +46,7 @@ allocate_gain_array = tf_plane.allocate_gain_array
 allocate_flag_array = tf_plane.allocate_flag_array
 allocate_param_array = tf_plane.allocate_param_array
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhj(tmp_jhj, jhj, ts, fs, t_int, f_int):
     """
     Given the intermediary J\ :sup:`H`\J and channel frequencies, computes the diagonal entries of
@@ -88,6 +93,7 @@ def compute_jhj(tmp_jhj, jhj, ts, fs, t_int, f_int):
 					    jhj[d,rr,rc,aa,1,c,c] += ff*tmp_jhjcc
 					    jhj[d,rr,rc,aa,2,c,c] += ff*ff*tmp_jhjcc
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhjinv(jhj, jhjinv, eps):
     """
     Given J\ :sup:`H`\J (or an array with similar dimensions), computes its inverse.
@@ -132,6 +138,7 @@ def compute_jhjinv(jhj, jhjinv, eps):
 					        jhjinv[d,t,f,aa,1,c,c] = -det*jhj1cc
 					        jhjinv[d,t,f,aa,2,c,c] =  det*jhj2cc
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
     """
     Given the intermediary J\ :sup:`H`\R and channel frequencies, computes J\ :sup:`H`\R.
@@ -172,6 +179,7 @@ def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
 					    jhr[d,rr,rc,aa,0,c,c] +=       tmp_jhrcc
 					    jhr[d,rr,rc,aa,1,c,c] += fs[f]*tmp_jhrcc
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_update(jhr, jhj, upd):
     """
     Given J\ :sup:`H`\R and (J\ :sup:`H`\J)\ :sup:`-1`, computes the gain update. The dimensions of
@@ -209,6 +217,7 @@ def compute_update(jhr, jhj, upd):
                         upd[d,t,f,aa,0,c,c] = jhj0cc*jhr0cc + jhj1cc*jhr1cc
                         upd[d,t,f,aa,1,c,c] = jhj1cc*jhr0cc + jhj2cc*jhr1cc
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def construct_gains(param, g, ts, fs, t_int, f_int):
     """
     Given the real-valued parameters of the gains, computes the complex gains.

@@ -31,14 +31,20 @@ provided. Common dimensions of arrays are:
 import numpy as np
 from numba import jit, prange
 import generics
+
+import cubical.kernels
 import full_complex
 import diag_complex
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
 
 allocate_vis_array = full_complex.allocate_vis_array
 allocate_gain_array = full_complex.allocate_gain_array
 allocate_flag_array = full_complex.allocate_flag_array
 allocate_param_array = full_complex.allocate_param_array
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhj(m, jhj, t_int=1, f_int=1):
     """
     Given the model array, computes the diagonal entries of J\ :sup:`H`\J. J\ :sup:`H`\J is computed
@@ -85,6 +91,7 @@ def compute_jhj(m, jhj, t_int=1, f_int=1):
                         jhj[d,bt,bf,aa,0,0] += (m00*m00.conjugate() + m01*m01.conjugate())
                         jhj[d,bt,bf,aa,1,1] += (m10*m10.conjugate() + m11*m11.conjugate())
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhr(gh, jh, r, jhr, t_int=1, f_int=1):
     """
     Given the conjugate gains, J\ :sup:`H` and the residual (or observed data, in special cases),
@@ -142,6 +149,7 @@ def compute_jhr(gh, jh, r, jhr, t_int=1, f_int=1):
                         jhr[d,bt,bf,aa,0,0] += gh[bd,bt,bf,aa,0,0] * (r00*jhh00 + r01*jhh10)
                         jhr[d,bt,bf,aa,1,1] += gh[bd,bt,bf,aa,1,1] * (r10*jhh01 + r11*jhh11)
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_update(jhr, jhjinv, upd):
     """
     Given J\ :sup:`H`\R and (J\ :sup:`H`\J)\ :sup:`-1`, computes the gain update. The dimensions of

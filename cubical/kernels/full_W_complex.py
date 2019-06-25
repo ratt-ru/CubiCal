@@ -31,8 +31,11 @@ arrays to be provided. Common dimensions of arrays are:
 import numpy as np
 from numba import jit, prange
 import generics
-from cubical.kernels import allocate_reordered_array
+import cubical.kernels
 import full_complex
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
 
 # defines memory layout of model-like arrays (axis layout is NDxNMxNTxNFxNAxNAxNCxNC)
 _model_axis_layout = [4,5,1,2,3,0,6,7]    # layout is AAMTFD
@@ -45,15 +48,15 @@ _flag_axis_layout = [2,3,0,1]      # layout is AATF
 
 def allocate_vis_array(shape, dtype, zeros=False):
     """Allocates a visibility array of the desired shape, laid out in preferred order"""
-    return allocate_reordered_array(shape, dtype, _model_axis_layout, zeros=zeros)
+    return cubical.kernels.allocate_reordered_array(shape, dtype, _model_axis_layout, zeros=zeros)
 
 def allocate_gain_array(shape, dtype, zeros=False):
     """Allocates a gain array of the desired shape, laid out in preferred order"""
-    return allocate_reordered_array(shape, dtype, _gain_axis_layout, zeros=zeros)
+    return cubical.kernels.allocate_reordered_array(shape, dtype, _gain_axis_layout, zeros=zeros)
 
 def allocate_flag_array(shape, dtype, zeros=False):
     """Allocates a flag array of the desired shape, laid out in preferred order"""
-    return allocate_reordered_array(shape, dtype, _flag_axis_layout, zeros=zeros)
+    return cubical.kernels.allocate_reordered_array(shape, dtype, _flag_axis_layout, zeros=zeros)
 
 allocate_param_array = allocate_gain_array
 
@@ -81,6 +84,7 @@ compute_jhjinv = generics.compute_2x2_inverse
 # Map inversion to generic 2x2 inverse.
 invert_gains = generics.compute_2x2_inverse
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhwr(jh, r, w, jhwr, t_int, f_int):
     """
     Given J\ :sup:`H` and the residual (or observed data, in special cases), computes J\ :sup:`H`\R.
@@ -138,6 +142,7 @@ def compute_jhwr(jh, r, w, jhwr, t_int, f_int):
                         jhwr[d,bt,bf,aa,1,0] += (r10*jhh00 + r11*jhh10)*w0 
                         jhwr[d,bt,bf,aa,1,1] += (r10*jhh01 + r11*jhh11)*w0 
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhwj(jh, w, jhwj, t_int, f_int):
     """
     Given J\ :sup:`H` ,computes the diagonal entries of J\ :sup:`H`\J. J\ :sup:`H`\J is computed
@@ -193,6 +198,7 @@ def compute_jhwj(jh, w, jhwj, t_int, f_int):
                         jhwj[d,bt,bf,aa,1,0] += (jh10*j00 + jh11*j10)*w0
                         jhwj[d,bt,bf,aa,1,1] += (jh10*j01 + jh11*j11)*w0
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_weights(r, ic, w, v, npol):
     """
     This function updates the weights, using the expression: 
@@ -241,6 +247,7 @@ def compute_weights(r, ic, w, v, npol):
 
                     w[i,t,f,aa,ab,0] = (v + npol)/(v + denom.real) # using LB derivation     
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_cov(r, ic, w):
     """
     This function computes the un-normlaised weighted covariance matrix of 

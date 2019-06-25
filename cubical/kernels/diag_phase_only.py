@@ -31,16 +31,23 @@ provided. Common dimensions of arrays are:
 import numpy as np
 from numba import jit, prange
 import generics
+
+import cubical.kernels
 import full_complex
 import diag_complex
 import diagdiag_complex
 import phase_only
 
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
+
+# Allocators same as for generic full kernel
 allocate_vis_array = full_complex.allocate_vis_array
 allocate_gain_array = full_complex.allocate_gain_array
 allocate_flag_array = full_complex.allocate_flag_array
 allocate_param_array = full_complex.allocate_param_array
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhj(m, jhj, t_int=1, f_int=1):
     """
     Given the model array, computes the diagonal entries of J\ :sup:`H`\J. J\ :sup:`H`\J is computed
@@ -85,6 +92,7 @@ def compute_jhj(m, jhj, t_int=1, f_int=1):
                         jhj[d,bt,bf,aa,0,0] += (m00*m00.conjugate())
                         jhj[d,bt,bf,aa,1,1] += (m11*m11.conjugate())
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhr(gh, jh, r, jhr, t_int=1, f_int=1):
     """
     Given the conjugate gains, J\ :sup:`H` and the residual (or observed data, in special cases),

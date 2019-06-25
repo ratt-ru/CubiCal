@@ -32,9 +32,13 @@ import numpy as np
 from numba import jit, prange
 import generics
 
+import cubical.kernels
 import full_complex
 import diag_complex
 import phase_only
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
 
 # Allocators same as for generic full kernel.
 allocate_vis_array = full_complex.allocate_vis_array
@@ -49,6 +53,7 @@ def allocate_param_array(shape, dtype, zeros=False):
     """Allocates a param array of the desired shape, laid out in preferred order"""
     return cubical.kernels.allocate_reordered_array(shape, dtype, _param_axis_layout, zeros=zeros)
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhj(tmp_jhj, jhj, ts, fs, t_int, f_int):
     """
     Given the intermediary J\ :sup:`H`\J and channel frequencies, computes the diagonal entries of
@@ -99,6 +104,7 @@ def compute_jhj(tmp_jhj, jhj, ts, fs, t_int, f_int):
                         jhj[d,bt,bf,aa,4,c,c] += ff*tt*tmp_jhjcc
                         jhj[d,bt,bf,aa,5,c,c] += tt*tt*tmp_jhjcc
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhjinv(jhj, jhjinv, eps):
     """
     Given J\ :sup:`H`\J (or an array with similar dimensions), computes its inverse.
@@ -151,6 +157,7 @@ def compute_jhjinv(jhj, jhjinv, eps):
                             jhjinv[d,t,f,aa,4,c,c] = det*(jhj1cc*jhj2cc - jhj4cc*jhj0cc)
                             jhjinv[d,t,f,aa,5,c,c] = det*(jhj3cc*jhj0cc - jhj1cc*jhj1cc)
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
     """
     Given the intermediary J\ :sup:`H`\R and channel frequencies, computes J\ :sup:`H`\R.
@@ -192,6 +199,7 @@ def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
                         jhr[d,bt,bf,aa,1,c,c] += fs[f]*tmp_jhrcc
                         jhr[d,bt,bf,aa,2,c,c] += ts[t]*tmp_jhrcc
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_update(jhr, jhj, upd):
     """
     Given J\ :sup:`H`\R and (J\ :sup:`H`\J)\ :sup:`-1`, computes the gain update. The dimensions of
@@ -242,6 +250,7 @@ def compute_update(jhr, jhj, upd):
                                               jhj4cc*jhr1cc + \
                                               jhj5cc*jhr2cc
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def construct_gains(param, g, ts, fs, t_int, f_int):
     """
     Given the real-valued parameters of the gains, computes the complex gains.

@@ -11,7 +11,7 @@ import importlib
 num_omp_threads = 0
 
 use_parallel = False
-use_cache = False
+use_cache = True
 
 def allocate_reordered_array(shape, dtype, order, zeros=False):
     """

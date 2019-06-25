@@ -8,6 +8,10 @@ Cython kernels for Mad Max flagger
 
 import numpy as np
 from numba import jit, prange
+import cubical.kernels
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
 
 # Retain the following in case in becomes practical to optimise this ourselves.
 
@@ -71,6 +75,7 @@ def compute_mad(absres, flags, diag=1, offdiag=1):
 
     return np.ma.masked_array(mad_arr, mad_arr_fl, fill_value=0), valid_arr
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_mad_internals(absres, flags, diag=1, offdiag=1):
     """
     Given the absolute values of the residuals and a flag array, computes the per-antenna mad estimates. 
@@ -150,6 +155,7 @@ def compute_mad_per_corr(absres, flags, diag=1, offdiag=1):
 
     return np.ma.masked_array(mad_arr, mad_arr_fl, fill_value=0), valid_arr
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_mad_per_corr_internals(absres, flags, diag=1, offdiag=1):
     """
     Given the absolute values of the residuals and a flag array, computes the per-antenna, per-correlation 
@@ -221,6 +227,7 @@ def compute_mad_per_corr_internals(absres, flags, diag=1, offdiag=1):
 
     return mad_arr, mad_arr_fl, valid_arr
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def threshold_mad(absres, thr, flags, flagbit, valid_arr, diag=1, offdiag=1):
     """
     Given the absolute values of the residuals and an array of thresholds, thresholds the residuals.

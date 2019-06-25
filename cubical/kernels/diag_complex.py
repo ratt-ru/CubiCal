@@ -33,6 +33,19 @@ from numba import jit, prange
 import generics
 from full_complex import compute_jhr, compute_jhj
 
+import cubical.kernels
+import full_complex
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
+
+# Allocators same as for generic full kernel
+allocate_vis_array = full_complex.allocate_vis_array
+allocate_gain_array = full_complex.allocate_gain_array
+allocate_flag_array = full_complex.allocate_flag_array
+allocate_param_array = full_complex.allocate_param_array
+
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_residual(m, g, gh, r, t_int, f_int):
     """
     Given the model, gains, and their conjugates, computes the residual. Residual has full time and
@@ -98,6 +111,7 @@ def compute_residual(m, g, gh, r, t_int, f_int):
                     r[i,t,f,ab,aa,0,1] = r[i,t,f,aa,ab,1,0].conjugate()
                     r[i,t,f,ab,aa,1,1] = r[i,t,f,aa,ab,1,1].conjugate()
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jh(m, g, jh, t_int, f_int):
     """
     Given the model and gains, computes the non-zero elements of J\ :sup:`H`. J\ :sup:`H` has full
@@ -155,6 +169,7 @@ def compute_jh(m, g, jh, t_int, f_int):
                         jh[d,i,t,f,aa,ab,1,0] = g11*m10
                         jh[d,i,t,f,aa,ab,1,1] = g11*m11
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_update(jhr, jhjinv, upd):
     """
     Given J\ :sup:`H`\R and (J\ :sup:`H`\J)\ :sup:`-1`, computes the gain update. The dimensions of
@@ -195,6 +210,7 @@ def compute_update(jhr, jhjinv, upd):
                     upd[d,t,f,aa,1,0] = 0
                     upd[d,t,f,aa,1,1] = (jhr10*jhjinv01 + jhr11*jhjinv11)
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_corrected(o, g, gh, corr, t_int, f_int):
     """
     Given the observed visbilities, inverse gains, and their conjugates, computes the corrected
@@ -254,6 +270,7 @@ def compute_corrected(o, g, gh, corr, t_int, f_int):
                 corr[t,f,ab,aa,0,1] = corr[t,f,aa,ab,1,0].conjugate()
                 corr[t,f,ab,aa,1,1] = corr[t,f,aa,ab,1,1].conjugate()
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def apply_gains(m, g, gh, t_int, f_int):
     """
     Applies the gains and their conjugates to the model array. This operation is performed in place
@@ -319,6 +336,7 @@ def apply_gains(m, g, gh, t_int, f_int):
                         m[d,i,t,f,ab,aa,0,1] = m[d,i,t,f,aa,ab,1,0].conjugate()
                         m[d,i,t,f,ab,aa,1,1] = m[d,i,t,f,aa,ab,1,1].conjugate()
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def right_multiply_gains(g, g_next, t_int, f_int):
     """
     Multiples two gain terms in place. Result has full time and frequency resolution 

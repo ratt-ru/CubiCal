@@ -31,13 +31,19 @@ provided. Common dimensions of arrays are:
 import numpy as np
 from numba import jit, prange
 import generics
+
+import cubical.kernels
 import full_complex
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
 
 # Allocators are the same as for the 2x2 complex kernel.
 allocate_vis_array = full_complex.allocate_vis_array
 allocate_gain_array = full_complex.allocate_gain_array
 allocate_flag_array = full_complex.allocate_flag_array
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jh(jh, g, t_int, f_int):
     """
     Given J\ :sup:`H` (initially populated with the model array) and gains, computes the non-zero 
@@ -95,6 +101,7 @@ def compute_jh(jh, g, t_int, f_int):
                         jh[d,i,t,f,aa,ab,1,0] = (g10*jh00 + g11*jh10)
                         jh[d,i,t,f,aa,ab,1,1] = (g10*jh01 + g11*jh11)
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def apply_left_inv_jones(jhr, ginv, t_int, f_int):
     """
     Applies the inverse of a gain array the left side of J\ :sup:`H`\R. J\ :sup:`H`\R has full time 
@@ -145,6 +152,7 @@ def apply_left_inv_jones(jhr, ginv, t_int, f_int):
                     jhr[d,t,f,aa,1,0] = (ginv10*jhr00 + ginv11*jhr10)
                     jhr[d,t,f,aa,1,1] = (ginv10*jhr01 + ginv11*jhr11)
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def sum_jhr_intervals(jhr, jhrint, t_int, f_int):
     """
     Collapses J\ :sup:`H`\R to be cosistent with the solution intervals for the current gain of 
@@ -181,6 +189,7 @@ def sum_jhr_intervals(jhr, jhrint, t_int, f_int):
                     jhrint[d,bt,bf,aa,1,0] += jhr[d,t,f,aa,1,0]
                     jhrint[d,bt,bf,aa,1,1] += jhr[d,t,f,aa,1,1]
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_residual(m, r):
     """
     Given the model array (already multipled by the gains) and the residual array (already populated

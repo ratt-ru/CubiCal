@@ -31,7 +31,10 @@ provided. Common dimensions of arrays are:
 import numpy as np
 from numba import jit, prange
 import generics
-from cubical.kernels import allocate_reordered_array
+import cubical.kernels
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
 
 # defines memory layout of model-like arrays (axis layout is NDxNMxNTxNFxNAxNAxNCxNC)
 _model_axis_layout = [4,5,1,2,3,0,6,7]    # layout is AAMTFD
@@ -44,18 +47,19 @@ _flag_axis_layout = [2,3,0,1]      # layout is AATF
 
 def allocate_vis_array(shape, dtype, zeros=False):
     """Allocates a visibility array of the desired shape, laid out in preferred order"""
-    return allocate_reordered_array(shape, dtype, _model_axis_layout, zeros=zeros)
+    return cubical.kernels.allocate_reordered_array(shape, dtype, _model_axis_layout, zeros=zeros)
 
 def allocate_gain_array(shape, dtype, zeros=False):
     """Allocates a gain array of the desired shape, laid out in preferred order"""
-    return allocate_reordered_array(shape, dtype, _gain_axis_layout, zeros=zeros)
+    return cubical.kernels.allocate_reordered_array(shape, dtype, _gain_axis_layout, zeros=zeros)
 
 def allocate_flag_array(shape, dtype, zeros=False):
     """Allocates a flag array of the desired shape, laid out in preferred order"""
-    return allocate_reordered_array(shape, dtype, _flag_axis_layout, zeros=zeros)
+    return cubical.kernels.allocate_reordered_array(shape, dtype, _flag_axis_layout, zeros=zeros)
 
 allocate_param_array = allocate_gain_array
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_residual(m, g, gh, r, t_int, f_int):
     """
     Given the model, gains, and their conjugates, computes the residual. Residual has full time and
@@ -125,6 +129,7 @@ def compute_residual(m, g, gh, r, t_int, f_int):
                     r[i,t,f,ab,aa,0,1] = r[i,t,f,aa,ab,1,0].conjugate()
                     r[i,t,f,ab,aa,1,1] = r[i,t,f,aa,ab,1,1].conjugate()     
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jh(m, g, jh, t_int, f_int):
     """
     Given the model and gains, computes the non-zero elements of J\ :sup:`H`. J\ :sup:`H` has full
@@ -184,6 +189,7 @@ def compute_jh(m, g, jh, t_int, f_int):
                         jh[d,i,t,f,aa,ab,1,0] = (g10*m00 + g11*m10)
                         jh[d,i,t,f,aa,ab,1,1] = (g10*m01 + g11*m11)
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhr(jh, r, jhr, t_int, f_int):
     """
     Given J\ :sup:`H` and the residual (or observed data, in special cases), computes J\ :sup:`H`\R.
@@ -238,6 +244,7 @@ def compute_jhr(jh, r, jhr, t_int, f_int):
                         jhr[d,bt,bf,aa,1,0] += (r10*jhh00 + r11*jhh10)
                         jhr[d,bt,bf,aa,1,1] += (r10*jhh01 + r11*jhh11) 
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhj(jh, jhj, t_int, f_int):
     """
     Given J\ :sup:`H` ,computes the diagonal entries of J\ :sup:`H`\J. J\ :sup:`H`\J is computed
@@ -290,6 +297,7 @@ def compute_jhj(jh, jhj, t_int, f_int):
                         jhj[d,bt,bf,aa,1,0] += (jh10*j00 + jh11*j10)
                         jhj[d,bt,bf,aa,1,1] += (jh10*j01 + jh11*j11)
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_update(jhr, jhjinv, upd):
     """
     Given J\ :sup:`H`\R and (J\ :sup:`H`\J)\ :sup:`-1`, computes the gain update. The dimensions of
@@ -330,6 +338,7 @@ def compute_update(jhr, jhjinv, upd):
                     upd[d,t,f,aa,1,0] = (jhr10*jhjinv00 + jhr11*jhjinv10)
                     upd[d,t,f,aa,1,1] = (jhr10*jhjinv01 + jhr11*jhjinv11)
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_corrected(o, g, gh, corr, t_int, f_int):
     """
     Given the observed visbilities, inverse gains, and their conjugates, computes the corrected
@@ -393,6 +402,7 @@ def compute_corrected(o, g, gh, corr, t_int, f_int):
                 corr[t,f,ab,aa,0,1] = corr[t,f,aa,ab,1,0].conjugate()
                 corr[t,f,ab,aa,1,1] = corr[t,f,aa,ab,1,1].conjugate()
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def apply_gains(m, g, gh, t_int, f_int):
     """
     Applies the gains and their conjugates to the model array. This operation is performed in place
@@ -467,6 +477,7 @@ def apply_gains(m, g, gh, t_int, f_int):
                         m[d,i,t,f,ab,aa,0,1] = tmp10.conjugate()
                         m[d,i,t,f,ab,aa,1,1] = tmp11.conjugate()
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def right_multiply_gains(g, g_next, t_int, f_int):
     """
     Multiples two gain terms in place. Result has full time and frequency resolution 

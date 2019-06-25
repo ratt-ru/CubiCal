@@ -1,6 +1,12 @@
 import numpy as np
 from numba import jit, prange
 
+import cubical.kernels
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
+
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_2x2_inverse(x, xinv, flags, eps, flagbit):
     """
     Given an array x of dimensions (d,t,i,a,2,2), computes the inverse of every 2x2 block. 
@@ -67,6 +73,7 @@ def compute_2x2_inverse(x, xinv, flags, eps, flagbit):
 
     return flag_count
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_diag_inverse(x, xinv, flags, eps, flagbit):
     """
     Given an array x of dimensions (d,t,i,a,2,2), computes the inverse of every 2x2 block,
@@ -121,6 +128,7 @@ def compute_diag_inverse(x, xinv, flags, eps, flagbit):
 
     return flag_count
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_chisq(r, chisq):
     """
     Compute chi-square over correlations, models, and one antenna axis.

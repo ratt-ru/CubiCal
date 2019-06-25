@@ -30,6 +30,12 @@ Cython kernels for various rebinning operations. Common dimensions of arrays are
 import numpy as np
 from numba import jit, prange
 
+import cubical.kernels
+
+use_parallel = cubical.kernels.use_parallel
+use_cache = cubical.kernels.use_cache
+
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def rebin_index_columns(time, time0, antea, antea0, anteb, anteb0,
              			ddid_col, ddid_col0, row_map):
     """
@@ -55,6 +61,7 @@ def rebin_index_columns(time, time0, antea, antea0, anteb, anteb0,
         if vis_count[output_row]:
             time[output_row] /= vis_count[output_row]
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def rebin_vis(vis, vis0, uvw, uvw0, flag, flag0, weights, weights0, num_weights,
               rebin_row_map, rebin_chan_map):
     """
@@ -105,6 +112,7 @@ def rebin_vis(vis, vis0, uvw, uvw0, flag, flag0, weights, weights0, num_weights,
                         flag[row, f, c] = 0
                         vis[row, f, c] /= sum_ww[row, f, c]
 
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def rebin_model(model, model0, flag0, rebin_row_map, rebin_chan_map):
     """
     Rebins a model column, following a rebin_row_map precomputed by cyrebin_vis
