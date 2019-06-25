@@ -69,9 +69,9 @@ class JonesChain(MasterMachine):
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, jones_options)
 
-        self.cychain  = cubical.kernels.import_kernel("cychain")
+        self.chain  = cubical.kernels.import_kernel("chain")
         # kernel used for compute_residuals and such
-        self.cykernel = Complex2x2Gains.get_full_kernel(jones_options, diag_gains=self.is_diagonal)
+        self.kernel = Complex2x2Gains.get_full_kernel(jones_options, diag_gains=self.is_diagonal)
 
         self.n_dir, self.n_mod = ndir, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
@@ -221,7 +221,7 @@ class JonesChain(MasterMachine):
 
         for ind in range(self.active_index, -1, -1):
             term = self.jones_terms[ind]
-            self.cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
+            self.chain.compute_jh(self.jh, term.gains, *term.gain_intervals)
             
         if n_dir > 1:
             if self._r is None:
@@ -232,20 +232,20 @@ class JonesChain(MasterMachine):
 
         self._jhr.fill(0)
 
-        self.active_term.cykernel.cycompute_jhr(self.jh, r, self._jhr, 1, 1)
+        self.active_term.cykernel.compute_jhr(self.jh, r, self._jhr, 1, 1)
 
         for ind in range(0, self.active_index, 1):
             term = self.jones_terms[ind]
             g_inv, gh_inv, flag_counts = term.get_inverse_gains()
-            self.cychain.cyapply_left_inv_jones(self._jhr, g_inv, *term.gain_intervals)
+            self.chain.apply_left_inv_jones(self._jhr, g_inv, *term.gain_intervals)
 
         self._jhrint.fill(0)
-        self.cychain.cysum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
+        self.chain.sum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
 
         self._jhj.fill(0)
-        self.active_term.cykernel.cycompute_jhj(self.jh, self._jhj, *self.active_term.gain_intervals)
+        self.active_term.cykernel.compute_jhj(self.jh, self._jhj, *self.active_term.gain_intervals)
 
-        flag_count = self.active_term.cykernel.cycompute_jhjinv(self._jhj, self._jhjinv,
+        flag_count = self.active_term.cykernel.compute_jhjinv(self._jhj, self._jhjinv,
                                                     self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
         return self._jhrint, self._jhjinv, flag_count
 
@@ -275,7 +275,7 @@ class JonesChain(MasterMachine):
             g0 = g0[:1,...]
         gains[:] = g0
         for term in self.jones_terms[1:]:
-            term.cykernel.cyright_multiply_gains(gains, term.gains, *term.gain_intervals)
+            term.cykernel.right_multiply_gains(gains, term.gains, *term.gain_intervals)
 
         # compute conjugate gains
         gh = np.empty_like(gains)
@@ -302,7 +302,7 @@ class JonesChain(MasterMachine):
                 # g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
-                    term.cykernel.cyright_multiply_gains(gains, g[:1,...], *term.gain_intervals)
+                    term.cykernel.right_multiply_gains(gains, g[:1,...], *term.gain_intervals)
                 else:
                     init = True
                     gains[:] = term._gainres_to_fullres(g[:1,...], tdim_ind=1)
@@ -337,7 +337,7 @@ class JonesChain(MasterMachine):
         """
         g, gh = self.accumulate_gains()
         np.copyto(resid_arr, obser_arr)
-        self.cykernel.cycompute_residual(model_arr, g, gh, resid_arr, 1, 1)
+        self.kernel.compute_residual(model_arr, g, gh, resid_arr, 1, 1)
 
         return resid_arr
 
@@ -363,7 +363,7 @@ class JonesChain(MasterMachine):
 
         g, gh, flag_count = self.accumulate_inv_gains()
 
-        self.cykernel.cycompute_corrected(resid_vis, g, gh, corr_vis, 1, 1)
+        self.kernel.compute_corrected(resid_vis, g, gh, corr_vis, 1, 1)
 
         return corr_vis, flag_count
 
@@ -381,7 +381,7 @@ class JonesChain(MasterMachine):
                 Array containing the result of GMG\ :sup:`H`.
         """
         g, gh = self.accumulate_gains()
-        self.cykernel.cyapply_gains(vis, g, gh, 1, 1)
+        self.kernel.apply_gains(vis, g, gh, 1, 1)
         return vis
 
     def check_convergence(self, min_delta_g):
