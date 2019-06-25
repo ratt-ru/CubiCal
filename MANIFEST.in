@@ -1,4 +1,3 @@
 include cubical/DefaultParset.cfg
 include cubical/database/blankcaltable.CASA.tgz
-recursive-include cubical/kernels *.pyx *.pxi *.c *.cpp *.h
 include cubical/bin/gocubical
