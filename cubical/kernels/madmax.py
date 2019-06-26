@@ -10,7 +10,7 @@ import numpy as np
 from numba import jit, prange
 import cubical.kernels
 
-use_parallel = cubical.kernels.use_parallel
+use_parallel = True if cubical.kernels.num_omp_threads > 1 else False
 use_cache = cubical.kernels.use_cache
 
 # Retain the following in case in becomes practical to optimise this ourselves.

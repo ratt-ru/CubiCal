@@ -30,13 +30,12 @@ provided. Common dimensions of arrays are:
 
 import numpy as np
 from numba import jit, prange
-import generics
-from full_complex import compute_jhr, compute_jhj
 
 import cubical.kernels
-import full_complex
+from cubical.kernels import generics
+from cubical.kernels import full_complex
 
-use_parallel = cubical.kernels.use_parallel
+use_parallel = True if cubical.kernels.num_omp_threads > 1 else False
 use_cache = cubical.kernels.use_cache
 
 # Allocators same as for generic full kernel
@@ -386,6 +385,12 @@ def right_multiply_gains(g, g_next, t_int, f_int):
                     g[d,t,f,aa,0,1] *= g_next11
                     g[d,t,f,aa,1,0] *= g_next00
                     g[d,t,f,aa,1,1] *= g_next11
+
+# Map compute_jhr method to a generic complex case.
+compute_jhr = full_complex.compute_jhr
+
+# Map compute_jhj method to a generic complex case.
+compute_jhj = full_complex.compute_jhj
 
 # Map the J^H.J inversion method to a generic inversion.
 compute_jhjinv = generics.compute_2x2_inverse

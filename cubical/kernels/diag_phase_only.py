@@ -30,15 +30,15 @@ provided. Common dimensions of arrays are:
 
 import numpy as np
 from numba import jit, prange
-import generics
 
 import cubical.kernels
-import full_complex
-import diag_complex
-import diagdiag_complex
-import phase_only
+from cubical.kernels import generics
+from cubical.kernels import full_complex
+from cubical.kernels import diag_complex
+from cubical.kernels import diagdiag_complex
+from cubical.kernels import phase_only
 
-use_parallel = cubical.kernels.use_parallel
+use_parallel = True if cubical.kernels.num_omp_threads > 1 else False
 use_cache = cubical.kernels.use_cache
 
 # Allocators same as for generic full kernel
