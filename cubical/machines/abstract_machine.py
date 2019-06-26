@@ -74,7 +74,7 @@ class MasterMachine:
 
         """
         import cubical.kernels
-        self.cygenerics = cubical.kernels.import_kernel('generics')
+        self.generics = cubical.kernels.import_kernel('generics')
 
         self._jones_label = jones_label
         self.chunk_label = chunk_label
@@ -391,7 +391,7 @@ class MasterMachine:
         # finally sum over frequency intervals.
 
         chisq = np.zeros(resid_arr.shape[1:4], np.float64)
-        self.cygenerics.compute_chisq(resid_arr, chisq)
+        self.generics.compute_chisq(resid_arr, chisq)
 
         # Normalize this by the per-channel variance.
 

@@ -232,7 +232,7 @@ class JonesChain(MasterMachine):
 
         self._jhr.fill(0)
 
-        self.active_term.cykernel.compute_jhr(self.jh, r, self._jhr, 1, 1)
+        self.active_term.kernel.compute_jhr(self.jh, r, self._jhr, 1, 1)
 
         for ind in range(0, self.active_index, 1):
             term = self.jones_terms[ind]
@@ -243,9 +243,9 @@ class JonesChain(MasterMachine):
         self.chain.sum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
 
         self._jhj.fill(0)
-        self.active_term.cykernel.compute_jhj(self.jh, self._jhj, *self.active_term.gain_intervals)
+        self.active_term.kernel.compute_jhj(self.jh, self._jhj, *self.active_term.gain_intervals)
 
-        flag_count = self.active_term.cykernel.compute_jhjinv(self._jhj, self._jhjinv,
+        flag_count = self.active_term.kernel.compute_jhjinv(self._jhj, self._jhjinv,
                                                     self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
         return self._jhrint, self._jhjinv, flag_count
 
@@ -275,7 +275,7 @@ class JonesChain(MasterMachine):
             g0 = g0[:1,...]
         gains[:] = g0
         for term in self.jones_terms[1:]:
-            term.cykernel.right_multiply_gains(gains, term.gains, *term.gain_intervals)
+            term.kernel.right_multiply_gains(gains, term.gains, *term.gain_intervals)
 
         # compute conjugate gains
         gh = np.empty_like(gains)
@@ -302,7 +302,7 @@ class JonesChain(MasterMachine):
                 # g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
-                    term.cykernel.right_multiply_gains(gains, g[:1,...], *term.gain_intervals)
+                    term.kernel.right_multiply_gains(gains, g[:1,...], *term.gain_intervals)
                 else:
                     init = True
                     gains[:] = term._gainres_to_fullres(g[:1,...], tdim_ind=1)

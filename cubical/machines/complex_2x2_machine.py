@@ -37,7 +37,7 @@ class Complex2x2Gains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
-        # note that this sets up self.cykernel
+        # note that this sets up self.kernel
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
 
@@ -103,7 +103,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         jh = self.get_new_jh(model_arr)
 
-        self.cykernel_solve.compute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.kernel_solve.compute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
         if self._offdiag_only:
             jh[...,(0,1),(0,1)] = 0
 
@@ -113,13 +113,13 @@ class Complex2x2Gains(PerIntervalGains):
         if self._offdiag_only:
             r[...,(0,1),(0,1)] = 0
 
-        self.cykernel_solve.compute_jhr(jh, r, jhr, self.t_int, self.f_int)
+        self.kernel_solve.compute_jhr(jh, r, jhr, self.t_int, self.f_int)
 
         jhj, jhjinv = self.get_new_jhj()
 
-        self.cykernel_solve.compute_jhj(jh, jhj, self.t_int, self.f_int)
+        self.kernel_solve.compute_jhj(jh, jhj, self.t_int, self.f_int)
 
-        flag_count = self.cykernel_solve.compute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        flag_count = self.kernel_solve.compute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
         
 #         if flag_count:
 #             import pdb; pdb.set_trace()
@@ -139,7 +139,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         update = self.init_update(jhr)
 
-        self.cykernel_solve.compute_update(jhr, jhjinv, update)
+        self.kernel_solve.compute_update(jhr, jhjinv, update)
 
         if self.dd_term and self.n_dir > 1:
             update += self.gains

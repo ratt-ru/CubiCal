@@ -89,9 +89,9 @@ def compute_jhj(tmp_jhj, jhj, ts, fs, t_int, f_int):
 
                         ff = fs[f]
 
-                        jhj[d,rr,rc,aa,0,c,c] += tmp_jhjcc
-					    jhj[d,rr,rc,aa,1,c,c] += ff*tmp_jhjcc
-					    jhj[d,rr,rc,aa,2,c,c] += ff*ff*tmp_jhjcc
+                        jhj[d,bt,bf,aa,0,c,c] += tmp_jhjcc
+                        jhj[d,bt,bf,aa,1,c,c] += ff*tmp_jhjcc
+                        jhj[d,bt,bf,aa,2,c,c] += ff*ff*tmp_jhjcc
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhjinv(jhj, jhjinv, eps):
@@ -127,16 +127,16 @@ def compute_jhjinv(jhj, jhjinv, eps):
                         if det<eps:
 
                             jhjinv[d,t,f,aa,0,c,c] = 0
-					        jhjinv[d,t,f,aa,1,c,c] = 0
-					        jhjinv[d,t,f,aa,2,c,c] = 0
+                            jhjinv[d,t,f,aa,1,c,c] = 0
+                            jhjinv[d,t,f,aa,2,c,c] = 0
 
                         else:
 
                             det = 1/det
 
                             jhjinv[d,t,f,aa,0,c,c] =  det*jhj2cc
-					        jhjinv[d,t,f,aa,1,c,c] = -det*jhj1cc
-					        jhjinv[d,t,f,aa,2,c,c] =  det*jhj2cc
+                            jhjinv[d,t,f,aa,1,c,c] = -det*jhj1cc
+                            jhjinv[d,t,f,aa,2,c,c] =  det*jhj2cc
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
@@ -176,8 +176,8 @@ def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
                     for c in xrange(2):
                         tmp_jhrcc = tmp_jhr[d,t,f,aa,c,c]
 
-					    jhr[d,rr,rc,aa,0,c,c] +=       tmp_jhrcc
-					    jhr[d,rr,rc,aa,1,c,c] += fs[f]*tmp_jhrcc
+                        jhr[d,bt,bf,aa,0,c,c] +=       tmp_jhrcc
+                        jhr[d,bt,bf,aa,1,c,c] += fs[f]*tmp_jhrcc
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_update(jhr, jhj, upd):
