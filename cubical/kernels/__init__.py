@@ -11,7 +11,7 @@ import importlib
 num_omp_threads = 0
 
 use_parallel = False
-use_cache = True
+use_cache = False
 
 def allocate_reordered_array(shape, dtype, order, zeros=False):
     """
@@ -48,53 +48,14 @@ def allocate_reordered_array(shape, dtype, order, zeros=False):
 
     return array
 
-_omp_import = [False]
+# _omp_import = [False]
 
 def import_kernel(name):
-    """
-    Imports named kernel and returns it. If num_omp_threads>1, or this is a nested import from another OMP kernel, then
-    tries to import the OMP version of the kernel, if available.
-    
-    In a normal cubical context, the only logic needed is dead simple: OMP is <=> num_omp_threads>1.
-    All this other sophistication is to allow a program to import both an OMP and a non-OMP version of a kernel (and 
-    therefore, of all the other kernels it references) simultaneously. This capability is needed by e.g. the 
-    benchmarking code under test.
-    """
-    global _omp_import
-    omp = False
+    """ Imports named kernel and returns it. """
 
-    # if previous import was an OMP, or if threads>1, or name contains +_omp": force OMP version
-    if _omp_import[-1] or num_omp_threads>1 or name.endswith("_omp"):
-        omp = True
-    # else check the callstack for an "_omp" moudle, this will also enable OMP
-    else:
-        for frame in traceback.extract_stack()[::-1]:
-            caller = os.path.splitext(frame[0])[0]
-            if "cubical/kernels" in caller and caller.endswith("_omp"):
-                omp = True
-                name += "_omp"
-                break
+    return importlib.import_module("cubical.kernels." + name)
 
-    # try-finally is there to make sure the _omp_import stack is properly maintained during nested imports
 
-    try:
-        _omp_import.append(omp)
-        # make list of kernels to try
-        names = [name]
-        if omp and not name.endswith("_omp"):
-            names.insert(0, name+"_omp")
-        # try to import kernel candidates. Return succssful one -- reraise exception if last one fails
-        for i,name in enumerate(names):
-            try:
-                mod = importlib.import_module("cubical.kernels." + name)
-                # print("{}import_kernel({})".format(" "*len(_omp_import), name))
-                return mod
-            except ImportError:
-                if not name.endswith("_omp"):
-                    raise
-                print(("import_kernel({}): failed, trying fallback".format(name)))
-    finally:
-        _omp_import.pop()
 
 
 

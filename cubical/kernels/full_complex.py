@@ -33,7 +33,7 @@ from numba import jit, prange
 import generics
 import cubical.kernels
 
-use_parallel = cubical.kernels.use_parallel
+use_parallel = True if cubical.kernels.num_omp_threads > 1 else False
 use_cache = cubical.kernels.use_cache
 
 # defines memory layout of model-like arrays (axis layout is NDxNMxNTxNFxNAxNAxNCxNC)

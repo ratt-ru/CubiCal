@@ -117,6 +117,8 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     # child processes will inherit this
     cubical.kernels.num_omp_threads = nthread
 
+    os.environ["NUMBA_NUM_THREADS"] = str(nthread)
+
     # parse affinity argument
     if affinity != "" and affinity is not None:
         if type(affinity) is int or re.match("^[\d+]$", affinity):
