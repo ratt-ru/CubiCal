@@ -1,3 +1,5 @@
+from builtins import range
+
 import numpy as np
 from numba import jit, prange
 
@@ -40,9 +42,9 @@ def compute_2x2_inverse(x, xinv, flags, eps, flagbit):
     n_ant = x.shape[3]
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
-            for f in xrange(n_fre):
-                for d in xrange(n_dir):
+        for t in range(n_tim):
+            for f in range(n_fre):
+                for d in range(n_dir):
                     if flags[d,t,f,aa]:
 
                         xinv[d,t,f,aa,0,0] = 0
@@ -107,9 +109,9 @@ def compute_diag_inverse(x, xinv, flags, eps, flagbit):
     n_ant = x.shape[3]
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
-            for f in xrange(n_fre):
-                for d in xrange(n_dir):
+        for t in range(n_tim):
+            for f in range(n_fre):
+                for d in range(n_dir):
                     
                     xinv[d,t,f,aa,0,1] = xinv[d,t,f,aa,1,0] = 0
                     
@@ -145,10 +147,10 @@ def compute_chisq(r, chisq):
     n_ant = r.shape[3]
 
     for aa in prange(n_ant):
-        for ab in xrange(n_ant):
-            for i in xrange(n_mod):
-                for t in xrange(n_tim):
-                    for f in xrange(n_fre):
-                        for c1 in xrange(2):
-                            for c2 in xrange(2):
+        for ab in range(n_ant):
+            for i in range(n_mod):
+                for t in range(n_tim):
+                    for f in range(n_fre):
+                        for c1 in range(2):
+                            for c2 in range(2):
                                 chisq[t,f,aa] += r[i,t,f,aa,ab,c1,c2].real**2 + r[i,t,f,aa,ab,c1,c2].imag**2

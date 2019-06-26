@@ -5,6 +5,7 @@
 """
 Cython kernels for Mad Max flagger
 """
+from builtins import range
 
 import numpy as np
 from numba import jit, prange
@@ -98,7 +99,7 @@ def compute_mad_internals(absres, flags, diag=1, offdiag=1):
     n_fre = absres.shape[2]
     n_ant = absres.shape[3]
 
-    bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(i+1, n_ant)], dtype=np.int32)
+    bls = np.array([[i,j] for i in range(n_ant) for j in range(i+1, n_ant)], dtype=np.int32)
     n_bl = bls.shape[0]
 
     # Check for valid correlation parameters.
@@ -124,13 +125,13 @@ def compute_mad_internals(absres, flags, diag=1, offdiag=1):
 
     for ibl in prange(n_bl):
         aa, ab = bls[ibl][0], bls[ibl][1]  
-        for m in xrange(n_mod):
+        for m in range(n_mod):
             valid_vals = np.empty((n_cor*n_tim*n_fre), np.float32)
             n_valid_vals = 0
-            for ic in xrange(n_cor):
+            for ic in range(n_cor):
                 c1, c2 = corr[ic][0], corr[ic][1] # Correlation indices.
-                for t in xrange(n_tim):
-                    for f in xrange(n_fre):
+                for t in range(n_tim):
+                    for f in range(n_fre):
                         # Select a single correlation from absres. 
                         val = absres[m, t, f, aa, ab, c1, c2]
                         # If it is non-zero and unflagged, add it to the array.
@@ -177,7 +178,7 @@ def compute_mad_per_corr_internals(absres, flags, diag=1, offdiag=1):
     n_fre = absres.shape[2]
     n_ant = absres.shape[3]
 
-    bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(i+1, n_ant)], dtype=np.int32)
+    bls = np.array([[i,j] for i in range(n_ant) for j in range(i+1, n_ant)], dtype=np.int32)
     n_bl = bls.shape[0]
 
     # Check for valid correlation parameters.
@@ -203,13 +204,13 @@ def compute_mad_per_corr_internals(absres, flags, diag=1, offdiag=1):
 
     for ibl in prange(n_bl):
         aa, ab = bls[ibl][0], bls[ibl][1]  
-        for m in xrange(n_mod):
+        for m in range(n_mod):
             valid_vals = np.empty((n_cor*n_tim*n_fre), np.float32)
-            for ic in xrange(n_cor):
+            for ic in range(n_cor):
                 c1, c2 = corr[ic][0], corr[ic][1] # Correlation indices.
                 n_valid_vals = 0
-                for t in xrange(n_tim):
-                    for f in xrange(n_fre):
+                for t in range(n_tim):
+                    for f in range(n_fre):
                         # Select a single correlation from absres. 
                         val = absres[m, t, f, aa, ab, c1, c2]
                         # If it is non-zero and unflagged, add it to the array.
@@ -255,7 +256,7 @@ def threshold_mad(absres, thr, flags, flagbit, valid_arr, diag=1, offdiag=1):
     n_fre = absres.shape[2]
     n_ant = absres.shape[3]
 
-    bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(i+1, n_ant)], dtype=np.int32)
+    bls = np.array([[i,j] for i in range(n_ant) for j in range(i+1, n_ant)], dtype=np.int32)
     n_bl = bls.shape[0]
 
     invalid_arr = np.zeros((n_tim, n_fre, n_ant, n_ant), np.uint8)
@@ -277,14 +278,14 @@ def threshold_mad(absres, thr, flags, flagbit, valid_arr, diag=1, offdiag=1):
 
     for ibl in prange(n_bl):
         aa, ab = bls[ibl][0], bls[ibl][1]  
-        for t in xrange(n_tim):
-            for f in xrange(n_fre):
+        for t in range(n_tim):
+            for f in range(n_fre):
                 good_models = flagged = 0
-                for m in xrange(n_mod):
+                for m in range(n_mod):
                     if valid_arr[m,t,f,aa,ab]:
                         good_models = 1
                         # If any correlation exceeds threshold, break out (flagging all four).
-                        for ic in xrange(n_cor):
+                        for ic in range(n_cor):
                             c1, c2 = corr[ic][0], corr[ic][1]
                             if absres[m,t,f,aa,ab,c1,c2] > thr[m,aa,ab,c1,c2]:
                                 flagged = 1
@@ -293,7 +294,7 @@ def threshold_mad(absres, thr, flags, flagbit, valid_arr, diag=1, offdiag=1):
                 if flagged and good_models:
                     invalid_arr[t,f,aa,ab] = invalid_arr[t,f,ab,aa] = 1
                     flags[t,f,aa,ab] = flags[t,f,ab,aa] = flags[t,f,ab,aa] | flagbit
-                    for m in xrange(n_mod):
+                    for m in range(n_mod):
                         valid_arr[m,t,f,aa,ab] = valid_arr[m,t,f,ab,aa] = 0
 
     return invalid_arr

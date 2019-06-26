@@ -26,6 +26,7 @@ Cython kernels for various rebinning operations. Common dimensions of arrays are
 +----------------+------+
 
 """
+from builtins import range
 
 import numpy as np
 from numba import jit, prange
@@ -49,7 +50,7 @@ def rebin_index_columns(time, time0, antea, antea0, anteb, anteb0,
 
     vis_count = np.zeros(n_output_rows, np.int64)
 
-    for input_row in xrange(n_input_rows):
+    for input_row in range(n_input_rows):
         output_row = abs(row_map[input_row])
         vis_count[output_row] += 1
         time[output_row] += time0[input_row]
@@ -57,7 +58,7 @@ def rebin_index_columns(time, time0, antea, antea0, anteb, anteb0,
         anteb[output_row] = anteb0[input_row]
         ddid_col[output_row] = ddid_col0[input_row]
 
-    for output_row in xrange(n_output_rows):
+    for output_row in range(n_output_rows):
         if vis_count[output_row]:
             time[output_row] /= vis_count[output_row]
 
@@ -73,7 +74,7 @@ def rebin_vis(vis, vis0, uvw, uvw0, flag, flag0, weights, weights0, num_weights,
     sum_ww = np.zeros((n_row,n_fre,n_cor), np.float32)    # Sum of weights per each output visibility
     sum_rw = np.zeros(n_row, np.float32)                  # Sum of weights per each output row
 
-    for row0 in xrange(n_input_rows):
+    for row0 in range(n_input_rows):
         row = rebin_row_map[row0]
         conjugate = row<0
         if conjugate:
@@ -81,16 +82,16 @@ def rebin_vis(vis, vis0, uvw, uvw0, flag, flag0, weights, weights0, num_weights,
 
         row_sum_weights = 0  # sum of weights of current _input_ row
 
-        for f0 in xrange(n_fre0):
+        for f0 in range(n_fre0):
             f = rebin_chan_map[f0]
-            for c in xrange(n_cor0):
+            for c in range(n_cor0):
 		# Output flags accumulate all input flags across the bin with bitwise-OR.
 		# However, below we'll clear them if at least one unflagged visibility was present.
                 flag[row, f, c] |= flag0[row0, f0, c]  
                 if not flag0[row0, f0, c]:
                     # accumulate weights
                     if num_weights:
-                        for w in xrange(num_weights):
+                        for w in range(num_weights):
                             weights[w, row, f, c] += weights0[w, row0, f0, c]
                         ww = weights0[0, row0, f0, c]
                     vis[row, f, c] += ww*vis0[row0, f0, c].conjugate() if conjugate else ww*vis0[row0, f0, c]
@@ -98,16 +99,16 @@ def rebin_vis(vis, vis0, uvw, uvw0, flag, flag0, weights, weights0, num_weights,
                     sum_rw[row] += ww
                     row_sum_weights += ww
         if row_sum_weights:
-            for i in xrange(3):
+            for i in range(3):
                 uvw[row, i] += row_sum_weights*uvw0[row0, i]
 
     # Now normalize by counts and sums of the weights.
-    for row in xrange(n_row):
+    for row in range(n_row):
         if sum_rw[row]:
-            for i in xrange(3):
+            for i in range(3):
                 uvw[row, i] /= sum_rw[row]
-            for f in xrange(n_fre):
-                for c in xrange(n_cor0):
+            for f in range(n_fre):
+                for c in range(n_cor0):
                     if sum_ww[row, f, c]:
                         flag[row, f, c] = 0
                         vis[row, f, c] /= sum_ww[row, f, c]
@@ -122,23 +123,23 @@ def rebin_model(model, model0, flag0, rebin_row_map, rebin_chan_map):
 
     counts = np.zeros((n_row,n_fre,n_cor), np.int64)    # counts per each model visibility
 
-    for row0 in xrange(n_row0):
+    for row0 in range(n_row0):
         row = rebin_row_map[row0]
         conjugate = row<0
         if conjugate:
             row = -row
 
-        for f0 in xrange(n_fre0):
+        for f0 in range(n_fre0):
             f = rebin_chan_map[f0]
-            for c in xrange(n_cor0):
+            for c in range(n_cor0):
                 if not flag0[row0, f0, c]:
                     counts[row, f, c] += 1
                     model[row, f, c] += model0[row0, f0, c].conjugate() if conjugate else model0[row0, f0, c]
 
     # now normalize by counts
-    for row in xrange(n_row):
-        for f in xrange(n_fre):
-            for c in xrange(n_cor):
+    for row in range(n_row):
+        for f in range(n_fre):
+            for c in range(n_cor):
                 if counts[row, f, c]:
                     model[row, f, c] /= counts[row, f, c]
 

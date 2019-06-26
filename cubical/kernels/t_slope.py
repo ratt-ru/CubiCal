@@ -27,6 +27,7 @@ provided. Common dimensions of arrays are:
 +----------------+------+
 
 """
+from builtins import range
 
 import numpy as np
 from numba import jit, prange
@@ -74,16 +75,16 @@ def compute_jhj(tmp_jhj, jhj, ts, fs, t_int, f_int):
     n_fre = tmp_jhj.shape[2]
     n_ant = tmp_jhj.shape[3]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
+        for t in range(n_tim):
             bt = broadcast_times[t]
-            for f in xrange(n_fre):
+            for f in range(n_fre):
                 bf = broadcast_freqs[f]
-                for d in xrange(n_dir):
-                    for c in xrange(2):
+                for d in range(n_dir):
+                    for c in range(2):
 
                         tmp_jhjcc = tmp_jhj[d,t,f,aa,c,c]
 
@@ -114,10 +115,10 @@ def compute_jhjinv(jhj, jhjinv, eps):
     n_ant = jhj.shape[3]
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
-            for f in xrange(n_fre):
-                for d in xrange(n_dir):
-                    for c in xrange(2):
+        for t in range(n_tim):
+            for f in range(n_fre):
+                for d in range(n_dir):
+                    for c in range(2):
                         jhj0cc = jhj[d,t,f,aa,0,c,c]
                         jhj1cc = jhj[d,t,f,aa,1,c,c]
                         jhj2cc = jhj[d,t,f,aa,2,c,c]
@@ -164,16 +165,16 @@ def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
     n_fre = tmp_jhr.shape[2]
     n_ant = tmp_jhr.shape[3]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
+        for t in range(n_tim):
             bt = broadcast_times[t]
-            for f in xrange(n_fre):
+            for f in range(n_fre):
                 bf = broadcast_freqs[f]
-                for d in xrange(n_dir):
-                    for c in xrange(2):
+                for d in range(n_dir):
+                    for c in range(2):
                         tmp_jhrcc = tmp_jhr[d,t,f,aa,c,c]
 
                         jhr[d,bt,bf,aa,0,c,c] +=       tmp_jhrcc
@@ -202,10 +203,10 @@ def compute_update(jhr, jhj, upd):
     n_ant = jhr.shape[3]
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
-            for f in xrange(n_fre):
-                for d in xrange(n_dir):
-                    for c in xrange(2):
+        for t in range(n_tim):
+            for f in range(n_fre):
+                for d in range(n_dir):
+                    for c in range(2):
 
                         jhj0cc = jhj[d,t,f,aa,0,c,c]
                         jhj1cc = jhj[d,t,f,aa,1,c,c]
@@ -240,16 +241,16 @@ def construct_gains(param, g, ts, fs, t_int, f_int):
     n_fre = g.shape[2]
     n_ant = g.shape[3]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
+        for t in range(n_tim):
             bt = broadcast_times[t]
-            for f in xrange(n_fre):
+            for f in range(n_fre):
                 bf = broadcast_freqs[f]
-                for d in xrange(n_dir):
-                    for c in xrange(2):
+                for d in range(n_dir):
+                    for c in range(2):
                         p0cc = param[d,bt,bf,aa,0,c,c]
                         p1cc = param[d,bt,bf,aa,1,c,c]
                         p2cc = param[d,bt,bf,aa,2,c,c]

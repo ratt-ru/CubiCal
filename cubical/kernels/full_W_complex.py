@@ -27,6 +27,7 @@ arrays to be provided. Common dimensions of arrays are:
 +----------------+------+
 
 """
+from builtins import range
 
 import numpy as np
 from numba import jit, prange
@@ -111,20 +112,20 @@ def compute_jhwr(jh, r, w, jhwr, t_int, f_int):
     n_fre = jh.shape[3]
     n_ant = jh.shape[4]
 
-    all_bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(n_ant) if i!=j], dtype=np.int32)
+    all_bls = np.array([[i,j] for i in range(n_ant) for j in range(n_ant) if i!=j], dtype=np.int32)
     n_bl = all_bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
 
     for ibl in prange(n_bl):
         aa, ab = all_bls[ibl][0], all_bls[ibl][1]
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
+        for i in range(n_mod):
+            for t in range(n_tim):
                 bt = broadcast_times[t]
-                for f in xrange(n_fre):
+                for f in range(n_fre):
                     bf = broadcast_freqs[f]
-                    for d in xrange(n_dir):
+                    for d in range(n_dir):
 
                         r00 = r[i,t,f,aa,ab,0,0]
                         r01 = r[i,t,f,aa,ab,0,1]
@@ -167,20 +168,20 @@ def compute_jhwj(jh, w, jhwj, t_int, f_int):
     n_fre = jh.shape[3]
     n_ant = jh.shape[4]
 
-    all_bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(n_ant) if i!=j], dtype=np.int32)
+    all_bls = np.array([[i,j] for i in range(n_ant) for j in range(n_ant) if i!=j], dtype=np.int32)
     n_bl = all_bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
 
     for ibl in prange(n_bl):
         aa, ab = all_bls[ibl][0], all_bls[ibl][1]
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
+        for i in range(n_mod):
+            for t in range(n_tim):
                 bt = broadcast_times[t]
-                for f in xrange(n_fre):
+                for f in range(n_fre):
                     bf = broadcast_freqs[f]
-                    for d in xrange(n_dir):
+                    for d in range(n_dir):
 
                         j00 = jh[d,i,t,f,ab,aa,0,0]
                         j01 = jh[d,i,t,f,ab,aa,0,1]
@@ -222,14 +223,14 @@ def compute_weights(r, ic, w, v, npol):
     n_fre = r.shape[2]
     n_ant = r.shape[3]
 
-    all_bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(n_ant) if i!=j], dtype=np.int32)
+    all_bls = np.array([[i,j] for i in range(n_ant) for j in range(n_ant) if i!=j], dtype=np.int32)
     n_bl = all_bls.shape[0]
     
     for ibl in prange(n_bl):
         aa, ab = all_bls[ibl][0], all_bls[ibl][1]
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
-                for f in xrange(n_fre):
+        for i in range(n_mod):
+            for t in range(n_tim):
+                for f in range(n_fre):
 
                     r00 = r[i,t,f,aa,ab,0,0]
                     r01 = r[i,t,f,aa,ab,0,1]
@@ -268,14 +269,14 @@ def compute_cov(r, ic, w):
     n_fre = r.shape[2]
     n_ant = r.shape[3]
 
-    bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(i+1, n_ant)], dtype=np.int32)
+    bls = np.array([[i,j] for i in range(n_ant) for j in range(i+1, n_ant)], dtype=np.int32)
     n_bl = bls.shape[0]
     
     for ibl in prange(n_bl):
         aa, ab = bls[ibl][0], bls[ibl][1]  
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
-                for f in xrange(n_fre):
+        for i in range(n_mod):
+            for t in range(n_tim):
+                for f in range(n_fre):
 
                     r00 = r[i,t,f,aa,ab,0,0]
                     r01 = r[i,t,f,aa,ab,0,1]

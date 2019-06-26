@@ -27,6 +27,7 @@ provided. Common dimensions of arrays are:
 +----------------+------+
 
 """
+from builtins import range
 
 import numpy as np
 from numba import jit, prange
@@ -68,20 +69,20 @@ def compute_jhj(m, jhj, t_int=1, f_int=1):
     n_fre = m.shape[3]
     n_ant = m.shape[4]
 
-    all_bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(n_ant) if i!=j])
+    all_bls = np.array([[i,j] for i in range(n_ant) for j in range(n_ant) if i!=j])
     n_bl = all_bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
 
     for ibl in prange(n_bl):
         aa, ab = all_bls[ibl,0], all_bls[ibl,1]
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
+        for i in range(n_mod):
+            for t in range(n_tim):
                 bt = broadcast_times[t]
-                for f in xrange(n_fre):
+                for f in range(n_fre):
                     bf = broadcast_freqs[f]
-                    for d in xrange(n_dir):
+                    for d in range(n_dir):
 
                         m00 = m[d,i,t,f,aa,ab,0,0]
                         m01 = m[d,i,t,f,aa,ab,0,1]
@@ -119,21 +120,21 @@ def compute_jhr(gh, jh, r, jhr, t_int=1, f_int=1):
     n_ant = jh.shape[4]
     g_dir = gh.shape[0]
 
-    all_bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(n_ant) if i!=j])
+    all_bls = np.array([[i,j] for i in range(n_ant) for j in range(n_ant) if i!=j])
     n_bl = all_bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
-    broadcast_dirs = np.array([d%g_dir for d in xrange(n_dir)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
+    broadcast_dirs = np.array([d%g_dir for d in range(n_dir)])
 
     for ibl in prange(n_bl):
         aa, ab = all_bls[ibl,0], all_bls[ibl,1]
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
+        for i in range(n_mod):
+            for t in range(n_tim):
                 bt = broadcast_times[t]
-                for f in xrange(n_fre):
+                for f in range(n_fre):
                     bf = broadcast_freqs[f]
-                    for d in xrange(n_dir):
+                    for d in range(n_dir):
                         bd = broadcast_dirs[d]
 
                         r00 = r[i,t,f,aa,ab,0,0]
@@ -172,9 +173,9 @@ def compute_update(jhr, jhjinv, upd):
     n_ant = jhr.shape[3]
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
-            for f in xrange(n_fre):
-                for d in xrange(n_dir):
+        for t in range(n_tim):
+            for f in range(n_fre):
+                for d in range(n_dir):
                     upd[d,t,f,aa,0,0] = jhjinv[d,t,f,aa,0,0]*jhr[d,t,f,aa,0,0]
                     upd[d,t,f,aa,0,1] = upd[d,t,f,aa,1,0] = 0
                     upd[d,t,f,aa,1,1] = jhjinv[d,t,f,aa,1,1]*jhr[d,t,f,aa,1,1]

@@ -27,9 +27,11 @@ provided. Common dimensions of arrays are:
 +----------------+------+
 
 """
+from builtins import range
 
 import numpy as np
 from numba import jit, prange
+
 import cubical.kernels
 from cubical.kernels import generics
 
@@ -87,21 +89,21 @@ def compute_residual(m, g, gh, r, t_int, f_int):
     n_ant = m.shape[4]
     g_dir = g.shape[0]
 
-    bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(i+1, n_ant)], dtype=np.int32)
+    bls = np.array([[i,j] for i in range(n_ant) for j in range(i+1, n_ant)], dtype=np.int32)
     n_bl = bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
-    broadcast_dirs = np.array([d%g_dir for d in xrange(n_dir)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
+    broadcast_dirs = np.array([d%g_dir for d in range(n_dir)])
 
     for ibl in prange(n_bl):
         aa, ab = bls[ibl][0], bls[ibl][1]  
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
+        for i in range(n_mod):
+            for t in range(n_tim):
                 bt = broadcast_times[t]
-                for f in xrange(n_fre):
+                for f in range(n_fre):
                     bf = broadcast_freqs[f]
-                    for d in xrange(n_dir):
+                    for d in range(n_dir):
                         bd = broadcast_dirs[d]
                     
                         g00 = g[bd,bt,bf,aa,0,0]
@@ -157,21 +159,21 @@ def compute_jh(m, g, jh, t_int, f_int):
 
     g_dir = g.shape[0]
 
-    all_bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(n_ant) if i!=j])
+    all_bls = np.array([[i,j] for i in range(n_ant) for j in range(n_ant) if i!=j])
     n_bl = all_bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
-    broadcast_dirs = np.array([d%g_dir for d in xrange(n_dir)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
+    broadcast_dirs = np.array([d%g_dir for d in range(n_dir)])
 
     for ibl in prange(n_bl):
         aa, ab = all_bls[ibl,0], all_bls[ibl,1]
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
+        for i in range(n_mod):
+            for t in range(n_tim):
                 bt = broadcast_times[t]
-                for f in xrange(n_fre):
+                for f in range(n_fre):
                     bf = broadcast_freqs[f]
-                    for d in xrange(n_dir):
+                    for d in range(n_dir):
                         bd = broadcast_dirs[d]
 
                         g00 = g[bd,bt,bf,aa,0,0]
@@ -214,20 +216,20 @@ def compute_jhr(jh, r, jhr, t_int, f_int):
     n_fre = jh.shape[3]
     n_ant = jh.shape[4]
 
-    all_bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(n_ant) if i!=j], dtype=np.int32)
+    all_bls = np.array([[i,j] for i in range(n_ant) for j in range(n_ant) if i!=j], dtype=np.int32)
     n_bl = all_bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
 
     for ibl in prange(n_bl):
         aa, ab = all_bls[ibl][0], all_bls[ibl][1]
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
+        for i in range(n_mod):
+            for t in range(n_tim):
                 bt = broadcast_times[t]
-                for f in xrange(n_fre):
+                for f in range(n_fre):
                     bf = broadcast_freqs[f]
-                    for d in xrange(n_dir):
+                    for d in range(n_dir):
                         
                         r00 = r[i,t,f,aa,ab,0,0]
                         r01 = r[i,t,f,aa,ab,0,1]
@@ -267,20 +269,20 @@ def compute_jhj(jh, jhj, t_int, f_int):
     n_fre = jh.shape[3]
     n_ant = jh.shape[4]
 
-    all_bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(n_ant) if i!=j], dtype=np.int32)
+    all_bls = np.array([[i,j] for i in range(n_ant) for j in range(n_ant) if i!=j], dtype=np.int32)
     n_bl = all_bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
 
     for ibl in prange(n_bl):
         aa, ab = all_bls[ibl][0], all_bls[ibl][1]
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
+        for i in range(n_mod):
+            for t in range(n_tim):
                 bt = broadcast_times[t]
-                for f in xrange(n_fre):
+                for f in range(n_fre):
                     bf = broadcast_freqs[f]
-                    for d in xrange(n_dir):
+                    for d in range(n_dir):
 
                         j00 = jh[d,i,t,f,ab,aa,0,0]
                         j01 = jh[d,i,t,f,ab,aa,0,1]
@@ -319,9 +321,9 @@ def compute_update(jhr, jhjinv, upd):
     n_ant = jhr.shape[3]
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
-            for f in xrange(n_fre):
-                for d in xrange(n_dir):
+        for t in range(n_tim):
+            for f in range(n_fre):
+                for d in range(n_dir):
 
                     jhr00 = jhr[d,t,f,aa,0,0]
                     jhr01 = jhr[d,t,f,aa,0,1]
@@ -364,17 +366,17 @@ def compute_corrected(o, g, gh, corr, t_int, f_int):
     n_fre = o.shape[1]
     n_ant = o.shape[2]
 
-    bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(i+1, n_ant)], dtype=np.int32)
+    bls = np.array([[i,j] for i in range(n_ant) for j in range(i+1, n_ant)], dtype=np.int32)
     n_bl = bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
 
     for ibl in prange(n_bl):
         aa, ab = bls[ibl][0], bls[ibl][1]
-        for t in xrange(n_tim):
+        for t in range(n_tim):
             bt = broadcast_times[t]
-            for f in xrange(n_fre):
+            for f in range(n_fre):
                 bf = broadcast_freqs[f]
 
                 g00 = g[0,bt,bf,aa,0,0]
@@ -430,21 +432,21 @@ def apply_gains(m, g, gh, t_int, f_int):
 
     g_dir = g.shape[0]
 
-    bls = np.array([[i,j] for i in xrange(n_ant) for j in xrange(i+1, n_ant)], dtype=np.int32)
+    bls = np.array([[i,j] for i in range(n_ant) for j in range(i+1, n_ant)], dtype=np.int32)
     n_bl = bls.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
-    broadcast_dirs = np.array([d%g_dir for d in xrange(n_dir)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
+    broadcast_dirs = np.array([d%g_dir for d in range(n_dir)])
 
     for ibl in prange(n_bl):
         aa, ab = bls[ibl][0], bls[ibl][1]  
-        for i in xrange(n_mod):
-            for t in xrange(n_tim):
+        for i in range(n_mod):
+            for t in range(n_tim):
                 bt = broadcast_times[t]
-                for f in xrange(n_fre):
+                for f in range(n_fre):
                     bf = broadcast_freqs[f]
-                    for d in xrange(n_dir):
+                    for d in range(n_dir):
                         bd = broadcast_dirs[d]
                         
                         g00 = g[bd,bt,bf,aa,0,0]
@@ -503,16 +505,16 @@ def right_multiply_gains(g, g_next, t_int, f_int):
 
     g_dir = g_next.shape[0]
 
-    broadcast_times = np.array([t//t_int for t in xrange(n_tim)])
-    broadcast_freqs = np.array([f//f_int for f in xrange(n_fre)])
-    broadcast_dirs = np.array([d%g_dir for d in xrange(n_dir)])
+    broadcast_times = np.array([t//t_int for t in range(n_tim)])
+    broadcast_freqs = np.array([f//f_int for f in range(n_fre)])
+    broadcast_dirs = np.array([d%g_dir for d in range(n_dir)])
 
     for aa in prange(n_ant):
-        for t in xrange(n_tim):
+        for t in range(n_tim):
             bt = broadcast_times[t]
-            for f in xrange(n_fre):
+            for f in range(n_fre):
                 bf = broadcast_freqs[f]
-                for d in xrange(n_dir):
+                for d in range(n_dir):
                     bd = broadcast_dirs[d]
 
                     g00 = g[d,t,f,aa,0,0]
