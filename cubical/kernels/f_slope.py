@@ -137,7 +137,7 @@ def compute_jhjinv(jhj, jhjinv, eps):
 
                             jhjinv[d,t,f,aa,0,c,c] =  det*jhj2cc
                             jhjinv[d,t,f,aa,1,c,c] = -det*jhj1cc
-                            jhjinv[d,t,f,aa,2,c,c] =  det*jhj2cc
+                            jhjinv[d,t,f,aa,2,c,c] =  det*jhj0cc
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
