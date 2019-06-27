@@ -169,6 +169,19 @@ class DDFacetSim(object):
                                            centre-model_image.shape[3]//2:centre+model_image.shape[3]//2+1]
         return model_image
 
+    @classmethod
+    def crosspattern(cls, model_image, nterms = 7, first_position_from_centre=0.05, last_position_from_edge=0.8):
+        if model_image.shape[2] != model_image.shape[3]:
+            raise ValueError("Expected square grid")
+        model_image[...] = 0
+        for v in np.linspace(model_image.shape[2]//2 * first_position_from_centre, 
+                             model_image.shape[2]//2 * last_position_from_edge, nterms):
+            model_image[:, :, model_image.shape[2]//2 - int(v), model_image.shape[3]//2 - int(v)] = 1.0
+            model_image[:, :, model_image.shape[2]//2 + int(v), model_image.shape[3]//2 + int(v)] = 1.0
+            model_image[:, :, model_image.shape[2]//2 + int(v), model_image.shape[3]//2 - int(v)] = 1.0
+            model_image[:, :, model_image.shape[2]//2 - int(v), model_image.shape[3]//2 + int(v)] = 1.0
+        return model_image
+    
     def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs, model_type):
         """ Predicts model data for the set direction of the dico source provider 
             returns a ndarray model of shape nrow x nchan x 4
@@ -196,6 +209,7 @@ class DDFacetSim(object):
         for gm, subregion_index in zip(gmacs, range(src.subregion_count)):
             model = np.zeros((nrow, nfreq, 4), dtype=np.complex64)
             model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64).copy() #degridder needs transposes, dont mod the data globally
+            model_image = DDFacetSim.crosspattern(model_image)
             if not np.any(model_image):
                 log.info("Facet {0:d} is empty. Skipping".format(subregion_index))
                 continue
@@ -205,7 +219,7 @@ class DDFacetSim(object):
             
             # apply normalization factors for FFT
             model_image[...] *= (model_image.shape[3] ** 2) * (gm.WTerm.OverS ** 2) 
-            
+
             region_model += -1 * gm.get( #default of the degridder is to subtract from the previous model
                 times=tile_subset.time_col, 
                 uvw=uvwco.astype(dtype=np.float64).copy(), 
