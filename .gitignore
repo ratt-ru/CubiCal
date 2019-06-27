@@ -81,6 +81,7 @@ docs/_build/
 docs/_templates/
 .pytest_cache
 pip-wheel-metadata/
+__pycache__
 
 # microsoft visual studio project files
 .vscode
