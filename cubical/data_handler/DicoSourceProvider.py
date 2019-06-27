@@ -140,10 +140,6 @@ class DicoSourceProvider(object):
         """ Sets the model prediction frequencies. This initializes the model degridding bands """
         self.__degridfreqs = freqs.copy()
         self.__degridcube = self.__dicomodel.GiveModelImage(FreqIn=self.__degridfreqs)
-        # for some reason the degridder is transposed
-        # need to to a global model transpose before carving it into facets
-        self.__degridcube[...] = np.swapaxes(self.__degridcube, 2, 3) # facet is guaranteed to be square
-        self.__degridcube[...] = self.__degridcube[:, :, ::-1, :]
         for c in self.__clustercat:
             for csub in self.__clustercat[c]:
                 csub.globaldata = self.__degridcube
@@ -163,7 +159,7 @@ class DicoSourceProvider(object):
         nchan, npol, nx, ny = self.__dicomodel.ModelShape
         cluster = self.__clustercat[self.__current_direction][subregion_index]
         ctr = cluster.centre
-        offset = ctr - np.array([ny//2, nx//2])
+        offset = ctr[::-1] - np.array([ny//2, nx//2])
         return offset
 
     def get_degrid_model(self, subregion_index=0):

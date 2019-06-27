@@ -124,7 +124,6 @@ class DDFacetSim(object):
         band_frequencies, freq_mapping = self.bandmapping(freqs, dh.degrid_opts["NDegridBand"])
         src.set_frequency(band_frequencies)
         wmax = np.max([dh.metadata.baseline_length[k] for k in dh.metadata.baseline_length])
-        
         gmachines = []
         dname = "dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction))
         if should_init_cf:
@@ -149,7 +148,7 @@ class DDFacetSim(object):
                         ListSemaphores=self.__degridding_semaphores,
                         cf_dict=self.__CF_dict,
                         compute_cf=should_init_cf,
-                        wmax=wmax)
+                        wmax=4893.526062672338)#wmax)
             #gmach.FT = ModFFTW.FFTW_2Donly_np(src.degrid_cube_shape, np.complex64, ncores = 1).fft
             gmachines.append(gmach)
         return gmachines
@@ -189,39 +188,41 @@ class DDFacetSim(object):
         if model_type not in ["cplx2x2", "cplxdiag", "cplxscalar"]:
             raise ValueError("Only supports cplx2x2 or cplxdiag or cplxscalar models at the moment")
         ncorr = 4
-        region_model = np.zeros((nrow, nfreq, 4), np.complex64)
+        region_model = np.zeros((nrow, nfreq, 4), dtype=np.complex64)
         flagged = np.zeros_like(region_model, dtype=np.bool)
         # now we predict for this direction
         log.info("Predicting {1:d} facets for direction '{0:s}'...".format(
             str(self.__direction), src.subregion_count))
 
         for gm, subregion_index in zip(gmacs, range(src.subregion_count)):
-            model = np.zeros((nrow, nfreq, 4), np.complex64)
-            model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64)
+            model = np.zeros((nrow, nfreq, 4), dtype=np.complex64)
+            model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64).copy() #degridder needs transposes, dont mod the data globally
             if not np.any(model_image):
                 log.info("Facet {0:d} is empty. Skipping".format(subregion_index))
                 continue
-            model_image = DDFacetSim.__detaper_model(gm, model_image.view()).copy() # degridder ignores ndarray strides. Must create a reordered array in memory
+            model_image[...] = np.swapaxes(model_image, 2, 3) # facet is guaranteed to be square
+            model_image[...] = model_image[:, :, ::-1, :]
+            model_image = DDFacetSim.__detaper_model(gm, model_image.view()).copy() # degridder don't respect strides must be contiguous
             
             # apply normalization factors for FFT
             model_image[...] *= (model_image.shape[3] ** 2) * (gm.WTerm.OverS ** 2) 
             
             region_model += -1 * gm.get( #default of the degridder is to subtract from the previous model
                 times=tile_subset.time_col, 
-                uvw=uvwco.astype(dtype=np.float64), 
-                visIn=model.astype(dtype=np.complex64), 
+                uvw=uvwco.astype(dtype=np.float64).copy(), 
+                visIn=model, 
                 flag=flagged, 
-                A0A1=[tile_subset.antea.astype(dtype=np.int32), tile_subset.anteb.astype(dtype=np.int32)], 
+                A0A1=[tile_subset.antea.astype(dtype=np.int32).copy(), tile_subset.anteb.astype(dtype=np.int32).copy()], 
                 ModelImage=model_image, 
                 PointingID=src.direction,
                 Row0Row1=(0, -1),
                 DicoJonesMatrices=None, 
-                freqs=freqs.astype(dtype=np.float64), 
+                freqs=freqs.astype(dtype=np.float64).copy(), 
                 ImToGrid=False,
                 TranformModelInput="FT", 
                 ChanMapping=np.array(freq_mapping, dtype=np.int32), 
                 sparsification=None)
-            break
+            
         model_corr_slice = np.s_[0] if model_type == "cplxscalar" else \
                            np.s_[0::3] if model_type == "cplxdiag" else \
                            np.s_[:] # if model_type == "cplx2x2"
