@@ -148,8 +148,7 @@ class DDFacetSim(object):
                         ListSemaphores=self.__degridding_semaphores,
                         cf_dict=self.__CF_dict,
                         compute_cf=should_init_cf,
-                        wmax=4893.526062672338)#wmax)
-            #gmach.FT = ModFFTW.FFTW_2Donly_np(src.degrid_cube_shape, np.complex64, ncores = 1).fft
+                        wmax=wmax)
             gmachines.append(gmach)
         return gmachines
 
