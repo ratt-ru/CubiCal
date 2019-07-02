@@ -4,6 +4,7 @@ try:
     from DDFacet.ToolsDir.ModToolBox import EstimateNpix
     from DDFacet.Array import shared_dict
     from DDFacet.ToolsDir import ModFFTW
+    import DDFacet.ToolsDir.ModTaper as MT
 except ImportError:
     raise ImportError("Could not import DDFacet")
 
@@ -20,6 +21,7 @@ class DDFacetSim(object):
     __ifacet = 0
     __CF_dict = shared_dict.SharedDict("convfilters.cubidegrid")
     __should_init_sems = True
+    __detaper_cache = {}
 
     def __init__(self):
         """ 
@@ -48,6 +50,7 @@ class DDFacetSim(object):
         cls.__ifacet = 0
         cls.__CF_dict.delete() # cleans out /dev/shm allocated memory
         cls.__should_init_sems = True
+        cls.__detaper_cache = {}
 
     @classmethod
     def init_sems(cls, NSemaphores = 3373):
@@ -150,38 +153,25 @@ class DDFacetSim(object):
                         compute_cf=should_init_cf,
                         wmax=wmax)
             gmachines.append(gmach)
+            if should_init_cf:
+                wnd_detaper = MT.Sphe2D(src.get_direction_npix(subregion_index=subregion_index))
+                wnd_detaper[wnd_detaper != 0] = 1.0 / wnd_detaper[wnd_detaper != 0]
+                self.__detaper_cache[self.__direction_CFs[dname][subregion_index]] = wnd_detaper
+
         return gmachines
 
     @classmethod
-    def __detaper_model(cls, gm, model_image):
+    def __detaper_model(cls, gm, model_image, idfacet):
         """ Detapers model image by the fourier inverse of the convolution kernel 
             Assertions that the tapering function is larger than the model facet,
             both are square and odd sized
         """
-        assert all(np.array(gm.ifzfCF.shape[2:3]) % 2 == 1) 
-        assert all(np.array(model_image.shape[2:3]) % 2 == 1) 
         assert model_image.shape[2] == model_image.shape[3]
-        assert all(np.array(gm.ifzfCF.shape[2:3]) >= np.array(model_image.shape[2:3])) # must be able to centre model facet in the tapering function
-        centre = np.array(gm.ifzfCF.shape[0]) // 2
-        model_image.real /= gm.ifzfCF.real[None, 
-                                           None,
-                                           centre-model_image.shape[2]//2:centre+model_image.shape[2]//2+1, 
-                                           centre-model_image.shape[3]//2:centre+model_image.shape[3]//2+1]
+        wnd_detaper = cls.__detaper_cache[idfacet]
+        assert wnd_detaper.shape[0] == model_image.shape[2] and wnd_detaper.shape[1] == model_image.shape[3]
+        model_image.real *= wnd_detaper[None, None, :, :]
         return model_image
 
-    @classmethod
-    def crosspattern(cls, model_image, nterms = 7, first_position_from_centre=0.05, last_position_from_edge=0.8):
-        if model_image.shape[2] != model_image.shape[3]:
-            raise ValueError("Expected square grid")
-        model_image[...] = 0
-        for v in np.linspace(model_image.shape[2]//2 * first_position_from_centre, 
-                             model_image.shape[2]//2 * last_position_from_edge, nterms):
-            model_image[:, :, model_image.shape[2]//2 - int(v), model_image.shape[3]//2 - int(v)] = 1.0
-            model_image[:, :, model_image.shape[2]//2 + int(v), model_image.shape[3]//2 + int(v)] = 1.0
-            model_image[:, :, model_image.shape[2]//2 + int(v), model_image.shape[3]//2 - int(v)] = 1.0
-            model_image[:, :, model_image.shape[2]//2 - int(v), model_image.shape[3]//2 + int(v)] = 1.0
-        return model_image
-    
     def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs, model_type):
         """ Predicts model data for the set direction of the dico source provider 
             returns a ndarray model of shape nrow x nchan x 4
@@ -207,15 +197,15 @@ class DDFacetSim(object):
             str(self.__direction), src.subregion_count))
 
         for gm, subregion_index in zip(gmacs, range(src.subregion_count)):
-            model = np.zeros((nrow, nfreq, 4), dtype=np.complex64)
+            model = np.zeros((nrow, nfreq, 4), dtype=np.complex64).copy()
             model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64).copy() #degridder needs transposes, dont mod the data globally
-            model_image = DDFacetSim.crosspattern(model_image)
             if not np.any(model_image):
                 log.info("Facet {0:d} is empty. Skipping".format(subregion_index))
                 continue
             model_image[...] = np.swapaxes(model_image, 2, 3) # facet is guaranteed to be square
             model_image[...] = model_image[:, :, ::-1, :]
-            model_image = DDFacetSim.__detaper_model(gm, model_image.view()).copy() # degridder don't respect strides must be contiguous
+            dname = "dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction))
+            model_image = DDFacetSim.__detaper_model(gm, model_image.view(), self.__direction_CFs[dname][subregion_index]).copy() # degridder don't respect strides must be contiguous
             
             # apply normalization factors for FFT
             model_image[...] *= (model_image.shape[3] ** 2) * (gm.WTerm.OverS ** 2) 

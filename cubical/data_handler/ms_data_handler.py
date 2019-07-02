@@ -661,6 +661,7 @@ class MSDataHandler:
                                                                self.phadir,
                                                                degrid_opts["Padding"],
                                                                degrid_opts["MaxFacetSize"],
+                                                               degrid_opts["MinNFacetPerAxis"],
                                                                clustercat)
 
                                 for key in component._cluster_keys:

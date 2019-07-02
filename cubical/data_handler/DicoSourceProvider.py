@@ -16,6 +16,7 @@ class DicoSourceProvider(object):
                  phasedir,
                  facet_padding_factor,
                  max_facet_size,
+                 min_nfacet_per_axis,
                  clustercat=None):
         log.info("Initializing new source provider for DDFacet model '{0:s}' into regions specified by '{1:s}'.".format(
             fn, clustercat if clustercat is not None else 'die'))
@@ -25,7 +26,12 @@ class DicoSourceProvider(object):
         self.__pxscale = self.__dicomodel.GD["Image"]["Cell"] # in arcseconds
         nchan, npol, ny, nx = self.__dicomodel.ModelShape
         self.__phasedir = phasedir
-        self.__clustercat = self.__read_regions_file(clustercat, nx//2, ny//2, facet_padding_factor, max_facet_size)
+        self.__clustercat = self.__read_regions_file(clustercat, 
+                                                     nx//2, 
+                                                     ny//2, 
+                                                     facet_padding_factor, 
+                                                     max_facet_size,
+                                                     min_nfacet_per_axis)
         self.__current_direction = 0
         self.__degridcube = None
         self.__degridfreqs = None
@@ -49,7 +55,7 @@ class DicoSourceProvider(object):
             raise RuntimeError("Degrid frequencies not set yet. Please set frequencies before enquiring about the degrid cube")
         return self.__degridcube.shape
 
-    def __read_regions_file(self, fn, offsetx, offsety, padding_factor, max_size):
+    def __read_regions_file(self, fn, offsetx, offsety, padding_factor, max_size, min_nfacet_per_axis):
         """ Reads a ds9 region file and sets up a grid of sub clusters (aka. facets) for each hull read out of
             the file. Each of the sub clusters are padded to a padding factor as determined by
             DDFacet's EstimateNpix. The number of sub clusters is determined from the maximum
@@ -86,7 +92,7 @@ class DicoSourceProvider(object):
             if max_size < 0:
                 raise ValueError("Expected positive value for min_size")
             reg_size_deg = np.max(np.array(reg.box_npx) * self.pixel_scale / 3600.0)
-            nsplit = max(1, int(np.ceil(reg_size_deg / max_size)))
+            nsplit = max(1, max(min_nfacet_per_axis, int(np.ceil(reg_size_deg / max_size))))
             return BoundingBoxFactory.SplitBox(reg, nsubboxes=nsplit, check_mask_outofbounds=False)
         log.info("\tSplitting regions into facetted regions, with maximum unpadded size of {0:.2f} degrees per facet".format(max_size))
         clusters = [aasubreg for aareg in map(lambda reg: __split_regular_region(reg, max_size), clusters) 
@@ -136,14 +142,26 @@ class DicoSourceProvider(object):
     def direction(self, v):
         self.set_direction(v)
 
+    @classmethod
+    def crosspattern(cls, model_image, nterms = 7, first_position_from_centre=0.05, last_position_from_edge=0.8):
+        if model_image.shape[2] != model_image.shape[3]:
+            raise ValueError("Expected square grid")
+        model_image[...] = 0
+        for v in np.linspace(model_image.shape[2]//2 * first_position_from_centre, 
+                             model_image.shape[2]//2 * last_position_from_edge, nterms):
+            model_image[:, :, model_image.shape[2]//2 - int(v), model_image.shape[3]//2 - int(v)] = 1.0
+            model_image[:, :, model_image.shape[2]//2 + int(v), model_image.shape[3]//2 + int(v)] = 1.0
+            model_image[:, :, model_image.shape[2]//2 + int(v), model_image.shape[3]//2 - int(v)] = 1.0
+            model_image[:, :, model_image.shape[2]//2 - int(v), model_image.shape[3]//2 + int(v)] = 1.0
+        return model_image
+
+
     def set_frequency(self, freqs):
         """ Sets the model prediction frequencies. This initializes the model degridding bands """
         self.__degridfreqs = freqs.copy()
         self.__degridcube = self.__dicomodel.GiveModelImage(FreqIn=self.__degridfreqs)
-        for c in self.__clustercat:
-            for csub in self.__clustercat[c]:
-                csub.globaldata = self.__degridcube
-        
+        #self.__degridcube = DicoSourceProvider.crosspattern(self.__degridcube) #widefield debug
+
     def get_direction_npix(self, subregion_index=0):
         if subregion_index >= len(self.__clustercat[self.__current_direction]):
             raise IndexError("Index {0:d} is out of bounds for region {1:s} which contains {2:d} subregions".format(
