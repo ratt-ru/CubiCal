@@ -33,10 +33,10 @@ import numpy as np
 from numba import jit, prange
 
 import cubical.kernels
-from cubical.kernels import import generics
-from cubical.kernels import import diag_complex
-from cubical.kernels import import phase_only
-from cubical.kernels import import tf_plane
+from cubical.kernels import generics
+from cubical.kernels import diag_complex
+from cubical.kernels import phase_only
+from cubical.kernels import tf_plane
 
 use_parallel = True if cubical.kernels.num_omp_threads > 1 else False
 use_cache = cubical.kernels.use_cache
