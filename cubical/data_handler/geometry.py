@@ -177,7 +177,6 @@ class BoundingConvexHull(object):
         return padded_data, window_extents
     
     @classmethod
-    @timeit
     def normalize_masks(cls, regions, only_overlapped_regions=True):
         """ Normalizes region masks for overlapping pixels. This is necessary to properly coadd
             overlapping facets. If masks are guarenteed to be initialized to unity (e.g. after
