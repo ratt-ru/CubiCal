@@ -36,7 +36,7 @@ cdef inline void weight_upd_product(complex3264 *out, const complex3264 *r, cons
     
     denom =  r[0].conjugate()*c[0]*r[0] + r[1].conjugate()*c[4]*r[0] + r[2].conjugate()*c[8]*r[0] + r[3].conjugate()*c[12]*r[0] + \
            r[0].conjugate()*c[1]*r[1] + r[1].conjugate()*c[5]*r[1] + r[2].conjugate()*c[9]*r[1] + r[3].conjugate()*c[13]*r[1] + \
-           r[0].conjugate()*c[2]*r[1] + r[1].conjugate()*c[6]*r[2] + r[2].conjugate()*c[10]*r[2] +r[3].conjugate()*c[14]*r[2] + \
+           r[0].conjugate()*c[2]*r[2] + r[1].conjugate()*c[6]*r[2] + r[2].conjugate()*c[10]*r[2] +r[3].conjugate()*c[14]*r[2] + \
            r[0].conjugate()*c[3]*r[3] + r[1].conjugate()*c[7]*r[3] + r[2].conjugate()*c[11]*r[3] + r[3].conjugate()*c[15]*r[3]
 
     
