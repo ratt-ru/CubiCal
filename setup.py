@@ -176,7 +176,7 @@ if on_rtd:
                     'scipy']
 else:
     requirements = ['future',
-                    'numpy',
+                    'numpy<1.17.0',
                     'python-casacore<=3.0.0; python_version <= "2.7"',
                     'python-casacore<=3.0.0; python_version >= "3.0"', 
                     'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
@@ -186,7 +186,9 @@ else:
                     'astro-tigger-lsm',
                     'six',
                     'futures; python_version <= "2.7"',
-                    'regions'
+                    'astropy<3.0; python_version <= "2.7"',
+                    'astropy>=3.0; python_version > "2.7"',
+                    'regions>=0.4',                    
                     ]
 
 setup(name='cubical',

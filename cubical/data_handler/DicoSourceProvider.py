@@ -106,9 +106,8 @@ class DicoSourceProvider(object):
             return BoundingBoxFactory.PadBox(c, npixpadded, npixpadded, check_mask_outofbounds=False)
         log.info("\tPadding all facets by a minimum factor of {0:.2f}x".format(padding_factor))
         clusters = map(lambda c: __pad_cluster(c, padding_factor), clusters)
-        #TODO: need to rethink this: 
-        #log.info("\tNormalizing regional weights")
-        #BoundingConvexHull.normalize_masks(clusters)
+        log.info("\tNormalizing regional weights")
+        BoundingConvexHull.normalize_masks(clusters)
         log.info("\tCaching regional weight maps for future predicts")
         map(lambda x: x.mask, clusters) # cache mask
         dirs = {} 

@@ -4,6 +4,22 @@ import scipy.signal as ssig
 import scipy.spatial as spat
 import copy
 
+import time
+def timeit(method):
+    def timed(*args, **kw):
+        ts = time.time()
+        result = method(*args, **kw)
+        te = time.time()
+        if 'log_time' in kw:
+            name = kw.get('log_name', method.__name__.upper())
+            kw['log_time'][name] = int((te - ts) * 1000)
+        else:
+            print('%r  %2.2f ms' % \
+                  (method.__name__, (te - ts) * 1000))
+        
+        return result
+    return timed
+
 DEBUG = True
 
 class BoundingConvexHull(object):
@@ -161,6 +177,7 @@ class BoundingConvexHull(object):
         return padded_data, window_extents
     
     @classmethod
+    @timeit
     def normalize_masks(cls, regions, only_overlapped_regions=True):
         """ Normalizes region masks for overlapping pixels. This is necessary to properly coadd
             overlapping facets. If masks are guarenteed to be initialized to unity (e.g. after
@@ -176,23 +193,36 @@ class BoundingConvexHull(object):
         allmasks = []
         for reg in regions:
             allmasks += reg.sparse_mask
-        unique_pxls = set(allmasks)
+        
+        # flatten for faster comparisons
         allmasks = np.array(allmasks)
-        paint_count = dict(zip(unique_pxls, np.zeros(len(unique_pxls))))
-        for px in unique_pxls:
-            paint_count[px] += np.sum(np.logical_and(allmasks[:, 0] == px[0], 
-                                                     allmasks[:, 1] == px[1]))
+        maxx = np.max(allmasks[:, 1])
+        nx = maxx + 1
+        allmasks_flatten = allmasks[:, 0] * nx + allmasks[:, 1]
+
+        # now count the number of times a pixel is painted onto
+        unique_pxls_flatten, paint_count = np.unique(allmasks_flatten, return_counts=True)
+        paint_count = paint_count.astype(np.float)
+        
         if only_overlapped_regions:
-            paint_count = {crd: paint_count[crd] \
-                for crd in filter(lambda k: paint_count[k] > 1, paint_count)}
-        for px in paint_count.keys():
-            paint_count[px] = 1.0 / paint_count[px]
+            sel = paint_count > 1
+            unique_pxls_flatten = unique_pxls_flatten[sel]
+            paint_count = paint_count[sel]
+        
+        # with the reduced number of overlap pixels unflatten
+        unique_pxls = np.vstack([unique_pxls_flatten // nx,
+                                 unique_pxls_flatten % nx]).T
+        unique_pxls = map(tuple, unique_pxls)
+        paint_count[...] = 1.0 / paint_count
+
+        # and finally update mask weights
         for reg in regions:
             reg._cached_filled_mask = None # invalidate
-            for px in paint_count.keys():
-                if px in reg.sparse_mask:
-                    sel = reg.sparse_mask.index(px) 
-                    reg._mask_weights[sel] = paint_count[px]
+            overlap = filter(lambda x: x[1] in reg.sparse_mask, 
+                             zip(paint_count, unique_pxls))
+            for px_pc, px in overlap:
+                sel = reg.sparse_mask.index(px) 
+                reg._mask_weights[sel] = px_pc
 
     @property
     def circumference(self):
@@ -727,6 +757,6 @@ if __name__ == "__main__":
                   np.max(olaps_stitched_region.corners[:, 0]) + 15))
         plt.ylim((np.min(olaps_stitched_region.corners[:, 1]) - 15, 
                   np.max(olaps_stitched_region.corners[:, 1]) + 15))
-        plt.show(True)
+        plt.show(block=True)
 
 
