@@ -196,6 +196,13 @@ class ComplexW2x2Gains(PerIntervalGains):
 
             self.kernel_robust.compute_cov(self.residuals, ompstd, self.weights)
 
+            #---scaling the variance in this case improves the robust solver performance----------#
+            
+            if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
+                norm = 2*self.npol*Nvis
+            else:
+                norm = Nvis
+
             # removing the offdiagonal correlations
 
             std = np.diagonal(ompstd/Nvis) + self.eps**2 # To avoid division by zero
@@ -278,12 +285,12 @@ class ComplexW2x2Gains(PerIntervalGains):
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
         norm = np.average(w_nzero) 
   
-        self.weights = w/norm
+        self.weights = w #/norm
         
         #-----------computing the v parameter---------------------#
         # This computation is only done after a certain number of iterations. Default is 5
         if self.iters % self.v_int == 0 or self.iters == 1:
-            wn = w_nzero/norm 
+            wn = w_nzero #/norm 
             self.v = _brute_solve_v(wn)
         
         return 
