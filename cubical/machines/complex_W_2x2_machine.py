@@ -206,15 +206,12 @@ class ComplexW2x2Gains(PerIntervalGains):
             #---scaling the variance in this case improves the robust solver performance----------#
             
             if self.cov_scale:
-                if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
-                    norm = 2*self.npol*Nvis
-                else:
-                    norm = Nvis
+                norm = 2*self.npol*Nvis
             else:
                 norm =Nvis
 
             if self.iters % 5 == 0 or self.iters == 1:
-                print>> log(2), "{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis)
+                print("{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis), file=log(2))
 
             # removing the offdiagonal correlations
 
