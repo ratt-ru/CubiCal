@@ -204,6 +204,8 @@ class ComplexW2x2Gains(PerIntervalGains):
                     norm = 2*self.npol*Nvis
                 else:
                     norm = Nvis
+            else:
+                norm = Nvis
 
             if self.iters % 5 == 0 or self.iters == 1:
                 print("{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis), file=log(2))
