@@ -6,7 +6,7 @@
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
-import ConfigParser
+import configparser
 from collections import OrderedDict
 import re
 
@@ -141,9 +141,9 @@ class Parset():
     def update_values (self, other, other_filename=''):
         """Updates this Parset with keys found in other parset.
         other_filename is only needed for error messages."""
-        for secname, secvalues in other.value_dict.iteritems():
+        for secname, secvalues in other.value_dict.items():
             if secname in self.value_dict:
-                for name, value in secvalues.iteritems():
+                for name, value in secvalues.items():
                     attrs = self.attr_dict[secname].get(name)
                     if attrs is None:
                         attrs = self.attr_dict[secname][name] = \
@@ -178,7 +178,7 @@ class Parset():
         section names are expanded.
         """
         self.filename = filename
-        self.Config = config = ConfigParser.ConfigParser(dict_type=OrderedDict)
+        self.Config = config = configparser.ConfigParser(dict_type=OrderedDict)
         config.optionxform = str
         success = config.read(self.filename)
         self.success = bool(len(success))
@@ -223,9 +223,9 @@ class Parset():
 
     def write (self, f):
         """Writes the Parset out to a file object"""
-        for section, content in self.value_dict.iteritems():
+        for section, content in self.value_dict.items():
             f.write('[%s]\n'%section)
-            for option, value in content.iteritems():
+            for option, value in content.items():
                 attrs = self.attr_dict.get(section, {}).get(option, {})
                 if option[0] != "_" and not attrs.get('cmdline_only') and not attrs.get('alias_of'):
                     f.write('%s = %s \n'%(option, str(value)))

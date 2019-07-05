@@ -6,8 +6,8 @@
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
 
-import sys, os, os.path, cPickle, re
-import NpShared
+import sys, os, os.path, pickle, re
+from . import NpShared
 import numpy as np
 import traceback
 import collections
@@ -32,7 +32,7 @@ def create(name):
 
 def dict_to_shm(name, D):
     Ds=create(name)
-    for key in D.keys():
+    for key in list(D.keys()):
         Ds[key]=D[key]
     return Ds
 
@@ -65,7 +65,7 @@ class SharedDict (dict):
             try:
                 return self.load_impl()
             except:
-                print "Error loading item %s" % self.path
+                print("Error loading item %s" % self.path)
                 traceback.print_exc()
                 return SharedDict.ItemLoadError(path, sys.exc_info())
 
@@ -79,7 +79,7 @@ class SharedDict (dict):
 
     class PickleProxy(ItemProxy):
         def load_impl(self):
-            return cPickle.load(file(self.path))
+            return pickle.load(open(self.path, 'rb'))
 
     # this maps "class codes" parsed out of item filenames to appropriate item proxies. See reload() below
     _proxy_class_map = dict(a=SharedArrayProxy, d=SubdictProxy, p=PickleProxy)
@@ -161,21 +161,21 @@ class SharedDict (dict):
             filepath = os.path.join(self.path, name)
             # each filename is composed as "key_type:name:value_type", e.g. "str:Data:a", where value_type
             # is looked up in _proxy_class_map to determine how to load the file
-            match = re.match("^(\w+):(.*):(%s)$" % "|".join(SharedDict._proxy_class_map.keys()), name)
+            match = re.match("^(\w+):(.*):(%s)$" % "|".join(list(SharedDict._proxy_class_map.keys())), name)
             if not match:
-                print "Can't parse shared dict entry " + filepath
+                print("Can't parse shared dict entry " + filepath)
                 continue
             keytype, key, valuetype = match.groups()
             typefunc = _allowed_key_types.get(keytype)
             if typefunc is None:
-                print "Unknown shared dict key type "+keytype
+                print("Unknown shared dict key type "+keytype)
                 continue
             key = typefunc(key)
             try:
                 proxyclass = SharedDict._proxy_class_map[valuetype]
                 dict.__setitem__(self, key, proxyclass(filepath))
             except:
-                print "Error loading item %s"%name
+                print("Error loading item %s"%name)
                 traceback.print_exc()
                 pass
 
@@ -237,7 +237,7 @@ class SharedDict (dict):
         if not self._readwrite:
             raise RuntimeError("SharedDict %s attached as read-only" % self.path)
         if type(item).__name__ not in _allowed_key_types:
-            raise KeyError,"unsupported key of type "+type(item).__name__
+            raise KeyError("unsupported key of type "+type(item).__name__)
         name = self._key_to_name(item)
         path = os.path.join(self.path, name)
         # remove previous item from SHM, if it's in the local dict
@@ -259,12 +259,12 @@ class SharedDict (dict):
         # for regular dicts, copy across
         elif isinstance(value, (dict, SharedDict, collections.OrderedDict)):
             dict1 = self.addSubdict(item)
-            for key1, value1 in value.iteritems():
+            for key1, value1 in value.items():
                 dict1[key1] = value1
             value = dict1
         # all other types, just use pickle
         else:
-            cPickle.dump(value, file(path+'p', "w"), 2)
+            pickle.dump(value, open(path+'p', "wb"), 2)
         dict.__setitem__(self, item, value)
 
     def addSubdict (self, item):
@@ -303,10 +303,10 @@ def testSharedDict ():
     arr = subdict.addSharedArray("foo",(4, 4), np.float32)
     arr.fill(1)
 
-    print dic
+    print(dic)
 
     other_view = SharedDict("foo", reset=False)
-    print other_view
+    print(other_view)
 
 
 

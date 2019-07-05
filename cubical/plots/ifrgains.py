@@ -1,9 +1,25 @@
+from __future__ import print_function
+from builtins import range
 import math,cmath
 import numpy as np
+import numpy.ma as ma
 from cubical.tools import logger
 log = logger.getLogger("plots")
+from past.builtins import cmp
 
 from cubical.plots import DPI, ZOOM, make_antenna_xaxis
+
+def _abs(x):
+    """
+    Works around numpy bug with abs() of masked arrays producing a 
+    ComplexWarning(Casting complex values to real discards the imaginary part)
+    """
+    if ma.isMA(x):
+        return ma.masked_array(np.abs(x.data), x.mask)
+    else:
+        return ma.masked_array(np.abs(x))
+    
+
 
 def _cmp_antenna (sa, sb):
     """Helper function to sort antenna names. Try numeric compare first, fall back to text compare if failed""";
@@ -18,7 +34,10 @@ def _normifrgain(rr):
     if type(rr) in (float, complex):
         return abs(rr), 0
     else:
-        offset = abs(rr[rr != 1])
+        ## some np versions produce a ComplexWarning here because the fill_value stays complex
+        # offset = np.abs(rr[rr != 1])
+        offset = _abs(rr)
+        offset[rr==1] = ma.masked
         if offset.count():
             return float(offset.mean()), float(offset.std())
         else:
@@ -32,10 +51,10 @@ def _complexifrgain(rr):
     else:
         vals = rr[rr != 1]
         if vals.count():
-            offset = float(abs(vals).mean())
+            offset = float(_abs(vals).mean())
             mean = vals.mean().ravel()[0]
             mean = cmath.rect(offset, cmath.phase(mean))
-            return mean, abs(vals - mean).std()
+            return mean, _abs(vals - mean).std()
         else:
             return 1,0
 
@@ -48,7 +67,7 @@ def _is_unity(rr, ll):
 #def make_ifrgain_plots(filename="$STEFCAL_DIFFGAIN_SAVE", prefix="IG", feed="$IFRGAIN_PLOT_FEED", msname="$MS"):
 def make_ifrgain_plots(ig, ms, GD, basename):
     """Makes a set of ifrgain plots from the specified saved file."""
-    print>>log(0),"generating plots for suggested baseline-based corrections (BBCs)"
+    print("generating plots for suggested baseline-based corrections (BBCs)", file=log(0))
 
     metadata = ms.metadata
     import pylab
@@ -57,13 +76,13 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         pylab.gcf().set_size_inches(min(width, 10000 / DPI), min(height, 10000 / DPI))
         filename = "{}.{}.png".format(basename, name)
         pylab.savefig(filename, dpi=DPI)
-        print>> log, "saved plot " + filename
+        print("saved plot " + filename, file=log)
         if GD["out"]["plots"] == "show":
             pylab.show()
         pylab.figure()
 
     # load baseline info, if MS is available
-    antpos = zip(ms.antnames, ms.antpos)
+    antpos = list(zip(ms.antnames, ms.antpos))
     # make dictionary of IFR name: baseline length
     baseline = { metadata.baseline_name[p,q]: metadata.baseline_length[p,q] 
                  for p in range(ms.nants) for q in range(p+1, ms.nants) }
@@ -91,7 +110,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         for l, (x, xe), (y, ye) in content:
             b = baseline.get(l, None)
             if b is None:
-                print>>log(0, "red"),"baseline '{}' not found in MS ANTENNA table".format(l)
+                print("baseline '{}' not found in MS ANTENNA table".format(l), file=log(0, "red"))
             else:
                 lab += ["%s:%s" % (l, feeds[0]), "%s:%s" % (l, feeds[1])]
                 col += ["blue", "red"]
@@ -131,15 +150,15 @@ def make_ifrgain_plots(ig, ms, GD, basename):
             fmt="none", ecolor="lightgrey"
         )
         # max plot amplitude -- max point plus 1/4th of the error bar
-        maxa = max([max(abs(x), abs(y)) for l1, l2, (x, xe), (y, ye) in content])
+        maxa = max([max(_abs(x), _abs(y)) for l1, l2, (x, xe), (y, ye) in content])
         # plotlim = max([ abs(np.array([
         #                  getattr(v,attr)+sign*e/4 for v,e in (x,xe),(y,ye) for attr in 'real','imag' for sign in 1,-1
         #                ])).max()
         #   for l1,l2,(x,xe),(y,ye) in content ])
         minre, maxre, minim, maxim = 2, -2, 2, -2
         for l1, l2, (x, xe), (y, ye) in content:
-            offs = np.array([getattr(v, attr) + sign * e / 4 for v, e in (x, xe), (y, ye)
-                                for attr in 'real', 'imag' for sign in 1, -1])
+            offs = np.array([getattr(v, attr) + sign * e / 4 for v, e in ((x, xe), (y, ye))
+                                for attr in ('real', 'imag') for sign in (1, -1)])
             minre, maxre = min(x.real - xe / 4, y.real - ye / 4, minre), max(x.real + xe / 4, y.real + ye / 4, maxre)
             minim, maxim = min(x.imag - xe / 4, y.imag - ye / 4, minim), max(x.imag + xe / 4, y.imag + ye / 4, maxim)
         # plot labels
@@ -184,8 +203,8 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         # collect a list of valid RR/LL and RL/LR pairs (i.e. ones not all unity)
         valid_igs = []
         ifr_pairs = {}
-        for p in xrange(nant):
-            for q in xrange(p+1, nant):
+        for p in range(nant):
+            for q in range(p+1, nant):
                 ifrname = ms.metadata.baseline_name[p,q]
                 rr = ig[:, p, q, i1, j1]
                 ll = ig[:, p, q, i2, j2]
@@ -210,10 +229,10 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         igpa0_means = []
         for pq, rr, ll in valid_igs:
             p,q = ifr_pairs[pq]
-            rr0 = np.ma.masked_array(abs(rr - 1).data, rr.mask)
-            ll0 = np.ma.masked_array(abs(ll - 1).data, ll.mask)
-            rr0.mask |= (rr0 == 0)
-            ll0.mask |= (ll0 == 0)
+            rr0 = _abs(rr - 1)
+            ll0 = _abs(ll - 1)
+            rr0[rr0 == 0] = ma.masked
+            ll0[ll0 == 0] = ma.masked
             if not rr0.mask.all():
                 igpa0_means += [rr0.mean()]
             if not ll0.mask.all():

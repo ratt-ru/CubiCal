@@ -5,10 +5,11 @@
 
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
-
+from __future__ import print_function
+from builtins import range
 import os
 import sys
-import ModColor
+from . import ModColor
 
 class ClassPrint():
     def __init__(self,HW=20,quote='"'):
@@ -31,7 +32,7 @@ class ClassPrint():
             valueOut=value
         else:
             valueOut="%s%s"%(value.ljust(self.WV0),(""" "%s" """%value2).rjust(self.WV1))
-        print>>dest,"%s = %s"%(parout,valueOut)
+        print("%s = %s"%(parout,valueOut), file=dest)
         
     def Print2(self,par,value,helpit,col="white"):
         WidthTerm=self.getWidth()
@@ -45,16 +46,16 @@ class ClassPrint():
             helpit="Help yourself"
         Shelp="%s"%helpit
         if WidthHelp<0:
-             print self.proto%(Spar,SFill,Sval)+Shelp
+             print(self.proto%(Spar,SFill,Sval)+Shelp)
              return
         Lhelp=len(str(helpit))
-        listStrHelp=range(0,Lhelp,WidthHelp)
+        listStrHelp=list(range(0,Lhelp,WidthHelp))
         
         if listStrHelp[-1]!=Lhelp: listStrHelp.append(Lhelp)
         
         
         
-        print self.proto%(Spar,SFill,Sval)+Shelp[0:WidthHelp]
+        print(self.proto%(Spar,SFill,Sval)+Shelp[0:WidthHelp])
         for i in range(1,len(listStrHelp)-1):
             parout="%s: %s"%(" "*(self.LeftW-2),Shelp[listStrHelp[i]:listStrHelp[i+1]])
-            print parout
+            print(parout)

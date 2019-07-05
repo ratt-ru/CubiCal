@@ -5,11 +5,11 @@
 
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
-
+from __future__ import print_function
 import os, re, errno
-import logger
-import NpShared
-import shared_dict
+from . import logger
+from . import NpShared
+from . import shared_dict
 
 log = logger.getLogger("shm_utils")
 
@@ -61,13 +61,13 @@ def cleanupStaleShm ():
     for pid in set([x[1] for x in shmlist]):
         try:
             os.kill(pid, 0)
-        except OSError, err:
+        except OSError as err:
             if err.errno == errno.ESRCH:
                 dead_pids.add(pid)
     # ok, make list of candidates for deletion
     victims = [ filename for filename,pid in shmlist if pid in dead_pids ]
     if victims:
-        print>>log, "reaping %d shared memory objects associated with %d dead cubical processes"%(len(victims), len(dead_pids))
+        print("reaping %d shared memory objects associated with %d dead cubical processes"%(len(victims), len(dead_pids)), file=log)
         dirs = [ v for v in victims if os.path.isdir(v) ]
         files = [ v for v in victims if not os.path.isdir(v) ]
         # rm -fr only works for a limited number of arguments (which the semaphore list can easily exceed)

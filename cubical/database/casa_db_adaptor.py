@@ -2,7 +2,7 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
-
+from builtins import range
 from cubical.database.pickled_db import PickledDatabase
 from cubical.data_handler.ms_data_handler import MSDataHandler
 from cubical.tools import logger
@@ -11,6 +11,7 @@ import os
 import shutil
 import numpy as np
 import subprocess
+import six
 
 log = logger.getLogger("casa_db_adaptor")
 
@@ -40,6 +41,9 @@ class casa_caltable_factory(object):
                     is_complex: Solutions are complex or real-valued
                     viscal_label: Sets viscal property of CASA table - used as identifier in CASA
             """
+            if six.PY3:
+                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
+                return
             if os.path.exists(filename):
                 if os.path.isfile(filename):
                     log.error("CASA calibration table destination already exists but is not a directory. Will not remove.")    
@@ -48,12 +52,12 @@ class casa_caltable_factory(object):
                     log.info("Destination CASA gain table '%s' exists. Will overwrite." % filename)
                     shutil.rmtree(filename) # CASA convention is to overwrite
                     
-            basedir = os.path.dirname(filename)
+            basedir = os.path.dirname(filename) or '.'
             subprocess.check_output(["tar", "zxvf", BLANK_TABLE_TARBALL, "-C", basedir])
             os.rename(os.path.join(basedir, BLANK_TABLE_NAME), filename)
 
             antorder = [db.antnames.index(an) for an in solants]
-            with tbl("%s::ANTENNA" % filename, ack=False, readonly=False) as t:
+            with tbl("%s::ANTENNA" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.anttype))
                 t.putcol("OFFSET", db.antoffset[antorder])
                 t.putcol("POSITION", db.antpos[antorder])
@@ -67,18 +71,18 @@ class casa_caltable_factory(object):
             assert "field" in db.metadata, "Solver field not passed in metadata. This is a bug"
             assert type(db.metadata["field"]) is int, "Currently only supports single field"
             selfield = np.arange(len(db.fieldname)) == db.metadata["field"]
-            with tbl("%s::FIELD" % filename, ack=False, readonly=False) as t:
+            with tbl("%s::FIELD" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=field_ndir)
                 t.putcol("DELAY_DIR", np.tile(db.fielddelaydirs[selfield], (field_ndir, 1)))
                 t.putcol("PHASE_DIR", np.tile(db.fieldphasedirs[selfield], (field_ndir, 1)))
                 t.putcol("REFERENCE_DIR", np.tile(db.fieldrefdir[selfield], (field_ndir, 1)))
                 t.putcol("CODE", np.tile(np.array(db.fieldcode)[selfield], (field_ndir, 1)))
                 t.putcol("FLAG_ROW", np.tile(db.fieldflagrow[selfield], (field_ndir, 1)))
-                t.putcol("NAME", np.array(["%s_DIR_%d" % (f, fdi) for fdi, f in enumerate([db.fieldname[np.where(selfield)[0][0]]] * field_ndir)]).T)
+                t.putcol("NAME", np.array(map(str, ["%s_DIR_%d" % (f, fdi) for fdi, f in enumerate([db.fieldname[np.where(selfield)[0][0]]] * field_ndir)])).T)
                 t.putcol("SOURCE_ID", np.tile(db.fieldsrcid[selfield], (field_ndir, 1)) + np.arange(field_ndir).T)
                 t.putcol("TIME", np.tile(db.fieldtime[selfield], (field_ndir, 1)))
     
-            with tbl("%s::OBSERVATION" % filename, ack=False, readonly=False) as t:
+            with tbl("%s::OBSERVATION" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.obsobserver))
                 (len(db.obstimerange) != 0) and t.putcol("TIME_RANGE", db.obstimerange)
                 (len(db.obslog) != 0) and t.putcol("LOG", db.obslog)
@@ -89,7 +93,7 @@ class casa_caltable_factory(object):
                 (len(db.obsreleasedate) != 0) and t.putcol("RELEASE_DATE", db.obsreleasedate)
                 (len(db.obstelescopename) != 0) and t.putcol("TELESCOPE_NAME", db.obstelescopename)
             
-            with tbl("%s::SPECTRAL_WINDOW" % filename, ack=False, readonly=False) as t:
+            with tbl("%s::SPECTRAL_WINDOW" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.sel_ddids))
                 # Per DDID determine solution spacing in frequency
                 for iddid, ddid in enumerate(db.sel_ddids):
@@ -119,12 +123,12 @@ class casa_caltable_factory(object):
                     t.putcell("FREQ_GROUP", iddid, db.spwfreqgroup[spwid])
                     t.putcell("FREQ_GROUP_NAME", iddid, db.spwfreqgroupname[spwid])
                     t.putcell("IF_CONV_CHAIN", iddid, db.spwifconvchain[spwid])
-                    t.putcell("NAME", iddid, db.spwname[spwid])
+                    t.putcell("NAME", iddid, str(db.spwname[spwid]))
                     t.putcell("NET_SIDEBAND", iddid, db.spwnetsideband[spwid])
                     t.putcell("NUM_CHAN", iddid, ddsolfreqs.size)
                     t.putcell("TOTAL_BANDWIDTH", iddid, maxfreq - minfreq)
                     
-            with tbl(filename, ack=False, readonly=False) as t:
+            with tbl(str(filename), ack=False, readonly=False) as t:
                 t.putkeyword("ParType", "Complex" if is_complex else "Float")
                 t.putkeyword("VisCal", viscal_label)
                 
@@ -144,6 +148,9 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
+            if six.PY3:
+                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
+                return
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
@@ -167,7 +174,7 @@ class casa_caltable_factory(object):
                            field_ndir=ndir,
                            viscal_label="G Jones")
             
-            with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
+            with tbl(str(db.filename + ".%s.casa" % outname), ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
                 for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
@@ -217,6 +224,9 @@ class casa_caltable_factory(object):
                     outname: suffix of exported CASA gaintable
                     diag: Write out diagonal of Jones matrix if true, off-diagonal (leakage) terms otherwise.
             """
+            if six.PY3:
+                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
+                return
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
@@ -241,7 +251,7 @@ class casa_caltable_factory(object):
                            field_ndir=ndir,
                            viscal_label="B Jones" if diag else "D Jones")
             
-            with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
+            with tbl(str(db.filename) + ".%s.casa" % outname, ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
                 
                 for iddid, ddid in enumerate(db.sel_ddids):
@@ -285,6 +295,9 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
+            if six.PY3:
+                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
+                return
             cls.create_B_table(db, gname, outname, diag=False)
         
         @classmethod
@@ -297,6 +310,9 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
+            if six.PY3:
+                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
+                return
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
@@ -321,7 +337,7 @@ class casa_caltable_factory(object):
                            is_complex=False,
                            viscal_label="K Jones")
             
-            with tbl(db.filename + ".%s.casa" % outname, ack=False, readonly=False) as t:
+            with tbl(str(db.filename + ".%s.casa" % outname), ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
                 for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
@@ -382,6 +398,9 @@ class casa_db_adaptor(PickledDatabase):
             Args:
                 src: a cubical.data_handler instance
         """
+        if six.PY3:
+            log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
+            return
         if not isinstance(src, MSDataHandler):
             raise TypeError("src must be of type Cubical DataHandler")
 
@@ -436,6 +455,9 @@ class casa_db_adaptor(PickledDatabase):
 
     def __export(self):
         """ exports the database to CASA gaintables """
+        if six.PY3:
+            log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
+            return
         self._load(self.filename)
         
         if not self.meta_avail:
@@ -459,7 +481,6 @@ class casa_db_adaptor(PickledDatabase):
             
     def close(self):
         """ see iface_database.close() for details """
-        
         # move to closed state before exporting and loading back and sorting data
         do_export = (self.mode is "create")
         PickledDatabase.close(self) 

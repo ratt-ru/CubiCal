@@ -2,6 +2,7 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 from scipy import special
@@ -40,15 +41,10 @@ class ComplexW2x2Gains(PerIntervalGains):
             options (dict): 
                 Dictionary of options. 
         """
-        
-        
 
-        # clumsy but necessary: can't import at top level (OMP must not be touched before worker processes
-        # are forked off), so we import it only in here
+        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options)
 
-        
-        PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, 
-                                    options, self.get_kernel(options))
+        self.kernel_robust = cubical.kernels.import_kernel("full_W_complex")
 
         self.residuals = np.empty_like(data_arr)
 
@@ -62,14 +58,12 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.v_int = options.get("robust-int", 1)
 
-        self.cov_scale = options.get("robust-cov-scale", True) # scale the covariance by n_corr*2
+        self.cov_scale = options.get("robust-scale", True) # scale the covariance by n_corr*2
 
-       
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel approriate to Jones options"""
-        return cubical.kernels.import_kernel('cyfull_W_complex') #TODO : check this import 
-        
+    @classmethod
+    def determine_diagonality(cls, options):
+        return False
+
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J^H)WR term of the weighted GN/LM method for the
@@ -97,20 +91,20 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         jh = self.get_new_jh(model_arr)
 
-        self.cykernel.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.kernel_robust.compute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
         jhwr = self.get_new_jhr()
 
         if self.iters == 1:
             self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
-        self.cykernel.cycompute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
+        self.kernel_robust.compute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
 
         jhwj, jhwjinv = self.get_new_jhj()
 
-        self.cykernel.cycompute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
+        self.kernel_robust.compute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
 
-        flag_count = self.cykernel.cycompute_jhjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
+        flag_count = self.kernel_robust.compute_jhjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhwr, jhwjinv, flag_count
 
@@ -129,7 +123,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
         update = self.init_update(jhr)
-        self.cykernel.cycompute_update(jhr, jhjinv, update)
+        self.kernel_robust.compute_update(jhr, jhjinv, update)
 
         # if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
         update += self.gains
@@ -200,7 +194,19 @@ class ComplexW2x2Gains(PerIntervalGains):
 
             ompstd = np.zeros((4,4), dtype=self.dtype)
 
-            self.cykernel.cycompute_cov(self.residuals, ompstd, self.weights)
+            self.kernel_robust.compute_cov(self.residuals, ompstd, self.weights)
+
+            #---scaling the variance in this case improves the robust solver performance----------#
+            if self.cov_scale:
+                if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
+                    norm = 2*self.npol*Nvis
+                else:
+                    norm = Nvis
+            else:
+                norm = Nvis
+
+            if self.iters % 5 == 0 or self.iters == 1:
+                print("{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis), file=log(2))
 
             #---if the covariance and variance are close the residuals are dominated by sources---#
             #---scaling the variance in this case improves the robust solver performance----------#
@@ -274,7 +280,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             root = vvals[np.argmin(np.abs(fvals))]
 
             if self.iters % 5 == 0 or self.iters == 1:
-                print>> log(2), "{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root)
+                print("{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root), file=log(2))
             
             return root
 
@@ -284,7 +290,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         # import pdb; pdb.set_trace()
 
-        self.cykernel.cycompute_weights(self.residuals, covinv, w, v, self.npol)
+        self.kernel_robust.compute_weights(self.residuals, covinv, w, v, self.npol)
 
         # re-set weights for visibillities flagged from start to 0
         w[:,self.new_flags,:] = 0
@@ -293,10 +299,10 @@ class ComplexW2x2Gains(PerIntervalGains):
         aa, ab = np.tril_indices(self.n_ant, -1)
         w_real = np.real(w[:,:,:,aa,ab,0].flatten())
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
-        
+
         # norm = np.average(w_nzero) 
   
-        self.weights = w #/norm #removed normalisation
+        self.weights = w #/norm
         
         #-----------computing the v parameter---------------------#
         # This computation is only done after a certain number of iterations. Default is 5
@@ -311,12 +317,12 @@ class ComplexW2x2Gains(PerIntervalGains):
         PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:
-            phase = np.angle(self.gains[...,self.ref_ant,(0,1),(0,1)])
-            self.gains *= np.exp(-1j*phase)[:,:,:,np.newaxis,:,np.newaxis]
+            phase = np.angle(self.gains[...,self.ref_ant,0,0])
+            self.gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
 
 
 
-    def precompute_attributes(self, model_arr, flags_arr, noise):
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
         """
         Set the initial weights to 1 and set the weights of the flags data points to 0
 
@@ -327,7 +333,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             flags_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing  flags
         """
-        PerIntervalGains.precompute_attributes(self, model_arr, flags_arr, noise)
+        PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
 
         self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
         

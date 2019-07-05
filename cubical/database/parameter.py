@@ -5,7 +5,8 @@
 """
 Handles parameter databases which can contain solutions and other relevant values. 
 """
-
+from __future__ import print_function
+from builtins import range
 import numpy as np
 from numpy.ma import masked_array
 from cubical.tools import logger
@@ -22,7 +23,7 @@ class _Record(object):
     """
 
     def __init__(self, **kw):
-        for key, value in kw.iteritems():
+        for key, value in kw.items():
             setattr(self, key, value)
 
 
@@ -67,7 +68,7 @@ class Parameter(object):
         """
         interpolation_axes = interpolation_axes or []
         assert (len(interpolation_axes) in [0, 1, 2])
-        print>> log(1), "defining parameter '{}' over {}".format(name, ",".join(axes))
+        print("defining parameter '{}' over {}".format(name, ",".join(axes)), file=log(1))
 
         self.name, self.dtype, self.axis_labels = name, dtype, axes
         self.empty, self.metadata = empty, metadata
@@ -169,8 +170,8 @@ class Parameter(object):
             elif not self.shape[i]:
                 self.shape[i] = shape[i]
             elif self.shape[i] != shape[i]:
-                raise ValueError, "axis {} of length {} does not match previously defined length {}".format(
-                    axis, shape[i], self.shape[i])
+                raise ValueError("axis {} of length {} does not match previously defined length {}".format(
+                    axis, shape[i], self.shape[i]))
 
     def _finalize_shape(self):
         """
@@ -208,7 +209,7 @@ class Parameter(object):
             gmax = float(g1.max()) or 1
             self._norm_grid[iaxis] = g1 = g1 / gmax
             self._gminmax[iaxis] = gmin, gmax
-        print>> log(0), "dimensions of {} are {}".format(self.name, ','.join(map(str, self.shape)))
+        print("dimensions of {} are {}".format(self.name, ','.join(map(str, self.shape))), file=log(0))
         return True
 
     def _to_norm(self, iaxis, g):
@@ -255,7 +256,7 @@ class Parameter(object):
                                         np.ones(self.shape, bool),
                                         fill_value=self.empty)
         self._array_slices = {}
-        print>> log(0), "  loading {}, shape {}".format(self.name, 'x'.join(map(str, self.shape)))
+        print("  loading {}, shape {}".format(self.name, 'x'.join(map(str, self.shape))), file=log(0))
 
     def _paste_slice(self, item):
         """
@@ -293,12 +294,12 @@ class Parameter(object):
                 slicers.append((None,))
             else:
                 slicer_axes.append(i)
-                slicers.append(xrange(shape))
+                slicers.append(range(shape))
 
         self._interpolators = {}
 
         # get grid over interpolatable axes
-        print>> log(2), "decomposing {} into slices".format(self.name)
+        print("decomposing {} into slices".format(self.name), file=log(2))
         # loop over all not-interpolatable slices (e.g. direction, antenna, correlation)
         for slicer in itertools.product(*slicers):
             array_slicer = tuple([slice(None) if sl is None else sl for sl in slicer])
@@ -311,8 +312,8 @@ class Parameter(object):
             subset = [slice(None) for _ in interpol_axes]
             if flags is not np.ma.nomask:
                 # now, for every axis in the slice, cut out fully flagged points
-                allaxis = set(xrange(array.ndim))
-                for iaxis in xrange(array.ndim):
+                allaxis = set(range(array.ndim))
+                for iaxis in range(array.ndim):
                     # find points on this axis which are fully flagged along other axes
                     if array.ndim == 1:
                         allflag = flags
@@ -320,14 +321,14 @@ class Parameter(object):
                         allflag = flags.all(axis=tuple(allaxis - {iaxis}))
                     # all flagged? Indicate this by array=None
                     if allflag.all():
-                        print>> log(2), "  slice {} fully flagged".format(slicer)
+                        print("  slice {} fully flagged".format(slicer), file=log(2))
                         array = None
                         break
                     # if such points exist, extract subset of array and grid
                     elif allflag.any():
-                        print>> log(2), "  slice {} flagged at {} {} points".format(slicer, allflag.sum(),
+                        print("  slice {} flagged at {} {} points".format(slicer, allflag.sum(),
                                                                                     self.axis_labels[
-                                                                                        interpol_axes[iaxis]])
+                                                                                        interpol_axes[iaxis]]), file=log(2))
                         # make corresponding slice
                         array_slice = [slice(None)] * array.ndim
                         # also set subset to the mask of the valid points
@@ -491,15 +492,15 @@ class Parameter(object):
         # create output array of corresponding shape
         output_array = np.full(output_shape, self.empty, self.dtype)
 
-        print>> log(1), "will interpolate {} solutions onto {} grid".format(self.name,
-                                "x".join(map(str, output_shape)))
+        print("will interpolate {} solutions onto {} grid".format(self.name,
+                                "x".join(map(str, output_shape))), file=log(1))
 
         # now loop over all slices
         for slicer, out_slicer in zip(itertools.product(*input_slicers), itertools.product(*output_slicers)):
             # arse is the current array slice we work with
             arse = self._array_slices[slicer]
             if arse.array is None:
-                print>> log(2), "  slice {} fully flagged".format(slicer)
+                print("  slice {} fully flagged".format(slicer), file=log(2))
             else:
                 # Check which subset of the slice needs to be interpolated
                 # We build up the following lists describing the interpolation process
@@ -550,8 +551,8 @@ class Parameter(object):
                 if not interpolator or len(input_grid_segment0) != len(input_grid_segment) or \
                         not all([ia == ja and i0 <= j0 and i1 >= j1
                                  for (ia, i0, i1), (ja, j0, j1) in zip(input_grid_segment0, input_grid_segment)]):
-                    print>> log(2), "  slice {} preparing {}D interpolator for {}".format(slicer,
-                        len(segment_grid), ",".join(["{}:{}".format(*seg[1:]) for seg in input_grid_segment]))
+                    print("  slice {} preparing {}D interpolator for {}".format(slicer,
+                        len(segment_grid), ",".join(["{}:{}".format(*seg[1:]) for seg in input_grid_segment])), file=log(2))
                     # arav: linear array of all values, adata: all unflagged values
                     arav = arse.array[tuple(array_segment_slice)].ravel()
                     adata = arav.data[~arav.mask] if arav.mask is not np.ma.nomask else arav.data
@@ -597,15 +598,15 @@ class Parameter(object):
                 coords = np.array([x.ravel() for x in np.meshgrid(*output_coord, indexing='ij')])
                 # call interpolator. Reshape into output slice shape
                 result = interpolator(coords.T).reshape(interp_shape)
-                print>> log(2), "  interpolated onto {} grid".format("x".join(map(str, interp_shape)))
+                print("  interpolated onto {} grid".format("x".join(map(str, interp_shape))), file=log(2))
                 output_array[out_slicer] = result[tuple(interp_broadcast)]
         # return array, throwing out unneeded axes
         output_array = output_array[tuple(output_reduction)]
         # also, mask missing values from the interpolator with the fill value
         missing = np.isnan(output_array)
         output_array[missing] = self.empty
-        print>> log(1), "{} solutions: interpolation results in {}/{} missing values".format(self.name,
-                            missing.sum(), missing.size)
+        print("{} solutions: interpolation results in {}/{} missing values".format(self.name,
+                            missing.sum(), missing.size), file=log(1))
         return masked_array(output_array, missing, fill_value=self.empty)
 
 
@@ -635,8 +636,8 @@ class Parameter(object):
         output_array = np.full(output_shape, self.empty, self.dtype)
         output_mask  = np.ones(output_shape, bool)
 
-        print>> log(1), "will lookup {} solutions on {} grid".format(self.name,
-                                "x".join(map(str, output_shape)))
+        print("will lookup {} solutions on {} grid".format(self.name,
+                                "x".join(map(str, output_shape))), file=log(1))
 
 
         # now loop over all slices
@@ -644,7 +645,7 @@ class Parameter(object):
             # arse is the current array slice we work with
             arse = self._array_slices[slicer]
             if arse.array is None:
-                print>> log(2), "  slice {} fully flagged".format(slicer)
+                print("  slice {} fully flagged".format(slicer), file=log(2))
             else:
                 # segment_grid: float array of normalized coordinates corresponding
                 #               to segment being interpolated over
@@ -660,8 +661,8 @@ class Parameter(object):
                     ij = [ (i, gmap.get(x)) for i,x in enumerate(outgr) ]
                     input_indices.append([ j for i,j in ij if j is not None])
                     output_indices.append([ i for i,j in ij if j is not None])
-                print>> log(2), "  slice {}: looking up {} valid points".format(slicer,
-                        "x".join([str(len(idx)) for idx in input_indices]))
+                print("  slice {}: looking up {} valid points".format(slicer,
+                        "x".join([str(len(idx)) for idx in input_indices])), file=log(2))
 
                 out = output_array[out_slicer]
                 outmask = output_mask[out_slicer]
@@ -673,12 +674,12 @@ class Parameter(object):
                     outmask[ox] = arse.array.mask[ix]
 
         # return array, throwing out unneeded axes
-        output_array = output_array[output_reduction]
-        output_mask  = output_mask[output_reduction]
+        output_array = output_array[tuple(output_reduction)]
+        output_mask  = output_mask[tuple(output_reduction)]
         output_array[output_mask] = self.empty
 
-        print>> log(1), "{} solutions: interpolation results in {}/{} missing values".format(self.name,
-                            output_mask.sum(), output_mask.size)
+        print("{} solutions: interpolation results in {}/{} missing values".format(self.name,
+                            output_mask.sum(), output_mask.size), file=log(1))
 
         return masked_array(output_array, output_mask, fill_value=self.empty)
 
@@ -696,7 +697,7 @@ class Parameter(object):
             True if all coordinate values match the parameter grid.
             False if at least one doesn't.
         """
-        for axis, gridvalues in grid.iteritems():
+        for axis, gridvalues in grid.items():
             iaxis = self.axis_index[axis]
             if not set(gridvalues).issubset(self._grid_set[iaxis]):
                 return False

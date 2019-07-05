@@ -1,7 +1,8 @@
 #!/usr/bin/python
-
+from __future__ import print_function
 import os, os.path, sys
 from casacore.tables import table
+import numpy as np
 from collections import OrderedDict
 
 def kw_to_args(**kw):
@@ -10,14 +11,14 @@ def kw_to_args(**kw):
         cmd = "--sol-jones {} ".format(kw.pop("sol_jones"))
     else:
         cmd = ""
-    cmd += " ".join(["--{} {}".format(name.replace("_", "-"), value) for name, value in kw.items()])
+    cmd += " ".join(["--{} {}".format(name.replace("_", "-"), value) for name, value in list(kw.items())])
     return cmd
 
 
 basedir = os.path.dirname(__file__)
 
 def logprint(arg):
-    print>>sys.stderr,arg
+    print(arg, file=sys.stderr)
 
 class SolverVerification(object):
     def __init__(self, msname, refmsname, parset, workdir="."):
@@ -29,29 +30,37 @@ class SolverVerification(object):
         logprint("*** Working directory is {}".format(os.getcwd()))
 
     def generate_reference(self, colname, args=[], **kw):
-        cmd = self.cmdline + kw_to_args(data_ms=self.refmsname, out_column=colname, out_name="ref_"+colname, **kw) + \
+        cmd = self.cmdline + kw_to_args(data_ms=self.refmsname, out_column=colname, out_name="ref_"+colname+"/cc", **kw) + \
                 " " + " ".join(args)
         logprint("*** running {}".format(cmd))
         retcode = os.system(cmd)
         if retcode:
             raise RuntimeError("gocubical failed, return code {}".format(retcode))
 
-    def verify(self, refcolname, args=[], tolerance=1e-6, **kw):
-        cmd = self.cmdline + kw_to_args(data_ms=self.msname, out_column="CORRECTED_DATA", out_name="test_"+refcolname, **kw) + \
+    def verify(self, refcolname, args=[], mean_tolerance=-30, ninetyfifth_tolerance=-25, **kw):
+        cmd = self.cmdline + kw_to_args(data_ms=self.msname, out_column="CORRECTED_DATA", out_name="test_"+refcolname+"/cc", **kw) + \
                 " " + " ".join(args)
         logprint("*** running {}".format(cmd))
         retcode = os.system(cmd)
         if retcode:
             raise RuntimeError("{}: return code {}".format(cmd, retcode))
         cd = table(self.msname).getcol("CORRECTED_DATA")
+        if not np.isfinite(cd).all():
+            raise RuntimeError("{}: NaNs/INFs detected in output data".format(cmd))
         c0 = table(self.refmsname).getcol(refcolname)
-        diff = abs(cd-c0).max()
-        logprint("*** max diff between CORRECTED_DATA and {} is {}".format(refcolname, diff))
-        if diff > tolerance:
-            raise RuntimeError("{}: diff {} exceeds tolerance of {}".format(cmd, diff, tolerance))
+        diff = abs(abs(cd-c0)/abs(c0))
+        diffmean = 10*np.log10(np.nanmean(diff))
+        logprint("*** mean relative diff between CORRECTED_DATA and {} is {} dB".format(refcolname, diffmean))
+        if diffmean > mean_tolerance:
+            raise RuntimeError("{}: diff {} dB exceeds tolerance of {} dB".format(cmd, diffmean, mean_tolerance))
+        diff95 = 10*np.log10(np.nanpercentile(diff, 95.0))
+        logprint("*** ninety fifth percentile relative diff between CORRECTED_DATA and {} is {} dB".format(refcolname, diff95))
+        if diff95 > ninetyfifth_tolerance:
+            raise RuntimeError("{}: diff {} dB exceeds tolerance of {} dB".format(cmd, diff95, ninetyfifth_tolerance))
 
 d147_test_list = [
     ("GSOL_DATA", dict()),
+    ("GSOL_DATA", dict(dist_ncpu=1)),
     ("GBSOL_DATA", dict(sol_jones="G,B", g_time_int=1, g_freq_int=0, b_time_int=0, b_freq_int=1)),
     ("PO_DATA", dict(g_type='phase-diag')),
     ("FS_DATA", dict(g_type='f-slope', g_time_int=1, g_freq_int=0)),

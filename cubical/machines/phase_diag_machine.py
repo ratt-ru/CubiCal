@@ -2,10 +2,14 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 from cubical.flagging import FL
 import cubical.kernels
+from numpy.ma import masked_array
+
+from .abstract_machine import log
 
 class PhaseDiagGains(PerIntervalGains):
     """
@@ -33,21 +37,29 @@ class PhaseDiagGains(PerIntervalGains):
                 Dictionary of options. 
         """
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
-                                  chunk_ts, chunk_fs, chunk_label, options,
-                                  self.get_kernel(options))
+                                  chunk_ts, chunk_fs, chunk_label, options)
 
-        self.phases = self.cykernel.allocate_gain_array(self.gain_shape, dtype=self.ftype, zeros=True)
+        # kernel used in solver is diag-diag in diag mode, else uses full kernel version
+        if options.get('diag-data') or options.get('diag-only'):
+            self.kernel_solve = cubical.kernels.import_kernel('diag_phase_only')
+        else:
+            self.kernel_solve = cubical.kernels.import_kernel('phase_only')
+
+        self.phases = self.kernel.allocate_gain_array(self.gain_shape, dtype=self.ftype, zeros=True)
         self.gains = np.empty_like(self.phases, dtype=self.dtype)
         self.gains[:] = np.eye(self.n_cor) 
         self.old_gains = self.gains.copy()
 
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel approriate to Jones options"""
-        if options['diag-diag']:
-            return cubical.kernels.import_kernel('cydiag_phase_only')
+    @classmethod
+    def determine_diagonality(cls, options):
+        return True
+
+    @classmethod
+    def get_full_kernel(cls, options, diag_gains):
+        if options.get('diag-data'):
+            return cubical.kernels.import_kernel('diag_phase_only')
         else:
-            return cubical.kernels.import_kernel('cyphase_only')
+            return cubical.kernels.import_kernel('phase_only')
 
     def get_inverse_gains(self):
         """Returns inverse gains and inverse conjugate gains. For phase-only, conjugation is inverse"""
@@ -74,13 +86,13 @@ class PhaseDiagGains(PerIntervalGains):
         gh = self.get_conj_gains()
         jh = self.get_new_jh(model_arr)
 
-        self.cykernel.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.kernel_solve.compute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
         jhr = self.get_new_jhr()
 
         r = self.get_obs_or_res(obser_arr, model_arr)
 
-        self.cykernel.cycompute_jhr(gh, jh, r, jhr, self.t_int, self.f_int)
+        self.kernel_solve.compute_jhr(gh, jh, r, jhr, self.t_int, self.f_int)
 
         return jhr.imag, self.jhjinv, 0
 
@@ -89,6 +101,70 @@ class PhaseDiagGains(PerIntervalGains):
     def dof_per_antenna(self):
         """This property returns the number of real degrees of freedom per antenna, per solution interval"""
         return 2
+
+    @staticmethod
+    def exportable_solutions():
+        """ Returns a dictionary of exportable solutions for this machine type. """
+
+        exportables = PerIntervalGains.exportable_solutions()
+
+        exportables.update({
+            "phase": (0., ("dir", "time", "freq", "ant", "corr")),
+            "phase.err": (0., ("dir", "time", "freq", "ant", "corr")),
+        })
+
+        return exportables
+
+    def importable_solutions(self):
+        """ Returns a dictionary of importable solutions for this machine type. """
+
+        # defines solutions we can import from
+        # can import phase, or also a 2x2 complex gain
+        return { 'gain': self.interval_grid, 'phase': self.interval_grid }
+
+    def export_solutions(self):
+        """ Saves the solutions to a dict of {label: solutions,grids} items. """
+
+        solutions = super(PhaseDiagGains, self).export_solutions()
+
+        # construct phase solutions, applying mask from parent gains
+        mask = solutions['gain'][0].mask
+        solutions['phase'] = masked_array(self.phases, mask)[..., (0, 1), (0, 1)], self.interval_grid
+
+        # phase error is same as gain error (small angle approx!)
+        solutions["phase.err"] = solutions["gain.err"][0][..., (0, 1), (0, 1)], self.interval_grid
+
+        return solutions
+
+    def import_solutions(self, soldict):
+        """
+        Loads solutions from a dict.
+
+        Args:
+            soldict (dict):
+                Contains gains solutions which must be loaded.
+        """
+        # load from phase term, if present
+        if "phase" in soldict:
+            self.phases[...,(0,1),(0,1)] = soldict["phase"].data
+            print("loading phases directly", file=log(0))
+
+        # else try to load from gain term
+        elif "gain" in soldict:
+            self.phases[..., (0,1), (0,1)] = np.angle(soldict["gain"].data)[..., (0,1), (0,1)]
+            self.phases[...,0,1].fill(0)
+            self.phases[...,1,0].fill(0)
+            print("loading phase component from gain", file=log(0))
+        else:
+            return
+
+        # loaded -- do the housekeeping
+
+        self.restrict_solution()
+        np.multiply(self.phases, 1j, out=self.gains)
+        np.exp(self.gains, out=self.gains)
+        self._gains_loaded = True
+
 
     def implement_update(self, jhr, jhjinv):
 
@@ -100,7 +176,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         update = self.init_update(jhr)
 
-        self.cykernel.cycompute_update(jhr, jhjinv, update)
+        self.kernel_solve.compute_update(jhr, jhjinv, update)
 
         if self.iters%2 == 0:
             update *= 0.5
@@ -122,12 +198,12 @@ class PhaseDiagGains(PerIntervalGains):
         PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:
-            self.phases -= self.phases[:,:,:,self.ref_ant,:,:][:,:,:,np.newaxis,:,:]
+            self.phases -= self.phases[:,:,:,self.ref_ant,:,:][:,:,:,np.newaxis,0,0]
         for idir in self.fix_directions:
             self.phases[idir, ...] = 0
 
 
-    def precompute_attributes(self, model_arr, flags_arr, noise):
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
         """
         Precompute (J\ :sup:`H`\J)\ :sup:`-1`, which does not vary with iteration.
 
@@ -136,13 +212,13 @@ class PhaseDiagGains(PerIntervalGains):
                 Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
                 model visibilities.
         """
-        PerIntervalGains.precompute_attributes(self, model_arr, flags_arr, noise)
+        PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
 
         self.jhjinv = np.zeros_like(self.gains)
 
-        self.cykernel.cycompute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)
+        self.kernel_solve.compute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)
 
-        self.cykernel.cycompute_jhjinv(self.jhjinv, self.jhjinv, self.gflags, self.eps, FL.ILLCOND)
+        self.kernel_solve.compute_jhjinv(self.jhjinv, self.jhjinv, self.gflags, self.eps, FL.ILLCOND)
 
         self.jhjinv = self.jhjinv.real
 

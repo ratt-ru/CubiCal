@@ -2,13 +2,16 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
+from builtins import range
 from cubical.machines.abstract_machine import MasterMachine
 from cubical.machines.complex_2x2_machine import Complex2x2Gains
+from cubical.machines.complex_W_2x2_machine import ComplexW2x2Gains
 import numpy as np
 import cubical.kernels
 
 from cubical.tools import logger
-import machine_types
+from . import machine_types
 from cubical.flagging import FL
 log = logger.getLogger("jones_chain")
 
@@ -40,31 +43,39 @@ class JonesChain(MasterMachine):
             jones_options (dict): 
                 Dictionary of options pertaining to the chain. 
         """
-        self.cykernel = self.get_kernel(jones_options["sol"])
-        self.cychain  = cubical.kernels.import_kernel("cychain")
+        from cubical.main import UserInputError
+        # This instantiates the number of complex 2x2 elements in our chain. Each element is a
+        # gain machine in its own right - the purpose of this machine is to manage these machines
+        # and do the relevant fiddling between parameter updates. When combining DD terms with
+        # DI terms, we need to be initialise the DI terms using only one direction - we do this with
+        # slicing rather than summation as it is slightly faster.
+        self.jones_terms = []
+        self.num_left_di_terms = 0  # how many DI terms are there at the left of the chain
+        seen_dd_term = False
+        for iterm, term_opts in enumerate(jones_options['chain']):
+            jones_class = machine_types.get_machine_class(term_opts['type'])
+            if jones_class is None:
+                raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
+            if jones_class not in (Complex2x2Gains, ComplexW2x2Gains) and term_opts['solvable']:
+                raise UserInputError("only complex-2x2 or robust-2x2 terms can be made solvable in a Jones chain")
+            term = jones_class(term_opts["label"], data_arr, ndir, nmod, times, frequencies, chunk_label, term_opts)
+            self.jones_terms.append(term)
+            if term.dd_term:
+                seen_dd_term = True
+            elif not seen_dd_term:
+                self.num_left_di_terms = iterm
+
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, jones_options)
 
+        self.chain  = cubical.kernels.import_kernel("chain")
+        # kernel used for compute_residuals and such
+        self.kernel = Complex2x2Gains.get_full_kernel(jones_options, diag_gains=self.is_diagonal)
+
         self.n_dir, self.n_mod = ndir, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
 
-        # This instantiates the number of complex 2x2 elements in our chain. Each element is a 
-        # gain machine in its own right - the purpose of this machine is to manage these machines
-        # and do the relevant fiddling between parameter updates. When combining DD terms with
-        # DI terms, we need to be initialise the DI terms using only one direction - we do this with 
-        # slicing rather than summation as it is slightly faster. 
-        from cubical.main import UserInputError
-
-        self.jones_terms = []
-        for term_opts in jones_options['chain']:
-            jones_class = machine_types.get_machine_class(term_opts['type'])
-            if jones_class is None:
-                raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
-            if jones_class is not Complex2x2Gains and term_opts['solvable']:
-                raise UserInputError("only complex-2x2 terms can be made solvable in a Jones chain")
-            self.jones_terms.append(jones_class(term_opts["label"], data_arr,
-                                        ndir, nmod, times, frequencies, chunk_label, term_opts))
 
         self.n_terms = len(self.jones_terms)
         # make list of number of iterations per solvable term
@@ -93,20 +104,29 @@ class JonesChain(MasterMachine):
 
         self.cached_model_arr = self._r = self._m = None
 
-    @staticmethod
-    def get_kernel(options):
-        """Returns kernel approriate to Jones options"""
-        if options['diag-diag']:
-            return cubical.kernels.import_kernel("cydiagdiag_complex")
-        else:
-            return cubical.kernels.import_kernel("cyfull_complex")
+    @classmethod
+    def determine_diagonality(cls, options):
+        """Returns true if the machine class, given the options, represents a diagonal gain"""
+        from cubical.main import UserInputError
+        diagonal = True
+        for term_opts in options['chain']:
+            jones_class = machine_types.get_machine_class(term_opts['type'])
+            if jones_class is None:
+                raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
+            diagonal = diagonal and jones_class.determine_diagonality(term_opts)
+        return diagonal
 
-    def precompute_attributes(self, model_arr, flags_arr, inv_var_chan):
+    @classmethod
+    def determine_allocators(cls, options):
+        kernel = Complex2x2Gains.get_full_kernel(options, diag_gains=cls.determine_diagonality(options))
+        return kernel.allocate_vis_array, kernel.allocate_flag_array, kernel.allocate_gain_array
+
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """Precomputes various stats before starting a solution"""
-        MasterMachine.precompute_attributes(self, model_arr, flags_arr, inv_var_chan)
+        MasterMachine.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
         for term in self.jones_terms:
             if term.solvable:
-                term.precompute_attributes(model_arr, flags_arr, inv_var_chan)
+                term.precompute_attributes(data_arr, model_arr, flags_arr, inv_var_chan)
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
@@ -115,7 +135,7 @@ class JonesChain(MasterMachine):
         # prefix jones label to solution name
         for term in self.jones_terms:
             if term.solvable:
-                for label, sol in term.export_solutions().iteritems():
+                for label, sol in term.export_solutions().items():
                     soldict["{}:{}".format(term.jones_label, label)] = sol
         soldict['prefixed'] = True
 
@@ -176,7 +196,7 @@ class JonesChain(MasterMachine):
             self.cached_model_arr = cached_model_arr = np.empty_like(model_arr)
             np.copyto(cached_model_arr, model_arr)
 
-            for ind in xrange(self.n_terms - 1, self.active_index, -1):
+            for ind in range(self.n_terms - 1, self.active_index, -1):
                 term = self.jones_terms[ind]
                 term.apply_gains(cached_model_arr)
 
@@ -189,19 +209,19 @@ class JonesChain(MasterMachine):
 
             jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
 
-            self._jhr = self.cykernel.allocate_gain_array(jhr_shape, dtype=obser_arr.dtype)
+            self._jhr = self.active_term.allocate_gain_array(jhr_shape, dtype=obser_arr.dtype)
 
             jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
 
-            self._jhrint = self.cykernel.allocate_gain_array(jhrint_shape, dtype=self._jhr.dtype)
+            self._jhrint = self.active_term.allocate_gain_array(jhrint_shape, dtype=self._jhr.dtype)
             self._jhj = np.empty_like(self._jhrint)
             self._jhjinv =  np.empty_like(self._jhrint)
 
         np.copyto(self.jh, self.cached_model_arr)
 
-        for ind in xrange(self.active_index, -1, -1):
+        for ind in range(self.active_index, -1, -1):
             term = self.jones_terms[ind]
-            self.cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
+            self.chain.compute_jh(self.jh, term.gains, *term.gain_intervals)
             
         if n_dir > 1:
             if self._r is None:
@@ -212,22 +232,21 @@ class JonesChain(MasterMachine):
 
         self._jhr.fill(0)
 
-        self.cykernel.cycompute_jhr(self.jh, r, self._jhr, 1, 1)
+        self.active_term.kernel.compute_jhr(self.jh, r, self._jhr, 1, 1)
 
-        for ind in xrange(0, self.active_index, 1):
+        for ind in range(0, self.active_index, 1):
             term = self.jones_terms[ind]
             g_inv, gh_inv, flag_counts = term.get_inverse_gains()
-            self.cychain.cyapply_left_inv_jones(self._jhr, g_inv, *term.gain_intervals)
+            self.chain.apply_left_inv_jones(self._jhr, g_inv, *term.gain_intervals)
 
         self._jhrint.fill(0)
-        self.cychain.cysum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
+        self.chain.sum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
 
         self._jhj.fill(0)
-        self.cykernel.cycompute_jhj(self.jh, self._jhj, *self.active_term.gain_intervals)
+        self.active_term.kernel.compute_jhj(self.jh, self._jhj, *self.active_term.gain_intervals)
 
-        flag_count = self.cykernel.cycompute_jhjinv(self._jhj, self._jhjinv,
+        flag_count = self.active_term.kernel.compute_jhjinv(self._jhj, self._jhjinv,
                                                     self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
-
         return self._jhrint, self._jhjinv, flag_count
 
     def implement_update(self, jhr, jhjinv):
@@ -247,8 +266,8 @@ class JonesChain(MasterMachine):
             A tuple of gains,conjugate gains
         """
         ndir = self.n_dir if dd else 1
-        gains = self.cykernel.allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
-                                                  self.dtype)
+        gains = self.jones_terms[0].allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+                                                        self.dtype)
         g0 = self.jones_terms[0]._gainres_to_fullres(self.jones_terms[0].gains, tdim_ind=1)
         if ndir > 1 and g0.shape[0] == 1:
             g0 = g0.reshape(g0.shape[1:])[np.newaxis,...]
@@ -256,7 +275,7 @@ class JonesChain(MasterMachine):
             g0 = g0[:1,...]
         gains[:] = g0
         for term in self.jones_terms[1:]:
-            self.cykernel.cyright_multiply_gains(gains, term.gains, *term.gain_intervals)
+            term.kernel.right_multiply_gains(gains, term.gains, *term.gain_intervals)
 
         # compute conjugate gains
         gh = np.empty_like(gains)
@@ -272,7 +291,7 @@ class JonesChain(MasterMachine):
         Returns:
             A tuple of gains,conjugate gains,flag_count (if flags raised in inversion)
         """
-        gains = self.cykernel.allocate_gain_array([1, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+        gains = self.jones_terms[-1].allocate_gain_array([1, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
                                                   self.dtype)
         init = False
         fc0 = 0
@@ -280,10 +299,10 @@ class JonesChain(MasterMachine):
         for term in self.jones_terms[::-1]:
             if not term.dd_term:
                 g, _, fc = term.get_inverse_gains()
-                g = term._gainres_to_fullres(g, tdim_ind=1)
+                # g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
-                    self.cykernel.cyright_multiply_gains(gains, g[:1,...], *term.gain_intervals)
+                    term.kernel.right_multiply_gains(gains, g[:1,...], *term.gain_intervals)
                 else:
                     init = True
                     gains[:] = term._gainres_to_fullres(g[:1,...], tdim_ind=1)
@@ -318,7 +337,7 @@ class JonesChain(MasterMachine):
         """
         g, gh = self.accumulate_gains()
         np.copyto(resid_arr, obser_arr)
-        self.cykernel.cycompute_residual(model_arr, g, gh, resid_arr, 1, 1)
+        self.kernel.compute_residual(model_arr, g, gh, resid_arr, 1, 1)
 
         return resid_arr
 
@@ -344,7 +363,7 @@ class JonesChain(MasterMachine):
 
         g, gh, flag_count = self.accumulate_inv_gains()
 
-        self.cykernel.cycompute_corrected(resid_vis, g, gh, corr_vis, 1, 1)
+        self.kernel.compute_corrected(resid_vis, g, gh, corr_vis, 1, 1)
 
         return corr_vis, flag_count
 
@@ -362,7 +381,7 @@ class JonesChain(MasterMachine):
                 Array containing the result of GMG\ :sup:`H`.
         """
         g, gh = self.accumulate_gains()
-        self.cykernel.cyapply_gains(vis, g, gh, 1, 1)
+        self.kernel.apply_gains(vis, g, gh, 1, 1)
         return vis
 
     def check_convergence(self, min_delta_g):
@@ -397,18 +416,23 @@ class JonesChain(MasterMachine):
         while True:
             if not self.term_iters:
                 return False
+            previous_term = self.active_term
+            # clear converged and stalled properties
             self.active_index = (self.active_index + 1) % self.n_terms
             if self.active_term.solvable:
                 self.active_term.maxiter = self.term_iters.pop(0)
                 if not self.active_term.maxiter:
-                    print>> log(1), "skipping term {}: 0 term iters specified".format(self.active_term.jones_label)
+                    print("skipping term {}: 0 term iters specified".format(self.active_term.jones_label), file=log(1))
                     continue
                 self.active_term.iters = 0
                 self._convergence_states_finalized = False
-                print>> log(1), "activating term {}".format(self.active_term.jones_label)
+                if previous_term:
+                    previous_term.has_converged = previous_term.has_stalled = False
+                self.active_term.has_converged = self.active_term.has_stalled = False
+                print("activating term {}".format(self.active_term.jones_label), file=log(1))
                 return True
             else:
-                print>> log(1), "skipping term {}: non-solvable".format(self.active_term.jones_label)
+                print("skipping term {}: non-solvable".format(self.active_term.jones_label), file=log(1))
 
 
     def next_iteration(self):
@@ -419,17 +443,20 @@ class JonesChain(MasterMachine):
         """
 
         self.last_active_index = self.active_index
+        major_step = False
 
-        if self.active_term.has_converged:
-            print>>log(1),"term {} converged ({} iters): {}".format(self.active_term.jones_label,
-                        self.active_term.iters, self.active_term.final_convergence_status_string)
+        if self.active_term.has_converged or self.active_term.has_stalled:
+            print("term {} {} ({} iters): {}".format(self.active_term.jones_label,
+                        "converged" if self.active_term.has_converged else "stalled",
+                        self.active_term.iters, self.active_term.final_convergence_status_string), file=log(1))
             self._convergence_states.append(self.active_term.final_convergence_status_string)
             self._convergence_states_finalized = True
             self._next_chain_term()
+            major_step = True
 
         self.active_term.next_iteration()
 
-        return MasterMachine.next_iteration(self)
+        return MasterMachine.next_iteration(self)[0], major_step
 
     def compute_chisq(self, resid_arr, inv_var_chan):
         """Computes chi-square using the active chain term"""
@@ -504,11 +531,19 @@ class JonesChain(MasterMachine):
 
     @property
     def has_stalled(self):
-        return np.all([term.has_stalled for term in self.jones_terms])
+        return self.active_term.has_stalled and not self.term_iters
 
-    @has_stalled.setter   
+    @has_stalled.setter
     def has_stalled(self, value):
         self.active_term.has_stalled = value
+
+    @property
+    def epsilon(self):
+        return self.active_term.epsilon
+
+    @property
+    def delta_chi(self):
+        return self.active_term.delta_chi
 
 
     class Factory(MasterMachine.Factory):
@@ -532,10 +567,6 @@ class JonesChain(MasterMachine):
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
                                      Complex2x2Gains.exportable_solutions())
 
-        def get_kernel(self):
-            """
-            Returns kernel appropriate for the class of the gain machine.
-            This is the kernel used to allocate data etc.
-            """
-            return self.machine_class.get_kernel(self.jones_options["sol"])
+        def determine_allocators(self):
+            return self.machine_class.determine_allocators(self.jones_options)
 

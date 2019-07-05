@@ -8,6 +8,10 @@ Handles the flagging of data.
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does, 
 # even if one is only trying to save figures to .png.
+from __future__ import print_function
+from builtins import range
+from past.builtins import cmp
+from functools import cmp_to_key
 import numpy as np
 import re
 
@@ -23,7 +27,7 @@ class FL(object):
 
     PRIOR    = dtype(1<<0)    # prior flags (i.e. from MS)
     MISSING  = dtype(1<<1)    # missing data or solution
-    INVALID  = dtype(1<<2)    # invalid data or model (inf, nan)
+    INVALID  = dtype(1<<2)    # invalid data (zero, inf, nan)
     ILLCOND  = dtype(1<<3)    # solution ill conditioned - bad inverse
     NOCONV   = dtype(1<<4)    # no convergence
     CHISQ    = dtype(1<<5)    # excessive chisq
@@ -32,16 +36,18 @@ class FL(object):
     GNULL    = dtype(1<<8)    # gain solution gone to zero.
     LOWSNR   = dtype(1<<9)    # prior SNR too low for gain solution
     GVAR     = dtype(1<<10)   # posterior variance too low for gain solution
-    NULLDATA = dtype(1<<11)   # null data
-    NULLWGHT = dtype(1<<12)   # null weight
-    MAD      = dtype(1<<13)  # residual exceeds MAD-based threshold
+    INVMODEL = dtype(1<<11)   # invalid model (zero, inf, nan)
+    INVWGHT  = dtype(1<<12)   # invalid weight (inf or nan)
+    NULLWGHT = dtype(1<<13)   # null weight
+
+    MAD      = dtype(1<<14)   # residual exceeds MAD-based threshold
     SKIPSOL  = dtype(1<<15)   # omit this data point from the solver
 
     @staticmethod
     def categories():
         """ Returns dict of all possible flag categories. """
 
-        return OrderedDict([(attr, value) for attr, value in FL.__dict__.iteritems()
+        return OrderedDict([(attr, value) for attr, value in FL.__dict__.items()
                             if attr[0] != "_" and type(value) is FL.dtype])
 
 class Flagsets (object):
@@ -72,20 +78,20 @@ class Flagsets (object):
                     if isinstance(bit,int):
                         self.bits[name] = bit
                     else:
-                        print "Warning: unexpected type (%s) for %s keyword of BITFLAG column," \
-                                " ignoring"%(type(bit),kw)
+                        print("Warning: unexpected type (%s) for %s keyword of BITFLAG column," \
+                                " ignoring"%(type(bit),kw))
             # have we found any FLAGSET_ specs?
             if self.bits:
                 order = 'FLAGSETS' in kws and ms.getcolkeyword('BITFLAG','FLAGSETS')
                 if isinstance(order,str):
                     order = order.split(',')
                 else:
-                    print "Warning: unexpected type (%s) for FLAGSETS keyword of BITFLAG column," \
-                                " ignoring"%type(order)
+                    print("Warning: unexpected type (%s) for FLAGSETS keyword of BITFLAG column," \
+                                " ignoring"%type(order))
                     order = []
                 # form up "natural" order by comparing bitmasks
-                bitwise_order = list(self.bits.iterkeys())
-                bitwise_order.sort(lambda a,b:cmp(self.bits[a],self.bits[b]))
+                bitwise_order = list(self.bits.keys())
+                bitwise_order.sort(key=cmp_to_key(lambda a,b:cmp(self.bits[a],self.bits[b])))
                 # if an order is specified, make sure it is actually valid,
                 # and add any elements from bitwise_order that are not present
                 self.order = [ fs for fs in order if fs in self.bits ] + \
@@ -98,14 +104,14 @@ class Flagsets (object):
             elif 'NAMES' in kws:
                 names = ms.getcolkeyword('BITFLAG','NAMES')
                 if isinstance(names,(list,tuple)):
-                    self.order = map(str,names)
+                    self.order = list(map(str,names))
                     bit = 1
                     for name in self.order:
                         self.bits[name] = bit
                         bit <<= 1
                     if ms.iswritable():
                         ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order))
-                        for name,bit in self.bits.iteritems():
+                        for name,bit in self.bits.items():
                             ms._putkeyword('BITFLAG','FLAGSET_%s'%name,-1,False,bit)
                         ms.flush()
             else:
@@ -142,20 +148,23 @@ class Flagsets (object):
                 If there are too many flagsets to create a new one.
         """
 
+        # Cludge for python2/3 interoperability.
+        name = str(name)
+
         # lookup flagbit, return if found
         if self.order is None:
-            raise TypeError,"MS does not contain a BITFLAG column. Please run the addbitflagcol" \
-                                                                        " utility on this MS."
+            raise TypeError("MS does not contain a BITFLAG column. Please run the addbitflagcol" \
+                                                                        " utility on this MS.")
         bit = self.bits.get(name,None)
         if bit is not None:
             return bit
         # raise exception if not allowed to create a new one
         if not create:
-            raise ValueError,"Flagset '%s' not found"%name
+            raise ValueError("Flagset '%s' not found"%name)
         # find empty bit
         for bitnum in range(32):
             bit = 1<<bitnum
-            if bit not in self.bits.values():
+            if bit not in list(self.bits.values()):
                 self.order.append(name)
                 self.bits[name] = bit
                 self.ms._putkeyword('BITFLAG','FLAGSETS',-1,False,','.join(self.order))
@@ -163,7 +172,7 @@ class Flagsets (object):
                 self.ms.flush()
                 return bit
         # no free bit found, bummer
-        raise ValueError,"Too many flagsets in MS, cannot create another one"
+        raise ValueError("Too many flagsets in MS, cannot create another one")
 
     def remove_flagset (self, *fsnames):
         """
@@ -180,12 +189,12 @@ class Flagsets (object):
         
         # lookup all flagsets, raise error if any not found
         if self.bits is None:
-            raise TypeError,"MS does not contain a BITFLAG column, cannot use flagsets"
+            raise TypeError("MS does not contain a BITFLAG column, cannot use flagsets")
         removing = []
         for fs in fsnames:
             bit = self.bits.get(fs,None)
             if bit is None:
-                raise ValueError,"Flagset '%s' not found"%fs
+                raise ValueError("Flagset '%s' not found"%fs)
             removing.append((fs,bit))
         if not removing:
             return
@@ -224,7 +233,7 @@ def flag_chisq (st, GD, basename, nddid):
     chi2 = np.ma.masked_array(st.timechan.chi2, st.timechan.chi2==0)
     total = (~chi2.mask).sum()
     if not total:
-        print>> log, ModColor.Str("no valid solutions anywhere: skipping post-solution flagging.")
+        print(ModColor.Str("no valid solutions anywhere: skipping post-solution flagging."), file=log)
         return None
 
     chi2n = st.timechan.chi2n
@@ -232,8 +241,8 @@ def flag_chisq (st, GD, basename, nddid):
 
     median = np.ma.median(chi2)
     median_np = np.ma.median(chi2n)
-    print>>log, "median chi2 value is {:.3} from {} valid t/f slots".format(median, total)
-    print>>log, "median count per slot is {}".format(median_np)
+    print("median chi2 value is {:.3} from {} valid t/f slots".format(median, total), file=log)
+    print("median count per slot is {}".format(median_np), file=log)
 
     chi_median_thresh = GD["postmortem"]["tf-chisq-median"]
     np_median_thresh  = GD["postmortem"]["tf-np-median"]
@@ -261,8 +270,8 @@ def flag_chisq (st, GD, basename, nddid):
     flag = (chi2 > chi_median_thresh * median)
     chi2[flag] = np.ma.masked
     nflag = flag.sum()
-    print>>log, "{} slots ({:.2%}) flagged on chi2 > {}*median".format(nflag, nflag/float(total), 
-                                                                                chi_median_thresh)
+    print("{} slots ({:.2%}) flagged on chi2 > {}*median".format(nflag, nflag/float(total), 
+                                                                                chi_median_thresh), file=log)
 
     if make_plots:
         pylab.subplot(163)
@@ -273,8 +282,8 @@ def flag_chisq (st, GD, basename, nddid):
 
     flag2 = (chi2n < np_median_thresh * median_np)
     n_new = (flag2&~flag).sum()
-    print>>log, "{} more slots ({:.2%}) flagged on counts < {}*median".format(n_new, 
-                                                            n_new/float(total), np_median_thresh)
+    print("{} more slots ({:.2%}) flagged on counts < {}*median".format(n_new, 
+                                                            n_new/float(total), np_median_thresh), file=log)
     flag |= flag2
 
     chi2[flag] = np.ma.masked
@@ -291,13 +300,13 @@ def flag_chisq (st, GD, basename, nddid):
     freqcount = flag.sum(axis=0)
     freqflags = freqcount > nt * chan_density
     n_new = (freqflags&~(freqcount==nt)).sum()
-    print>>log, "{} more channels flagged on density > {}".format(n_new, chan_density)
+    print("{} more channels flagged on density > {}".format(n_new, chan_density), file=log)
 
     # flag timeslots with overdense flagging
     timecount = flag.sum(axis=1)
     timeflags = timecount > nf * time_density
     n_new = (timeflags&~(timecount==nf)).sum()
-    print>>log, "{} more timeslots flagged on density > {}".format(n_new, time_density)
+    print("{} more timeslots flagged on density > {}".format(n_new, time_density), file=log)
 
     flag = flag | freqflags[np.newaxis,:] | timeflags[:,np.newaxis]
     chi2[flag] = np.ma.masked
@@ -309,14 +318,14 @@ def flag_chisq (st, GD, basename, nddid):
         pylab.colorbar()
 
     # reshape flag array into time, ddid, channel
-    flag3 = flag.reshape((nt, nddid, nf / nddid))
+    flag3 = flag.reshape((nt, nddid, nf // nddid))
 
     # flag entire DDIDs with overdense flagging
     maxcount = nt*nf/nddid
     ddidcounts = flag3.sum(axis=(0, 2))
     ddidflags = ddidcounts > maxcount * ddid_density
     n_new = (ddidflags&~(ddidcounts==maxcount)).sum()
-    print>>log, "{} more ddids flagged on density > {}".format(n_new, ddid_density)
+    print("{} more ddids flagged on density > {}".format(n_new, ddid_density), file=log)
 
     flag3 |= ddidflags[np.newaxis, :, np.newaxis]
     chi2[flag] = np.ma.masked
@@ -328,7 +337,7 @@ def flag_chisq (st, GD, basename, nddid):
         pylab.colorbar()
         filename = basename+".chiflag.png"
         pylab.savefig(filename, DPI=plots.DPI)
-        print>> log, "saved chi-sq flagging plot to "+filename
+        print("saved chi-sq flagging plot to "+filename, file=log)
         if show_plots:
             pylab.show()
 

@@ -16,16 +16,19 @@ list = MODEL_DATA
 ddes = auto
 beam-pattern = None 
 beam-l-axis = None 
-beam-m-axis = None 
+beam-m-axis = None
+pa-rotate = 0
 
 [montblanc]
+pa-rotate = 1
 device-type = CPU 
 dtype = float
 feed-type = circular 
 mem-budget = 4096 
 
 [weight]
-column = WEIGHT_SPECTRUM 
+column = WEIGHT_SPECTRUM
+legacy-v1-2 = 1
 
 [flags]
 apply = legacy 
@@ -50,15 +53,18 @@ stall-quorum = 0.99
 term-iters = 20,20,20
 
 [dist]
-ncpu = 0 
+ncpu = 3
 min-chunks = 32 
 
 [out]
 name = d147 
+overwrite = 1
 mode = sr 
 column = CORRECTED_DATA 
 plots = False 
 plots-show = False
+derotate = 0
+
 
 [log]
 memory = True 
@@ -78,7 +84,6 @@ solvable = True
 label = G 
 type = complex-2x2 
 load-from =  
-save-to = {data[ms]}/G-field:{sel[field]}.parmdb 
 dd-term = False 
 update-type = full 
 time-int = 1 
@@ -95,7 +100,6 @@ solvable = True
 label = B 
 type = complex-2x2 
 load-from =  
-save-to = {data[ms]}/B-field:{sel[field]}.parmdb
 dd-term = False 
 update-type = full 
 time-int = 1 
@@ -112,7 +116,6 @@ solvable = True
 label = dE 
 type = complex-2x2 
 load-from =  
-save-to = {data[ms]}/dE-field:{sel[field]}.parmdb
 dd-term = True 
 update-type = full 
 time-int = 32 

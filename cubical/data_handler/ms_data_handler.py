@@ -2,10 +2,13 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
+from builtins import range
+from six import string_types
 import numpy as np
 from collections import OrderedDict
 import pyrap.tables as pt
-import cPickle
+from future.moves import pickle
 import re
 import traceback
 import math
@@ -21,6 +24,7 @@ from cubical.data_handler import Metadata
 from cubical.data_handler.ms_tile import RowChunk, MSTile
 
 from cubical.tools import logger, ModColor
+from cubical.machines.parallactic_machine import parallactic_machine
 log = logger.getLogger("data_handler")
 
 
@@ -57,11 +61,11 @@ def _parse_slice(arg, what="slice"):
     m1 = re.match("(\d*)~(\d*)(:(\d+))?$", arg)
     m2 = re.match("(\d*):(\d*)(:(\d+))?$", arg)
     if m1:
-        i0, i1, i2 = [ int(x) if x else None for x in m1.group(1),m1.group(2),m1.group(4) ]
+        i0, i1, i2 = [ int(x) if x else None for x in (m1.group(1),m1.group(2),m1.group(4)) ]
         if i1 is not None:
             i1 += 1
     elif m2:
-        i0, i1, i2 = [ int(x) if x else None for x in m2.group(1),m2.group(2),m2.group(4) ]
+        i0, i1, i2 = [ int(x) if x else None for x in (m2.group(1),m2.group(2),m2.group(4)) ]
     else:
         raise ValueError("can't parse '{}' as a {}".format(arg, what))
     return slice(i0,i1,i2)
@@ -84,12 +88,12 @@ def _parse_range(arg, nmax):
 
     Raises:
         TypeError:
-            If the type of arg is not understood. 
+            If the type of arg is not log = logger.getLogger("data_handler")erstood. 
         ValueError:
-            If the range cannot be parsed.
+            If the range cannot be parlog = logger.getLogger("data_handler").
     """
 
-    fullrange = range(nmax)
+    fullrange = list(range(nmax))
 
     if arg is None:
         return fullrange
@@ -106,9 +110,9 @@ def _parse_range(arg, nmax):
     if re.match("\d+$", arg):
         return [ int(arg) ]
     elif "," in arg:
-        return map(int,','.split(arg))
+        return list(map(int,','.split(arg)))
 
-    return fullrange[_parse_range(arg, "range or slice")]
+    return fullrange[_parse_slice(arg, "range or slice")]
 
 _prefixes = dict(m=1e-3, k=1e+3, M=1e+6, G=1e+9, T=1e+12)
 
@@ -122,8 +126,8 @@ def _parse_bin(binspec, units, default_int=None, default_float=None, kind='bin')
         return default_int, default_float
     elif type(binspec) is int:
         return binspec, default_float
-    elif type(binspec) is str:
-        for unit, multiplier in units.items():
+    elif isinstance(binspec, string_types):
+        for unit, multiplier in list(units.items()):
             if binspec.endswith(unit) and len(binspec) > len(unit):
                 xval = binspec[:-len(unit)]
                 if xval[-1] in _prefixes:
@@ -151,11 +155,15 @@ class MSDataHandler:
     def __init__(self, ms_name, data_column, output_column=None, output_model_column=None,
                  output_weight_column=None, reinit_output_column=False,
                  taql=None, fid=None, ddid=None, channels=None,
-                 flagopts={}, diag=False,
+                 diag=False,
                  beam_pattern=None, beam_l_axis=None, beam_m_axis=None,
                  active_subset=None, min_baseline=0, max_baseline=0,
                  chunk_freq=None, rebin_freq=None,
-                 do_load_CASA_kwtables=True):
+                 do_load_CASA_kwtables=True,
+                 feed_rotate_model="auto",
+                 pa_rotate_model=True,
+                 pa_rotate_montblanc=True,
+                 derotate_output=True):
         """
         Initialises a DataHandler object.
 
@@ -201,8 +209,15 @@ class MSDataHandler:
             do_load_CASA_kwtables
                 Should load CASA MS MEMO 229 keyword tables (optional). If not loaded
                 no CASA-style gaintables can be produced.
-
-
+            feed_rotate_model
+                Rotate sky model (either lsm or MODEL_DATA) to a receptor angle
+            pa_rotate_model
+                Rotate sky model (either lsm or MODEL_DATA) to take P.A. into account
+            pa_rotate_monblanc
+                Rotate Montblanc sky model to take P.A. into account, overrides pa_rotate_model setting,
+                or use None to follow the setting
+            derotate_output
+                Derotate corrected data after calibration
         Raises:
             RuntimeError:
                 If Montblanc cannot be imported but simulation is required.
@@ -217,7 +232,7 @@ class MSDataHandler:
 
         self.fid = fid if fid is not None else 0
 
-        print>>log, ModColor.Str("reading MS %s"%self.ms_name, col="green")
+        print(ModColor.Str("reading MS %s"%self.ms_name, col="green"), file=log)
 
         self.ms = pt.table(self.ms_name, readonly=False, ack=False)
         self.data = None
@@ -266,9 +281,9 @@ class MSDataHandler:
         self.metadata.antenna_name_prefix = antnames[0][:prefix_length]
 
         self.metadata.baseline_name = { (p,q): "{}-{}".format(antnames[p], antnames_short[q])
-                                        for p in xrange(self.nants) for q in xrange(p+1, self.nants)}
+                                        for p in range(self.nants) for q in range(p+1, self.nants)}
         self.metadata.baseline_length = { (p,q): math.sqrt(((antpos[p]-antpos[q])**2).sum())
-                                        for p in xrange(self.nants) for q in xrange(p+1, self.nants)}
+                                        for p in range(self.nants) for q in range(p+1, self.nants)}
 
         if do_load_CASA_kwtables:
             # antenna fields to be used when writing gain tables
@@ -314,7 +329,7 @@ class MSDataHandler:
         self.phadir  = _fldtab.getcol("PHASE_DIR", startrow=self.fid, nrow=1)[0][0]
         self.metadata.ra0, self.metadata.dec0 = self.phadir
         self._poltype = np.unique(_feedtab.getcol('POLARIZATION_TYPE')['array'])
-        
+
         if np.any([pol in self._poltype for pol in ['L','l','R','r']]):
             self._poltype = "circular"
             self.feeds = self.metadata.feeds = "rl"
@@ -325,13 +340,13 @@ class MSDataHandler:
             raise TypeError("unsupported POLARIZATION_TYPE {}. Terminating.".format(self._poltype))
 
         # print some info on MS layout
-        print>>log,"  detected {} ({}) feeds".format(self._poltype, self.feeds)
-        print>>log,"  fields are "+", ".join(["{}{}: {}".format('*' if i==fid else "",i,name) for i, name in enumerate(_fldtab.getcol("NAME"))])
+        print("  detected {} ({}) feeds".format(self._poltype, self.feeds), file=log)
+        print("  fields are "+", ".join(["{}{}: {}".format('*' if i==fid else "",i,name) for i, name in enumerate(_fldtab.getcol("NAME"))]), file=log)
 
         # get list of channel frequencies (this may have varying sizes)
-        self._spw_chanfreqs = [ _spwtab.getcell("CHAN_FREQ", i) for i in xrange(_spwtab.nrows()) ]
-        self._spw_chanwidth = [ _spwtab.getcell("CHAN_WIDTH", i) for i in xrange(_spwtab.nrows()) ]
-        print>>log,"  MS contains {} spectral windows".format(len(self._spw_chanfreqs))
+        self._spw_chanfreqs = [ _spwtab.getcell("CHAN_FREQ", i) for i in range(_spwtab.nrows()) ]
+        self._spw_chanwidth = [ _spwtab.getcell("CHAN_WIDTH", i) for i in range(_spwtab.nrows()) ]
+        print("  MS contains {} spectral windows".format(len(self._spw_chanfreqs)), file=log)
 
         # figure out DDID range
         self._num_total_ddids = _ddesctab.nrows()
@@ -343,7 +358,7 @@ class MSDataHandler:
         self._channel_slice = _parse_slice(channels)
         # form up blc/trc/incr arguments for getcolslice() and putcolslice()
         if self._channel_slice != slice(None):
-            print>> log, "  applying a channel selection of {}".format(channels)
+            print("  applying a channel selection of {}".format(channels), file=log)
             chan0 = self._channel_slice.start if self._channel_slice.start is not None else 0
             chan1 = self._channel_slice.stop - 1 if self._channel_slice.stop is not None else -1
             self._ms_blc = (chan0, 0)
@@ -361,14 +376,14 @@ class MSDataHandler:
 
         # now compute binning/chunking for each DDID
         chunk_chans, chunk_hz = _parse_freqspec(chunk_freq, 1<<31, 1e+99)
-        print>>log,"  max freq chunk size is {} channels and/or {} MHz".format(
+        print("  max freq chunk size is {} channels and/or {} MHz".format(
             '--' if chunk_chans == 1<<31 else chunk_chans,
-            '--' if chunk_hz == 1e+99 else chunk_hz*1e-6)
+            '--' if chunk_hz == 1e+99 else chunk_hz*1e-6), file=log)
         rebin_chans, rebin_hz = _parse_freqspec(rebin_freq, 1, None)
         if rebin_hz is not None:
-            print>>log, "  rebinning into {} MHz channels".format(rebin_hz*1e-6)
+            print("  rebinning into {} MHz channels".format(rebin_hz*1e-6), file=log)
         elif rebin_chans > 1:
-            print>>log,"  rebinning by {} channels".format(rebin_chans)
+            print("  rebinning by {} channels".format(rebin_chans), file=log)
 
         # per DDID:
         self.rebin_chan_maps = {}   # map from raw channel to rebinned channel
@@ -428,31 +443,31 @@ class MSDataHandler:
                 nchan = chan+1
                 chanfreqs = self.chanfreqs[ddid] = np.empty(nchan, float)
                 chanwidth = self.chanwidth[ddid] = np.empty(nchan, float)
-                for chan in xrange(nchan):
+                for chan in range(nchan):
                     fmin, fmax = chan_edges.get(chan)
                     chanfreqs[chan] = (fmin+fmax)/2
                     chanwidth[chan] = (fmax-fmin)
                 self.freqchunks[ddid] = freqchunks = [rebin_chan_map[chan0] for chan0 in freqchunk_chan0]
-                print>>log(0),"  DDID {}: {}/{} selected channels will be rebinned into {} channels".format(
-                    ddid, nchan0, nchan0_orig, nchan)
-                print>>log(1),"    rebinned channel freqs (MHz): {}".format(
-                    " ".join([str(x*1e-6) for x in chanfreqs]))
-                print>>log(1),"    rebinned channel widths (MHz): {}".format(
-                    " ".join([str(x*1e-6) for x in chanwidth]))
+                print("  DDID {}: {}/{} selected channels will be rebinned into {} channels".format(
+                    ddid, nchan0, nchan0_orig, nchan), file=log(0))
+                print("    rebinned channel freqs (MHz): {}".format(
+                    " ".join([str(x*1e-6) for x in chanfreqs])), file=log(1))
+                print("    rebinned channel widths (MHz): {}".format(
+                    " ".join([str(x*1e-6) for x in chanwidth])), file=log(1))
             else:
                 nchan = nchan0
                 self.chanfreqs[ddid] = chanfreqs0
                 self.chanwidth[ddid] = chanwidth0
                 self.freqchunks[ddid] = freqchunks = freqchunk_chan0
                 self.rebin_chan_maps[ddid] = None
-                print>>log(0),"  DDID {}: {}/{} channels selected".format(ddid, nchan0, nchan0_orig)
+                print("  DDID {}: {}/{} channels selected".format(ddid, nchan0, nchan0_orig), file=log(0))
 
-            print>>log(0),"    found {} frequency chunks: {}".format(len(freqchunks),
-                            " ".join([str(ch) for ch in freqchunks + [nchan]]))
+            print("    found {} frequency chunks: {}".format(len(freqchunks),
+                            " ".join([str(ch) for ch in freqchunks + [nchan]])), file=log(0))
 
         # now accumulate list of all frequencies, and also see if selected DDIDs have a uniform rebinning and chunking map
         all_freqs = set(self.chanfreqs[self._ddids[0]])
-        self.do_freq_rebin = any([m is not None for m in self.rebin_chan_maps.values()])
+        self.do_freq_rebin = any([m is not None for m in list(self.rebin_chan_maps.values())])
         self._ddids_unequal = False
         ddid0_map = self.rebin_chan_maps[self._ddids[0]]
         for ddid in self._ddids[1:]:
@@ -465,7 +480,7 @@ class MSDataHandler:
             all_freqs.update(self.chanfreqs[ddid])
 
         if self._ddids_unequal:
-            print>>log(0,"red"),"Selected DDIDs have differing channel structure. Processing may be less efficient."
+            print("Selected DDIDs have differing channel structure. Processing may be less efficient.", file=log(0,"red"))
 
 
         # TODO: this assumes DDIDs are ordered in frequency. Exotic cases where this is not?
@@ -483,8 +498,8 @@ class MSDataHandler:
         first_chan -= len(self.chanfreqs[self._ddids[0]])
         self.ddid_first_chan = {ddid:first_chan[num] for num,ddid in enumerate(self._ddids)}
 
-        print>>log(1),"   overall frequency space (MHz): {}".format(" ".join([str(f*1e-6) for f in self.all_freqs]))
-        print>>log(1),"   DDIDs start at channels: {}".format(" ".join([str(ch) for ch in self.ddid_first_chan]))
+        print("   overall frequency space (MHz): {}".format(" ".join([str(f*1e-6) for f in self.all_freqs])), file=log(1))
+        print("   DDIDs start at channels: {}".format(" ".join([str(ch) for ch in self.ddid_first_chan])), file=log(1))
 
 
         # use TaQL to select subset
@@ -494,23 +509,23 @@ class MSDataHandler:
         self.reopen()
 
         if self.taql:
-            print>> log, "  applying TAQL query '%s' (%d/%d rows selected)" % (self.taql,
-                                                                             self.data.nrows(), self.ms.nrows())
+            print("  applying TAQL query '%s' (%d/%d rows selected)" % (self.taql,
+                                                                             self.data.nrows(), self.ms.nrows()), file=log)
 
         if active_subset:
             subset = self.data.query(active_subset)
             self.active_row_numbers = np.array(subset.rownumbers(self.data))
             self.inactive_rows = np.zeros(self.data.nrow(), True)
             self.inactive_rows[self.active_row_numbers] = False
-            print>> log, "  applying TAQL query '%s' for solvable subset (%d/%d rows)" % (active_subset,
-                                                            subset.nrows(), self.data.nrows())
+            print("  applying TAQL query '%s' for solvable subset (%d/%d rows)" % (active_subset,
+                                                            subset.nrows(), self.data.nrows()), file=log)
         else:
             self.active_row_numbers = self.inactive_rows = None
         self.min_baseline, self.max_baseline = min_baseline, max_baseline
 
         self.nrows = self.data.nrows()
 
-        self._datashape = {ddid: (self.nrows, len(freqs), self.ncorr) for ddid, freqs in self.chanfreqs.items()}
+        self._datashape = {ddid: (self.nrows, len(freqs), self.ncorr) for ddid, freqs in list(self.chanfreqs.items())}
 
         if not self.nrows:
             raise ValueError("MS selection returns no rows")
@@ -519,13 +534,13 @@ class MSDataHandler:
         self.uniq_times = np.unique(self.time_col)
         self.ntime = len(self.uniq_times)
 
-        print>>log,"  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d corrs %s" % (self.nants,
+        print("  %d antennas, %d rows, %d/%d DDIDs, %d timeslots, %d corrs %s" % (self.nants,
                     self.nrows, len(self._ddids), self._num_total_ddids, self.ntime,
-                    self.nmscorrs, "(using diag only)" if self._corr_4to2 else "")
-        print>>log,"  DDID central frequencies are at {} GHz".format(
-                " ".join(["%.2f"%(self.chanfreqs[d][len(self.chanfreqs[d])//2]*1e-9) for d in self._ddids]))
+                    self.nmscorrs, "(using diag only)" if self._corr_4to2 else ""), file=log)
+        print("  DDID central frequencies are at {} GHz".format(
+                " ".join(["%.2f"%(self.chanfreqs[d][len(self.chanfreqs[d])//2]*1e-9) for d in self._ddids])), file=log)
         if self.do_freq_rebin and (output_column or output_model_column):
-            print>>log(0, "red"),"WARNING: output columns will be upsampled from frequency-binned data!"
+            print("WARNING: output columns will be upsampled from frequency-binned data!", file=log(0, "red"))
         self.nddid = len(self._ddids)
 
         self.data_column = data_column
@@ -536,169 +551,59 @@ class MSDataHandler:
             reinit_columns = [col for col in [output_column, output_model_column]
                                if col and col in self.ms.colnames()]
             if reinit_columns:
-                print>>log(0),"reinitializing output column(s) {}".format(" ".join(reinit_columns))
+                print("reinitializing output column(s) {}".format(" ".join(reinit_columns)), file=log(0))
                 self.ms.removecols(reinit_columns)
                 for col in reinit_columns:
                     self._add_column(col)
                 if output_weight_column is not None:
-                    print>>log(0),"reinitializing output weight column {}".format(output_weight_column)
+                    print("reinitializing output weight column {}".format(output_weight_column), file=log(0))
                     try:
                         self.ms.removecols(output_weight_column) #Just remove column will be added later
                     except:
-                        print>>log(0),"No output weight column {}, will just proceed".format(output_weight_column)
+                        print("No output weight column {}, will just proceed".format(output_weight_column), file=log(0))
                         self._add_column(output_weight_column, like_type='float')
 
                 self.reopen()
 
-        self._reinit_bitflags = flagopts["reinit-bitflags"]
-        apply_flags  = flagopts.get("apply")
-        save_bitflag = flagopts.get("save")
-        save_flags   = flagopts.get("save-legacy")
-        auto_init    = flagopts.get("auto-init")
-        see_no_evil  = flagopts.get("see-no-evil")
-
-        # figure out if we have a bitflag column
-        if "BITFLAG" in self.ms.colnames():
-            if self._reinit_bitflags:
-                for kw in self.ms.colkeywordnames("BITFLAG"):
-                    self.ms.removecolkeyword("BITFLAG", kw)
-                self.ms.removecols("BITFLAG")
-                if "BITFLAG_ROW" in self.ms.colnames():
-                    self.ms.removecols("BITFLAG_ROW")
-                print>> log, ModColor.Str("Removing BITFLAG column, since --flags-reinit-bitflags is set.")
-                print>> log, ModColor.Str("WARNING: current state of FLAG column will be used to init bitflags!")
-                self.reopen()
-                bitflags = None
-            else:
-                if "AUTOINIT_IN_PROGRESS" in self.ms.colkeywordnames("BITFLAG"):
-                    if auto_init:
-                        print>> log, ModColor.Str("WARNING: the BITFLAG column does not appear to be properly initialized. "
-                            "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
-                            "This is not fatal, but we'll attempt to refill it from the FLAG/FLAG_ROW column.")
-                        self._reinit_bitflags = True
-                    elif see_no_evil:
-                        print>> log, ModColor.Str("WARNING: the BITFLAG column does not appear to be properly initialized. "
-                            "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. "
-                            "Brace yourself for failure down the line.")
-                    else:
-                        raise ValueError("The BITFLAG column does not appear to be properly initialized, "
-                                         "and --flags-auto-init is off. If you really want to proceed, re-run "
-                                         "with --flags-see-no-evil 1.")
-
-                bitflags = flagging.Flagsets(self.ms)
-        else:
-            bitflags = None
-
-        self._apply_flags = self._apply_bitflags = self._save_bitflag = self._auto_fill_bitflag = None
-        self._save_flags = bool(save_bitflag) if save_flags == "auto" else save_flags
-        self._save_flags_apply = save_flags == 'apply'
-
-        # no BITFLAG. Should we auto-init it?
-
-        if auto_init:
-            if bitflags is None:
-                self._add_column("BITFLAG", like_type='int')
-                if "BITFLAG_ROW" not in self.ms.colnames():
-                    self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int')
-                self.reopen()
-                bitflags = flagging.Flagsets(self.ms)
-                if type(auto_init) is not str:
-                    raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
-                self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
-                self._reinit_bitflags = True
-                print>> log, ModColor.Str("  Will auto-fill new BITFLAG '{}' ({}) from FLAG/FLAG_ROW".format(auto_init, self._auto_fill_bitflag), col="green")
-                self.ms.putcolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS", True)
-            else:
-                self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
-                print>> log, "  BITFLAG column found. Will auto-fill with '{}' ({}) from FLAG/FLAG_ROW if not filled".format(auto_init, self._auto_fill_bitflag)
-
-        # OK, we have BITFLAG somehow -- use these
-
-        self.flagcounts = OrderedDict(TOTAL=0, FLAG=0)
-
-        if bitflags:
-            self._apply_flags = None
-            self._apply_bitflags = 0
-            if apply_flags:
-                if type(apply_flags) is list:
-                    apply_flags = ",".join(apply_flags)
-                # --flags-apply specified as a bitmask, or a single string, or a single negated string, or a list of strings
-                if type(apply_flags) is int:
-                    self._apply_bitflags = apply_flags
-                elif type(apply_flags) is not str:
-                    raise ValueError("Illegal --flags-apply setting -- string or bitmask values expected")
-                else:
-                    print>>log,"    BITFLAG column defines the following flagsets: {}".format(
-                        " ".join(['{}:{}'.format(name, bitflags.bits[name]) for name in bitflags.names()]))
-                    if apply_flags == "FLAG":
-                        self._apply_flags = True
-                    elif apply_flags[0] == '-':
-                        flagset = apply_flags[1:]
-                        print>> log(0), "    Excluding flagset {}".format(flagset)
-                        if flagset not in bitflags.bits:
-                            print>>log(0,"red"),"    flagset '{}' not found -- ignoring".format(flagset)
-                        self._apply_bitflags = sum([bitmask for fset, bitmask in bitflags.bits.iteritems() if fset != flagset])
-                    else:
-                        print>> log(0), "    Applying flagset(s) {}".format(apply_flags)
-                        apply_flags = apply_flags.split(",")
-                        for flagset in apply_flags:
-                            if flagset not in bitflags.bits:
-                                print>>log(0,"red"),"    flagset '{}' not found -- ignoring".format(flagset)
-                            else:
-                                self._apply_bitflags |= bitflags.bits[flagset]
-            if self._apply_flags:
-                print>> log, ModColor.Str("  Using flags from FLAG/FLAG_ROW columns")
-            if self._apply_bitflags:
-                print>> log(0, "blue"), "  Applying BITFLAG mask {} to input data".format(self._apply_bitflags)
-            elif not self._apply_flags:
-                print>> log(0, "red"), "  No input flags will be applied!"
-            if save_bitflag:
-                self._save_bitflag = bitflags.flagmask(save_bitflag, create=True)
-                if self._save_flags:
-                    if self._save_flags_apply:
-                        print>> log(0,"blue"), "  Will save output flags into BITFLAG '{}' ({}), and all flags (including input) FLAG/FLAG_ROW".format(
-                            save_bitflag, self._save_bitflag)
-                    else:
-                        print>> log(0,"blue"), "  Will save output flags into BITFLAG '{}' ({}), and into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
-                else:
-                    print>> log(0,"red"), "  Will save output flags into BITFLAG '{}' ({}), but not into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag)
-            else:
-                if self._save_flags:
-                    if self._save_flags_apply:
-                        print>> log(0, "blue"), "  Will save all flags (including input) into FLAG/FLAG_ROW"
-                    else:
-                        print>> log(0, "blue"), "  Will save output flags into FLAG/FLAG_ROW"
-
-            for flagset in bitflags.names():
-                self.flagcounts[flagset] = 0
-            self.bitflags = bitflags.bits
-
-        # else no BITFLAG -- fall back to using FLAG/FLAG_ROW if asked, but definitely can't save
-
-        else:
-            if save_bitflag:
-                raise RuntimeError("No BITFLAG column in this MS. Either use --flags-auto-init to insert one, or disable --flags-save.")
-            self._apply_flags = bool(apply_flags)
-            self._apply_bitflags = 0
-            if self._apply_flags:
-                print>> log, ModColor.Str("  No BITFLAG column in this MS. Using flags from FLAG/FLAG_ROW columns")
-            else:
-                print>> log, ModColor.Str("  No flags will be read, since --flags-apply was not set")
-            if self._save_flags:
-                print>> log(0, "blue"), "  Will save output flags into into FLAG/FLAG_ROW"
-            self._save_flags_apply = False   # no point in saving input flags, as nothing would change
-            self.bitflags = {}
-
-        self.flagcounts['DESEL'] = 0
-        self.flagcounts['IN'] = 0
-        self.flagcounts['NEW'] = 0
-        self.flagcounts['OUT'] = 0
-
         self.gain_dict = {}
 
-        # now parse the model composition
+        # figure out feed rotation
+        if feed_rotate_model == "auto":
+            feed_angles = _feedtab.getcol('RECEPTOR_ANGLE')
+            feed_rotate_model = (feed_angles !=0 ).any()
+        elif not feed_rotate_model:
+            feed_angles = np.zeros((self.nants, 2), float)
+        elif isinstance(feed_rotate_model, (float,int)):
+            feed_angles = np.full((self.nants, 2), feed_rotate_model*math.pi/180)
+            feed_rotate_model = True
 
-    def init_models(self, models, weights, mb_opts={}, use_ddes=False):
+        # figure out PA rotation
+        self.rotate_model = pa_rotate_model or feed_rotate_model
+
+        self.derotate_output = derotate_output if derotate_output is not None else self.rotate_model
+        self.pa_rotate_montblanc = pa_rotate_montblanc if pa_rotate_montblanc is not None else pa_rotate_model
+
+        print("Input model feed rotation {}abled, PA rotation {}abled".format(
+                        "en" if feed_rotate_model else "dis", "en" if pa_rotate_model else "dis"), file=log(0))
+        if feed_rotate_model:
+           print("  feed angles (deg) are {}".format(", ".join(["{:.1f} {:.1f}".format(*fa) for fa in feed_angles*180/math.pi])), file=log(1))
+        print("Output visibilities derotation {}abled".format(
+                        "en" if self.derotate_output else "dis"), file=log(0))
+
+        if self.rotate_model or self.derotate_output:
+            self.parallactic_machine = parallactic_machine(antnames,
+                                                           antpos,
+                                                           feed_basis=self._poltype,
+                                                           feed_angles=feed_angles,
+                                                           enable_rotation=self.rotate_model,
+                                                           enable_pa=pa_rotate_model,
+                                                           enable_derotation=self.derotate_output,
+                                                           field_centre=tuple(np.rad2deg(self.phadir)))
+        else:
+            self.parallactic_machine = None
+        pass
+
+    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False):
         """Parses the model list and initializes internal structures"""
 
         # ensure we have as many weights as models
@@ -708,8 +613,9 @@ class MSDataHandler:
         elif len(weights) == 1:
             weights = weights*len(models)
         elif len(weights) != len(models):
-            raise ValueError,"need as many sets of weights as there are models"
+            raise ValueError("need as many sets of weights as there are models")
 
+        self.fill_offdiag_weights = fill_offdiag_weights
         self.use_montblanc = False    # will be set to true if Montblanc is invoked
         self.models = []
         self.model_directions = set() # keeps track of directions in Tigger models
@@ -724,10 +630,16 @@ class MSDataHandler:
                 if not dirmodel:
                     continue
                 idirtag = " dir{}".format(idir if use_ddes else 0)
-                for component in dirmodel.split("+"):
+                # split component list at +/- signs
+                components = re.split("(\\+-|\\+)", dirmodel.rstrip("+-"))  # this list will be 'comp1', '+', 'comp2', etc.
+                # insert leading "+" if missing
+                if components[0] != "+" and components[0] != '+-':
+                    components.insert(0, "+")
+                for sign, component in zip(components[::2], components[1::2]):
+                    subtract = sign == '+-'
                     # special case: "1" means unity visibilities
                     if component == "1":
-                        dirmodels.setdefault(idirtag, []).append((1, None))
+                        dirmodels.setdefault(idirtag, []).append((1, None, subtract))
                     # else check for an LSM component
                     elif component.startswith("./") or component not in self.ms.colnames():
                         # check if LSM ends with @tag specification
@@ -739,47 +651,51 @@ class MSDataHandler:
                             if montblanc is None:
                                 montblanc, exc = data_handler.import_montblanc()
                                 if montblanc is None:
-                                    print>> log, ModColor.Str("Error importing Montblanc: ")
+                                    print(ModColor.Str("Error importing Montblanc: "), file=log)
                                     for line in traceback.format_exception(*exc):
-                                        print>> log, "  " + ModColor.Str(line)
-                                    print>> log, ModColor.Str("Without Montblanc, LSM functionality is not available.")
+                                        print("  " + ModColor.Str(line), file=log)
+                                    print(ModColor.Str("Without Montblanc, LSM functionality is not available."), file=log)
                                     raise RuntimeError("Error importing Montblanc")
                             self.use_montblanc = True
-                            import TiggerSourceProvider
+                            from . import TiggerSourceProvider
                             component = TiggerSourceProvider.TiggerSourceProvider(component, self.phadir,
                                                                                   dde_tag=use_ddes and tag)
                             for key in component._cluster_keys:
                                 dirname = idirtag if key == 'die' else key
-                                dirmodels.setdefault(dirname, []).append((component, key))
+                                dirmodels.setdefault(dirname, []).append((component, key, subtract))
                         else:
-                            raise ValueError,"model component {} is neither a valid LSM nor an MS column".format(component)
+                            raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
                     # else it is a visibility column component
                     else:
-                        dirmodels.setdefault(idirtag, []).append((component, None))
-            self.model_directions.update(dirmodels.iterkeys())
+                        dirmodels.setdefault(idirtag, []).append((component, None, subtract))
+            self.model_directions.update(iter(dirmodels.keys()))
         # Now, each model is a dict of dirmodels, keyed by direction name (unnamed directions are _dir0, _dir1, etc.)
         # Get all possible direction names
         self.model_directions = sorted(self.model_directions)
 
         # print out the results
-        print>>log(0),ModColor.Str("Using {} model(s) for {} directions(s){}".format(
+        print(ModColor.Str("Using {} model(s) for {} directions(s){}".format(
                                         len(self.models),
                                         len(self.model_directions),
                                         " (DDEs explicitly disabled)" if not use_ddes else""),
-                                   col="green")
+                                   col="green"), file=log(0))
         for imod, (dirmodels, weight_col) in enumerate(self.models):
-            print>>log(0),"  model {} (weight {}):".format(imod, weight_col)
+            print("  model {} (weight {}):".format(imod, weight_col), file=log(0))
             for idir, dirname in enumerate(self.model_directions):
                 if dirname in dirmodels:
-                    comps = []
-                    for comp, tag in dirmodels[dirname]:
-                        if not tag or tag == 'die':
-                            comps.append("{}".format(comp))
+                    comps = ""
+                    for comp, tag, subtract in dirmodels[dirname]:
+                        if subtract:
+                            sign = "-"
                         else:
-                            comps.append("{}({})".format(tag, comp))
-                    print>>log(0),"    direction {}: {}".format(idir, " + ".join(comps))
+                            sign = "+" if comps else ""
+                        if not tag or tag == 'die':
+                            comps += "{}{}".format(sign, comp)
+                        else:
+                            comps += "{}{}({})".format(sign,tag, comp)
+                    print("    direction {}: {}".format(idir, comps), file=log(0))
                 else:
-                    print>>log(0),"    direction {}: empty".format(idir)
+                    print("    direction {}: empty".format(idir), file=log(0))
 
         self.use_ddes = len(self.model_directions) > 1
 
@@ -825,22 +741,26 @@ class MSDataHandler:
 
         return " && ".join(taqls)
 
-    def fetch(self, *args, **kwargs):
+    def fetch(self, colname, first_row=0, nrows=-1, subset=None):
         """
         Convenience function which mimics pyrap.tables.table.getcol().
 
         Args:
-            args (tuple): 
-                Variable length argument list.
-            kwargs (dict): 
-                Arbitrary keyword arguments.
+            colname (str):
+                column name
+            first_row (int):
+                starting row
+            nrows (int):
+                number of rows to fetch
+            subset:
+                table to fetch from, else uses self.data
 
         Returns:
             np.ndarray:
                 Result of getcol(\*args, \*\*kwargs).
         """
 
-        return self.data.getcol(*args, **kwargs)
+        return (subset or self.data).getcol(str(colname), first_row, nrows)
 
     def fetchslice(self, column, startrow=0, nrows=-1, subset=None):
         """
@@ -859,6 +779,7 @@ class MSDataHandler:
                 Result of getcolslice()
         """
         subset = subset or self.data
+        print("reading {}".format(column), file=log(0))
         if self._ms_blc == None:
             return subset.getcol(column, startrow, nrows)
         return subset.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
@@ -906,21 +827,41 @@ class MSDataHandler:
         # if no slicing, just use putcol to put the whole thing. This always works,
         # unless the MS is screwed up
         if self._ms_blc == None:
-            return subset.putcol(column, value, startrow, nrows)
-        # A variable-shape column may be uninitialized, in which case putcolslice will not work.
-        # But we try it first anyway, especially if the first row of the block looks initialized
-        if False and self.data.iscelldefined(column, startrow): #@oms's patch to work around a casacore bug #a90db9bbcb41431862e9a
-            try:
-                return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [], startrow, nrows)
-            except Exception, exc:
-                pass
+            return subset.putcol(str(column), value, startrow, nrows)
         if nrows<0:
             nrows = subset.nrows()
-        print>>log(0),"  attempting to initialize column {} rows {}:{}".format(column, startrow, startrow+nrows)
-        ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
-        value0 = np.zeros((nrows, self._nchan0_orig[ddid], self.nmscorrs), value.dtype)
-        value0[:, self._channel_slice, self._corr_slice] = value
-        return subset.putcol(column, value0, startrow, nrows)
+
+        ## NB: massive caveat emptor
+        ## putcolslice() segfaults occassionally (in casacore 3.0 at least), so the code below, while well-intentioned,
+        ## doesn't actually work:
+
+        # # A variable-shape column may be uninitialized, in which case putcolslice will not work.
+        # # But we try it first anyway, especially if the first row of the block looks initialized
+        # if self.data.iscelldefined(column, startrow):
+        #     try:
+        #         print>>log(0),"putcolslice {} {} {} {} {}".format(value.shape,self._ms_blc,self._ms_trc, startrow, nrows)
+        #         return subset.putcolslice(column, value, self._ms_blc, self._ms_trc, [1,1], startrow, nrows)
+        #     except Exception, exc:
+        #         pass
+
+        ## So if we do have a slice, we should really read the column in and write it back out. This seems a waste
+        ## for visibility columns (since presumably we're only interested in the slice), so we'll initialize the
+        ## out-of-slice values with zeroes, and flag them out
+
+        if self._channel_slice == slice(None) and self._corr_slice == slice(None):
+            return subset.putcol(column, value, startrow, nrows)
+        else:
+            # for bitflags, we want to preserve flags we haven't touched -- read the column
+            if column == "BITFLAG" or column == "FLAG":
+                value0 = subset.getcol(column)
+                value0[:] = np.bitwise_or.reduce(value0, axis=2)[:,:,np.newaxis]
+            # otherwise, init empty column
+            else:
+                ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
+                shape = (nrows, self._nchan0_orig[ddid], self.nmscorrs)
+                value0 = np.zeros(shape, value.dtype)
+            value0[:, self._channel_slice, self._corr_slice] = value
+            return subset.putcol(column, value0, startrow, nrows)
 
     def define_chunk(self, chunk_time, rebin_time, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """
@@ -962,23 +903,24 @@ class MSDataHandler:
 
         self.antea = antea = self.fetch("ANTENNA1").astype(np.int64)
         self.anteb = anteb = self.fetch("ANTENNA2").astype(np.int64)
+        self.rownumbers = self.data.rownumbers()
         self.time_col = time_col = self.fetch("TIME")
         self.ddid_col = ddid_col = ddid_col0 = self.fetch("DATA_DESC_ID").astype(np.int64)
-        print>> log, "  read indexing columns ({} total rows)".format(len(self.time_col))
+        print("  read indexing columns ({} total rows)".format(len(self.time_col)), file=log)
         self.do_time_rebin = False
 
         self.times, self.uniq_times,_ = data_handler.uniquify(time_col)
-        print>> log, "  built timeslot index ({} unique timestamps)".format(len(self.uniq_times))
+        print("  built timeslot index ({} unique timestamps)".format(len(self.uniq_times)), file=log)
 
         chunk_timeslots, chunk_seconds = _parse_timespec(chunk_time, 1<<31, 1e+99)
-        print>>log,"  max chunk size is {} timeslots and/or {} seconds".format(
+        print("  max chunk size is {} timeslots and/or {} seconds".format(
             '--' if chunk_timeslots == 1<<31 else chunk_timeslots,
-            '--' if chunk_seconds == 1e+99 else chunk_seconds)
+            '--' if chunk_seconds == 1e+99 else chunk_seconds), file=log)
         rebin_timeslots, rebin_seconds = _parse_timespec(rebin_time, 1, None)
         if rebin_seconds is not None:
-            print>>log, "  computing time rebinning into {} seconds".format(rebin_seconds)
+            print("  computing time rebinning into {} seconds".format(rebin_seconds), file=log)
         elif rebin_timeslots > 1:
-            print>>log,"  computing time rebinning by {} timeslots".format(rebin_timeslots)
+            print("  computing time rebinning by {} timeslots".format(rebin_timeslots), file=log)
 
         import cubical.kernels
         rebinning = cubical.kernels.import_kernel("rebinning")
@@ -995,7 +937,7 @@ class MSDataHandler:
 
         # count of rows in output
         nrow_out = 0                                     # number of rows allocated in output
-        chunk_end_ts = chunk_end_time = None             # current end-of-chunk boundary
+        chunk_end_ts = chunk_end_time = -1             # current end-of-chunk boundary
 
         # set chunk-by boundaries, if specified
         boundaries = np.zeros_like(time_col, bool)
@@ -1031,9 +973,9 @@ class MSDataHandler:
                 nrow_out += 1
             self.rebin_row_map[row0] = row if a1<a2 else -row
 
-        print>>log,"  found {} time chunks: {} {}".format(len(timechunk_row0),
-                        " ".join([str(self.times[r]) for r in timechunk_row0]),
-                        str(self.times[-1]+1))
+        print("  found {} time chunks: {} {}".format(len(timechunk_row0),
+                        " ".join(["{}:{}:{}".format(i, r, self.times[r]) for i, r in enumerate(timechunk_row0)]),
+                        str(self.times[-1]+1)), file=log)
 
         # at the end of this, we have a list of timechunk_row0: i.e. a list of starting rows for
         # each time chunk (which may composed of multiple DDIDs), plus rebin_row_map: a vector giving
@@ -1051,9 +993,9 @@ class MSDataHandler:
 
             self.times, self.uniq_times, _ = data_handler.uniquify(self.time_col)
             self.do_time_rebin = True
-            print>> log, "  will rebin into {} rows ({} rebinned timeslots)".format(nrow_out, len(self.uniq_times))
+            print("  will rebin into {} rows ({} rebinned timeslots)".format(nrow_out, len(self.uniq_times)), file=log)
             if self.output_column or self.output_model_column:
-                print>> log(0, "red"), "WARNING: output columns will be upsampled from time-binned data!"
+                print("WARNING: output columns will be upsampled from time-binned data!", file=log(0, "red"))
         else:
             self.rebin_row_map = np.arange(nrows0, dtype=int)
             # swap conjugate baselines
@@ -1116,12 +1058,13 @@ class MSDataHandler:
                         chunklist.append(RowChunk(ddid, tchunk, timeslice, rows, rows0))
         self.nddid_actual = len(self._actual_ddids)
 
-        print>>log,"  generated {} row chunks based on time and DDID".format(len(chunklist))
+        print("  generated {} row chunks based on time and DDID".format(len(chunklist)), file=log)
 
         # re-sort these row chunks into naturally increasing order (by first row of each chunk)
-        def _compare_chunks(a, b):
-            return cmp(a.rows[0], b.rows[0])
-        chunklist.sort(cmp=_compare_chunks)
+        chunklist.sort(key=lambda x: x.rows[0])
+
+        if log.verbosity() > 2:
+            print("  row chunks: {}".format(", ".join(["{} {}:{}".format(ch.tchunk, min(ch.rows0), max(ch.rows0)+1) for ch in chunklist])), file=log(3))
 
         # now, break the row chunks into tiles. Tiles are an "atom" of I/O. First, we try to define each tile as a
         # sequence of overlapping row chunks (i.e. chunks such that the first row of a subsequent chunk comes before
@@ -1141,7 +1084,7 @@ class MSDataHandler:
             else:
                 tile_list[-1].append(chunk)
 
-        print>> log, "  row chunks yield {} potential tiles".format(len(tile_list))
+        print("  row chunks yield {} potential tiles".format(len(tile_list)), file=log)
 
         # now, for effective I/O and parallelisation, we need to have a minimum amount of chunks per tile.
         # Coarsen our tiles to achieve this
@@ -1158,14 +1101,170 @@ class MSDataHandler:
 
         tile_list = coarser_tile_list
         for i, tile in enumerate(tile_list):
-            tile.finalize("tile #{}/{}".format(i+1, len(tile_list)))
+            tile.finalize("tile {}/{}".format(i, len(tile_list)))
 
         max_chunks = max([tile.total_tf_chunks() for tile in tile_list])
 
-        print>> log, "  coarsening this to {} tiles (max {} chunks per tile, based on {}/{} requested)".format(
-            len(tile_list), max_chunks, chunks_per_tile, max_chunks_per_tile)
+        print("  coarsening this to {} tiles (max {} chunks per tile, based on {}/{} requested)".format(
+            len(tile_list), max_chunks, chunks_per_tile, max_chunks_per_tile), file=log)
 
         return max_chunks, tile_list
+
+    def define_flags(self, tile_list, flagopts):
+
+        reinit_bitflags = flagopts.get("reinit-bitflags")
+        apply_flags  = flagopts.get("apply")
+        save_bitflag = flagopts.get("save")
+        save_flags   = flagopts.get("save-legacy")
+        auto_init    = flagopts.get("auto-init") or reinit_bitflags
+
+        # Do we have a proper bitflag column?
+        bitflags = None
+        if "BITFLAG" in self.ms.colnames():
+            print("checking MS BITFLAG column", file=log(1))
+            # asked to re-initialize: blow it away
+            if reinit_bitflags:
+                print("will re-initialize BITFLAG column, since --flags-reinit-bitflags is set.", file=log(0, "red"))
+                print("WARNING: current state of FLAG column will be used to init bitflags!", file=log(0, "red"))
+            # check for consistency: BITFLAG_ROW must be present too
+            elif "BITFLAG_ROW" not in self.ms.colnames():
+                print("WARNING: the BITFLAG_ROW column does not appear to be properly initialized. " \
+                                       "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. ", file=log(0, "red"))
+            # auto-fill keyword must be cleared (otherwise a filling loop was interrupted)
+            elif "AUTOINIT_IN_PROGRESS" in self.ms.colkeywordnames("BITFLAG"):
+                print("WARNING: the BITFLAG column does not appear to be properly initialized. " \
+                                       "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. ", file=log(0, "red"))
+            # all cells must be defined
+            elif not all([self.data.iscelldefined("BITFLAG", i) for i in range(self.data.nrows())]):
+                print("WARNING: the BITFLAG column appears to have missing cells. " \
+                                       "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. ", file=log(0, "red"))
+            # OK, it's valid as best as we can tell
+            else:
+                print("the MS appears to have a properly formed BITFLAG column", file=log(0))
+                bitflags = flagging.Flagsets(self.ms)
+
+            # If no bitflags at this stage (though the column exists), then blow it away if auto_init is enabled.
+            # Note that this arises only if (a) the column is malformed, or (b) --flags-reinit-bitflags was
+            # explicitly set (which implies auto_init is set)
+            if not bitflags and auto_init:
+                for kw in self.ms.colkeywordnames("BITFLAG"):
+                    self.ms.removecolkeyword("BITFLAG", kw)
+                self.ms.removecols("BITFLAG")
+                if "BITFLAG_ROW" in self.ms.colnames():
+                    self.ms.removecols("BITFLAG_ROW")
+                print("removing current BITFLAG/BITFLAG_ROW columns", file=log(0, "red"))
+                self.reopen()
+
+        self._apply_flags = self._apply_bitflags = self._save_bitflag = self._auto_fill_bitflag = None
+        self._save_flags = bool(save_bitflag) if save_flags == "auto" else save_flags
+        self._save_flags_apply = save_flags == 'apply'
+
+        # Insert BITFLAG column, if so specified (note it may have been blown away above)
+        if not bitflags and auto_init:
+            self._add_column("BITFLAG", like_type='int')
+            if "BITFLAG_ROW" not in self.ms.colnames():
+                self._add_column("BITFLAG_ROW", like_col="FLAG_ROW", like_type='int')
+            self.reopen()
+            bitflags = flagging.Flagsets(self.ms)
+
+        if auto_init:
+            if not isinstance(auto_init, string_types):
+                raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
+            if auto_init in bitflags.names():
+                print("  bitflag '{}' already exists, will not auto-fill".format(auto_init), file=log(0))
+            else:
+                print("  auto-filling bitflag '{}' from FLAG/FLAG_ROW column. Please do not interrupt this process!".format(auto_init), file=log(0, "blue"))
+                print("    note that all other bitflags will be cleared by this", file=log(0))
+                self.ms.putcolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS", True)
+                self._auto_fill_bitflag = bitflags.flagmask(auto_init, create=True)
+
+                for itile, tile in enumerate(tile_list):
+                    tile.fill_bitflags(self._auto_fill_bitflag)
+
+                self.ms.removecolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS")
+                print("  auto-fill complete", file=log(0, "blue"))
+
+
+        # init flagcounts dict
+        self.flagcounts = OrderedDict(TOTAL=0, FLAG=0)
+
+        if bitflags:
+            self._apply_flags = None
+            self._apply_bitflags = 0
+            if apply_flags:
+                if type(apply_flags) is list:
+                    apply_flags = ",".join(apply_flags)
+                # --flags-apply specified as a bitmask, or a single string, or a single negated string, or a list of strings
+                if type(apply_flags) is int:
+                    self._apply_bitflags = apply_flags
+                elif not isinstance(apply_flags, string_types):
+                    raise ValueError("Illegal --flags-apply setting -- string or bitmask values expected")
+                else:
+                    print("  BITFLAG column defines the following flagsets: {}".format(
+                        " ".join(['{}:{}'.format(name, bitflags.bits[name]) for name in bitflags.names()])), file=log)
+                    if apply_flags == "FLAG":
+                        self._apply_flags = True
+                    elif apply_flags[0] == '-':
+                        flagset = apply_flags[1:]
+                        print("  will exclude flagset {}".format(flagset), file=log(0))
+                        if flagset not in bitflags.bits:
+                            print("    flagset '{}' not found -- ignoring".format(flagset), file=log(0,"red"))
+                        self._apply_bitflags = sum([bitmask for fset, bitmask in bitflags.bits.items() if fset != flagset])
+                    else:
+                        print("  will apply flagset(s) {}".format(apply_flags), file=log(0))
+                        apply_flags = apply_flags.split(",")
+                        for flagset in apply_flags:
+                            if flagset not in bitflags.bits:
+                                print("    flagset '{}' not found -- ignoring".format(flagset), file=log(0,"red"))
+                            else:
+                                self._apply_bitflags |= bitflags.bits[flagset]
+            if self._apply_flags:
+                print("  using flags from FLAG/FLAG_ROW columns", file=log)
+            if self._apply_bitflags:
+                print("  applying BITFLAG mask {} to input data".format(self._apply_bitflags), file=log(0, "blue"))
+            elif not self._apply_flags:
+                print("  no input flags will be applied!", file=log(0, "red"))
+            if save_bitflag:
+                self._save_bitflag = bitflags.flagmask(save_bitflag, create=True)
+                if self._save_flags:
+                    if self._save_flags_apply:
+                        print("  will save output flags into BITFLAG '{}' ({}), and all flags (including input) FLAG/FLAG_ROW".format(
+                            save_bitflag, self._save_bitflag), file=log(0,"blue"))
+                    else:
+                        print("  will save output flags into BITFLAG '{}' ({}), and into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag), file=log(0,"blue"))
+                else:
+                    print("  will save output flags into BITFLAG '{}' ({}), but not into FLAG/FLAG_ROW".format(save_bitflag, self._save_bitflag), file=log(0,"red"))
+            else:
+                if self._save_flags:
+                    if self._save_flags_apply:
+                        print("  will save all flags (including input) into FLAG/FLAG_ROW", file=log(0, "blue"))
+                    else:
+                        print("  will save output flags into FLAG/FLAG_ROW", file=log(0, "blue"))
+
+            for flagset in bitflags.names():
+                self.flagcounts[flagset] = 0
+            self.bitflags = bitflags.bits
+
+        # else no BITFLAG -- fall back to using FLAG/FLAG_ROW if asked, but definitely can't save
+
+        else:
+            if save_bitflag:
+                raise RuntimeError("No BITFLAG column in this MS. Either use --flags-auto-init to insert one, or disable --flags-save.")
+            self._apply_flags = bool(apply_flags)
+            self._apply_bitflags = 0
+            if self._apply_flags:
+                print(ModColor.Str("  no BITFLAG column in this MS. Using flags from FLAG/FLAG_ROW columns"), file=log)
+            else:
+                print(ModColor.Str("  no flags will be read, since --flags-apply was not set"), file=log)
+            if self._save_flags:
+                print("  will save output flags into into FLAG/FLAG_ROW", file=log(0, "blue"))
+            self._save_flags_apply = False   # no point in saving input flags, as nothing would change
+            self.bitflags = {}
+
+        self.flagcounts['DESEL'] = 0
+        self.flagcounts['IN'] = 0
+        self.flagcounts['NEW'] = 0
+        self.flagcounts['OUT'] = 0
 
 
     def update_flag_counts(self, counts):
@@ -1174,7 +1273,7 @@ class MSDataHandler:
     def get_flag_counts(self):
         total = float(self.flagcounts['TOTAL'])
         result = []
-        for name, count in self.flagcounts.iteritems():
+        for name, count in self.flagcounts.items():
             if name != 'TOTAL':
                 result.append("{}:{:.2%}".format(name, count/total))
         return result
@@ -1218,15 +1317,15 @@ class MSDataHandler:
 
         timestamps = self.chunk_timestamps[timechunk]
 
-        freqs = range(first_f,last_f)
-        freq_indices = [[] for i in xrange(n_fre)]
+        freqs = list(range(first_f,last_f))
+        freq_indices = [[] for i in range(n_fre)]
 
         for f, freq in enumerate(freqs):
             freq_indices[f//f_int].append(freq)
 
-        for d in xrange(n_dir):
-            for t in xrange(n_tim):
-                for f in xrange(n_fre):
+        for d in range(n_dir):
+            for t in range(n_tim):
+                for f in range(n_fre):
                     comp_idx = (d,tuple(timestamps),tuple(freq_indices[f]))
                     self.gain_dict[comp_idx] = gains[d,t,f,:]
 
@@ -1242,7 +1341,7 @@ class MSDataHandler:
         if output_name is None:
             output_name = self.ms_name + "/gains.p"
 
-        cPickle.dump(self.gain_dict, open(output_name, "wb"), protocol=2)
+        pickle.dump(self.gain_dict, open(output_name, "wb"), protocol=2)
 
     def _add_column (self, col_name, like_col="DATA", like_type=None):
         """
@@ -1263,23 +1362,20 @@ class MSDataHandler:
 
         if col_name not in self.ms.colnames():
             # new column needs to be inserted -- get column description from column 'like_col'
-            print>> log, "  inserting new column %s" % (col_name)
+            print("  inserting new column %s" % (col_name), file=log)
             desc = self.ms.getcoldesc(like_col)
-            desc['name'] = col_name
-            desc['comment'] = desc['comment'].replace(" ", "_")  # got this from Cyril, not sure why
+            desc[str('name')] = str(col_name)
+            desc[str('comment')] = str(desc['comment'].replace(" ", "_"))  # got this from Cyril, not sure why
             dminfo = self.ms.getdminfo(like_col)
-            dminfo["NAME"] =  "{}-{}".format(dminfo["NAME"], col_name)
+            dminfo[str("NAME")] =  "{}-{}".format(dminfo["NAME"], col_name)
             # if a different type is specified, insert that
             if like_type:
-                desc['valueType'] = like_type
+                desc[str('valueType')] = like_type
             self.ms.addcols(desc, dminfo)
             return True
         return False
 
     def finalize(self):
-        if self._auto_fill_bitflag:
-            if "AUTOINIT_IN_PROGRESS" in self.ms.colkeywordnames("BITFLAG"):
-                self.ms.removecolkeyword("BITFLAG", "AUTOINIT_IN_PROGRESS")
         self.unlock()
 
     def unlock(self):
@@ -1331,36 +1427,36 @@ class MSDataHandler:
                 Flag values to be written to column.
         """
         
-        print>>log,"Writing out new flags"
+        print("Writing out new flags", file=log)
         try:
             bflag_col = self.fetch("BITFLAG")
         except Exception:
             if not self._auto_fill_bitflag:
-                print>> log, ModColor.Str(traceback.format_exc().strip())
-                print>> log, ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set.")
+                print(ModColor.Str(traceback.format_exc().strip()), file=log)
+                print(ModColor.Str("Error reading BITFLAG column, and --flags-auto-init is not set."), file=log)
                 raise
-            print>> log(0,"red"), "Error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG"
-            print>> log(0,"red"), "However, it really should have been filled above, so this may be a bug."
-            print>> log(0,"red"), "Please save your logfile and contact the developers."
+            print("Error reading BITFLAG column: not fatal, since we'll auto-fill it from FLAG", file=log(0,"red"))
+            print("However, it really should have been filled above, so this may be a bug.", file=log(0,"red"))
+            print("Please save your logfile and contact the developers.", file=log(0,"red"))
             for line in traceback.format_exc().strip().split("\n"):
-                print>> log, "    " + line
+                print("    " + line, file=log)
             flag_col = self.fetch("FLAG")
             bflag_col = np.zeros(flag_col.shape, np.int32)
             bflag_col[flag_col] = self._auto_fill_bitflag
         # raise specified bitflag
-        print>> log, "  updating BITFLAG column flagbit %d"%self._save_bitflag
+        print("  updating BITFLAG column flagbit %d"%self._save_bitflag, file=log)
         #bflag_col[:, self._channel_slice, :] &= ~self._save_bitflag         # clear the flagbit first
         bflag_col[:, self._channel_slice, :][flags] |= self._save_bitflag
         self.data.putcol("BITFLAG", bflag_col)
-        print>>log, "  updating BITFLAG_ROW column"
+        print("  updating BITFLAG_ROW column", file=log)
         self.data.putcol("BITFLAG_ROW", np.bitwise_and.reduce(bflag_col, axis=(-1,-2)))
         flag_col = bflag_col != 0
-        print>> log, "  updating FLAG column ({:.2%} visibilities flagged)".format(
-                                                                flag_col.sum()/float(flag_col.size))
+        print("  updating FLAG column ({:.2%} visibilities flagged)".format(
+                                                                flag_col.sum()/float(flag_col.size)), file=log)
         self.data.putcol("FLAG", flag_col)
         flag_row = flag_col.all(axis=(-1,-2))
-        print>> log, "  updating FLAG_ROW column ({:.2%} rows flagged)".format(
-                                                                flag_row.sum()/float(flag_row.size))
+        print("  updating FLAG_ROW column ({:.2%} rows flagged)".format(
+                                                                flag_row.sum()/float(flag_row.size)), file=log)
         self.data.putcol("FLAG_ROW", flag_row)
         self.data.flush()
 
