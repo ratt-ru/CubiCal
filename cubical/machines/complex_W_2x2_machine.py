@@ -62,6 +62,8 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.v_int = options.get("robust-int", 1)
 
+        self.cov_scale = options.get("robust-cov-scale", True) # scale the covariance by n_corr*2
+
        
     @staticmethod
     def get_kernel(options):
@@ -203,10 +205,16 @@ class ComplexW2x2Gains(PerIntervalGains):
             #---if the covariance and variance are close the residuals are dominated by sources---#
             #---scaling the variance in this case improves the robust solver performance----------#
             
-            if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
-                norm = 2*self.npol*Nvis
+            if self.cov_scale:
+                if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
+                    norm = 2*self.npol*Nvis
+                else:
+                    norm = Nvis
             else:
-                norm = Nvis
+                norm =Nvis
+
+            if self.iters % 5 == 0 or self.iters == 1:
+                print>> log(2), "{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis)
 
             # removing the offdiagonal correlations
 
@@ -288,9 +296,10 @@ class ComplexW2x2Gains(PerIntervalGains):
         aa, ab = np.tril_indices(self.n_ant, -1)
         w_real = np.real(w[:,:,:,aa,ab,0].flatten())
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
-        norm = np.average(w_nzero) 
+        
+        # norm = np.average(w_nzero) 
   
-        self.weights = w #/norm removed normalisation
+        self.weights = w #/norm #removed normalisation
         
         #-----------computing the v parameter---------------------#
         # This computation is only done after a certain number of iterations. Default is 5
