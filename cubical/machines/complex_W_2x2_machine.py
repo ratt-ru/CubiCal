@@ -11,7 +11,7 @@ import cubical.kernels
 import time
 
 from cubical.tools import logger
-log = logger.getLogger("solver")  #TODO check this "complex_2x2"
+log = logger.getLogger("robust_2x2")  #TODO check this "complex_2x2"
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -57,6 +57,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.npol = options.get("robust-npol", 2.) #testing if the number of polarizations really have huge effects
 
         self.v_int = options.get("robust-int", 1)
+
+        self.cov_scale = options.get("robust-scale", True) # scale the covariance by n_corr*2
 
     @classmethod
     def determine_diagonality(cls, options):
@@ -197,15 +199,18 @@ class ComplexW2x2Gains(PerIntervalGains):
             self.kernel_robust.compute_cov(self.residuals, ompstd, self.weights)
 
             #---scaling the variance in this case improves the robust solver performance----------#
-            
-            if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
-                norm = 2*self.npol*Nvis
-            else:
-                norm = Nvis
+            if self.cov_scale:
+                if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
+                    norm = 2*self.npol*Nvis
+                else:
+                    norm = Nvis
+
+            if self.iters % 5 == 0 or self.iters == 1:
+                print("{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis), file=log(2))
 
             # removing the offdiagonal correlations
 
-            std = np.diagonal(ompstd/Nvis) + self.eps**2 # To avoid division by zero
+            std = np.diagonal(ompstd/norm) + self.eps**2 # To avoid division by zero
 
             covinv = np.eye(4, dtype=self.dtype)
 
@@ -283,7 +288,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         aa, ab = np.tril_indices(self.n_ant, -1)
         w_real = np.real(w[:,:,:,aa,ab,0].flatten())
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
-        norm = np.average(w_nzero) 
+        # norm = np.average(w_nzero) 
   
         self.weights = w #/norm
         
