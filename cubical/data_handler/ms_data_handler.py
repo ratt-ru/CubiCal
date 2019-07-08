@@ -629,6 +629,7 @@ class MSDataHandler:
             dirmodels = {}
             self.models.append((dirmodels, weight_col))
             for idir, dirmodel in enumerate(model.split(":")):
+                #log.print("direction: {} {}".format(idir, dirmodel))
                 if not dirmodel:
                     continue
                 idirtag = " dir{}".format(idir if use_ddes else 0)
@@ -637,6 +638,7 @@ class MSDataHandler:
                 # insert leading "+" if missing
                 if components[0] != "+" and components[0] != '+-':
                     components.insert(0, "+")
+                #log.print("components: {}".format(components))
                 for sign, component in zip(components[::2], components[1::2]):
                     subtract = sign == '+-'
                     # special case: "1" means unity visibilities
@@ -665,8 +667,9 @@ class MSDataHandler:
                                                                clustercat)
 
                                 for key in component._cluster_keys:
-                                    dirname = idirtag if key == 'die' else key
+                                    dirname = idirtag if key == 'die' or subtract else key
                                     dirmodels.setdefault(dirname, []).append((component, key, subtract))
+                                    #log.print("adding {} key {} to dirmodel[{}] for subtract={}".format(component, key, dirname, subtract))
                             else:
                                 raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
                         elif ".lsm" in component or ".txt" in component: #LSM
@@ -689,12 +692,13 @@ class MSDataHandler:
                                 component = TiggerSourceProvider.TiggerSourceProvider(component, self.phadir,
                                                                                     dde_tag=use_ddes and tag)
                                 for key in component._cluster_keys:
-                                    dirname = idirtag if key == 'die' else key
+                                    dirname = idirtag if key == 'die' or subtract else key
                                     dirmodels.setdefault(dirname, []).append((component, key, subtract))
                         else:
                             raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
                     # else it is a visibility column component
                     elif component in self.ms.colnames():
+                        #log.print("adding {} key None to dirmodel[{}] for subtract={}".format(component, idirtag, subtract))
                         dirmodels.setdefault(idirtag, []).append((component, None, subtract))
                     else:
                         raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))

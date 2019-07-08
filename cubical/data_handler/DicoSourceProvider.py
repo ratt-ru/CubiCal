@@ -76,28 +76,29 @@ class DicoSourceProvider(object):
             with open(fn) as f:
                 parser = DS9Parser(f.read())
                 for regi, reg in enumerate(parser.shapes):
-                    coords = [c.value for c in reg.coord]
-                    assert coords % 2 == 0, "Number of region coords must be multiple of 2-tuple"
-                    coords = coords.reshape([coords // 2, 2])
-                    coords += np.array([offsetx, offsety])[None, 2]
-                    clusters += BoundingConvexHull(coords,
-                                                   name=regi)
+                    coords = map(int, [c.value for c in reg.coord])
+                    assert len(coords) % 2 == 0, "Number of region coords must be multiple of 2-tuple"
+                    coords = np.array(coords).reshape([len(coords) // 2, 2])
+                    coords += np.array([nx//2, ny//2])[None, :] # x, y tupples
+                    ###coords = np.flip(coords, 1) # y, x tuples
+                    clusters.append(BoundingConvexHull(coords,
+                                                       name="DDE_REG{0:d}".format(regi + 1)))
         else: # die case
-            clusters = [BoundingBox(0, nx - 1, 0, ny - 1, name="die", check_mask_outofbounds=False)]
+            clusters = [BoundingBox(0, nx - 1, 0, ny - 1, name="die", check_mask_outofbounds=True)]
         log.info("\tInitialized bounding boxes for regions. There are {0:d} region(s)".format(len(clusters)))
         # now create axis aligned bounding boxes for each of the regions
         # and further split them to the maximum permitted facet size
-        clusters = [BoundingBoxFactory.AxisAlignedBoundingBox(c, check_mask_outofbounds=False) for c in clusters]
+        clusters = [BoundingBoxFactory.AxisAlignedBoundingBox(c, check_mask_outofbounds=True) for c in clusters]
         def __split_regular_region(reg, max_size):
             if max_size < 0:
                 raise ValueError("Expected positive value for min_size")
             reg_size_deg = np.max(np.array(reg.box_npx) * self.pixel_scale / 3600.0)
             nsplit = max(1, max(min_nfacet_per_axis, int(np.ceil(reg_size_deg / max_size))))
-            return BoundingBoxFactory.SplitBox(reg, nsubboxes=nsplit, check_mask_outofbounds=False)
+            return BoundingBoxFactory.SplitBox(reg, nsubboxes=nsplit, check_mask_outofbounds=True)
         log.info("\tSplitting regions into facetted regions, with maximum unpadded size of {0:.2f} degrees per facet".format(max_size))
         clusters = [aasubreg for aareg in map(lambda reg: __split_regular_region(reg, max_size), clusters) 
                     for aasubreg in aareg]
-        clusters = map(lambda reg: BoundingBoxFactory.AxisAlignedBoundingBox(reg, square=True, check_mask_outofbounds=False), clusters)
+        clusters = map(lambda reg: BoundingBoxFactory.AxisAlignedBoundingBox(reg, square=True, check_mask_outofbounds=True), clusters)
         
         def __pad_cluster(c, padding_factor):
             npx,_ = c.box_npx # square facet at this point

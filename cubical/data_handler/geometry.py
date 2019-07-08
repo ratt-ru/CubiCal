@@ -139,6 +139,10 @@ class BoundingConvexHull(object):
         pad_right = max(0, maxx - data_cube.shape[axes[1]] + 1) #inclusive of upper limit
         pad_top = max(0, maxy - data_cube.shape[axes[0]] + 1)
 
+        if minx > data_cube.shape[axes[0]] or miny > data_cube.shape[axes[1]] or \
+           maxy < 0 or maxx < 0:
+           raise ValueError("Expected a bounding hull that is at least partially within the image")
+
         # extract data, pad if necessary
         slc_data = [slice(None)] * len(data_cube.shape)
         for (start, end), axis in zip([(miny + pad_bottom, maxy - pad_top + 1), 
