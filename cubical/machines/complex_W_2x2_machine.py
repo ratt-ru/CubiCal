@@ -197,6 +197,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             self.kernel_robust.compute_cov(self.residuals, ompstd, self.weights)
 
             #---scaling the variance in this case improves the robust solver performance----------#
+            #---if the covariance and variance are close the residuals are dominated by sources---#
             if self.cov_scale:
                 if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
                     norm = 2*self.npol*Nvis
@@ -208,8 +209,6 @@ class ComplexW2x2Gains(PerIntervalGains):
             if self.iters % 5 == 0 or self.iters == 1:
                 print("{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis), file=log(2))
 
-            #---if the covariance and variance are close the residuals are dominated by sources---#
-            
             # removing the offdiagonal correlations
 
             std = np.diagonal(ompstd/norm) + self.eps**2 # To avoid division by zero
