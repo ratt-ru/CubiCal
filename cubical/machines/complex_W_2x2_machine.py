@@ -118,7 +118,12 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         if self.posterior_gain_error is None:
             self.posterior_gain_error = np.zeros_like(jhjinv.real)
-        diag = jhjinv[..., (0, 1), (0, 1)].real
+        
+        #----normalising to reduce the effects of the weights on jhj---#
+        #----not sure if this is the best way to do this---------------#
+        
+        norm = ((1/2.)*np.average(self.weights[:,self.new_flags==0,:].real))**2
+        diag = norm*jhjinv[..., (0, 1), (0, 1)].real
         self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
