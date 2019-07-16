@@ -24,11 +24,20 @@ class DicoSourceProvider(object):
         self.__dicomodel = MMM.ClassModModelMachine().GiveInitialisedMMFromFile(fn)
         # assume GD is stored in the Dico... this is only true for DDF versions 0.4.1 and beyond
         self.__pxscale = self.__dicomodel.GD["Image"]["Cell"] # in arcseconds
-        nchan, npol, ny, nx = self.__dicomodel.ModelShape
+
+        self.__nchan, self.__npol, self.__ny, self.__nx = self.__dicomodel.ModelShape
+        assert self.__ny == self.__nx # check cyril's model is square
+        assert self.__nx % 2 == 1 # must be odd for the logic downstairs to work
+
+        # regions relative to the unpadded images
+        req_npx_img = self._DicoSourceProvider__dicomodel.GD["Image"]["NPix"]
+        nx_image, nx_image_padded = EstimateNpix(req_npx_img,
+                                                 Padding=self.__dicomodel.GD["Facets"]["Padding"])
+        assert nx_image == self.__nx # the predicted image size better correspond to dicomodels shape
+        self.__padded_nx = self.__padded_ny = nx_image_padded
+
         self.__phasedir = phasedir
         self.__clustercat = self.__read_regions_file(clustercat, 
-                                                     nx//2, 
-                                                     ny//2, 
                                                      facet_padding_factor, 
                                                      max_facet_size,
                                                      min_nfacet_per_axis)
@@ -55,7 +64,7 @@ class DicoSourceProvider(object):
             raise RuntimeError("Degrid frequencies not set yet. Please set frequencies before enquiring about the degrid cube")
         return self.__degridcube.shape
 
-    def __read_regions_file(self, fn, offsetx, offsety, padding_factor, max_size, min_nfacet_per_axis):
+    def __read_regions_file(self, fn, padding_factor, max_size, min_nfacet_per_axis):
         """ Reads a ds9 region file and sets up a grid of sub clusters (aka. facets) for each hull read out of
             the file. Each of the sub clusters are padded to a padding factor as determined by
             DDFacet's EstimateNpix. The number of sub clusters is determined from the maximum
@@ -69,8 +78,6 @@ class DicoSourceProvider(object):
 
             return dictionary of directions, each entry containing a list of sub regions
         """
-        nchan, npol, ny, nx = self.__dicomodel.ModelShape
-    
         clusters = []
         if fn is not None: # dde case
             with open(fn) as f:
@@ -79,12 +86,15 @@ class DicoSourceProvider(object):
                     coords = map(int, [c.value for c in reg.coord])
                     assert len(coords) % 2 == 0, "Number of region coords must be multiple of 2-tuple"
                     coords = np.array(coords).reshape([len(coords) // 2, 2])
-                    coords += np.array([nx//2, ny//2])[None, :] # x, y tupples
-                    ###coords = np.flip(coords, 1) # y, x tuples
                     clusters.append(BoundingConvexHull(coords,
                                                        name="DDE_REG{0:d}".format(regi + 1)))
         else: # die case
-            clusters = [BoundingBox(0, nx - 1, 0, ny - 1, name="die", check_mask_outofbounds=True)]
+            clusters = [BoundingBox(0,
+                                    self.__nx - 1,
+                                    0,
+                                    self.__ny - 1,
+                                    name="die",
+                                    check_mask_outofbounds=True)]
         log.info("\tInitialized bounding boxes for regions. There are {0:d} region(s)".format(len(clusters)))
         # now create axis aligned bounding boxes for each of the regions
         # and further split them to the maximum permitted facet size
@@ -174,10 +184,10 @@ class DicoSourceProvider(object):
             raise IndexError("Index {0:d} is out of bounds for region {1:s} which contains {2:d} subregions".format(
                 subregion_index, self.__current_direction, len(self.__clustercat[self.__current_direction])))
 
-        nchan, npol, nx, ny = self.__dicomodel.ModelShape
         cluster = self.__clustercat[self.__current_direction][subregion_index]
         ctr = cluster.centre
-        offset = ctr[::-1] - np.array([ny//2, nx//2])
+        offset = (ctr[::-1] - np.array([self.__ny//2, self.__nx//2]))[::-1]
+        offset[0] = -offset[0] #RA increases to the left
         return offset
 
     def get_degrid_model(self, subregion_index=0):
@@ -187,7 +197,8 @@ class DicoSourceProvider(object):
         if subregion_index >= len(self.__clustercat[self.__current_direction]):
             raise IndexError("Index {0:d} is out of bounds for region {1:s} which contains {2:d} subregions".format(
                 subregion_index, self.__current_direction, len(self.__clustercat[self.__current_direction])))
-        self.__clustercat[self.__current_direction][subregion_index].globaldata = self.__degridcube
         reg_data, reg_extents = BoundingConvexHull.regional_data(self.__clustercat[self.__current_direction][subregion_index],
-                                                                 self.__degridcube)
+                                                                 np.swapaxes(self.__degridcube, 2, 3)[:, :, :, ::-1])
+        # cyril's model is transposed and flipped
+        reg_data[...] = reg_data[:, :, ::-1, ::-1]
         return reg_data

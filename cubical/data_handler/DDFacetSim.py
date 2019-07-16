@@ -97,7 +97,7 @@ class DDFacetSim(object):
             raise ValueError("Only supports linear or circular for now")
 
         should_init_cf = "dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction)) not in self.__initted_CF_directions
-        
+
         # Kludge up a DDF GD
         GD = dict(RIME={}, Facets={}, CF={}, Image={}, DDESolutions={}, Comp={})
         GD["RIME"]["Precision"] = "S"
@@ -199,14 +199,13 @@ class DDFacetSim(object):
         for gm, subregion_index in zip(gmacs, range(src.subregion_count)):
             model = np.zeros((nrow, nfreq, 4), dtype=np.complex64).copy()
             model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64).copy() #degridder needs transposes, dont mod the data globally
+
             if not np.any(model_image):
                 log.info("Facet {0:d} is empty. Skipping".format(subregion_index))
                 continue
-            model_image[...] = np.swapaxes(model_image, 2, 3) # facet is guaranteed to be square
-            model_image[...] = model_image[:, :, ::-1, :]
             dname = "dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction))
             model_image = DDFacetSim.__detaper_model(gm, model_image.view(), self.__direction_CFs[dname][subregion_index]).copy() # degridder don't respect strides must be contiguous
-            
+
             # apply normalization factors for FFT
             model_image[...] *= (model_image.shape[3] ** 2) * (gm.WTerm.OverS ** 2) 
 
