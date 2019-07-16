@@ -11,6 +11,14 @@ from cubical.tools import logger, ModColor
 log = logger.getLogger("DDFacetSim")
 
 class DicoSourceProvider(object):
+    __cached_model_machines = {}
+    __cached_providers = {}
+
+    @classmethod
+    def __cachename_compute(cls, diconame, regname):
+        return "src_model_{0:s}_@_{1:s}".format(diconame,
+                                                regname if regname is not None else "die")
+
     def __init__(self,
                  fn,
                  phasedir,
@@ -18,11 +26,16 @@ class DicoSourceProvider(object):
                  max_facet_size,
                  min_nfacet_per_axis,
                  clustercat=None):
-        log.info("Initializing new source provider for DDFacet model '{0:s}' into regions specified by '{1:s}'.".format(
-            fn, clustercat if clustercat is not None else 'die'))
         self.__dicofn = fn
-        self.__dicomodel = MMM.ClassModModelMachine().GiveInitialisedMMFromFile(fn)
-        # assume GD is stored in the Dico... this is only true for DDF versions 0.4.1 and beyond
+
+        if fn not in DicoSourceProvider.__cached_model_machines:
+            self.__dicomodel = MMM.ClassModModelMachine().GiveInitialisedMMFromFile(fn)
+            DicoSourceProvider.__cached_model_machines[fn] = self.__dicomodel
+        else:
+            log.info("Reusing previously initialized DDFacet model machine '{0:s}'".format(fn))
+            self.__dicomodel = DicoSourceProvider.__cached_model_machines[fn]
+
+        # assume gd is stored in the dico... this is only true for ddf versions 0.4.1 and beyond
         self.__pxscale = self.__dicomodel.GD["Image"]["Cell"] # in arcseconds
 
         self.__nchan, self.__npol, self.__ny, self.__nx = self.__dicomodel.ModelShape
@@ -30,22 +43,33 @@ class DicoSourceProvider(object):
         assert self.__nx % 2 == 1 # must be odd for the logic downstairs to work
 
         # regions relative to the unpadded images
-        req_npx_img = self._DicoSourceProvider__dicomodel.GD["Image"]["NPix"]
+        req_npx_img = self.__dicomodel.GD["Image"]["NPix"]
         nx_image, nx_image_padded = EstimateNpix(req_npx_img,
                                                  Padding=self.__dicomodel.GD["Facets"]["Padding"])
         assert nx_image == self.__nx # the predicted image size better correspond to dicomodels shape
         self.__padded_nx = self.__padded_ny = nx_image_padded
-
         self.__phasedir = phasedir
-        self.__clustercat = self.__read_regions_file(clustercat, 
-                                                     facet_padding_factor, 
-                                                     max_facet_size,
-                                                     min_nfacet_per_axis)
+
+        cachename = DicoSourceProvider.__cachename_compute(fn, clustercat)
+        if cachename not in DicoSourceProvider.__cached_providers:
+            log.info("Initializing new source provider for DDFacet model '{0:s}' into regions specified by '{1:s}'.".format(
+                fn, clustercat if clustercat is not None else 'die'))
+            self.__clustercat = self.__read_regions_file(clustercat, 
+                                                         facet_padding_factor, 
+                                                         max_facet_size,
+                                                         min_nfacet_per_axis)
+            DicoSourceProvider.__cached_providers[cachename] = self.__clustercat
+            log.info("initialization sequence of source provider '{0:s}' (regions '{1:s}') completed".format(
+                    fn, clustercat if clustercat is not None else 'die'))
+        else:
+            self.__clustercat = DicoSourceProvider.__cached_providers[cachename]
+            log.info("reused previous initialization of source provider '{0:s}' (regions '{1:s}')".format(
+                fn, clustercat if clustercat is not None else 'die'))
+
         self.__current_direction = 0
         self.__degridcube = None
         self.__degridfreqs = None
         self.__padding_factor = facet_padding_factor
-        log.info("Initialization sequence of source provider '{0:s}' completed".format(fn))
 
     def __str__(self):
         return self.__dicofn
@@ -57,7 +81,7 @@ class DicoSourceProvider(object):
     @property
     def pixel_scale(self):
         return self.__pxscale
-    
+
     @property
     def degrid_cube_shape(self):
         if self.__degridcube is None:
@@ -98,7 +122,7 @@ class DicoSourceProvider(object):
         log.info("\tInitialized bounding boxes for regions. There are {0:d} region(s)".format(len(clusters)))
         # now create axis aligned bounding boxes for each of the regions
         # and further split them to the maximum permitted facet size
-        clusters = [BoundingBoxFactory.AxisAlignedBoundingBox(c, check_mask_outofbounds=True) for c in clusters]
+        clusters = [BoundingBoxFactory.AxisAlignedBoundingBox(c, check_mask_outofbounds=False) for c in clusters]
         def __split_regular_region(reg, max_size):
             if max_size < 0:
                 raise ValueError("Expected positive value for min_size")
@@ -108,7 +132,7 @@ class DicoSourceProvider(object):
         log.info("\tSplitting regions into facetted regions, with maximum unpadded size of {0:.2f} degrees per facet".format(max_size))
         clusters = [aasubreg for aareg in map(lambda reg: __split_regular_region(reg, max_size), clusters) 
                     for aasubreg in aareg]
-        clusters = map(lambda reg: BoundingBoxFactory.AxisAlignedBoundingBox(reg, square=True, check_mask_outofbounds=True), clusters)
+        clusters = map(lambda reg: BoundingBoxFactory.AxisAlignedBoundingBox(reg, square=True, check_mask_outofbounds=False), clusters)
         
         def __pad_cluster(c, padding_factor):
             npx,_ = c.box_npx # square facet at this point

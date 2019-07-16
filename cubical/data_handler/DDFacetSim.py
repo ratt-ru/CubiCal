@@ -85,6 +85,15 @@ class DDFacetSim(object):
         freq_mapping = [find_nearest(band_frequencies, v) for v in vis_freqs]
         return band_frequencies, freq_mapping
 
+    def __cachename_compute(self, src):
+        reg_props = str(src.subregion_count)
+        for subregion_index in range(src.subregion_count):
+            reg_props += " npx:" + str(src.get_direction_npix(subregion_index=subregion_index)) + \
+                    " scale:" + "x".join(map(str, list(np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index)) *
+                                                       src.pixel_scale / 3600.0)))
+        res = "dir_{0:s}_{1:s}_{2:s}".format(str(id(self.__model)), str(self.__direction), str(reg_props))
+        return res
+
     def __init_grid_machine(self, src, dh, tile, poltype, freqs):
         """ initializes a grid machine for this direction """
         if self.__degridding_semaphores is None:
@@ -96,7 +105,7 @@ class DDFacetSim(object):
         else:
             raise ValueError("Only supports linear or circular for now")
 
-        should_init_cf = "dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction)) not in self.__initted_CF_directions
+        should_init_cf = self.__cachename_compute(src) not in self.__initted_CF_directions
 
         # Kludge up a DDF GD
         GD = dict(RIME={}, Facets={}, CF={}, Image={}, DDESolutions={}, Comp={})
@@ -128,14 +137,14 @@ class DDFacetSim(object):
         src.set_frequency(band_frequencies)
         wmax = np.max([dh.metadata.baseline_length[k] for k in dh.metadata.baseline_length])
         gmachines = []
-        dname = "dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction))
+        dname = self.__cachename_compute(src)
         if should_init_cf:
             log.info("This is the first time predicting for '{0:s}' direction '{1:s}'. "
                      "Initializing degridder for {2:d} facets - this may take a wee bit of time.".format(
                          str(self.__model), str(self.__direction), src.subregion_count))
-            self.__initted_CF_directions.append(dname)    
-            self.__direction_CFs[dname] = self.__direction_CFs.get(dname, []) + list(self.__ifacet + np.arange(src.subregion_count)) #unique facet index for this subregion
-            self.__ifacet += src.subregion_count
+            DDFacetSim.__initted_CF_directions.append(dname)    
+            DDFacetSim.__direction_CFs[dname] = DDFacetSim.__direction_CFs.get(dname, []) + list(DDFacetSim.__ifacet + np.arange(src.subregion_count)) #unique facet index for this subregion
+            DDFacetSim.__ifacet += src.subregion_count
         
 
         for subregion_index in range(src.subregion_count):
@@ -143,20 +152,20 @@ class DDFacetSim(object):
                         ChanFreq = freqs,
                         Npix = src.get_direction_npix(subregion_index=subregion_index),
                         lmShift = np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * src.pixel_scale / 3600.0),
-                        IDFacet = self.__direction_CFs[dname][subregion_index],
+                        IDFacet = DDFacetSim.__direction_CFs[dname][subregion_index],
                         SpheNorm = False, # Depricated, set ImToGrid True in .get!!
                         NFreqBands = dh.degrid_opts["NDegridBand"],
                         DataCorrelationFormat=DataCorrelationFormat,
                         ExpectedOutputStokes=[1], # Stokes I
                         ListSemaphores=self.__degridding_semaphores,
-                        cf_dict=self.__CF_dict,
+                        cf_dict=DDFacetSim.__CF_dict,
                         compute_cf=should_init_cf,
                         wmax=wmax)
             gmachines.append(gmach)
             if should_init_cf:
                 wnd_detaper = MT.Sphe2D(src.get_direction_npix(subregion_index=subregion_index))
                 wnd_detaper[wnd_detaper != 0] = 1.0 / wnd_detaper[wnd_detaper != 0]
-                self.__detaper_cache[self.__direction_CFs[dname][subregion_index]] = wnd_detaper
+                DDFacetSim.__detaper_cache[DDFacetSim.__direction_CFs[dname][subregion_index]] = wnd_detaper
 
         return gmachines
 
@@ -203,7 +212,7 @@ class DDFacetSim(object):
             if not np.any(model_image):
                 log.info("Facet {0:d} is empty. Skipping".format(subregion_index))
                 continue
-            dname = "dir_{0:s}_{1:s}".format(str(self.__model), str(self.__direction))
+            dname = self.__cachename_compute(src)
             model_image = DDFacetSim.__detaper_model(gm, model_image.view(), self.__direction_CFs[dname][subregion_index]).copy() # degridder don't respect strides must be contiguous
 
             # apply normalization factors for FFT
