@@ -860,6 +860,7 @@ class MSDataHandler:
             np.ndarray:
                 Result of putcolslice()
         """
+        column = str(column)
         subset = subset or self.data
         # if no slicing, just use putcol to put the whole thing. This always works,
         # unless the MS is screwed up
