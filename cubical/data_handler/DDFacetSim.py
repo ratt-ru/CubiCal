@@ -91,7 +91,7 @@ class DDFacetSim(object):
             reg_props += " npx:" + str(src.get_direction_npix(subregion_index=subregion_index)) + \
                     " scale:" + "x".join(map(str, list(np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index)) *
                                                        src.pixel_scale / 3600.0)))
-        res = "dir_{0:s}_{1:s}_{2:s}".format(str(id(self.__model)), str(self.__direction), str(reg_props))
+        res = "dir_{0:s}_{1:s}_{2:s}".format(str(self.__model), str(self.__direction), str(reg_props))
         return res
 
     def __init_grid_machine(self, src, dh, tile, poltype, freqs):
@@ -233,10 +233,13 @@ class DDFacetSim(object):
                 TranformModelInput="FT", 
                 ChanMapping=np.array(freq_mapping, dtype=np.int32), 
                 sparsification=None)
-            
+
         model_corr_slice = np.s_[0] if model_type == "cplxscalar" else \
                            np.s_[0::3] if model_type == "cplxdiag" else \
                            np.s_[:] # if model_type == "cplx2x2"
+        if not np.any(region_model[:, :, model_corr_slice]):
+            log.info("WARNING: Model in region '{0:s}' is completely empty. This may indicate user error and lead to non-correcting direction dependent gains!".format(self.__direction))
+
         return region_model[:, :, model_corr_slice]
 
 import atexit
