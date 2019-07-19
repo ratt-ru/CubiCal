@@ -414,7 +414,7 @@ class BoundingBox(BoundingConvexHull):
                                                 sparse_mask[:, 1] <= maxx),
                                  np.logical_and(sparse_mask[:, 0] >= miny,
                                                 sparse_mask[:, 0] <= maxy))
-            self._mask = [tuple(mc) for mc in sparse_mask[sel]]
+            self._mask = sparse_mask[sel]
             self._mask_weights = np.ones(len(self._mask))
 
     @classmethod
