@@ -585,6 +585,8 @@ class PerIntervalGains(MasterMachine):
         norm_g = np.square(np.abs(self.gains))
         norm_g[self.flagged] = 1
         norm_g = norm_g.sum(axis=(-1,-2,-3))
+        WSNR
+
 
         norm_diff_g = diff_g/norm_g
 
@@ -612,6 +614,11 @@ class PerIntervalGains(MasterMachine):
         elif self.update_type == "amp-diag":
             self.gains[...,(0,1),(1,0)] = 0
             np.abs(self.gains, out=self.gains)
+        
+        # explicitly roll back invalid gains to previously known good values
+        self.gains[self.gflags != 0] = self.old_gains[self.gflags != 0]
+        
+        # explicitly roll back gains to previously known good values for fixed directions
         for idir in self.fix_directions:
             self.gains[idir, ...] = self.old_gains[idir, ...]
             self.posterior_gain_error[idir, ...] = 0
