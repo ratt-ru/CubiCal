@@ -195,7 +195,7 @@ class BoundingConvexHull(object):
         # For now all regions have equal contribution
         allmasks = []
         for reg in regions:
-            allmasks += reg.sparse_mask
+            allmasks += list(reg.sparse_mask) if isinstance(reg.sparse_mask, np.ndarray) else reg.sparse_mask
         
         # flatten for faster comparisons
         allmasks = np.array(allmasks)
@@ -224,7 +224,8 @@ class BoundingConvexHull(object):
             overlap = filter(lambda x: x[1] in reg.sparse_mask, 
                              zip(paint_count, unique_pxls))
             for px_pc, px in overlap:
-                sel = reg.sparse_mask.index(px) 
+                sel = reg.sparse_mask.index(px) if isinstance(reg.sparse_mask, list) else \
+                      np.all(reg.sparse_mask - px == 0, axis=1)
                 reg._mask_weights[sel] = px_pc
 
     @property
@@ -362,6 +363,21 @@ class BoundingBox(BoundingConvexHull):
                                     mask=mask,
                                     **kwargs)
 
+    def init_mask(self):
+        """ creates a sparse mask of the convex hull of the form (y, x) tuples """
+        lines = np.hstack([self.corners, np.roll(self.corners, -1, axis=0)])
+        minx = np.min(lines[:, 0:4:2]); maxx = np.max(lines[:, 0:4:2])
+        miny = np.min(lines[:, 1:4:2]); maxy = np.max(lines[:, 1:4:2])
+        x = np.arange(minx, maxx + 1, 1) #upper limit inclusive
+        y = np.arange(miny, maxy + 1, 1)
+        meshgrid = np.meshgrid(y, x)
+        bounding_mesh = zip(*map(lambda x: np.ravel(x), np.meshgrid(y, x)))
+        
+        sparse_mask = np.asarray(bounding_mesh) # by default for a BB region the mask is always going to be the entire region
+        
+        mask_weights = np.ones(len(sparse_mask)) #initialize to unity, this should be modified when coadding
+        return sparse_mask, mask_weights
+
     def __contains__(self, s):
         """ tests whether a point s(x,y) is in the box"""
         lines = np.hstack([self.corners, np.roll(self.corners, -1, axis=0)])
@@ -381,7 +397,7 @@ class BoundingBox(BoundingConvexHull):
     @sparse_mask.setter
     def sparse_mask(self, mask):
         """ Sets the mask of the hull from a sparse mask - list of (y, x) coordinates """
-        if not isinstance(mask, list):
+        if not isinstance(mask, list) and not isinstance(mask, np.ndarray):
             raise TypeError("Mask must be list")
         if not (hasattr(mask, "__len__") and (len(mask) == 0 or (hasattr(mask[0], "__len__") and len(mask[0]) == 2))):
             raise TypeError("Mask must be a sparse mask of 2 element values")
@@ -396,7 +412,7 @@ class BoundingBox(BoundingConvexHull):
             sparse_mask = np.asarray(mask)
             sel = np.logical_and(np.logical_and(sparse_mask[:, 1] >= minx,
                                                 sparse_mask[:, 1] <= maxx),
-                                np.logical_and(sparse_mask[:, 0] >= miny,
+                                 np.logical_and(sparse_mask[:, 0] >= miny,
                                                 sparse_mask[:, 0] <= maxy))
             self._mask = [tuple(mc) for mc in sparse_mask[sel]]
             self._mask_weights = np.ones(len(self._mask))
@@ -447,7 +463,7 @@ class BoundingBox(BoundingConvexHull):
                 slc_data[axis] = slice(start, end)
                 
             stitched_img[tuple(slc_data)] += f
-            combined_mask += freg.sparse_mask
+            combined_mask += list(freg.sparse_mask)
 
         return stitched_img, BoundingBox(minx, maxx, miny, maxy, mask=combined_mask, **kwargs)
 
@@ -630,7 +646,7 @@ if __name__ == "__main__":
     bb2 = BoundingBoxFactory.AxisAlignedBoundingBox(bb) #enforce odd
     assert bb2.box_npx == (35, 21)
     assert bb2.area == 35 * 21
-    assert bb.sparse_mask == bb2.sparse_mask
+    assert (bb.sparse_mask == bb2.sparse_mask).all()
     assert (-15, 35) not in bb2
     assert (0, 35) in bb2
 
@@ -638,7 +654,7 @@ if __name__ == "__main__":
     assert bb3.box_npx[0] == bb3.box_npx[1]
     assert bb3.box_npx[0] % 2 == 1 #enforce odd
     assert bb3.area == bb3.box_npx[0]**2
-    assert bb.sparse_mask == bb3.sparse_mask
+    assert (bb.sparse_mask == bb3.sparse_mask).all()
     assert (-15, 35) not in bb2
     assert (0, 35) in bb2
 
@@ -694,7 +710,7 @@ if __name__ == "__main__":
                       np.min(olaps_stitched_region.corners[:, 1]) + vy)
     assert cstitched_olap == csinc
     assert np.abs(1.0 - np.nanmax(olaps_stitched_image)) < 1.0e-8
-
+    
     # visual inspection
     if DEBUG:
         from matplotlib import pyplot as plt
