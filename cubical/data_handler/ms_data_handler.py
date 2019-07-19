@@ -861,7 +861,7 @@ class MSDataHandler:
                 shape = (nrows, self._nchan0_orig[ddid], self.nmscorrs)
                 value0 = np.zeros(shape, value.dtype)
             value0[:, self._channel_slice, self._corr_slice] = value
-            return subset.putcol(column, value0, startrow, nrows)
+            return subset.putcol(str(column), value0, startrow, nrows)
 
     def define_chunk(self, chunk_time, rebin_time, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """
