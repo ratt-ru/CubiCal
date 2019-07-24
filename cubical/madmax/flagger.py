@@ -318,7 +318,7 @@ class Flagger(object):
                     figure.savefig(filename, dpi=300)
                     from future.moves import pickle
                     pickle_file = filename+".cp"
-                    pickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "w"), 2)
+                    pickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "wb"), 2)
                     print("{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file), file=log(1))
                 pylab.close(figure)
                 del figure
