@@ -1,3 +1,9 @@
+# CubiCal: a radio interferometric calibration suite
+# (c) 2017 Rhodes University & Jonathan S. Kenyon
+# http://github.com/ratt-ru/CubiCal
+# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+
+from __future__ import print_function
 try:
     from DDFacet.Imager import ClassDDEGridMachine
     from DDFacet.cbuild.Gridder import _pyGridderSmearPolsClassic
@@ -210,7 +216,7 @@ class DDFacetSim(object):
             model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64).copy() #degridder needs transposes, dont mod the data globally
 
             if not np.any(model_image):
-                log(2).info("Facet {0:d} is empty. Skipping".format(subregion_index))
+                log(2).print("Facet {0:d} is empty. Skipping".format(subregion_index))
                 continue
             dname = self.__cachename_compute(src)
             model_image = DDFacetSim.__detaper_model(gm, model_image.view(), self.__direction_CFs[dname][subregion_index]).copy() # degridder don't respect strides must be contiguous
