@@ -11,7 +11,7 @@ import cubical.kernels
 import time
 
 from cubical.tools import logger
-log = logger.getLogger("solver")  #TODO check this "complex_2x2"
+log = logger.getLogger("robust_2x2")  #TODO check this "complex_2x2"
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -57,6 +57,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.npol = options.get("robust-npol", 2.) #testing if the number of polarizations really have huge effects
 
         self.v_int = options.get("robust-int", 1)
+
+        self.cov_scale = options.get("robust-scale", True) # scale the covariance by n_corr*2
 
     @classmethod
     def determine_diagonality(cls, options):
@@ -116,7 +118,12 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         if self.posterior_gain_error is None:
             self.posterior_gain_error = np.zeros_like(jhjinv.real)
-        diag = jhjinv[..., (0, 1), (0, 1)].real
+        
+        #----normalising to reduce the effects of the weights on jhj---#
+        #----not sure if this is the best way to do this---------------#
+        
+        norm = ((1/2.)*np.average(self.weights[:,self.new_flags==0,:].real))**2
+        diag = norm*jhjinv[..., (0, 1), (0, 1)].real
         self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
@@ -186,19 +193,30 @@ class ComplexW2x2Gains(PerIntervalGains):
           
         else:
 
-            unflagged = self.new_flags==False
-        
-            num_init_unflaged_eqs = np.sum(unflagged)
+            unflagged = self.new_flags==False 
 
-            Nvis = num_init_unflaged_eqs/2. #only half of the visibilties are used for covariance computation
+            Nvis = np.sum(unflagged)/2. #only half of the visibilties are used for covariance computation
 
             ompstd = np.zeros((4,4), dtype=self.dtype)
 
             self.kernel_robust.compute_cov(self.residuals, ompstd, self.weights)
 
+            #---scaling the variance in this case improves the robust solver performance----------#
+            #---if the covariance and variance are close the residuals are dominated by sources---#
+            if self.cov_scale:
+                if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
+                    norm = 2*self.npol*Nvis
+                else:
+                    norm = Nvis
+            else:
+                norm = Nvis
+
+            if self.iters % 5 == 0 or self.iters == 1:
+                print("{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis), file=log(2))
+
             # removing the offdiagonal correlations
 
-            std = np.diagonal(ompstd/Nvis) + self.eps**2 # To avoid division by zero
+            std = np.diagonal(ompstd/norm) + self.eps**2 # To avoid division by zero
 
             covinv = np.eye(4, dtype=self.dtype)
 
@@ -276,14 +294,15 @@ class ComplexW2x2Gains(PerIntervalGains):
         aa, ab = np.tril_indices(self.n_ant, -1)
         w_real = np.real(w[:,:,:,aa,ab,0].flatten())
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
-        norm = np.average(w_nzero) 
+
+        # norm = np.average(w_nzero) 
   
-        self.weights = w/norm
+        self.weights = w #/norm
         
         #-----------computing the v parameter---------------------#
         # This computation is only done after a certain number of iterations. Default is 5
         if self.iters % self.v_int == 0 or self.iters == 1:
-            wn = w_nzero/norm 
+            wn = w_nzero #/norm 
             self.v = _brute_solve_v(wn)
         
         return 
