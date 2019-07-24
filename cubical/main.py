@@ -41,7 +41,6 @@ logger.init("cc")
 
 import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
-logging.getLogger('numba.typeinfer').setLevel(logging.WARNING)
 
 GD = None
 
