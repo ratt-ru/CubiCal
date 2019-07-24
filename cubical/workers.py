@@ -352,7 +352,7 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
                 stats_dict[tile.get_chunk_indices(key)] = \
                     solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
         if processed:
-            only_save = ["output", "model", "weight", "flag", "bitflag"] if out_opts["apply-solver-flags"] else \
+            only_save = ["output", "model", "weight", "flag", "bitflag"] if out_opts is None or out_opts["apply-solver-flags"] else \
                         ["output", "model", "weight"]
             tile.save(final=tile is tile_list[-1], only_save=only_save)
             for sd in tile.iterate_solution_chunks():
@@ -440,7 +440,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False, out_opts=
             tile = tile_list[save]
             itile = list(range(len(tile_list)))[save]
             print("saving {}".format(tile.label), file=log(0, "blue"))
-            only_save = ["output", "model", "weight", "flag", "bitflag"] if out_opts["apply-solver-flags"] else \
+            only_save = ["output", "model", "weight", "flag", "bitflag"] if out_opts is None or out_opts["apply-solver-flags"] else \
                         ["output", "model", "weight"]
             tile.save(final=finalize, only_save=only_save)
             for sd in tile.iterate_solution_chunks():
