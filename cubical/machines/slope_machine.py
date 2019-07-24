@@ -69,22 +69,22 @@ class PhaseSlopeGains(ParameterisedGains):
         self.chunk_fs = _normalize(chunk_fs, self.ftype)
 
         if self.slope_type == "tf-plane":
-            self.cyslope = cubical.kernels.import_kernel("cytf_plane")
+            self.slope = cubical.kernels.import_kernel("tf_plane")
             self._labels = dict(phase=0, delay=1, rate=2)
         elif self.slope_type == "f-slope":
-            self.cyslope = cubical.kernels.import_kernel("cyf_slope")
+            self.slope = cubical.kernels.import_kernel("f_slope")
             self._labels = dict(phase=0, delay=1)
         elif self.slope_type == "t-slope":
-            self.cyslope = cubical.kernels.import_kernel("cyt_slope")
+            self.slope = cubical.kernels.import_kernel("t_slope")
             self._labels = dict(phase=0, rate=1)
         else:
             raise RuntimeError("unknown machine type '{}'".format(self.slope_type))
 
         # kernel used in solver is diag-diag in diag mode, else uses full kernel version
         if options.get('diag-data') or options.get('diag-only'):
-            self.cykernel_solve = cubical.kernels.import_kernel('cydiag_phase_only')
+            self.kernel_solve = cubical.kernels.import_kernel('diag_phase_only')
         else:
-            self.cykernel_solve = cubical.kernels.import_kernel('cyphase_only')
+            self.kernel_solve = cubical.kernels.import_kernel('phase_only')
 
         self._jhr0 = self._gerr = None
 
@@ -160,7 +160,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         if loaded:
             self.restrict_solution()
-            self.cyslope.cyconstruct_gains(self.slope_params, self.gains,
+            self.slope.construct_gains(self.slope_params, self.gains,
                                            self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
             self._gains_loaded = True
 
@@ -188,25 +188,25 @@ class PhaseSlopeGains(ParameterisedGains):
         gh = self.get_conj_gains()
         jh = self.get_new_jh(model_arr)
 
-        self.cyslope.cycompute_jh(model_arr, self.gains, jh, 1, 1)
+        self.slope.compute_jh(model_arr, self.gains, jh, 1, 1)
 
         jhr1 = self.get_new_jhr()
 
         r = self.get_obs_or_res(obser_arr, model_arr)
 
         # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHR
-        self.cykernel_solve.cycompute_jhr(gh, jh, r, jhr1, 1, 1)
+        self.kernel_solve.compute_jhr(gh, jh, r, jhr1, 1, 1)
 
         jhr1 = jhr1.imag
 
         jhr_shape = [n_dir, self.n_timint, self.n_freint, n_ant, self.n_param, n_cor, n_cor]
 
         if self._jhr0 is None:
-            self._jhr0 = self.cyslope.allocate_param_array(jhr_shape, dtype=jhr1.dtype, zeros=True)
+            self._jhr0 = self.slope.allocate_param_array(jhr_shape, dtype=jhr1.dtype, zeros=True)
         else:
             self._jhr0.fill(0)
 
-        self.cyslope.cycompute_jhr(jhr1, self._jhr0, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        self.slope.compute_jhr(jhr1, self._jhr0, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
         return self._jhr0, self.jhjinv, 0
 
@@ -245,7 +245,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         update = self.init_update(jhr)
 
-        self.cyslope.cycompute_update(jhr, jhjinv, update)
+        self.slope.compute_update(jhr, jhjinv, update)
 
         if self.iters%2 == 0:
             update *= 0.5
@@ -256,7 +256,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         # Need to turn updated parameters into gains.
 
-        self.cyslope.cyconstruct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        self.slope.construct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
     def restrict_solution(self):
         """
@@ -284,19 +284,19 @@ class PhaseSlopeGains(ParameterisedGains):
 
         jhj1_shape = [self.n_dir, self.n_tim, self.n_fre, self.n_ant, 2, 2]
 
-        jhj1 = self.cyslope.allocate_gain_array(jhj1_shape, dtype=self.dtype, zeros=True)
+        jhj1 = self.slope.allocate_gain_array(jhj1_shape, dtype=self.dtype, zeros=True)
 
         # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHJ
-        self.cykernel_solve.cycompute_jhj(model_arr, jhj1, 1, 1)
+        self.kernel_solve.compute_jhj(model_arr, jhj1, 1, 1)
 
         blocks_per_inverse = 6 if self.slope_type=="tf-plane" else 3
 
         jhj_shape = [self.n_dir, self.n_timint, self.n_freint, self.n_ant, blocks_per_inverse, 2, 2]
 
-        jhj = self.cyslope.allocate_param_array(jhj_shape, dtype=self.ftype, zeros=True)
+        jhj = self.slope.allocate_param_array(jhj_shape, dtype=self.ftype, zeros=True)
 
-        self.cyslope.cycompute_jhj(jhj1.real, jhj, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        self.slope.compute_jhj(jhj1.real, jhj, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
         self.jhjinv = np.zeros_like(jhj)
 
-        self.cyslope.cycompute_jhjinv(jhj, self.jhjinv, self.eps)
+        self.slope.compute_jhjinv(jhj, self.jhjinv, self.eps)

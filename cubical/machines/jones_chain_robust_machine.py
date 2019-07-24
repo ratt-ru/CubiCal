@@ -42,8 +42,8 @@ class JonesChain(MasterMachine):
             jones_options (dict): 
                 Dictionary of options pertaining to the chain. 
         """
-        self.cykernel = self.get_kernel(jones_options["sol"])
-        self.cychain  = cubical.kernels.import_kernel("cychain")
+        self.kernel = self.get_kernel(jones_options["sol"])
+        self.chain  = cubical.kernels.import_kernel("chain")
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, jones_options)
@@ -184,11 +184,11 @@ class JonesChain(MasterMachine):
 
             jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
 
-            self._jhr = self.cykernel.allocate_gain_array(jhr_shape, dtype=obser_arr.dtype)
+            self._jhr = self.kernel.allocate_gain_array(jhr_shape, dtype=obser_arr.dtype)
 
             jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
 
-            self._jhrint = self.cykernel.allocate_gain_array(jhrint_shape, dtype=self._jhr.dtype)
+            self._jhrint = self.kernel.allocate_gain_array(jhrint_shape, dtype=self._jhr.dtype)
             self._jhj = np.empty_like(self._jhrint)
             self._jhjinv =  np.empty_like(self._jhrint)
 
@@ -196,7 +196,7 @@ class JonesChain(MasterMachine):
 
         for ind in range(self.active_index, -1, -1):
             term = self.jones_terms[ind]
-            self.cychain.cycompute_jh(self.jh, term.gains, *term.gain_intervals)
+            self.chain.compute_jh(self.jh, term.gains, *term.gain_intervals)
             
         # for the robust solver you just have to compute the residuals
         if self.iters == 1:
@@ -207,20 +207,20 @@ class JonesChain(MasterMachine):
         self._jhr.fill(0)
 
         #computing jhwr which jhr * the weights
-        self.cykernel.cycompute_jhwr(self.jh, self.residuals, self.weights, self._jhr, 1, 1)
+        self.kernel.compute_jhwr(self.jh, self.residuals, self.weights, self._jhr, 1, 1)
 
         for ind in range(0, self.active_index, 1):
             term = self.jones_terms[ind]
             g_inv, gh_inv, flag_counts = term.get_inverse_gains()
-            self.cychain.cyapply_left_inv_jones(self._jhr, g_inv, *term.gain_intervals)
+            self.chain.apply_left_inv_jones(self._jhr, g_inv, *term.gain_intervals)
 
         self._jhrint.fill(0)
-        self.cychain.cysum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
+        self.chain.sum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
 
         self._jhj.fill(0)
-        self.cykernel.cycompute_jhwj(self.jh, self.weights, self._jhj, *self.active_term.gain_intervals)
+        self.kernel.compute_jhwj(self.jh, self.weights, self._jhj, *self.active_term.gain_intervals)
 
-        flag_count = self.cykernel.cycompute_jhjinv(self._jhj, self._jhjinv,
+        flag_count = self.kernel.compute_jhjinv(self._jhj, self._jhjinv,
                                                     self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
 
         return self._jhrint, self._jhjinv, flag_count
@@ -273,7 +273,7 @@ class JonesChain(MasterMachine):
             A tuple of gains,conjugate gains
         """
         ndir = self.n_dir if dd else 1
-        gains = self.cykernel.allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+        gains = self.kernel.allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
                                                   self.dtype)
         g0 = self.jones_terms[0]._gainres_to_fullres(self.jones_terms[0].gains, tdim_ind=1)
         if ndir > 1 and g0.shape[0] == 1:
@@ -282,7 +282,7 @@ class JonesChain(MasterMachine):
             g0 = g0[:1,...]
         gains[:] = g0
         for term in self.jones_terms[1:]:
-            self.cykernel.cyright_multiply_gains(gains, term.gains, *term.gain_intervals)
+            self.kernel.right_multiply_gains(gains, term.gains, *term.gain_intervals)
 
         # compute conjugate gains
         gh = np.empty_like(gains)
@@ -298,7 +298,7 @@ class JonesChain(MasterMachine):
         Returns:
             A tuple of gains,conjugate gains,flag_count (if flags raised in inversion)
         """
-        gains = self.cykernel.allocate_gain_array([1, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+        gains = self.kernel.allocate_gain_array([1, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
                                                   self.dtype)
         init = False
         fc0 = 0
@@ -309,7 +309,7 @@ class JonesChain(MasterMachine):
                 g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
-                    self.cykernel.cyright_multiply_gains(gains, g[:1,...], *term.gain_intervals)
+                    self.kernel.right_multiply_gains(gains, g[:1,...], *term.gain_intervals)
                 else:
                     init = True
                     gains[:] = term._gainres_to_fullres(g[:1,...], tdim_ind=1)
@@ -344,7 +344,7 @@ class JonesChain(MasterMachine):
         """
         g, gh = self.accumulate_gains()
         np.copyto(resid_arr, obser_arr)
-        self.cykernel.cycompute_residual(model_arr, g, gh, resid_arr, 1, 1)
+        self.kernel.compute_residual(model_arr, g, gh, resid_arr, 1, 1)
 
         return resid_arr
 
@@ -370,7 +370,7 @@ class JonesChain(MasterMachine):
 
         g, gh, flag_count = self.accumulate_inv_gains()
 
-        self.cykernel.cycompute_corrected(resid_vis, g, gh, corr_vis, 1, 1)
+        self.kernel.compute_corrected(resid_vis, g, gh, corr_vis, 1, 1)
 
         return corr_vis, flag_count
 
@@ -388,7 +388,7 @@ class JonesChain(MasterMachine):
                 Array containing the result of GMG\ :sup:`H`.
         """
         g, gh = self.accumulate_gains()
-        self.cykernel.cyapply_gains(vis, g, gh, 1, 1)
+        self.kernel.apply_gains(vis, g, gh, 1, 1)
         return vis
 
     def check_convergence(self, min_delta_g):

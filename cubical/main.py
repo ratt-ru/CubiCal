@@ -36,6 +36,9 @@ from cubical.tools import logger
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
 
+# Some modules cause issues with logging - grab their loggers and 
+# manually set the log levels to something less annoying.
+
 import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 

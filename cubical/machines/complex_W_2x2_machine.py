@@ -44,7 +44,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options)
 
-        self.cykernel_robust = cubical.kernels.import_kernel("cyfull_W_complex")
+        self.kernel_robust = cubical.kernels.import_kernel("full_W_complex")
 
         self.residuals = np.empty_like(data_arr)
 
@@ -89,20 +89,20 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         jh = self.get_new_jh(model_arr)
 
-        self.cykernel_robust.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.kernel_robust.compute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
         jhwr = self.get_new_jhr()
 
         if self.iters == 1:
             self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
-        self.cykernel_robust.cycompute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
+        self.kernel_robust.compute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
 
         jhwj, jhwjinv = self.get_new_jhj()
 
-        self.cykernel_robust.cycompute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
+        self.kernel_robust.compute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
 
-        flag_count = self.cykernel_robust.cycompute_jhjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
+        flag_count = self.kernel_robust.compute_jhjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhwr, jhwjinv, flag_count
 
@@ -121,7 +121,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
         update = self.init_update(jhr)
-        self.cykernel_robust.cycompute_update(jhr, jhjinv, update)
+        self.kernel_robust.compute_update(jhr, jhjinv, update)
 
         # if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
         update += self.gains
@@ -194,7 +194,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
             ompstd = np.zeros((4,4), dtype=self.dtype)
 
-            self.cykernel_robust.cycompute_cov(self.residuals, ompstd, self.weights)
+            self.kernel_robust.compute_cov(self.residuals, ompstd, self.weights)
 
             # removing the offdiagonal correlations
 
@@ -267,7 +267,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         # import pdb; pdb.set_trace()
 
-        self.cykernel_robust.cycompute_weights(self.residuals, covinv, w, v, self.npol)
+        self.kernel_robust.compute_weights(self.residuals, covinv, w, v, self.npol)
 
         # re-set weights for visibillities flagged from start to 0
         w[:,self.new_flags,:] = 0
