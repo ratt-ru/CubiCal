@@ -210,7 +210,7 @@ class DDFacetSim(object):
             model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64).copy() #degridder needs transposes, dont mod the data globally
 
             if not np.any(model_image):
-                log.info("Facet {0:d} is empty. Skipping".format(subregion_index))
+                log(2).info("Facet {0:d} is empty. Skipping".format(subregion_index))
                 continue
             dname = self.__cachename_compute(src)
             model_image = DDFacetSim.__detaper_model(gm, model_image.view(), self.__direction_CFs[dname][subregion_index]).copy() # degridder don't respect strides must be contiguous
