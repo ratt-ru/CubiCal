@@ -204,14 +204,14 @@ class Flagger(object):
             resid_arr = resid_arr.reshape([1]+list(resid_arr.shape))
 
         import cubical.kernels
-        cymadmax = cubical.kernels.import_kernel("cymadmax")
+        madmax = cubical.kernels.import_kernel("madmax")
         # estimate MAD of off-diagonal elements
         absres = np.empty_like(resid_arr, dtype=np.float32)
         np.abs(resid_arr, out=absres)
         if self.mad_per_corr:
-            mad, goodies = cymadmax.compute_mad_per_corr(absres, flags_arr, diag=self.mad_estimate_diag, offdiag=self.mad_estimate_offdiag)
+            mad, goodies = madmax.compute_mad_per_corr(absres, flags_arr, diag=self.mad_estimate_diag, offdiag=self.mad_estimate_offdiag)
         else:
-            mad, goodies = cymadmax.compute_mad(absres, flags_arr, diag=self.mad_estimate_diag, offdiag=self.mad_estimate_offdiag)
+            mad, goodies = madmax.compute_mad(absres, flags_arr, diag=self.mad_estimate_diag, offdiag=self.mad_estimate_offdiag)
         # any of it non-zero?
         if mad.mask.all():
             return
@@ -251,7 +251,7 @@ class Flagger(object):
                 thr[:] = threshold * mad / SIGMA_MAD
             else:
                 thr[:] = threshold * mad[...,np.newaxis,np.newaxis] / SIGMA_MAD
-            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, self.flagbit, goodies,
+            baddies = madmax.threshold_mad(absres, thr, flags_arr, self.flagbit, goodies,
                                              diag=self.mad_diag, offdiag=self.mad_offdiag)
             made_plots, flagged_something  = self.report_carnage(absres, mad, baddies, flags_arr,
                                                 "baseline-based Mad Max ({} sigma)".format(threshold), max_label)
@@ -269,7 +269,7 @@ class Flagger(object):
                 thr[:] = med_thr[:,np.newaxis,np.newaxis,:,:]
             else:
                 thr[:] = med_thr[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis]
-            baddies = cymadmax.threshold_mad(absres, thr, flags_arr, self.flagbit, goodies,
+            baddies = madmax.threshold_mad(absres, thr, flags_arr, self.flagbit, goodies,
                                              diag=self.mad_diag, offdiag=self.mad_offdiag)
 
             made, flagged = \
@@ -318,7 +318,7 @@ class Flagger(object):
                     figure.savefig(filename, dpi=300)
                     from future.moves import pickle
                     pickle_file = filename+".cp"
-                    pickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "w"), 2)
+                    pickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "wb"), 2)
                     print("{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file), file=log(1))
                 pylab.close(figure)
                 del figure
