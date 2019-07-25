@@ -380,7 +380,8 @@ class PerIntervalGains(MasterMachine):
                 self.prior_gain_error = np.sqrt(NSR_int)
                 pge_flag_invalid = np.logical_or(np.isnan(self.prior_gain_error),
                                                  np.isinf(self.prior_gain_error))
-                if np.any(pge_flag_invalid):
+
+                if np.any(np.all(pge_flag_invalid, axis=-1)):
                     from cubical.solver import log
                     log(0).print("WARNING: one or more directions have invalid or 0 models (or frequency subbands). These directions will not be solved for and residuals corrections left at unity!")
 
