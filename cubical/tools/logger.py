@@ -42,20 +42,26 @@ def getLogFilename():
 
 class _DefaultWriter(object):
     """A default writer logs messages to a logger"""
+    __print_once_keys = set([])
     def __init__(self, logger, level, color=None, bold=None):
         self.logger = logger
         self.level = level
         self.color = (color or "red") if bold else color
         self.bold = bool(color) if bold is None else bold
 
-    def write(self, message):
+    def write(self, message, level_override=None, print_once=None):
+        if print_once is not None:
+            if print_once in _DefaultWriter.__print_once_keys:
+                return    
+            print_once = set(list(__print_once_keys) + [print_once])
+
         message = message.rstrip()
         if self.color and message:  # do not colorize empty messages, else "\n" is issued independently
             message = ModColor.Str(message, col=self.color, Bold=self.bold)
-        self.logger.log(self.level, message)
+        self.logger.log(self.level if level_override is None else level_override, message)
 
     print = write
-
+        
 class LoggerWrapper(object):
     def __init__(self, logger, verbose=None, log_verbose=None):
         self.logger = logger
@@ -110,23 +116,29 @@ class LoggerWrapper(object):
         # effective verbosity level is either set explicitly when the writer is created, or else use global level
         return _DefaultWriter(self.logger, logging.INFO - level, color=color)
     
-    def warn(self, msg, color=None):
+    def warn(self, msg, color=None, print_once=None):
         """
         Wrapper for log.warn
         """
-        _DefaultWriter(self.logger, logging.WARN, color=color).write(msg)
+        _DefaultWriter(self.logger, logging.WARN, color=color).write(msg, print_once=print_once)
     
-    def error(self, msg, color="red"):
+    def error(self, msg, color="red", print_once=None):
         """
         Wrapper for log.error
         """
-        _DefaultWriter(self.logger, logging.ERROR, color=color).write(msg)
+        _DefaultWriter(self.logger, logging.ERROR, color=color).write(msg, print_once=print_once)
         
-    def info(self, msg, color=None):
+    def info(self, msg, color=None, print_once=None):
         """
         Wrapper for log.info
         """
-        _DefaultWriter(self.logger, logging.INFO, color=color).write(msg)
+        _DefaultWriter(self.logger, logging.INFO, color=color).write(msg, print_once=print_once)
+
+    def critical(self, msg, color=None, print_once=None):
+        """
+        Wrapper for log.critical
+        """
+        _DefaultWriter(self.logger, logging.CRITICAL, color=color).write(msg, print_once=print_once)
     
     print = info
 

@@ -164,8 +164,6 @@ class PhaseSlopeGains(ParameterisedGains):
                                            self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
             self._gains_loaded = True
 
-
-    @profile
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the J\ :sup:`H`\R term of the GN/LM method. 
@@ -220,7 +218,6 @@ class PhaseSlopeGains(ParameterisedGains):
         elif self.slope_type=="t-slope":
             return 4
 
-    @profile
     def implement_update(self, jhr, jhjinv):
 
         # variance of slope parms is diagonal of jhjinv

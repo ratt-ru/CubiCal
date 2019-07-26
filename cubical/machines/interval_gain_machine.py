@@ -8,6 +8,7 @@ import numpy as np
 from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
 import cubical.kernels
+from cubical.solver import log
 
 from numpy.ma import masked_array
 
@@ -380,10 +381,20 @@ class PerIntervalGains(MasterMachine):
                 self.prior_gain_error = np.sqrt(NSR_int)
                 pge_flag_invalid = np.logical_or(np.isnan(self.prior_gain_error),
                                                  np.isinf(self.prior_gain_error))
-                if np.any(pge_flag_invalid):
-                    from cubical.solver import log
-                    log(0).print("WARNING: one or more directions have invalid or 0 models (or frequency subbands). These directions will not be solved for and residuals corrections left at unity!")
 
+                invalid_models = np.logical_or(self.interval_sum(modelsq, 1) == 0,
+                                               np.logical_or(np.isnan(self.interval_sum(modelsq, 1)),
+                                                             np.isinf(self.interval_sum(modelsq, 1))))
+                if np.any(np.all(numeq_tfa == 0, axis=-1)):
+                    log.critical("One or more directions (or its frequency intervals) are already fully flagged."
+                                 "Affected intervals will not solved for and residuals left uncorrected!",
+                                 print_once="full_flag_intervals")
+
+                if np.any(np.all(invalid_models, axis=-1)):                    
+                    log.critical("One or more directions (or its frequency intervals) have invalid or 0 models."
+                                 "Affected intervals will not solved for and residuals left uncorrected!",
+                                 print_once="invalid_model_intervals")
+                    
             self.prior_gain_error[:, ~self.valid_intervals, :] = 0
             # reset to 0 for fixed directions
             if self.dd_term:
@@ -393,8 +404,14 @@ class PerIntervalGains(MasterMachine):
             self._n_flagged_on_max_error = None
             bad_gain_intervals = pge_flag_invalid
             if self.max_gain_error:
+                low_snr = self.prior_gain_error > self.max_gain_error
+                if np.any(np.all(low_snr, axis=-1)):    
+                    log.critical("Low SNR in one or more directions (or its frequency intervals)."
+                                 "Check your settings for gain solution intervals and max-prior-error."
+                                 "Affected intervals will not solved for and residuals left uncorrected!",
+                                 print_once="low_snr_interval")
                 bad_gain_intervals = np.logical_or(bad_gain_intervals,
-                                                   self.prior_gain_error > self.max_gain_error)    # dir,time,freq,ant
+                                                   low_snr)    # dir,time,freq,ant
             if bad_gain_intervals.any():
                 # (n_dir,) array showing how many were flagged per direction
                 self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
