@@ -9,7 +9,7 @@ from cubical.flagging import FL
 from cubical.machines.abstract_machine import MasterMachine
 import cubical.kernels
 from cubical.solver import log
-
+import logging
 from numpy.ma import masked_array
 
 def copy_or_identity(array, time_ind=0, out=None):
@@ -60,7 +60,6 @@ class PerIntervalGains(MasterMachine):
         else:
             self.kernel_solve = self.kernel
 
-        from cubical.solver import log
         log(2).print("{} kernels are {} {}".format(label, self.kernel, self.kernel_solve))
 
         self.t_int = options["time-int"] or self.n_tim
@@ -117,7 +116,7 @@ class PerIntervalGains(MasterMachine):
         # Construct flag array and populate flagging attributes.
         self.max_gain_error = options["max-prior-error"]
         self.max_post_error = options["max-post-error"]
-
+        self.low_snr_warn = options["low-snr-warn"]
         self.clip_lower = options["clip-low"]
         self.clip_upper = options["clip-high"]
         self.clip_after = options["clip-after"]
@@ -385,16 +384,18 @@ class PerIntervalGains(MasterMachine):
                 invalid_models = np.logical_or(self.interval_sum(modelsq, 1) == 0,
                                                np.logical_or(np.isnan(self.interval_sum(modelsq, 1)),
                                                              np.isinf(self.interval_sum(modelsq, 1))))
-                if np.any(np.all(numeq_tfa == 0, axis=-1)):
-                    log.critical("One or more directions (or its frequency intervals) are already fully flagged."
-                                 "Affected intervals will not solved for and residuals left uncorrected!",
-                                 print_once="full_flag_intervals")
+                if np.any(np.all(numeq_tfa == 0, axis=-1)) and log.verbosity() > 1:
+                    self.raise_userwarning(
+                        logging.CRITICAL,
+                        "One or more directions (or its frequency intervals) are already fully flagged.",
+                        90, raise_once="prior_fully_flagged_dirs", verbosity=2)
 
-                if np.any(np.all(invalid_models, axis=-1)):                    
-                    log.critical("One or more directions (or its frequency intervals) have invalid or 0 models."
-                                 "Affected intervals will not solved for and residuals left uncorrected!",
-                                 print_once="invalid_model_intervals")
-                    
+                if np.any(np.all(invalid_models, axis=-1)) and log.verbosity() > 1:
+                    self.raise_userwarning(
+                        logging.CRITICAL,
+                        "One or more directions (or its frequency intervals) have invalid or 0 models.",
+                        90, raise_once="invalid_models", verbosity=2)
+
             self.prior_gain_error[:, ~self.valid_intervals, :] = 0
             # reset to 0 for fixed directions
             if self.dd_term:
@@ -405,11 +406,24 @@ class PerIntervalGains(MasterMachine):
             bad_gain_intervals = pge_flag_invalid
             if self.max_gain_error:
                 low_snr = self.prior_gain_error > self.max_gain_error
-                if np.any(np.all(low_snr, axis=-1)):    
-                    log.critical("Low SNR in one or more directions (or its frequency intervals)."
-                                 "Check your settings for gain solution intervals and max-prior-error."
-                                 "Affected intervals will not solved for and residuals left uncorrected!",
-                                 print_once="low_snr_interval")
+                if np.any(np.all(low_snr, axis=-1)):
+                    dir_snr = {}
+                    for d in range(self.prior_gain_error.shape[0]):
+                        percflagged = np.sum(low_snr[d]) * 100.0 / low_snr[d].size
+                        if percflagged > self.low_snr_warn: dir_snr[d] = percflagged
+
+                    if len(dir_snr) > 0:
+                        if log.verbosity() > 2:
+                            msg = "Low SNR in one or more directions of gain '{0:s}' chunk '{1:s}':".format(
+                                    self.jones_label, self.chunk_label) +\
+                                  "\n{0:s}\n".format("\n".join(["\t direction {0:s}: {1:.3f}% gains affected".format(
+                                                        str(d), dir_snr[d]) for d in sorted(dir_snr)])) +\
+                                  "Check your settings for gain solution intervals and max-prior-error. "
+                        else:
+                            msg = "'{0:s}' {1:s} Low SNR in directions {2:s}. Increase solution intervals or raise max-prior-error!".format(
+                                self.jones_label, self.chunk_label, ", ".join(map(str, sorted(dir_snr))))
+                        self.raise_userwarning(logging.CRITICAL, msg, 50, verbosity=log.verbosity())
+
                 bad_gain_intervals = np.logical_or(bad_gain_intervals,
                                                    low_snr)    # dir,time,freq,ant
             if bad_gain_intervals.any():

@@ -349,8 +349,9 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
         for key in tile.get_chunk_keys():
             if not single_chunk or key == single_chunk:
                 processed = True
-                stats_dict[tile.get_chunk_indices(key)] = \
-                    solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
+                stats = solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
+                stats_dict[tile.get_chunk_indices(key)] = stats
+
         if processed:
             only_save = ["output", "model", "weight", "flag", "bitflag"] if out_opts is None or out_opts["apply-solver-flags"] else \
                         ["output", "model", "weight"]

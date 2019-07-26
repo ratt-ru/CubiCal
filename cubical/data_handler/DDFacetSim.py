@@ -45,7 +45,7 @@ class DDFacetSim(object):
         """ sets the model provider """
         if not isinstance(model, DicoSourceProvider.DicoSourceProvider):
             raise TypeError("Model provider must be a DicoSourceProvider")
-        log.info("Model predictor is switching to model '{0:s}'".format(str(model)))
+        log(2).print("Model predictor is switching to model '{0:s}'".format(str(model)))
         self.__model = model
 
     @classmethod
@@ -208,8 +208,8 @@ class DDFacetSim(object):
         region_model = np.zeros((nrow, nfreq, 4), dtype=np.complex64)
         flagged = np.zeros_like(region_model, dtype=np.bool)
         # now we predict for this direction
-        log.info("Predicting {1:d} facets for direction '{0:s}'...".format(
-            str(self.__direction), src.subregion_count))
+        log.info("Computing visibilities in {1:d} facets for direction '{0:s}' for model '{2:s}'...".format(
+            str(self.__direction), src.subregion_count, str(self.__model)))
 
         for gm, subregion_index in zip(gmacs, range(src.subregion_count)):
             model = np.zeros((nrow, nfreq, 4), dtype=np.complex64).copy()
@@ -244,7 +244,8 @@ class DDFacetSim(object):
                            np.s_[0::3] if model_type == "cplxdiag" else \
                            np.s_[:] # if model_type == "cplx2x2"
         if not np.any(region_model[:, :, model_corr_slice]):
-            log.info("WARNING: Model in region '{0:s}' is completely empty. This may indicate user error and lead to non-correcting direction dependent gains!".format(self.__direction))
+            log.critical("Model in region '{0:s}' is completely empty. This may indicate user "
+                         "error and lead to non-correcting direction dependent gains!".format(self.__direction))
 
         return region_model[:, :, model_corr_slice]
 

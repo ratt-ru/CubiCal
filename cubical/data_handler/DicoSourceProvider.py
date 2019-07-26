@@ -1,3 +1,4 @@
+from __future__ import print_function
 try:
     from DDFacet.Imager import ModModelMachine as MMM
     from DDFacet.ToolsDir.ModToolBox import EstimateNpix
@@ -32,7 +33,7 @@ class DicoSourceProvider(object):
             self.__dicomodel = MMM.ClassModModelMachine().GiveInitialisedMMFromFile(fn)
             DicoSourceProvider.__cached_model_machines[fn] = self.__dicomodel
         else:
-            log.info("Reusing previously initialized DDFacet model machine '{0:s}'".format(fn))
+            log(2).print("Reusing previously initialized DDFacet model machine '{0:s}'".format(fn))
             self.__dicomodel = DicoSourceProvider.__cached_model_machines[fn]
 
         # assume gd is stored in the dico... this is only true for ddf versions 0.4.1 and beyond
@@ -59,11 +60,11 @@ class DicoSourceProvider(object):
                                                          max_facet_size,
                                                          min_nfacet_per_axis)
             DicoSourceProvider.__cached_providers[cachename] = self.__clustercat
-            log.info("initialization sequence of source provider '{0:s}' (regions '{1:s}') completed".format(
+            log(2).print("initialization sequence of source provider '{0:s}' (regions '{1:s}') completed".format(
                     fn, clustercat if clustercat is not None else 'die'))
         else:
             self.__clustercat = DicoSourceProvider.__cached_providers[cachename]
-            log.info("reused previous initialization of source provider '{0:s}' (regions '{1:s}')".format(
+            log(2).print("reused previous initialization of source provider '{0:s}' (regions '{1:s}')".format(
                 fn, clustercat if clustercat is not None else 'die'))
 
         self.__current_direction = 0
@@ -119,7 +120,7 @@ class DicoSourceProvider(object):
                                     self.__ny - 1,
                                     name="die",
                                     check_mask_outofbounds=True)]
-        log.info("\tInitialized bounding boxes for regions. There are {0:d} region(s)".format(len(clusters)))
+        log(2).print("\tInitialized bounding boxes for regions. There are {0:d} region(s)".format(len(clusters)))
         # now create axis aligned bounding boxes for each of the regions
         # and further split them to the maximum permitted facet size
         clusters = [BoundingBoxFactory.AxisAlignedBoundingBox(c, check_mask_outofbounds=False) for c in clusters]
@@ -129,7 +130,7 @@ class DicoSourceProvider(object):
             reg_size_deg = np.max(np.array(reg.box_npx) * self.pixel_scale / 3600.0)
             nsplit = max(1, max(min_nfacet_per_axis, int(np.ceil(reg_size_deg / max_size))))
             return BoundingBoxFactory.SplitBox(reg, nsubboxes=nsplit, check_mask_outofbounds=True)
-        log.info("\tSplitting regions into facetted regions, with maximum unpadded size of {0:.2f} degrees per facet".format(max_size))
+        log(2).print("\tSplitting regions into facetted regions, with maximum unpadded size of {0:.2f} degrees per facet".format(max_size))
         clusters = [aasubreg for aareg in map(lambda reg: __split_regular_region(reg, max_size), clusters) 
                     for aasubreg in aareg]
         clusters = map(lambda reg: BoundingBoxFactory.AxisAlignedBoundingBox(reg, square=True, check_mask_outofbounds=False), clusters)
@@ -139,11 +140,11 @@ class DicoSourceProvider(object):
             # this returns an odd npix:
             npixunpadded, npixpadded = EstimateNpix(npx, Padding=padding_factor)
             return BoundingBoxFactory.PadBox(c, npixpadded, npixpadded, check_mask_outofbounds=False)
-        log.info("\tPadding all facets by a minimum factor of {0:.2f}x".format(padding_factor))
+        log(2).print("\tPadding all facets by a minimum factor of {0:.2f}x".format(padding_factor))
         clusters = map(lambda c: __pad_cluster(c, padding_factor), clusters)
-        log.info("\tNormalizing regional weights")
+        log.debug("\tNormalizing regional weights")
         BoundingConvexHull.normalize_masks(clusters)
-        log.info("\tCaching regional weight maps for future predicts")
+        log(2).print("\tCaching regional weight maps for future predicts")
         map(lambda x: x.mask, clusters) # cache mask
         dirs = {} 
         for c in clusters:

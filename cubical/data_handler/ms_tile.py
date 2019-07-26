@@ -13,7 +13,7 @@ from cubical import data_handler
 from cubical.tools import dtype_checks as dtc
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("data_handler")
+log = logger.getLogger("ms_tile")
 try:
     from .TiggerSourceProvider import TiggerSourceProvider
 except ImportError:
@@ -288,7 +288,7 @@ class MSTile(object):
             model_shape = (ndirs, 1, self._expected_nrows, self.nfreq, self.tile.dh.ncorr)
             use_double = self.tile.dh.mb_opts['dtype'] == 'double'
             full_model = np.zeros(model_shape, np.complex128 if use_double else self.tile.dh.ctype)
-            print("montblanc dtype is {} ('{}')".format(full_model.dtype, self.tile.dh.mb_opts['dtype']), file=log(0))
+            print("montblanc dtype is {} ('{}')".format(full_model.dtype, self.tile.dh.mb_opts['dtype']), file=log(2))
             column_snk = MBTiggerSim.ColumnSinkProvider(self.tile.dh, self._freqs.shape, full_model, self._mb_sorted_ind)
             snks = [column_snk]
 
@@ -714,7 +714,7 @@ class MSTile(object):
                             weight_col = weight_col[:-1]
                         wcol = wcol_cache.get(weight_col)
                         if wcol is None:
-                            print("model {} weights {}: reading from {}{}".format(imod, iwcol, weight_col, mean_corr), file=log(0))
+                            print("model {} weights {}: reading from {}{}".format(imod, iwcol, weight_col, mean_corr), file=log(2))
                             wcol = table_subset.getcol(str(weight_col))
                             # support two shapes of wcol: either same as data (a-la WEIGHT_SPECTRUM), or missing
                             # a frequency axis (a-la WEIGHT)
@@ -723,14 +723,14 @@ class MSTile(object):
                                 if wcol.shape != obvis0.shape:
                                     raise RuntimeError("column {} does not match shape of visibility column".format(weight_col))
                             elif tuple(wcol.shape) == (obvis0.shape[0], self.dh.nmscorrs):
-                                print("    this weight column does not have a frequency axis: broadcasting", file=log(0))
+                                print("    this weight column does not have a frequency axis: broadcasting", file=log(2))
                                 wcol_cache[weight_col] = np.empty_like(obvis0, self.dh.wtype)
                                 wcol_cache[weight_col][:] = wcol[:, np.newaxis, self.dh._corr_slice]
                                 wcol = wcol_cache[weight_col]
                             else:
                                 raise RuntimeError("column {} has an invalid shape {} (expected {})".format(weight_col, wcol.shape, obvis0.shape))
                         else:
-                            print("model {} weights {}: reusing {}{}".format(imod, iwcol, weight_col, mean_corr), file=log(0))
+                            print("model {} weights {}: reusing {}{}".format(imod, iwcol, weight_col, mean_corr), file=log(2))
                         # take mean weights if specified, else fill off-diagonals
                         if mean_corr:
                             wcol = wcol.mean(-1)[..., np.newaxis]
@@ -834,7 +834,7 @@ class MSTile(object):
                 flag_arr0[invalid] |= FL.INVALID
                 self.dh.flagcounts.setdefault("INVALID", 0)
                 self.dh.flagcounts["INVALID"] += ninv
-                print("  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size)), file=log(0,"red"))
+                log.warn("  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size)), "red")
 
             # check for invalid weights
             if self.dh.has_weights and load_model:
@@ -845,8 +845,8 @@ class MSTile(object):
                     flag_arr0[invalid] |= FL.INVWGHT
                     self.dh.flagcounts.setdefault("INVWGHT", 0)
                     self.dh.flagcounts["INVWGHT"] += ninv
-                    print("  {:.2%} input visibilities flagged due to inf/nan weights".format(
-                        ninv / float(flagged.size)), file=log(0, "red"))
+                    log.warn("  {:.2%} input visibilities flagged due to inf/nan weights".format(
+                        ninv / float(flagged.size)), "red")
                 wnull = (weights0 == 0).all(axis=0) & ~flagged
                 nnull = wnull.sum()
                 if nnull:
@@ -854,8 +854,8 @@ class MSTile(object):
                     flag_arr0[wnull] |= FL.NULLWGHT
                     self.dh.flagcounts.setdefault("NULLWGHT", 0)
                     self.dh.flagcounts["NULLWGHT"] += nnull
-                    print("  {:.2%} input visibilities flagged due to null weights".format(
-                        nnull / float(flagged.size)), file=log(0, "red"))
+                    log.warn("  {:.2%} input visibilities flagged due to null weights".format(
+                              nnull / float(flagged.size)), "red")
 
             nfl = flagged.sum()
             self.dh.flagcounts["IN"] += nfl
@@ -931,17 +931,17 @@ class MSTile(object):
                                                                                                       "" if not cluster else (
                                                                                                           "()" if cluster == 'die' else "({})".format(
                                                                                                               cluster)),
-                                                                                                      imod, idir, subtract_str), file=log(0))
+                                                                                                      imod, idir, subtract_str), file=log(2))
                                     model = loaded_models[model_source][cluster]
                                 # cluster of None signifies that this is a visibility column
                                 elif cluster is None:
                                     if model_source is 1:
                                         print("  using 1.+0j for model {} direction {}{}".format(model_source,
-                                                                                                         imod, idir, subtract_str), file=log(0))
+                                                                                                         imod, idir, subtract_str), file=log(2))
                                         model = np.ones_like(obvis)
                                     else:
                                         print("  reading {} for model {} direction {}{}".format(model_source, imod,
-                                                                                                        idir, subtract_str), file=log(0))
+                                                                                                        idir, subtract_str), file=log(2))
                                         model0 = self.dh.fetchslice(model_source, subset=table_subset)
                                         # sanity check (I've seen nulls coming out of wsclean...)
                                         invmodel = (~np.isfinite(model0))
