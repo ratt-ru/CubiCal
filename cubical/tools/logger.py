@@ -278,6 +278,9 @@ class ColorStrippingFormatter(logging.Formatter):
         if self.strip:
             return re.sub("\033\\[[0-9]+m", "", msg, 0)
         else:
+            msg = re.sub("^INFO      ", "\033[1;37;42mINFO      \033[0m", msg)
+            msg = re.sub("^WARNING   ", "\033[1;37;43mWARNING   \033[0m", msg)
+            msg = re.sub("^CRITICAL  ", "\033[1;5;41mCRITICAL  \033[0m", msg)
             return msg
 
 _fmt = "%(levelname)-10s%(separator)s - %(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
