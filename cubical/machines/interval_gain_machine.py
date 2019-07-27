@@ -10,6 +10,7 @@ from cubical.machines.abstract_machine import MasterMachine
 import cubical.kernels
 from cubical.solver import log
 import logging
+import re
 from numpy.ma import masked_array
 
 def copy_or_identity(array, time_ind=0, out=None):
@@ -107,9 +108,18 @@ class PerIntervalGains(MasterMachine):
         self.min_quorum = options["conv-quorum"]
         self.update_type = options["update-type"]
         self.ref_ant = options["ref-ant"]
-        self.fix_directions = options["fix-dirs"] or []
+        self.fix_directions = options["fix-dirs"] if options["fix-dirs"] is not None and \
+                options["fix-dirs"] != "" else []
+
         if type(self.fix_directions) is int:
             self.fix_directions = [self.fix_directions]
+        if type(self.fix_directions) is str and re.match(r"^\W*\d{1,}(\W*,\W*\d{1,})*\W*$", self.fix_directions):
+            self.fix_directions = map(int, map(str.strip, ",".split(self.fix_directions)))
+
+        if not (type(self.fix_directions) is list and
+                all(map(lambda x: type(x) is int, self.fix_directions))):
+            raise ArgumentError("Fix directions must be number or list of numbers")
+
         # True if gains are loaded from a DB
         self._gains_loaded = False
 
@@ -406,26 +416,58 @@ class PerIntervalGains(MasterMachine):
             bad_gain_intervals = pge_flag_invalid
             if self.max_gain_error:
                 low_snr = self.prior_gain_error > self.max_gain_error
-                if np.any(np.all(low_snr, axis=-1)):
-                    dir_snr = {}
-                    for d in range(self.prior_gain_error.shape[0]):
-                        percflagged = np.sum(low_snr[d]) * 100.0 / low_snr[d].size
-                        if percflagged > self.low_snr_warn: dir_snr[d] = percflagged
+                if low_snr.all(axis=0).all():
+                    msg = "'{0:s}' {1:s} All directions flagged, either due to low SNR. "\
+                          "You need to check your tagged directions and your max-prior-error and/or solution intervals. "\
+                          "New flags will be raised for this chunk of data".format(
+                                self.jones_label, self.chunk_label)
+                    self.raise_userwarning(logging.CRITICAL, msg, 70, verbosity=log.verbosity())
 
-                    if len(dir_snr) > 0:
-                        if log.verbosity() > 2:
-                            msg = "Low SNR in one or more directions of gain '{0:s}' chunk '{1:s}':".format(
-                                    self.jones_label, self.chunk_label) +\
-                                  "\n{0:s}\n".format("\n".join(["\t direction {0:s}: {1:.3f}% gains affected".format(
-                                                        str(d), dir_snr[d]) for d in sorted(dir_snr)])) +\
-                                  "Check your settings for gain solution intervals and max-prior-error. "
-                        else:
-                            msg = "'{0:s}' {1:s} Low SNR in directions {2:s}. Increase solution intervals or raise max-prior-error!".format(
-                                self.jones_label, self.chunk_label, ", ".join(map(str, sorted(dir_snr))))
-                        self.raise_userwarning(logging.CRITICAL, msg, 50, verbosity=log.verbosity())
+                else:
+                    if low_snr.all(axis=-1).all(axis=-1).all(axis=-1).any(): #all antennas fully flagged of some direction
+                        dir_snr = {}
+                        for d in range(self.prior_gain_error.shape[0]):
+                            percflagged = np.sum(low_snr[d]) * 100.0 / low_snr[d].size
+                            if percflagged > self.low_snr_warn and d not in self.fix_directions: dir_snr[d] = percflagged
+
+                        if len(dir_snr) > 0:
+                            if log.verbosity() > 2:
+                                msg = "Low SNR in one or more directions of gain '{0:s}' chunk '{1:s}':".format(
+                                        self.jones_label, self.chunk_label) +\
+                                      "\n{0:s}\n".format("\n".join(["\t direction {0:s}: {1:.3f}% gains affected".format(
+                                                            str(d), dir_snr[d]) for d in sorted(dir_snr)])) +\
+                                      "Check your settings for gain solution intervals and max-prior-error. "
+                            else:
+                                msg = "'{0:s}' {1:s} Low SNR in directions {2:s}. Increase solution intervals or raise max-prior-error!".format(
+                                    self.jones_label, self.chunk_label, ", ".join(map(str, sorted(dir_snr))))
+                            self.raise_userwarning(logging.CRITICAL, msg, 50, verbosity=log.verbosity())
+
+                    if low_snr.all(axis=0).all(axis=0).all(axis=-1).any():
+                        msg = "'{0:s}' {1:s} All time of one or more frequency intervals flagged due to low SNR. "\
+                              "You need to check your max-prior-error and/or solution intervals. "\
+                              "New flags will be raised for this chunk of data".format(
+                                    self.jones_label, self.chunk_label)
+                        self.raise_userwarning(logging.WARNING, msg, 70, verbosity=log.verbosity())
+
+                    if low_snr.all(axis=0).all(axis=1).all(axis=-1).any():
+                        msg = "'{0:s}' {1:s} All channels of one or more time intervals flagged due to low SNR. "\
+                              "You need to check your max-prior-error and/or solution intervals. "\
+                              "New flags will be raised for this chunk of data".format(
+                                    self.jones_label, self.chunk_label)
+                        self.raise_userwarning(logging.WARNING, msg, 70, verbosity=log.verbosity())
+                    stationflags = np.argwhere(low_snr.all(axis=0).all(axis=0).all(axis=0).any()).flatten()
+                    if stationflags.size > 0:
+                        msg = "'{0:s}' {1:s} Stations {2:s} ({3:d}/{4:d}) fully flagged due to low SNR. "\
+                              "These stations may be faulty or your SNR requirements (max-prior-error) are not met. "\
+                              "New flags will be raised for this chunk of data".format(
+                                    self.jones_label, self.chunk_label, ", ".join(map(str, stationflags)),
+                                    np.sum(low_snr.all(axis=0).all(axis=0).all(axis=0).any()), low_snr.shape[3])
+                        self.raise_userwarning(logging.INFO, msg, 70, verbosity=log.verbosity())
+
 
                 bad_gain_intervals = np.logical_or(bad_gain_intervals,
                                                    low_snr)    # dir,time,freq,ant
+
             if bad_gain_intervals.any():
                 # (n_dir,) array showing how many were flagged per direction
                 self._n_flagged_on_max_error = bad_gain_intervals.sum(axis=(1,2,3))
@@ -644,8 +686,8 @@ class PerIntervalGains(MasterMachine):
             self.gains[...,(0,1),(1,0)] = 0
             np.abs(self.gains, out=self.gains)
         
-        # explicitly roll back invalid gains to previously known good values
-        self.gains[self.gflags != 0] = self.old_gains[self.gflags != 0]
+        ## explicitly roll back invalid gains to previously known good values
+        #self.gains[self.gflags != 0] = self.old_gains[self.gflags != 0]
         
         # explicitly roll back gains to previously known good values for fixed directions
         for idir in self.fix_directions:
