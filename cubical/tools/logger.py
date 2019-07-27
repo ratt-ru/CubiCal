@@ -280,7 +280,7 @@ class ColorStrippingFormatter(logging.Formatter):
         else:
             return msg
 
-_fmt = "%(levelname)s%(separator)s - %(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
+_fmt = "%(levelname)-10s%(separator)s - %(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
 #        _fmt = "%(asctime)s %(name)-25.25s | %(message)s"
 _datefmt = '%H:%M:%S'#'%H:%M:%S.%f'
 _logfile_formatter = ColorStrippingFormatter(_fmt, _datefmt, strip=True)
