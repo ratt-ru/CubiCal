@@ -398,13 +398,13 @@ class PerIntervalGains(MasterMachine):
                     self.raise_userwarning(
                         logging.CRITICAL,
                         "One or more directions (or its frequency intervals) are already fully flagged.",
-                        90, raise_once="prior_fully_flagged_dirs", verbosity=2)
+                        90, raise_once="prior_fully_flagged_dirs", verbosity=2, color="red")
 
                 if np.any(np.all(invalid_models, axis=-1)) and log.verbosity() > 1:
                     self.raise_userwarning(
                         logging.CRITICAL,
                         "One or more directions (or its frequency intervals) have invalid or 0 models.",
-                        90, raise_once="invalid_models", verbosity=2)
+                        90, raise_once="invalid_models", verbosity=2, color="red")
 
             self.prior_gain_error[:, ~self.valid_intervals, :] = 0
             # reset to 0 for fixed directions
@@ -421,7 +421,7 @@ class PerIntervalGains(MasterMachine):
                           "You need to check your tagged directions and your max-prior-error and/or solution intervals. "\
                           "New flags will be raised for this chunk of data".format(
                                 self.jones_label, self.chunk_label)
-                    self.raise_userwarning(logging.CRITICAL, msg, 70, verbosity=log.verbosity())
+                    self.raise_userwarning(logging.CRITICAL, msg, 70, verbosity=log.verbosity(), color="red")
 
                 else:
                     if low_snr.all(axis=-1).all(axis=-1).all(axis=-1).any(): #all antennas fully flagged of some direction
@@ -440,7 +440,7 @@ class PerIntervalGains(MasterMachine):
                             else:
                                 msg = "'{0:s}' {1:s} Low SNR in directions {2:s}. Increase solution intervals or raise max-prior-error!".format(
                                     self.jones_label, self.chunk_label, ", ".join(map(str, sorted(dir_snr))))
-                            self.raise_userwarning(logging.CRITICAL, msg, 50, verbosity=log.verbosity())
+                            self.raise_userwarning(logging.CRITICAL, msg, 50, verbosity=log.verbosity(), color="red")
 
                     if low_snr.all(axis=0).all(axis=0).all(axis=-1).any():
                         msg = "'{0:s}' {1:s} All time of one or more frequency intervals flagged due to low SNR. "\

@@ -153,8 +153,9 @@ class LoggerWrapper(object):
 
     print = info
 
-    def write(self, message, level=logging.INFO, verbosity=0, print_once=None):
-        _DefaultWriter(self.logger, level - int(verbosity)).write(message, print_once=print_once)
+    def write(self, message, level=logging.INFO, verbosity=0, print_once=None, color=None):
+        _DefaultWriter(self.logger, level - int(verbosity), color=color).write(message,
+                                                                               print_once=print_once)
 
 _proc_status = '/proc/%d/status' % os.getpid()
 
@@ -281,6 +282,7 @@ class ColorStrippingFormatter(logging.Formatter):
             msg = re.sub("^INFO      ", "\033[1;37;42mINFO      \033[0m", msg)
             msg = re.sub("^WARNING   ", "\033[1;37;43mWARNING   \033[0m", msg)
             msg = re.sub("^CRITICAL  ", "\033[1;5;41mCRITICAL  \033[0m", msg)
+            msg = re.sub("^ERROR     ", "\033[1;5;41mERROR     \033[0m", msg)
             return msg
 
 _fmt = "%(levelname)-10s%(separator)s - %(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"

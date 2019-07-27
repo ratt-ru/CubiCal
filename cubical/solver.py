@@ -162,7 +162,11 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     # raise warnings from priori conditioning, before the loop
     for d in gm.collect_warnings():
-        log.write(d["msg"], level=d["level"], print_once=d["raise_once"], verbosity=d["verbosity"])
+        log.write(d["msg"],
+                  level=d["level"],
+                  print_once=d["raise_once"],
+                  verbosity=d["verbosity"],
+                  color=d["color"])
 
     if not gm.has_valid_solutions:
         log.error("{} no solutions: {}; flags {}".format(label, gm.conditioning_status_string, get_flagging_stats()))
@@ -315,9 +319,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
                                     stats.chunk.chi2u, delta_chi_mean, delta_chi_max,
                                     float(1-stats.chunk.frac_stalled), diverging))
 
-    # After the solver loop check for warnings from the solvers
-    for d in gm.collect_warnings():
-        log.write(d["msg"], level=d["level"], print_once=d["raise_once"], verbosity=d["verbosity"])
+
 
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
@@ -384,6 +386,14 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             newshape = gm.weights.shape[1:-1] + (2,2)
             robust_weights = np.repeat(gm.weights.real, 4, axis=-1)
             robust_weights = np.reshape(robust_weights, newshape)
+
+    # After the solver loop check for warnings from the solvers
+    for d in gm.collect_warnings():
+        log.write(d["msg"],
+                  level=d["level"],
+                  print_once=d["raise_once"],
+                  verbosity=d["verbosity"],
+                  color=d["color"])
 
 
     return (resid_arr if compute_residuals else None), stats, robust_weights

@@ -637,7 +637,7 @@ class MasterMachine:
             self.import_solutions(sols)
 
     @classmethod
-    def raise_userwarning(self, level, msg, sort_index, verbosity=0, raise_once=None):
+    def raise_userwarning(self, level, msg, sort_index, verbosity=0, raise_once=None, color=None):
         """
         Raise user warning to be summarized after solving
         """
@@ -646,7 +646,8 @@ class MasterMachine:
             "msg": msg,
             "sort_index": sort_index,
             "raise_once": raise_once,
-            "verbosity": verbosity})
+            "verbosity": verbosity,
+            "color": color})
 
     @classmethod
     def collect_warnings(self):
