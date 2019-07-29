@@ -355,17 +355,16 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         else:
             stats.chunk.chi2 = stats.chunk.chi2u
 
-        should_warn = float(stats.chunk.chi2_0) < float(stats.chunk.chi2u) or diverging
         if log.verbosity() > 0:
             message = "{} (end solve) {}, stall {:.2%}{}, chi^2 {:.4} -> {:.4}".format(label, gm.final_convergence_status_string,
                         float(stats.chunk.frac_stalled), diverging, float(stats.chunk.chi2_0), stats.chunk.chi2u)
-        elif should_warn:
-            message = "{} (end solve) chi^2 {:.4} -> {:.4} shows signs of divergence. Check your solution intervals / data for RFI!".format(
-                label, float(stats.chunk.chi2_0), float(stats.chunk.chi2u))
 
+        should_warn = float(stats.chunk.chi2_0) < float(stats.chunk.chi2u) or diverging
         if sol_opts['last-rites'] and (should_warn or log.verbosity() > 0):
             message = "{} ({:.4}), noise {:.3} -> {:.3}".format(message,
                             float(stats.chunk.chi2), float(stats.chunk.noise_0), float(stats.chunk.noise))
+        if should_warn:
+            message += " Shows signs of divergence. If you see this message often you may have significant RFI present in your data or your solution intervals are too short."
         if should_warn:
             log.warn(message)
         elif log.verbosity() > 0:
