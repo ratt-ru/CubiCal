@@ -34,7 +34,6 @@ def compute_2x2_inverse(x, xinv, flags, eps, flagbit):
     """
 
     flag_count = 0
-    eps = eps**2
 
     n_dir = x.shape[0]
     n_tim = x.shape[1]
@@ -56,8 +55,8 @@ def compute_2x2_inverse(x, xinv, flags, eps, flagbit):
                         denom = x[d,t,f,aa,0,0] * x[d,t,f,aa,1,1] - \
                                 x[d,t,f,aa,0,1] * x[d,t,f,aa,1,0]
 
-                        if (denom.real**2 + denom.imag**2)<=eps:
-
+                        if (denom*denom.conjugate()).real<=eps:
+                            
                             xinv[d,t,f,aa,0,0] = 0
                             xinv[d,t,f,aa,1,1] = 0
                             xinv[d,t,f,aa,0,1] = 0
