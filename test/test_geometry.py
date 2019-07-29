@@ -109,15 +109,15 @@ def test_hull_construction():
     assert bb6.box_npx == (41, 27)
     assert bb5.centre == bb6.centre
     assert np.sum(bb5.mask) == np.sum(bb6.mask)
-    bb7s = map(lambda x: BoundingBoxFactory.PadBox(x, 17, 11), bb4s)
+    bb7s = list(map(lambda x: BoundingBoxFactory.PadBox(x, 17, 11), bb4s))
     assert all([b.box_npx == (17, 11) for b in bb7s])
     assert np.sum([np.sum(b.mask) for b in bb7s]) == np.sum([np.sum(b.mask) for b in bb4s])
 
     # test case 9
-    facet_regions = map(lambda f: BoundingBoxFactory.PadBox(f, 63, 63), 
-                        BoundingBoxFactory.SplitBox(BoundingBoxFactory.AxisAlignedBoundingBox(bh_extract), nsubboxes=5))
-    facets = map(lambda pf: BoundingConvexHull.regional_data(pf, sinc2d, oob_value=np.nan),
-                 facet_regions)
+    facet_regions = list(map(lambda f: BoundingBoxFactory.PadBox(f, 63, 63), 
+                             BoundingBoxFactory.SplitBox(BoundingBoxFactory.AxisAlignedBoundingBox(bh_extract), nsubboxes=5)))
+    facets = list(map(lambda pf: BoundingConvexHull.regional_data(pf, sinc2d, oob_value=np.nan),
+                      facet_regions))
     stitched_image, stitched_region = BoundingBox.project_regions([f[0] for f in facets], facet_regions)
     assert np.abs(sinc_integral - np.nansum([np.nansum(f[0]) for f in facets])) < 1.0e-8
     assert np.abs(sinc_integral - np.sum(stitched_image)) < 1.0e-8
