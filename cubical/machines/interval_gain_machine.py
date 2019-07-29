@@ -127,6 +127,7 @@ class PerIntervalGains(MasterMachine):
         self.max_gain_error = options["max-prior-error"]
         self.max_post_error = options["max-post-error"]
         self.low_snr_warn = options["low-snr-warn"]
+        self.high_gain_var_warn = options["high-gain-var-warn"]
         self.clip_lower = options["clip-low"]
         self.clip_upper = options["clip-high"]
         self.clip_after = options["clip-after"]
@@ -388,6 +389,9 @@ class PerIntervalGains(MasterMachine):
                               (self.interval_sum(modelsq, 1) * numeq_tfa)
                 # convert that into a gain error per direction,interval,antenna
                 self.prior_gain_error = np.sqrt(NSR_int)
+                if self.dd_term:
+                    self.prior_gain_error[self.fix_directions, ...] = 0
+
                 pge_flag_invalid = np.logical_or(np.isnan(self.prior_gain_error),
                                                  np.isinf(self.prior_gain_error))
 
@@ -550,7 +554,6 @@ class PerIntervalGains(MasterMachine):
         flagged |= gnull
 
         # Check for gain solutions which are out of bounds (based on clip thresholds).
-
         if self.clip_after <= self.iters and (self.clip_upper or self.clip_lower):
             goob = np.zeros(gain_mags.shape, bool)
             if self.clip_upper:
@@ -571,14 +574,63 @@ class PerIntervalGains(MasterMachine):
                 bad_gain_intervals = (self.posterior_gain_error > self.max_post_error).any(axis=(-1,-2))  # dir,time,freq,ant
 
                 # mask high-variance gains that are not already otherwise flagged
-                mask = self._interval_to_gainres(bad_gain_intervals, 1)&~flagged
-
+                pge_flags = mask = self._interval_to_gainres(bad_gain_intervals, 1)&~flagged
                 # raise FL.GVAR flag on these gains (and clear on all others!)
                 self.gflags &= ~FL.GVAR
                 self.gflags[mask] |= FL.GVAR
                 flagged[mask] = True
 
                 self._n_flagged_on_max_posterior_error = mask.sum(axis=(1, 2, 3)) if mask.any() else None
+
+                if pge_flags.all(axis=0).all():
+                    msg = "'{0:s}' {1:s} All directions flagged by posterior gain variance. This probably indicates significant RFI / outliers"\
+                          "You need to check your max-post-error setting and data for selected intervals. "\
+                          "New flags will be raised for this chunk of data".format(
+                                self.jones_label, self.chunk_label)
+                    self.raise_userwarning(logging.CRITICAL, msg, 70, verbosity=log.verbosity(), color="red")
+
+                else:
+                    dir_snr = {}
+                    for d in range(pge_flags.shape[0]):
+                        percflagged = np.sum(pge_flags[d]) * 100.0 / pge_flags[d].size
+                        if percflagged > self.high_gain_var_warn and d not in self.fix_directions: dir_snr[d] = percflagged
+                    if len(dir_snr) > 0:
+                        if log.verbosity() > 2:
+                            msg = "Signficiant gain variance in one or more directions of gain '{0:s}' chunk '{1:s}':".format(
+                                    self.jones_label, self.chunk_label) +\
+                                  "\n{0:s}\n".format("\n".join(["\t direction {0:s}: {1:.3f}% gains affected".format(
+                                                        str(d), dir_snr[d]) for d in sorted(dir_snr)])) +\
+                                  "Check your setting for max-post-error and your data for this interval. "\
+                                  "New flags will be raised for this chunk. "
+                        else:
+                            msg = "'{0:s}' {1:s} Significant gain variance in directions {2:s}. "\
+                                  "Check your data for this interval or raise max-post-error! "\
+                                  "New flags will be raised for this chunk.".format(
+                                self.jones_label, self.chunk_label, ", ".join(map(str, sorted(dir_snr))))
+                        self.raise_userwarning(logging.CRITICAL, msg, 50, verbosity=log.verbosity(), color="red")
+
+                    if pge_flags.all(axis=0).all(axis=0).all(axis=-1).any():
+                        msg = "'{0:s}' {1:s} All time of one or more frequency intervals flagged due to gain variance. "\
+                              "You need to check your max-post-error and data for this interval. "\
+                              "New flags will be raised for this chunk of data".format(
+                                    self.jones_label, self.chunk_label)
+                        self.raise_userwarning(logging.WARNING, msg, 70, verbosity=log.verbosity())
+
+                    if pge_flags.all(axis=0).all(axis=1).all(axis=-1).any():
+                        msg = "'{0:s}' {1:s} All channels of one or more time intervals flagged due to gain variance. "\
+                              "You need to check your max-post-error and data for this interval. "\
+                              "New flags will be raised for this chunk of data".format(
+                                    self.jones_label, self.chunk_label)
+                        self.raise_userwarning(logging.WARNING, msg, 70, verbosity=log.verbosity())
+                    stationflags = np.argwhere(pge_flags.all(axis=0).all(axis=0).all(axis=0).any()).flatten()
+                    if stationflags.size > 0:
+                        msg = "'{0:s}' {1:s} Stations {2:s} ({3:d}/{4:d}) fully flagged due to gain variation. "\
+                              "These stations may be faulty or your variation requirements (max-post-error) are not met. "\
+                              "New flags will be raised for this chunk of data".format(
+                                    self.jones_label, self.chunk_label, ", ".join(map(str, stationflags)),
+                                    np.sum(low_snr.all(axis=0).all(axis=0).all(axis=0).any()), low_snr.shape[3])
+                        self.raise_userwarning(logging.INFO, msg, 70, verbosity=log.verbosity())
+
 
                 # if bad_gain_intervals.any():
                 #     # (n_dir,) array showing how many were flagged per direction

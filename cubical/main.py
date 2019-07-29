@@ -341,6 +341,26 @@ def main(debugging=False):
 
         # With a single Jones term, create a gain machine factory based on its type.
         # With multiple Jones, create a ChainMachine factory
+        term_iters = solver_opts["term-iters"]
+        if type(term_iters) is int:
+            term_iters = [term_iters] * len(jones_opts)
+            solver_opts["term-iters"] = term_iters
+            len(jones_opts) > 1 and log.warn("Multiple gain terms specified, but a recipe of solver sol-term-iters not given. "
+                                             "This may indicate user error. We will assume doing the same number of iterations per term and "
+                                             "stopping on the last term on the chain.")
+        elif type(term_iters) is list and len(term_iters) == 1:
+            term_iters = term_iters * len(jones_opts)
+            solver_opts["term-iters"] = term_iters
+            len(jones_opts) > 1 and log.warn("Multiple gain terms specified, but a recipe of solver sol-term-iters not given. "
+                                             "This may indicate user error. We will assume doing the same number of iterations per term and "
+                                             "stopping on the last term on the chain.")
+        elif type(term_iters) is list and len(term_iters) < len(jones_opts):
+            raise ValueError("sol-term-iters is a list, but does not match or exceed the number of gain terms being solved. "
+                             "Please either only set a single value to be used or provide a list to construct a iteration recipe")
+        elif type(term_iters) is list and len(term_iters) >= len(jones_opts):
+            pass # user is executing a recipe
+        else:
+            raise TypeError("sol-term-iters is neither a list, nor a int. Check your parset")
 
         if len(jones_opts) == 1:
             jones_opts = jones_opts[0]

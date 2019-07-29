@@ -48,7 +48,6 @@ except AttributeError:
     def profile(func): return func
     builtins.profile = profile
 
-
 @builtins.profile
 def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
@@ -361,7 +360,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             message = "{} (end solve) {}, stall {:.2%}{}, chi^2 {:.4} -> {:.4}".format(label, gm.final_convergence_status_string,
                         float(stats.chunk.frac_stalled), diverging, float(stats.chunk.chi2_0), stats.chunk.chi2u)
         elif should_warn:
-            message = "{} (end solve) chi^2 {:.4} -> {:.4} shows signs of divergence. Check your solution intervals!".format(
+            message = "{} (end solve) chi^2 {:.4} -> {:.4} shows signs of divergence. Check your solution intervals / data for RFI!".format(
                 label, float(stats.chunk.chi2_0), float(stats.chunk.chi2u))
 
         if sol_opts['last-rites'] and (should_warn or log.verbosity() > 0):
