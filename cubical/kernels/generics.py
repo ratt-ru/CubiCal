@@ -35,6 +35,8 @@ def compute_2x2_inverse(x, xinv, flags, eps, flagbit):
 
     flag_count = 0
 
+    eps = eps**2
+
     n_dir = x.shape[0]
     n_tim = x.shape[1]
     n_fre = x.shape[2]
