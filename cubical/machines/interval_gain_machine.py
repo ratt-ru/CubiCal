@@ -628,7 +628,7 @@ class PerIntervalGains(MasterMachine):
                               "These stations may be faulty or your variation requirements (max-post-error) are not met. "\
                               "New flags will be raised for this chunk of data".format(
                                     self.jones_label, self.chunk_label, ", ".join(map(str, stationflags)),
-                                    np.sum(low_snr.all(axis=0).all(axis=0).all(axis=0).any()), low_snr.shape[3])
+                                    np.sum(pge_flags.all(axis=0).all(axis=0).all(axis=0).any()), pge_flags.shape[3])
                         self.raise_userwarning(logging.INFO, msg, 70, verbosity=log.verbosity())
 
 
