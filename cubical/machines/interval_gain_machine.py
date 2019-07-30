@@ -459,14 +459,14 @@ class PerIntervalGains(MasterMachine):
                               "New flags will be raised for this chunk of data".format(
                                     self.jones_label, self.chunk_label)
                         self.raise_userwarning(logging.WARNING, msg, 70, verbosity=log.verbosity())
-                    stationflags = np.argwhere(low_snr.all(axis=0).all(axis=0).all(axis=0).any()).flatten()
+                    stationflags = np.argwhere(low_snr.all(axis=0).all(axis=0).all(axis=0)).flatten()
                     if stationflags.size > 0:
                         msg = "'{0:s}' {1:s} Stations {2:s} ({3:d}/{4:d}) fully flagged due to low SNR. "\
                               "These stations may be faulty or your SNR requirements (max-prior-error) are not met. "\
                               "New flags will be raised for this chunk of data".format(
                                     self.jones_label, self.chunk_label, ", ".join(map(str, stationflags)),
-                                    np.sum(low_snr.all(axis=0).all(axis=0).all(axis=0).any()), low_snr.shape[3])
-                        self.raise_userwarning(logging.INFO, msg, 70, verbosity=log.verbosity())
+                                    np.sum(low_snr.all(axis=0).all(axis=0).all(axis=0)), low_snr.shape[3])
+                        self.raise_userwarning(logging.WARNING, msg, 70, verbosity=log.verbosity())
 
 
                 bad_gain_intervals = np.logical_or(bad_gain_intervals,
@@ -622,14 +622,14 @@ class PerIntervalGains(MasterMachine):
                               "New flags will be raised for this chunk of data".format(
                                     self.jones_label, self.chunk_label)
                         self.raise_userwarning(logging.WARNING, msg, 70, verbosity=log.verbosity())
-                    stationflags = np.argwhere(pge_flags.all(axis=0).all(axis=0).all(axis=0).any()).flatten()
+                    stationflags = np.argwhere(pge_flags.all(axis=0).all(axis=0).all(axis=0)).flatten()
                     if stationflags.size > 0:
                         msg = "'{0:s}' {1:s} Stations {2:s} ({3:d}/{4:d}) fully flagged due to gain variation. "\
                               "These stations may be faulty or your variation requirements (max-post-error) are not met. "\
                               "New flags will be raised for this chunk of data".format(
                                     self.jones_label, self.chunk_label, ", ".join(map(str, stationflags)),
-                                    np.sum(pge_flags.all(axis=0).all(axis=0).all(axis=0).any()), pge_flags.shape[3])
-                        self.raise_userwarning(logging.INFO, msg, 70, verbosity=log.verbosity())
+                                    np.sum(pge_flags.all(axis=0).all(axis=0).all(axis=0)), pge_flags.shape[3])
+                        self.raise_userwarning(logging.WARNING, msg, 70, verbosity=log.verbosity())
 
 
                 # if bad_gain_intervals.any():
