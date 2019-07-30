@@ -151,11 +151,11 @@ def compute_mad(float3264 [:,:,:,:,:,:,:] absres, flag_t [:,:,:,:] flags,int dia
             aa = baselines[bl][0]
             ab = baselines[bl][1]
             for m in xrange(n_mod):
+                nval = 0
                 for ic in xrange(n_cor):
                     c1 = corr[ic][0]
                     c2 = corr[ic][1]
                     # get list of non-flagged absolute values
-                    nval=0
                     for t in xrange(n_tim):
                         for f in xrange(n_fre):
                             x = absres[m, t, f, aa, ab, c1, c2]
