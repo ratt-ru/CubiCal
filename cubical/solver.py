@@ -48,7 +48,6 @@ except AttributeError:
     def profile(func): return func
     builtins.profile = profile
 
-
 @builtins.profile
 def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, label="", compute_residuals=None):
     """
@@ -160,6 +159,14 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     # every chunk stat set above now copied to stats.chunk.field_0
     stats.save_chunk_stats(step=0)
 
+    # raise warnings from priori conditioning, before the loop
+    for d in gm.collect_warnings():
+        log.write(d["msg"],
+                  level=d["level"],
+                  print_once=d["raise_once"],
+                  verbosity=d["verbosity"],
+                  color=d["color"])
+
     if not gm.has_valid_solutions:
         log.error("{} no solutions: {}; flags {}".format(label, gm.conditioning_status_string, get_flagging_stats()))
         return (obser_arr if compute_residuals else None), stats, None
@@ -191,6 +198,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     # stalled solutions or when the maximum number of iterations is exceeded.
 
     major_step = 0  # keeps track of "major" solution steps, for purposes of collecting stats
+
 
     while not(gm.has_converged) and not(gm.has_stalled):
 
@@ -310,6 +318,8 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
                                     stats.chunk.chi2u, delta_chi_mean, delta_chi_max,
                                     float(1-stats.chunk.frac_stalled), diverging))
 
+
+
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
     # case, generate residuals etc.
 
@@ -319,6 +329,8 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
     else:
         flagged = None
+
+
 
     # check this again, because final round of flagging could have killed us
     if gm.has_valid_solutions:
@@ -344,14 +356,18 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             stats.chunk.chi2 = stats.chunk.chi2u
 
         message = "{} (end solve) {}, stall {:.2%}{}, chi^2 {:.4} -> {:.4}".format(label, gm.final_convergence_status_string,
-                    float(stats.chunk.frac_stalled), diverging, float(stats.chunk.chi2_0), stats.chunk.chi2u)
+                  float(stats.chunk.frac_stalled), diverging, float(stats.chunk.chi2_0), stats.chunk.chi2u)
 
-        if sol_opts['last-rites']:
-
+        should_warn = float(stats.chunk.chi2_0) < float(stats.chunk.chi2u) or diverging
+        if sol_opts['last-rites'] and (should_warn or log.verbosity() > 0):
             message = "{} ({:.4}), noise {:.3} -> {:.3}".format(message,
                             float(stats.chunk.chi2), float(stats.chunk.noise_0), float(stats.chunk.noise))
-
-        log.print(message)
+        if should_warn:
+            message += " Shows signs of divergence. If you see this message often you may have significant RFI present in your data or your solution intervals are too short."
+        if should_warn:
+            log.warn(message)
+        elif log.verbosity() > 0:
+            log.info(message)
 
     # If everything has been flagged, no valid solutions are generated.
 
@@ -367,6 +383,14 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             newshape = gm.weights.shape[1:-1] + (2,2)
             robust_weights = np.repeat(gm.weights.real, 4, axis=-1)
             robust_weights = np.reshape(robust_weights, newshape)
+
+    # After the solver loop check for warnings from the solvers
+    for d in gm.collect_warnings():
+        log.write(d["msg"],
+                  level=d["level"],
+                  print_once=d["raise_once"],
+                  verbosity=d["verbosity"],
+                  color=d["color"])
 
 
     return (resid_arr if compute_residuals else None), stats, robust_weights
