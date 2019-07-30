@@ -48,7 +48,9 @@ class SolverVerification(object):
         if not np.isfinite(cd).all():
             raise RuntimeError("{}: NaNs/INFs detected in output data".format(cmd))
         c0 = table(self.refmsname).getcol(refcolname)
-        diff = abs(abs(cd-c0)/abs(c0))
+        fl = table(self.refmsname).getcol("FLAG")
+        diff = abs(abs(cd[np.logical_not(fl)]-c0[np.logical_not(fl)])/abs(c0[np.logical_not(fl)]))
+        diff = diff[np.logical_not(np.logical_or(np.isnan(diff), np.isinf(diff)))] + 1.0e-9
         diffmean = 10*np.log10(np.nanmean(diff))
         logprint("*** mean relative diff between CORRECTED_DATA and {} is {} dB".format(refcolname, diffmean))
         if diffmean > mean_tolerance:
