@@ -115,7 +115,6 @@ class ComplexW2x2Gains(PerIntervalGains):
         # jhjinv is 2x2 block-diagonal, with Hermitian blocks. TODO: what's the variance on the off-diagonals?
         # variance of gain is diagonal of jhjinv
         # not sure about how the  weights affects the posterior variance. here we actually pass jhwj, not jhj
-
         if self.posterior_gain_error is None:
             self.posterior_gain_error = np.zeros_like(jhjinv.real)
         

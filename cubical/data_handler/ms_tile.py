@@ -13,7 +13,15 @@ from cubical import data_handler
 from cubical.tools import dtype_checks as dtc
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("data_handler")
+log = logger.getLogger("ms_tile")
+try:
+    from .TiggerSourceProvider import TiggerSourceProvider
+except ImportError:
+    TiggerSourceProvider = None
+try:
+    from .DicoSourceProvider import DicoSourceProvider
+except ImportError:
+    DicoSourceProvider = None
 
 ## TERMINOLOGY:
 ## A "chunk" is data for one DDID, a range of timeslots (thus, a subset of the MS rows), and a
@@ -107,6 +115,52 @@ class MSTile(object):
             print("upsampling to {} rows and {} channels".format(shape[0], shape[1]), file=log(1))
             return data[self.rebin_row_map[:, np.newaxis],
                         self.rebin_chan_map[np.newaxis, :], None].reshape(shape)
+
+        def load_ddfacet_models(self, uvwco, loaded_models, model_source, cluster, imod, idir, model_type):
+            """
+            Invoke DDFacet degridder to compute model visibilities
+            for all directions. 
+            
+            Postcondition of loaded_models is a new entry
+            of model_source cluster object with all directions predicted.
+
+            Args:
+                uvwco: uvws for this tile
+                loaded_models: dictionary of all loaded models including clusters
+                model_source: cluster object
+                cluster: cluster direction name to use as return value
+                imod: index of this model provider (only used for printing)
+                idir: index of global direction (only used for printing)
+                model_type: Either 'cplx2x2' or 'cplxdiag' or 'cplxscalar' supported at the moment
+            Returns:
+                ndarray of shape nrow x nchan x ncorr for name specified in "cluster"
+            """
+            from .DDFacetSim import DDFacetSim
+            ddid_index, uniq_ddids, _ = data_handler.uniquify(self.ddid_col)
+            self._freqs = np.array([self.tile.dh.chanfreqs[ddid] for ddid in uniq_ddids])
+            ddfsim = DDFacetSim()
+            ndirs = model_source._nclus
+            loaded_models[model_source] = {}
+            ddfsim.set_model_provider(model_source)
+            for idir, clus in enumerate(model_source._cluster_keys):
+                model_source.set_frequency(self._freqs)
+                ddfsim.set_direction(clus)
+                model = ddfsim.simulate(self.tile.dh, 
+                                        self.tile,
+                                        self,
+                                        self.tile.dh._poltype, 
+                                        uvwco,
+                                        self._freqs,
+                                        model_type)
+                loaded_models[model_source][clus] = model
+
+            # finally return the direction requested in cluster
+            model = loaded_models[model_source][cluster]
+            print("  using {}{} for model {} direction {}".format(model_source,
+                                "" if not cluster else ("()" if cluster == 'die' else "({})".format(cluster)),
+                                imod, idir), file=log(1))
+
+            return model
 
         def load_montblanc_models(self, uvwco, loaded_models, model_source, cluster, imod, idir):
             """
@@ -234,7 +288,7 @@ class MSTile(object):
             model_shape = (ndirs, 1, self._expected_nrows, self.nfreq, self.tile.dh.ncorr)
             use_double = self.tile.dh.mb_opts['dtype'] == 'double'
             full_model = np.zeros(model_shape, np.complex128 if use_double else self.tile.dh.ctype)
-            print("montblanc dtype is {} ('{}')".format(full_model.dtype, self.tile.dh.mb_opts['dtype']), file=log(0))
+            print("montblanc dtype is {} ('{}')".format(full_model.dtype, self.tile.dh.mb_opts['dtype']), file=log(2))
             column_snk = MBTiggerSim.ColumnSinkProvider(self.tile.dh, self._freqs.shape, full_model, self._mb_sorted_ind)
             snks = [column_snk]
 
@@ -660,7 +714,7 @@ class MSTile(object):
                             weight_col = weight_col[:-1]
                         wcol = wcol_cache.get(weight_col)
                         if wcol is None:
-                            print("model {} weights {}: reading from {}{}".format(imod, iwcol, weight_col, mean_corr), file=log(0))
+                            print("model {} weights {}: reading from {}{}".format(imod, iwcol, weight_col, mean_corr), file=log(2))
                             wcol = table_subset.getcol(str(weight_col))
                             # support two shapes of wcol: either same as data (a-la WEIGHT_SPECTRUM), or missing
                             # a frequency axis (a-la WEIGHT)
@@ -669,14 +723,14 @@ class MSTile(object):
                                 if wcol.shape != obvis0.shape:
                                     raise RuntimeError("column {} does not match shape of visibility column".format(weight_col))
                             elif tuple(wcol.shape) == (obvis0.shape[0], self.dh.nmscorrs):
-                                print("    this weight column does not have a frequency axis: broadcasting", file=log(0))
+                                print("    this weight column does not have a frequency axis: broadcasting", file=log(2))
                                 wcol_cache[weight_col] = np.empty_like(obvis0, self.dh.wtype)
                                 wcol_cache[weight_col][:] = wcol[:, np.newaxis, self.dh._corr_slice]
                                 wcol = wcol_cache[weight_col]
                             else:
                                 raise RuntimeError("column {} has an invalid shape {} (expected {})".format(weight_col, wcol.shape, obvis0.shape))
                         else:
-                            print("model {} weights {}: reusing {}{}".format(imod, iwcol, weight_col, mean_corr), file=log(0))
+                            print("model {} weights {}: reusing {}{}".format(imod, iwcol, weight_col, mean_corr), file=log(2))
                         # take mean weights if specified, else fill off-diagonals
                         if mean_corr:
                             wcol = wcol.mean(-1)[..., np.newaxis]
@@ -780,7 +834,7 @@ class MSTile(object):
                 flag_arr0[invalid] |= FL.INVALID
                 self.dh.flagcounts.setdefault("INVALID", 0)
                 self.dh.flagcounts["INVALID"] += ninv
-                print("  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size)), file=log(0,"red"))
+                log.warn("  {:.2%} input visibilities flagged as invalid (0/inf/nan)".format(ninv / float(flagged.size)), "red")
 
             # check for invalid weights
             if self.dh.has_weights and load_model:
@@ -791,8 +845,8 @@ class MSTile(object):
                     flag_arr0[invalid] |= FL.INVWGHT
                     self.dh.flagcounts.setdefault("INVWGHT", 0)
                     self.dh.flagcounts["INVWGHT"] += ninv
-                    print("  {:.2%} input visibilities flagged due to inf/nan weights".format(
-                        ninv / float(flagged.size)), file=log(0, "red"))
+                    log.warn("  {:.2%} input visibilities flagged due to inf/nan weights".format(
+                        ninv / float(flagged.size)), "red")
                 wnull = (weights0 == 0).all(axis=0) & ~flagged
                 nnull = wnull.sum()
                 if nnull:
@@ -800,8 +854,8 @@ class MSTile(object):
                     flag_arr0[wnull] |= FL.NULLWGHT
                     self.dh.flagcounts.setdefault("NULLWGHT", 0)
                     self.dh.flagcounts["NULLWGHT"] += nnull
-                    print("  {:.2%} input visibilities flagged due to null weights".format(
-                        nnull / float(flagged.size)), file=log(0, "red"))
+                    log.warn("  {:.2%} input visibilities flagged due to null weights".format(
+                              nnull / float(flagged.size)), "red")
 
             nfl = flagged.sum()
             self.dh.flagcounts["IN"] += nfl
@@ -849,6 +903,12 @@ class MSTile(object):
                     data['weigh'] = weights0
                 del obvis0, uvw0, weights0
 
+            # compute PA rotation angles, if needed
+            if self.dh.parallactic_machine is not None:
+                angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                data.addSharedArray('pa', angles.shape, np.float64)
+                data['pa'][:] = angles
+
             # The following either reads model visibilities from the measurement set, or uses an lsm
             # and Montblanc to simulate them. Data may need to be massaged to be compatible with
             # Montblanc's strict requirements.
@@ -871,17 +931,17 @@ class MSTile(object):
                                                                                                       "" if not cluster else (
                                                                                                           "()" if cluster == 'die' else "({})".format(
                                                                                                               cluster)),
-                                                                                                      imod, idir, subtract_str), file=log(0))
+                                                                                                      imod, idir, subtract_str), file=log(2))
                                     model = loaded_models[model_source][cluster]
                                 # cluster of None signifies that this is a visibility column
                                 elif cluster is None:
                                     if model_source is 1:
                                         print("  using 1.+0j for model {} direction {}{}".format(model_source,
-                                                                                                         imod, idir, subtract_str), file=log(0))
+                                                                                                         imod, idir, subtract_str), file=log(2))
                                         model = np.ones_like(obvis)
                                     else:
                                         print("  reading {} for model {} direction {}{}".format(model_source, imod,
-                                                                                                        idir, subtract_str), file=log(0))
+                                                                                                        idir, subtract_str), file=log(2))
                                         model0 = self.dh.fetchslice(model_source, subset=table_subset)
                                         # sanity check (I've seen nulls coming out of wsclean...)
                                         invmodel = (~np.isfinite(model0))
@@ -903,16 +963,35 @@ class MSTile(object):
                                             model = model0
                                         model0 = None
                                         # apply rotation (*after* rebinning: subset.time_col is rebinned version!)
-                                        # if self.dh.parallactic_machine is not None:
-                                        #     subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
-                                        #     model = self.dh.parallactic_machine.rotate(subset.time_col, model,
-                                        #                                                 subset.antea, subset.anteb,
-                                        #                                                 angles=subset._angles)
+                                        if self.dh.parallactic_machine is not None:
+                                            subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                                            model = self.dh.parallactic_machine.rotate(subset.time_col, model,
+                                                                                        subset.antea, subset.anteb,
+                                                                                        angles=subset._angles)
                                     loaded_models.setdefault(model_source, {})[None] = model
                                 # else evaluate a Tigger model with Montblanc
-                                else:
+                                elif TiggerSourceProvider is not None and isinstance(model_source, TiggerSourceProvider):
                                     model = subset.load_montblanc_models(uvwco, loaded_models, model_source, cluster, imod, idir)
-
+                                    # montblanc applies the PA rotation matrix internally
+                                elif DicoSourceProvider is not None and isinstance(model_source, DicoSourceProvider):
+                                    
+                                    if self.dh.ncorr == 4:
+                                        model_type="cplx2x2"
+                                    elif self.dh.ncorr == 2:
+                                        model_type="cplxdiag"
+                                    elif self.dh.ncorr == 1:
+                                        model_type="cplxscalar"
+                                    else:
+                                        raise RuntimeError("Visibilities have correlations other than 4, 2 or 1. At present this is not supported")
+                                    model = subset.load_ddfacet_models(uvwco, loaded_models, model_source, cluster, imod, idir, model_type)
+                                    if self.dh.parallactic_machine is not None:
+                                            #subset._angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
+                                            subset._angles = data['pa'][:]
+                                            model = self.dh.parallactic_machine.rotate(subset.time_col, model,
+                                                                                       subset.antea, subset.anteb,
+                                                                                       angles=subset._angles)
+                                else:
+                                    raise TypeError("Unknown cluster of type {0:s}".format(type(model_source)))
                                 # finally, add model in at correct slot
                                 if subtract:
                                     movis[idir, imod, ...] -= model
@@ -946,12 +1025,6 @@ class MSTile(object):
             # Create a placeholder if using the Robust solver with save weights activated
             if self.dh.output_weight_column is not None:
                 data.addSharedArray('outweights', data['obvis'].shape, self.dh.wtype)
-
-        # compute PA rotation angles, if needed
-        if self.dh.parallactic_machine is not None:
-            angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
-            data.addSharedArray('pa', angles.shape, np.float64)
-            data['pa'][:] = angles
 
         # Create a placeholder for the gain solutions
         data.addSubdict("solutions")
@@ -1010,15 +1083,17 @@ class MSTile(object):
                                        reqdims=6, allocator=allocator)
         if 'movis' in data:
             ### APPLY ROTATION HERE
-            if self.dh.rotate_model:
-                model = data['movis']
-                angles = data['pa'][rows]
-                for idir in range(model.shape[0]):
-                    for imod in range(model.shape[1]):
-                        submod = model[idir, imod, rows, freq_slice]
-                        submod[:] = self.dh.parallactic_machine.rotate(subset.time_col[rows], submod,
-                                                           subset.antea[rows], subset.anteb[rows],
-                                                           angles=angles)
+            # @ oms this is wrong when mixing and matching predictors and very likely leeds
+            # to doubly applying the PA model rotation.
+            # if self.dh.rotate_model:
+            #     model = data['movis']
+            #     angles = data['pa'][rows]
+            #     for idir in range(model.shape[0]):
+            #         for imod in range(model.shape[1]):
+            #             submod = model[idir, imod, rows, freq_slice]
+            #             submod[:] = self.dh.parallactic_machine.rotate(subset.time_col[rows], submod,
+            #                                                subset.antea[rows], subset.anteb[rows],
+            #                                                angles=angles)
 
             mod_arr = subset._column_to_cube(data['movis'], t_dim, f_dim, rows, freq_slice, ctype,
                                            reqdims=8, allocator=allocator)
@@ -1120,13 +1195,16 @@ class MSTile(object):
         for key in soldict.keys():
             yield soldict[key]
 
-    def save(self, final=False):
+    def save(self, final=False, only_save=["output", "model", "weight", "flag", "bitflag"]):
         """
         Saves 'corrected' column, and any updated flags, back to MS.
 
         Args:
             final (bool, optional):
                 If True, tells the MS handler that this is the final tile.
+            only_save (list, optional):
+                Only saves "output", "model", "weight" "flag" or "bitflag". This is useful for
+                predicting
         """
         data0 = shared_dict.attach(self._data_dict_name)
 
@@ -1158,33 +1236,39 @@ class MSTile(object):
             table_subset = self.dh.data.selectrows(subset.rows0)
 
             if self.dh.output_column and data0['updated'][0]:
-                covis = data['covis']
-                # if self.dh.parallactic_machine is not None:
-                #     covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb,
-                #                                                  angles=subset._angles)
-                covis = subset.upsample(covis)
-                print("  writing {} column".format(self.dh.output_column), file=log)
-                self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
-
+                if ("output" in only_save):
+                    covis = data['covis']
+                    # if self.dh.parallactic_machine is not None:
+                    #     covis = self.dh.parallactic_machine.derotate(subset.time_col, covis, subset.antea, subset.anteb,
+                    #                                                  angles=subset._angles)
+                    covis = subset.upsample(covis)
+                    print("  writing {} column".format(self.dh.output_column), file=log)
+                    self.dh.putslice(self.dh.output_column, covis, subset=table_subset)
+                else:
+                    print("  skipping {} column per user request".format(self.dh.output_column), file=log)
             subset._angles = None
 
             if self.dh.output_model_column and 'movis' in data:
-                # take first mode, and sum over directions if needed
-                model = data['movis'][:, 0]
-                if model.shape[0] == 1:
-                    model = model.reshape(model.shape[1:])
+                if ("model" in only_save):
+                    # take first mode, and sum over directions if needed
+                    model = data['movis'][:, 0]
+                    if model.shape[0] == 1:
+                        model = model.reshape(model.shape[1:])
+                    else:
+                        model = model.sum(axis=0)
+                    model = subset.upsample(model)
+                    print("  writing {} column".format(self.dh.output_model_column), file=log)
+                    self.dh.putslice(self.dh.output_model_column, model, subset=table_subset)
                 else:
-                    model = model.sum(axis=0)
-                model = subset.upsample(model)
-                print("  writing {} column".format(self.dh.output_model_column), file=log)
-                self.dh.putslice(self.dh.output_model_column, model, subset=table_subset)
-
+                    print("  skipping {} column per user request".format(self.dh.output_model_column), file=log)
             #writing outputs weights if any
             if self.dh.output_weight_column and data0['updated'][2]:
-                outweights = subset.upsample(data['outweights'])
-                print("  writing {} weight column".format(self.dh.output_weight_column), file=log)
-                self.dh.putslice(self.dh.output_weight_column, outweights, subset=table_subset)
-
+                if ("weight" in only_save):
+                    outweights = subset.upsample(data['outweights'])
+                    print("  writing {} weight column".format(self.dh.output_weight_column), file=log)
+                    self.dh.putslice(self.dh.output_weight_column, outweights, subset=table_subset)
+                else:
+                    print("  skipping {} weight column per user request".format(self.dh.output_weight_column), file=log)
             # write flags if (a) solver has generated flags, and we're saving them, (b) always, if auto-filling BITFLAG column
             #
             flag_col = None     # if not None, FLAG/FLAG_ROW will be saved
@@ -1234,29 +1318,39 @@ class MSTile(object):
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
             if bflag_col is not None:
-                self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
-                totflags = (self.bflagcol != 0).sum()
-                self.dh.flagcounts['OUT'] += totflags
-                print("  updated BITFLAG column ({:.2%} visibilities flagged)".format(totflags / float(self.bflagcol.size)), file=log)
-                self.bflagrow = np.bitwise_and.reduce(self.bflagcol, axis=(-1, -2))
-                table_subset.putcol("BITFLAG_ROW", self.bflagrow)
-                print("  updated BITFLAG_ROW column ({:.2%} rows flagged)".format(
-                    (self.bflagrow!=0).sum()/float(self.bflagrow.size)), file=log)
+                if ("bitflag" in only_save):
+                    self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
+                    totflags = (self.bflagcol != 0).sum()
+                    self.dh.flagcounts['OUT'] += totflags
+                    print("  updated BITFLAG column ({:.2%} visibilities flagged)".format(totflags / float(self.bflagcol.size)), file=log)
+                    self.bflagrow = np.bitwise_and.reduce(self.bflagcol, axis=(-1, -2))
+                    table_subset.putcol("BITFLAG_ROW", self.bflagrow)
+                    print("  updated BITFLAG_ROW column ({:.2%} rows flagged)".format(
+                        (self.bflagrow!=0).sum()/float(self.bflagrow.size)), file=log)
+                else:
+                    totflags = (self.bflagcol != 0).sum()
+                    print("  skipping BITFLAG column per user request ({:.2%} visibilities would have been flagged otherwise)".format(totflags / float(self.bflagcol.size)), file=log)
+                    print("  skipping BITFLAG column per user request ({:.2%} visibilities would have been flagged otherwise)".format(totflags / float(self.bflagcol.size)), file=log)
 
             #prevents memory leak by clearing
             self.bflagcol = self.bflagrow = None
 
             # this is set if FLAG/FLAG_ROW is to be written out
             if flag_col is not None:
-                self.dh.putslice("FLAG", flag_col, subset=table_subset)
-                totflags = flag_col.sum()
-                if bflag_col is None:                  # only count if not counted above
-                    self.dh.flagcounts['OUT'] += totflags
-                print("  updated FLAG column ({:.2%} visibilities flagged)".format(totflags / float(flag_col.size)), file=log)
-                flag_row = flag_col.all(axis=(-1, -2))
-                table_subset.putcol("FLAG_ROW", flag_row)
-                print("  updated FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum() / float(flag_row.size)), file=log)
-
+                if ("flag" in only_save):
+                    self.dh.putslice("FLAG", flag_col, subset=table_subset)
+                    totflags = flag_col.sum()
+                    if bflag_col is None:                  # only count if not counted above
+                        self.dh.flagcounts['OUT'] += totflags
+                    print("  updated FLAG column ({:.2%} visibilities flagged)".format(totflags / float(flag_col.size)), file=log)
+                    flag_row = flag_col.all(axis=(-1, -2))
+                    table_subset.putcol("FLAG_ROW", flag_row)
+                    print("  updated FLAG_ROW column ({:.2%} rows flagged)".format(flag_row.sum() / float(flag_row.size)), file=log)
+                else:
+                    totflags = flag_col.sum()
+                    flag_row = flag_col.all(axis=(-1, -2))
+                    print("  skipping FLAG column per user request ({:.2%} visibilities would have been flagged otherwise)".format(totflags / float(flag_col.size)), file=log)
+                    print("  skipping FLAG_ROW column per user request ({:.2%} rows would have been flagged otherwise)".format(flag_row.sum() / float(flag_row.size)), file=log)
             if final:
                 self.dh.finalize()
                 self.dh.unlock()

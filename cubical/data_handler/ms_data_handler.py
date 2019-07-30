@@ -603,7 +603,7 @@ class MSDataHandler:
             self.parallactic_machine = None
         pass
 
-    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False):
+    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False, degrid_opts={}):
         """Parses the model list and initializes internal structures"""
 
         # ensure we have as many weights as models
@@ -621,12 +621,15 @@ class MSDataHandler:
         self.model_directions = set() # keeps track of directions in Tigger models
         global montblanc
         montblanc = None
+        global DDFacet
+        DDFacet = None
 
         for imodel, (model, weight_col) in enumerate(zip(models, weights)):
             # list of per-direction models
             dirmodels = {}
             self.models.append((dirmodels, weight_col))
             for idir, dirmodel in enumerate(model.split(":")):
+                #log.print("direction: {} {}".format(idir, dirmodel))
                 if not dirmodel:
                     continue
                 idirtag = " dir{}".format(idir if use_ddes else 0)
@@ -635,6 +638,7 @@ class MSDataHandler:
                 # insert leading "+" if missing
                 if components[0] != "+" and components[0] != '+-':
                     components.insert(0, "+")
+                #log.print("components: {}".format(components))
                 for sign, component in zip(components[::2], components[1::2]):
                     subtract = sign == '+-'
                     # special case: "1" means unity visibilities
@@ -642,32 +646,62 @@ class MSDataHandler:
                         dirmodels.setdefault(idirtag, []).append((1, None, subtract))
                     # else check for an LSM component
                     elif component.startswith("./") or component not in self.ms.colnames():
-                        # check if LSM ends with @tag specification
-                        if "@" in component:
-                            component, tag = component.rsplit("@",1)
-                        else:
-                            tag = None
-                        if os.path.exists(component):
-                            if montblanc is None:
-                                montblanc, exc = data_handler.import_montblanc()
-                                if montblanc is None:
-                                    print(ModColor.Str("Error importing Montblanc: "), file=log)
+                        if ".DicoModel" in component: #DDFacet model
+                            clustercat = None
+                            if "@" in component:
+                                component, clustercat = component.rsplit("@",1)
+                            if os.path.exists(component):
+                                DDFacet, exc = data_handler.import_ddfacet()
+                                if DDFacet is None:
+                                    print(ModColor.Str("Error importing DDFacet: "), file=log)
                                     for line in traceback.format_exception(*exc):
                                         print("  " + ModColor.Str(line), file=log)
-                                    print(ModColor.Str("Without Montblanc, LSM functionality is not available."), file=log)
-                                    raise RuntimeError("Error importing Montblanc")
-                            self.use_montblanc = True
-                            from . import TiggerSourceProvider
-                            component = TiggerSourceProvider.TiggerSourceProvider(component, self.phadir,
-                                                                                  dde_tag=use_ddes and tag)
-                            for key in component._cluster_keys:
-                                dirname = idirtag if key == 'die' else key
-                                dirmodels.setdefault(dirname, []).append((component, key, subtract))
+                                    print(ModColor.Str("Without DDFacet, DicoModel functionality is not available."), file=log)
+                                    raise RuntimeError("Error importing DDFacet")
+                                from .DicoSourceProvider import DicoSourceProvider
+                                component = DicoSourceProvider(component,
+                                                               self.phadir,
+                                                               degrid_opts["Padding"],
+                                                               degrid_opts["MaxFacetSize"],
+                                                               degrid_opts["MinNFacetPerAxis"],
+                                                               clustercat)
+
+                                for key in component._cluster_keys:
+                                    dirname = idirtag if key == 'die' or subtract else key
+                                    dirmodels.setdefault(dirname, []).append((component, key, subtract))
+                                    #log.print("adding {} key {} to dirmodel[{}] for subtract={}".format(component, key, dirname, subtract))
+                            else:
+                                raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
+                        elif ".lsm" in component or ".txt" in component: #LSM
+                            # check if LSM ends with @tag specification
+                            if "@" in component:
+                                component, tag = component.rsplit("@",1)
+                            else:
+                                tag = None
+                            if os.path.exists(component):
+                                if montblanc is None:
+                                    montblanc, exc = data_handler.import_montblanc()
+                                    if montblanc is None:
+                                        print(ModColor.Str("Error importing Montblanc: "), file=log)
+                                        for line in traceback.format_exception(*exc):
+                                            print("  " + ModColor.Str(line), file=log)
+                                        print(ModColor.Str("Without Montblanc, LSM functionality is not available."), file=log)
+                                        raise RuntimeError("Error importing Montblanc")
+                                self.use_montblanc = True
+                                from . import TiggerSourceProvider
+                                component = TiggerSourceProvider.TiggerSourceProvider(component, self.phadir,
+                                                                                    dde_tag=use_ddes and tag)
+                                for key in component._cluster_keys:
+                                    dirname = idirtag if key == 'die' or subtract else key
+                                    dirmodels.setdefault(dirname, []).append((component, key, subtract))
                         else:
                             raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
                     # else it is a visibility column component
-                    else:
+                    elif component in self.ms.colnames():
+                        #log.print("adding {} key None to dirmodel[{}] for subtract={}".format(component, idirtag, subtract))
                         dirmodels.setdefault(idirtag, []).append((component, None, subtract))
+                    else:
+                        raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
             self.model_directions.update(iter(dirmodels.keys()))
         # Now, each model is a dict of dirmodels, keyed by direction name (unnamed directions are _dir0, _dir1, etc.)
         # Get all possible direction names
@@ -705,7 +739,10 @@ class MSDataHandler:
             mblogger.propagate = False
             # NB: this assume that the first handler of the Montblanc logger is the console logger
             mblogger.handlers[0].setLevel(getattr(logging, mb_opts["verbosity"]))
-
+        if DDFacet is not None:
+            self.degrid_opts = degrid_opts
+            ddlogger = logging.getLogger("DDFacet")
+            ddlogger.propagate = False
 
 
     def build_taql(self, taql=None, fid=None, ddid=None):
@@ -823,6 +860,7 @@ class MSDataHandler:
             np.ndarray:
                 Result of putcolslice()
         """
+        column = str(column)
         subset = subset or self.data
         # if no slicing, just use putcol to put the whole thing. This always works,
         # unless the MS is screwed up
@@ -861,7 +899,7 @@ class MSDataHandler:
                 shape = (nrows, self._nchan0_orig[ddid], self.nmscorrs)
                 value0 = np.zeros(shape, value.dtype)
             value0[:, self._channel_slice, self._corr_slice] = value
-            return subset.putcol(column, value0, startrow, nrows)
+            return subset.putcol(str(column), value0, startrow, nrows)
 
     def define_chunk(self, chunk_time, rebin_time, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """
