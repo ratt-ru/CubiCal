@@ -184,7 +184,7 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     return True
 
 
-def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solver_opts, debug_opts, out_opts):
 
     """
     Runs the main loop. If debugging is set, or single_chunk mode is on, forces serial mode.
@@ -200,7 +200,7 @@ def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solv
         solver_type:
         solver_opts:
         debug_opts:
-
+        out_opts:
     Returns:
         Stats dictionary
     """
@@ -211,12 +211,12 @@ def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solv
     tile_list = _tile_list
     
     if num_workers:
-        return _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts)
+        return _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts, out_opts)
     else:
-        return _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts)
+        return _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts, out_opts)
 
 
-def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts):
+def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts, out_opts):
     """
     Runs the main loop in multiprocessing mode.
     
@@ -229,7 +229,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
         solver_type: 
         solver_opts: 
         debug_opts: 
-
+        out_opts:
     Returns:
         Stats dictionary
     """
@@ -252,7 +252,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
         # this will be a dict of tile number: future loading that tile
         io_futures = {}
         # schedule I/O job to load tile 0
-        io_futures[0] = io_executor.submit(_io_handler, load=0, save=None, load_model=load_model)
+        io_futures[0] = io_executor.submit(_io_handler, load=0, save=None, load_model=load_model, out_opts=out_opts)
         # all I/O will be done by the I/O thread, so we need to close the MS in the main process
         # and reopen it afterwards
         ms.close()
@@ -322,7 +322,7 @@ def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts
         return stats_dict
 
 
-def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts):
+def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_opts, debug_opts, out_opts):
     """
     Runs the main loop in single-CPU mode.
 
@@ -335,7 +335,7 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
         solver_type: 
         solver_opts: 
         debug_opts: 
-
+        out_opts: output options from GD
     Returns:
         Stats dictionary
     """
@@ -349,10 +349,13 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
         for key in tile.get_chunk_keys():
             if not single_chunk or key == single_chunk:
                 processed = True
-                stats_dict[tile.get_chunk_indices(key)] = \
-                    solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
+                stats = solver.run_solver(solver_type, itile, key, solver_opts, debug_opts)
+                stats_dict[tile.get_chunk_indices(key)] = stats
+
         if processed:
-            tile.save(final=tile is tile_list[-1])
+            only_save = ["output", "model", "weight", "flag", "bitflag"] if out_opts is None or out_opts["apply-solver-flags"] else \
+                        ["output", "model", "weight"]
+            tile.save(final=tile is tile_list[-1], only_save=only_save)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
                 solver.ifrgain_machine.accumulate(sd)
@@ -411,7 +414,7 @@ def _init_worker(main=False):
             cubical.kernels.num_omp_threads = num_omp_threads
 
 
-def _io_handler(save=None, load=None, load_model=True, finalize=False):
+def _io_handler(save=None, load=None, load_model=True, finalize=False, out_opts=None):
     """
     Handles disk reads and writes for the multiprocessing case.
 
@@ -424,7 +427,8 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
             If specified, loads model column from measurement set.
         finalize (bool, optional):
             If True, this is the last tile. Call the unlock method on the handler, and finalize everything else.
-
+        out_opts (dict):
+            Output options from GD
     Returns:
         bool:
             True if load/save was successful.
@@ -437,7 +441,9 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False):
             tile = tile_list[save]
             itile = list(range(len(tile_list)))[save]
             print("saving {}".format(tile.label), file=log(0, "blue"))
-            tile.save(final=finalize)
+            only_save = ["output", "model", "weight", "flag", "bitflag"] if out_opts is None or out_opts["apply-solver-flags"] else \
+                        ["output", "model", "weight"]
+            tile.save(final=finalize, only_save=only_save)
             for sd in tile.iterate_solution_chunks():
                 solver.gm_factory.save_solutions(sd)
                 solver.ifrgain_machine.accumulate(sd)

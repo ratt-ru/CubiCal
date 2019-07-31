@@ -5,6 +5,7 @@
 from __future__ import print_function
 from builtins import range
 from cubical.machines.abstract_machine import MasterMachine
+from cubical.machines.complex_2x2_machine import Complex2x2Gains
 from cubical.machines.complex_W_2x2_machine import ComplexW2x2Gains
 import numpy as np
 import cubical.kernels
@@ -12,19 +13,21 @@ import cubical.kernels
 from cubical.tools import logger
 from . import machine_types
 from cubical.flagging import FL
-log = logger.getLogger("jones_chain") #TODO check this
+log = logger.getLogger("jones_chain")
+
 
 class JonesChain(MasterMachine):
     """
     This class implements a gain machine for an arbitrary chain of Jones matrices. Most of its
     functionality is consistent with a complex 2x2 solver - many of its methods mimic those of the 
-    underlying complex 2x2 machines.
+    underlying complex 2x2 machines. This specific chain machine implements a chain of robust 2x2 
+    solvers
     """
 
     def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, jones_options):
         """
         Initialises a chain of complex 2x2 gain machines.
-        
+
         Args:
             label (str):
                 Label identifying the Jones term.
@@ -42,31 +45,39 @@ class JonesChain(MasterMachine):
             jones_options (dict): 
                 Dictionary of options pertaining to the chain. 
         """
-        self.kernel = self.get_kernel(jones_options["sol"])
-        self.chain  = cubical.kernels.import_kernel("chain")
+        from cubical.main import UserInputError
+        # This instantiates the number of complex 2x2 elements in our chain. Each element is a
+        # gain machine in its own right - the purpose of this machine is to manage these machines
+        # and do the relevant fiddling between parameter updates. When combining DD terms with
+        # DI terms, we need to be initialise the DI terms using only one direction - we do this with
+        # slicing rather than summation as it is slightly faster.
+        self.jones_terms = []
+        self.num_left_di_terms = 0  # how many DI terms are there at the left of the chain
+        seen_dd_term = False
+        for iterm, term_opts in enumerate(jones_options['chain']):
+            jones_class = machine_types.get_machine_class(term_opts['type'])
+            if jones_class is None:
+                raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
+            if jones_class not in (ComplexW2x2Gains, ComplexW2x2Gains) and term_opts['solvable']:
+                raise UserInputError("only complex-2x2 or robust-2x2 terms can be made solvable in a Jones chain")
+            term = jones_class(term_opts["label"], data_arr, ndir, nmod, times, frequencies, chunk_label, term_opts)
+            self.jones_terms.append(term)
+            if term.dd_term:
+                seen_dd_term = True
+            elif not seen_dd_term:
+                self.num_left_di_terms = iterm
+
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, jones_options)
 
+        self.chain  = cubical.kernels.import_kernel("chain")
+        # kernel used for compute_residuals and such
+        self.kernel = cubical.kernels.import_kernel("full_W_complex")
+        #ComplexW2x2Gains.get_full_kernel(jones_options, diag_gains=self.is_diagonal)
+
         self.n_dir, self.n_mod = ndir, nmod
         _, self.n_tim, self.n_fre, self.n_ant, self.n_ant, self.n_cor, self.n_cor = data_arr.shape
-
-        # This instantiates the number of complex 2x2 elements in our chain. Each element is a 
-        # gain machine in its own right - the purpose of this machine is to manage these machines
-        # and do the relevant fiddling between parameter updates. When combining DD terms with
-        # DI terms, we need to be initialise the DI terms using only one direction - we do this with 
-        # slicing rather than summation as it is slightly faster. 
-        from cubical.main import UserInputError
-
-        self.jones_terms = []
-        for term_opts in jones_options['chain']:
-            jones_class = machine_types.get_machine_class(term_opts['type'])
-            if jones_class is None:
-                raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
-            if jones_class is not ComplexW2x2Gains and term_opts['solvable']:
-                raise UserInputError("only robust-2x2 terms can be made solvable in this specific Jones chain")
-            self.jones_terms.append(jones_class(term_opts["label"], data_arr,
-                                        ndir, nmod, times, frequencies, chunk_label, term_opts))
 
         self.n_terms = len(self.jones_terms)
         # make list of number of iterations per solvable term
@@ -94,6 +105,24 @@ class JonesChain(MasterMachine):
         self._convergence_states_finalized = False
 
         self.cached_model_arr = self._r = self._m = None
+
+    @classmethod
+    def determine_diagonality(cls, options):
+        """Returns true if the machine class, given the options, represents a diagonal gain"""
+        from cubical.main import UserInputError
+        diagonal = True
+        for term_opts in options['chain']:
+            jones_class = machine_types.get_machine_class(term_opts['type'])
+            if jones_class is None:
+                raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
+            diagonal = diagonal and jones_class.determine_diagonality(term_opts)
+        return diagonal
+
+    @classmethod
+    def determine_allocators(cls, options):
+        kernel = cubical.kernels.import_kernel("full_W_complex")
+        #Complex2x2Gains.get_full_kernel(options, diag_gains=cls.determine_diagonality(options))
+        return kernel.allocate_vis_array, kernel.allocate_flag_array, kernel.allocate_gain_array
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """Precomputes various stats before starting a solution"""
@@ -134,13 +163,15 @@ class JonesChain(MasterMachine):
     def _load_solutions(self, init_sols):
         """
         Helper method invoked by Factory.create_machine() to import existing solutions into machine.
-        
+
         In the case of a chain, we invoke this method on every member.
         """
         for term in self.jones_terms:
             term._load_solutions(init_sols)
 
-    #@profile
+
+
+	#@profile
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
@@ -184,11 +215,11 @@ class JonesChain(MasterMachine):
 
             jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]
 
-            self._jhr = self.kernel.allocate_gain_array(jhr_shape, dtype=obser_arr.dtype)
+            self._jhr = self.active_term.allocate_gain_array(jhr_shape, dtype=obser_arr.dtype)
 
             jhrint_shape = [n_dir, n_tint, n_fint, n_ant, n_cor, n_cor]
 
-            self._jhrint = self.kernel.allocate_gain_array(jhrint_shape, dtype=self._jhr.dtype)
+            self._jhrint = self.active_term.allocate_gain_array(jhrint_shape, dtype=self._jhr.dtype)
             self._jhj = np.empty_like(self._jhrint)
             self._jhjinv =  np.empty_like(self._jhrint)
 
@@ -207,7 +238,7 @@ class JonesChain(MasterMachine):
         self._jhr.fill(0)
 
         #computing jhwr which jhr * the weights
-        self.kernel.compute_jhwr(self.jh, self.residuals, self.weights, self._jhr, 1, 1)
+        self.active_term.kernel_robust.compute_jhwr(self.jh, self.residuals, self.weights, self._jhr, 1, 1)
 
         for ind in range(0, self.active_index, 1):
             term = self.jones_terms[ind]
@@ -218,12 +249,13 @@ class JonesChain(MasterMachine):
         self.chain.sum_jhr_intervals(self._jhr, self._jhrint, *self.active_term.gain_intervals)
 
         self._jhj.fill(0)
-        self.kernel.compute_jhwj(self.jh, self.weights, self._jhj, *self.active_term.gain_intervals)
+        self.active_term.kernel_robust.compute_jhwj(self.jh, self.weights, self._jhj, *self.active_term.gain_intervals)
 
         flag_count = self.kernel.compute_jhjinv(self._jhj, self._jhjinv,
                                                     self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
 
         return self._jhrint, self._jhjinv, flag_count
+
 
     def implement_update(self, jhr, jhjinv):
         return self.active_term.implement_update(jhr, jhjinv)
@@ -257,7 +289,8 @@ class JonesChain(MasterMachine):
 
         self.active_term.update_weights()
 
-        return flag_count
+        return flag_count   
+    
 
     def accumulate_gains(self, dd=True):
         """
@@ -273,8 +306,8 @@ class JonesChain(MasterMachine):
             A tuple of gains,conjugate gains
         """
         ndir = self.n_dir if dd else 1
-        gains = self.kernel.allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
-                                                  self.dtype)
+        gains = self.jones_terms[0].allocate_gain_array([ndir, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+                                                        self.dtype)
         g0 = self.jones_terms[0]._gainres_to_fullres(self.jones_terms[0].gains, tdim_ind=1)
         if ndir > 1 and g0.shape[0] == 1:
             g0 = g0.reshape(g0.shape[1:])[np.newaxis,...]
@@ -282,7 +315,7 @@ class JonesChain(MasterMachine):
             g0 = g0[:1,...]
         gains[:] = g0
         for term in self.jones_terms[1:]:
-            self.kernel.right_multiply_gains(gains, term.gains, *term.gain_intervals)
+            term.kernel.right_multiply_gains(gains, term.gains, *term.gain_intervals)
 
         # compute conjugate gains
         gh = np.empty_like(gains)
@@ -298,7 +331,7 @@ class JonesChain(MasterMachine):
         Returns:
             A tuple of gains,conjugate gains,flag_count (if flags raised in inversion)
         """
-        gains = self.kernel.allocate_gain_array([1, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
+        gains = self.jones_terms[-1].allocate_gain_array([1, self.n_tim, self.n_fre, self.n_ant, self.n_cor, self.n_cor],
                                                   self.dtype)
         init = False
         fc0 = 0
@@ -306,10 +339,10 @@ class JonesChain(MasterMachine):
         for term in self.jones_terms[::-1]:
             if not term.dd_term:
                 g, _, fc = term.get_inverse_gains()
-                g = term._gainres_to_fullres(g, tdim_ind=1)
+                # g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
-                    self.kernel.right_multiply_gains(gains, g[:1,...], *term.gain_intervals)
+                    term.kernel.right_multiply_gains(gains, g[:1,...], *term.gain_intervals)
                 else:
                     init = True
                     gains[:] = term._gainres_to_fullres(g[:1,...], tdim_ind=1)
@@ -321,6 +354,7 @@ class JonesChain(MasterMachine):
         return gains, gh, fc
 
 
+    
     #@profile
     def compute_residual(self, obser_arr, model_arr, resid_arr):
         """
@@ -573,3 +607,5 @@ class JonesChain(MasterMachine):
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
                                      ComplexW2x2Gains.exportable_solutions())
 
+        def determine_allocators(self):
+            return self.machine_class.determine_allocators(self.jones_options)
