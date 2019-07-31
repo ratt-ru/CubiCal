@@ -142,6 +142,12 @@ def main(debugging=False):
     # "GD" is a global defaults dict, containing options set up from parset + command line
     global GD, enable_pdb
 
+    # keep a list of messages here, until we have a logfile open
+    prelog_messages = []
+
+    def prelog_print(level, message):
+        prelog_messages.append((level, message))
+
     try:
         if debugging:
             print("initializing from cubical.last", file=log)
@@ -183,62 +189,77 @@ def main(debugging=False):
                 raise UserInputError("Unexpected number of arguments. Use -h for help.")
 
             # get dirname and basename for all output files
-            basename = expand_templated_name(GD["out"]["name"])
+            outdir = expand_templated_name(GD["out"]["dir"]).strip()
+            basename = expand_templated_name(GD["out"]["name"]).strip()
+            can_overwrite = GD["out"]["overwrite"]
+            can_backup = GD["out"]["backup"]
 
-            if not basename:
-                dirname, basename = "cubical-out", "cubical"
-            elif basename.endswith("/"):
-                dirname, basename = basename[:-1], "cubical"
-            elif "/" in basename:
-                dirname, basename = os.path.split(basename)
-                dirname = dirname.rstrip("/")
+            explicit_basename_path = "/" in basename
+            folder_is_ccout  = False
+
+            if explicit_basename_path:
+                prelog_print(0, "output basename explicitly set to {}, --out-dir setting ignored".format(basename))
+                outdir = os.path.dirname(basename)
+            elif outdir == "." or not outdir:
+                outdir = None
+                prelog_print(0, "using output basename {} in current directory".format(basename))
             else:
-                dirname, basename = ".", basename
+                # append implicit .cc-out suffix, unless already there (or ends with .cc-out)
+                if not outdir.endswith("/"):
+                    if outdir.endswith(".cc-out"):
+                        outdir += "/"
+                    else:
+                        outdir += ".cc-out/"
+                folder_is_ccout = outdir.endswith(".cc-out/")
+                basename = outdir + basename
+                if outdir != "/":
+                    outdir = outdir.rstrip("/")
+                prelog_print(0, "using output basename {}".format(basename))
 
             # create directory for output files, if specified, and it doesn't exist
-            if not os.path.exists(dirname):
-                os.mkdir(dirname)
+            if outdir and not os.path.exists(outdir):
+                prelog_print(0, "creating new output directory {}".format(outdir))
+                os.mkdir(outdir)
 
-            # find unique output name, if needed
-            if os.path.exists("{}/{}.log".format(dirname, basename)) and not GD["out"]["overwrite"]:
-                print("{}/{}.log already exists, won't overwrite".format(dirname, basename), file=log(0, "blue"))
-                dirname0, basename0 = dirname, basename
-                N = -1
-                while os.path.exists("{}/{}.log".format(dirname, basename)):
-                    N += 1
-                    if dirname == ".":
-                        basename = "{}.{}".format(basename0, N)
+            # are we going to be overwriting a previous run?
+            out_parset = "{}.parset".format(basename)
+            if os.path.exists(out_parset):
+                prelog_print(0, "{} already exists, possibly from a previous run".format(out_parset))
+
+                if can_backup:
+                    if folder_is_ccout:
+                        # find non-existing directory name for backup
+                        backup_dir = outdir + ".0"
+                        N = 0
+                        while os.path.exists(backup_dir):
+                            N += 1
+                            backup_dir = "{}.{}".format(outdir, N)
+                        # rename old directory, if we ended up manipulating the directory name
+                        os.rename(outdir, backup_dir)
+                        os.mkdir(outdir)
+                        prelog_print(0, ModColor.Str("backed up existing {} to {}".format(outdir, backup_dir), "blue"))
                     else:
-                        dirname = "{}.{}".format(dirname0, N)
-                # rename old directory, if we ended up manipulating the directory name
-                if dirname != dirname0:
-                    os.rename(dirname0, dirname)
-                    print("saved previous {} to {}".format(dirname0, dirname), file=log(0, "blue"))
-                    dirname = dirname0
-                    os.mkdir(dirname)
+                        prelog_print(0, "refusing to auto-backup output directory, since it is not a .cc-out dir")
 
-            if dirname != ".":
-                basename = "{}/{}".format(dirname, basename)
-            print("using {} as base for output files".format(basename), file=log(0, "blue"))
+                if os.path.exists(out_parset):
+                    if can_overwrite:
+                        prelog_print(0, "proceeding anyway since --out-overwrite is set")
+                    else:
+                        if folder_is_ccout:
+                            prelog_print(0, "won't proceed without --out-overwrite and/or --out-backup")
+                        else:
+                            prelog_print(0, "won't proceed without --out-overwrite")
+                        raise UserInputError("{} already exists: won't overwrite previous run".format(out_parset))
 
             GD["out"]["name"] = basename
 
             # "GD" is a global defaults dict, containing options set up from parset + command line
             pickle.dump(GD, open("cubical.last", "wb"))
 
-            # save parset with all settings. We refuse to clobber a parset with itself
-            # (so e.g. "gocubical test.parset --Section-Option foo" does not overwrite test.parset)
-            save_parset = basename + ".parset"
-            if custom_parset_file and os.path.exists(custom_parset_file) and os.path.exists(save_parset) and \
-                    os.path.samefile(save_parset, custom_parset_file):
-                basename = "~" + basename
-                save_parset = basename + ".parset"
-                print(ModColor.Str("your --out-name would overwrite its own parset. Using {} instead.".format(basename)), file=log)
-            parser.write_to_parset(save_parset)
+            # save parset with all settings
+            parser.write_to_parset(out_parset)
 
         enable_pdb = GD["debug"]["pdb"]
-        # clean up shared memory from any previous runs
-        shm_utils.cleanupStaleShm()
 
         # now setup logging
         logger.logToFile(basename + ".log", append=GD["log"]["append"])
@@ -249,6 +270,14 @@ def main(debugging=False):
 
         if not debugging:
             print("started " + " ".join(sys.argv), file=log)
+
+        # dump accumulated messages from before log was open
+        for level, message in prelog_messages:
+            print(message, file=log(level))
+        prelog_messages = []
+
+        # clean up shared memory from any previous runs
+        shm_utils.cleanupStaleShm()
 
         # disable matplotlib's tk backend if we're not going to be showing plots
         if GD['out']['plots'] =='show' or GD['madmax']['plot'] == 'show':
@@ -582,6 +611,9 @@ def main(debugging=False):
         print(ModColor.Str("completed successfully", col="green"), file=log)
 
     except Exception as exc:
+        for level, message in prelog_messages:
+            print(message, file=log(level))
+
         if type(exc) is UserInputError:
             print(ModColor.Str(exc), file=log)
         else:
