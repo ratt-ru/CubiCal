@@ -19,23 +19,83 @@ from cubical.tools import logger, ModColor
 log = logger.getLogger("DDFacetSim")
 import numpy as np
 import math
+import os
+from concurrent.futures import (ProcessPoolExecutor as PPE,
+                                ThreadPoolExecutor as TPE)
+import hashlib
+
+def init_degridders(dir_CFs, 
+                    dir_DCs,
+                    CFs_dict, 
+                    freqs, 
+                    subregion_index, 
+                    lmShift, 
+                    dname, 
+                    nfreqbands, 
+                    DataCorrelationFormat,
+                    sems,
+                    npix,
+                    should_init_cf,
+                    wmax,
+                    GD,
+                    gmachines=None):
+    """ Dummy initialization method to be executed on process pool """
+    dir_CFs = dir_CFs.instantiate()
+    dir_DCs = dir_DCs.instantiate()
+    CFs_dict = CFs_dict.instantiate()
+    gmach = ClassDDEGridMachine.ClassDDEGridMachine(GD,
+                ChanFreq = freqs,
+                Npix = npix,
+                lmShift = lmShift,
+                IDFacet = dir_CFs[dname][subregion_index],
+                SpheNorm = False, # Depricated, set ImToGrid True in .get!!
+                NFreqBands = nfreqbands,
+                DataCorrelationFormat=DataCorrelationFormat,
+                ExpectedOutputStokes=[1], # Stokes I
+                ListSemaphores=sems,
+                cf_dict=CFs_dict,
+                compute_cf=should_init_cf,
+                wmax=wmax)
+    (gmachines is not None) and gmachines.append(gmach)
+    if should_init_cf:
+        wnd_detaper = MT.Sphe2D(npix)
+        wnd_detaper[wnd_detaper != 0] = 1.0 / wnd_detaper[wnd_detaper != 0]
+        dir_DCs["facet_{}".format(dir_CFs[dname][subregion_index])] = wnd_detaper
+
+global UNIQ_ID
+try:
+    UNIQ_ID
+except NameError:
+    UNIQ_ID = os.getpid()
 
 class DDFacetSim(object):
     __degridding_semaphores = None
     __initted_CF_directions = []
-    __direction_CFs = {}
+    __direction_CFs = shared_dict.SharedDict("facetids.cubidegrid.{}".format(UNIQ_ID))
     __ifacet = 0
-    __CF_dict = shared_dict.SharedDict("convfilters.cubidegrid")
+    __CF_dict = {}
     __should_init_sems = True
-    __detaper_cache = {}
-
-    def __init__(self):
+    __detaper_cache = shared_dict.SharedDict("tapers.cubidegrid.{}".format(UNIQ_ID))
+    __exec_pool = None
+    __IN_PARALLEL_INIT = False
+    def __init__(self, num_processes=0):
         """ 
             Initializes a DDFacet model predictor
         """
         self.__direction = None
         self.__model = None
         self.init_sems()
+    
+    @classmethod
+    def initialize_pool(cls, num_processes=0):
+        if num_processes > 1:
+            DDFacetSim.__exec_pool = PPE(max_workers=num_processes)
+            DDFacetSim.__IN_PARALLEL_INIT = True
+
+    @classmethod
+    def shutdown_pool(cls):
+        if DDFacetSim.__IN_PARALLEL_INIT:
+            DDFacetSim.__exec_pool.shutdown()
 
     def set_direction(self, val):
         """ sets the direction in the cubical model cube to pack model data into """
@@ -52,11 +112,13 @@ class DDFacetSim(object):
     def dealloc_degridders(cls):
         """ resets CF allocation state of all degridders """
         cls.__initted_CF_directions = []
-        cls.__direction_CFs = {}
+        cls.__direction_CFs.delete() # cleans out /dev/shm allocated memory
         cls.__ifacet = 0
-        cls.__CF_dict.delete() # cleans out /dev/shm allocated memory
+        for cf in cls.__CF_dict:
+            cls.__CF_dict[cf].delete() # cleans out /dev/shm allocated memory
+        cls.__CF_dict = {}
         cls.__should_init_sems = True
-        cls.__detaper_cache = {}
+        cls.__detaper_cache.delete() # cleans out /dev/shm allocated memory
 
     @classmethod
     def init_sems(cls, NSemaphores = 3373):
@@ -98,7 +160,7 @@ class DDFacetSim(object):
                     " scale:" + "x".join(map(str, list(np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index)) *
                                                        src.pixel_scale / 3600.0)))
         res = "dir_{0:s}_{1:s}_{2:s}".format(str(self.__model), str(self.__direction), str(reg_props))
-        return res
+        return hashlib.md5(res).hexdigest()
 
     def __init_grid_machine(self, src, dh, tile, poltype, freqs):
         """ initializes a grid machine for this direction """
@@ -151,28 +213,58 @@ class DDFacetSim(object):
             DDFacetSim.__initted_CF_directions.append(dname)    
             DDFacetSim.__direction_CFs[dname] = DDFacetSim.__direction_CFs.get(dname, []) + list(DDFacetSim.__ifacet + np.arange(src.subregion_count)) #unique facet index for this subregion
             DDFacetSim.__ifacet += src.subregion_count
-        
+            for sri in range(src.subregion_count):
+                DDFacetSim.__CF_dict["{}.{}".format(dname, sri)] = \
+                    shared_dict.SharedDict("convfilters.cubidegrid.{}.{}.{}".format(UNIQ_ID, dname, sri))
 
+        # init in parallel
+        futures = []
         for subregion_index in range(src.subregion_count):
-            gmach = ClassDDEGridMachine.ClassDDEGridMachine(GD,
-                        ChanFreq = freqs,
-                        Npix = src.get_direction_npix(subregion_index=subregion_index),
-                        lmShift = np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * src.pixel_scale / 3600.0),
-                        IDFacet = DDFacetSim.__direction_CFs[dname][subregion_index],
-                        SpheNorm = False, # Depricated, set ImToGrid True in .get!!
-                        NFreqBands = dh.degrid_opts["NDegridBand"],
-                        DataCorrelationFormat=DataCorrelationFormat,
-                        ExpectedOutputStokes=[1], # Stokes I
-                        ListSemaphores=self.__degridding_semaphores,
-                        cf_dict=DDFacetSim.__CF_dict,
-                        compute_cf=should_init_cf,
-                        wmax=wmax)
-            gmachines.append(gmach)
-            if should_init_cf:
-                wnd_detaper = MT.Sphe2D(src.get_direction_npix(subregion_index=subregion_index))
-                wnd_detaper[wnd_detaper != 0] = 1.0 / wnd_detaper[wnd_detaper != 0]
-                DDFacetSim.__detaper_cache[DDFacetSim.__direction_CFs[dname][subregion_index]] = wnd_detaper
+            init_args = (DDFacetSim.__direction_CFs.readwrite(), 
+                        DDFacetSim.__detaper_cache.readwrite(),
+                        DDFacetSim.__CF_dict["{}.{}".format(dname, subregion_index)].readwrite(),
+                        freqs,
+                        subregion_index,
+                        np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * 
+                                    src.pixel_scale / 3600.0),
+                        dname,
+                        dh.degrid_opts["NDegridBand"],
+                        DataCorrelationFormat,
+                        self.__degridding_semaphores,
+                        src.get_direction_npix(subregion_index=subregion_index),
+                        should_init_cf,
+                        wmax,
+                        GD)
+            if DDFacetSim.__IN_PARALLEL_INIT:
+                futures.append(DDFacetSim.__exec_pool.submit(init_degridders, *init_args))
+            else:
+                init_degridders(*init_args)
 
+        if DDFacetSim.__IN_PARALLEL_INIT:
+            for f in futures:
+                expt = f.exception()
+                if expt is not None:
+                    raise expt
+        
+        # construct handles after the initialization has been completed
+        for subregion_index in range(src.subregion_count):
+            init_degridders(DDFacetSim.__direction_CFs.readwrite(), 
+                            DDFacetSim.__detaper_cache.readwrite(),
+                            DDFacetSim.__CF_dict["{}.{}".format(dname, subregion_index)].readwrite(),
+                            freqs,
+                            subregion_index,
+                            np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * 
+                                       src.pixel_scale / 3600.0),
+                            dname,
+                            dh.degrid_opts["NDegridBand"],
+                            DataCorrelationFormat,
+                            self.__degridding_semaphores,
+                            src.get_direction_npix(subregion_index=subregion_index),
+                            False, #already initialized
+                            wmax,
+                            GD,
+                            gmachines
+                            )
         return gmachines
 
     @classmethod
@@ -182,7 +274,7 @@ class DDFacetSim(object):
             both are square and odd sized
         """
         assert model_image.shape[2] == model_image.shape[3]
-        wnd_detaper = cls.__detaper_cache[idfacet]
+        wnd_detaper = cls.__detaper_cache.readonly().instantiate()["facet_{}".format(idfacet)]
         assert wnd_detaper.shape[0] == model_image.shape[2] and wnd_detaper.shape[1] == model_image.shape[3]
         model_image.real *= wnd_detaper[None, None, :, :]
         return model_image
@@ -195,6 +287,7 @@ class DDFacetSim(object):
             raise RuntimeError("Direction has not been set. Please set direction before simulating")
         if self.__model is None:
             raise RuntimeError("Model has not been set. Please set model before simulating")
+        DDFacetSim.initialize_pool(dh.degrid_opts["NProcess"])
         freqs = freqs.ravel()
         src = self.__model
         src.set_direction(self.__direction)
@@ -254,5 +347,6 @@ import atexit
 def _cleanup_degridders():
     DDFacetSim.del_sems()
     DDFacetSim.dealloc_degridders()
-
+    DDFacetSim.shutdown_pool()
+        
 atexit.register(_cleanup_degridders)
