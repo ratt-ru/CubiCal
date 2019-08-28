@@ -462,22 +462,38 @@ if __name__ == "__main__":
 
                 mod = u.m.copy()
                 benchmark(lambda:refkern.cyapply_gains(mod, u.g, u.gh, t_int, f_int), "{}.apply_gains (DMTFAA order, native)".format(refkern_name))
-                mod0 = mod.copy()
 
-                mod = o.m.copy()
+                o1 = OrderedArrays(u, testkerns[0], pshape=[1, 2, 2], jhrshape=[1, 2, 2])
 
-                benchmark_function('cyapply_gains', (mod, o.g, o.gh, t_int, f_int),
-                              setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
+                o1.m[:] = o.m
 
-                mod = o.m.copy()
+                benchmark_function('cyapply_gains', (o1.m, o.g, o.gh, t_int, f_int),
+                              setup=lambda: np.copyto(o1.m, o.m), check=lambda: abs(o1.m-mod).max()<1e-8)
 
-                benchmark_function('cyapply_gains_1', (mod, o.g, o.gh, t_int, f_int),
-                              setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
+                o1.m[:] = o.m
 
-                mod = o.m.copy()
+                benchmark_function('cyapply_gains_1', (o1.m, o.g, o.gh, t_int, f_int),
+                              setup=lambda: np.copyto(o1.m, o.m), check=lambda: abs(o1.m-mod).max()<1e-8)
 
-                benchmark_function('cyapply_gains_2', (mod, o.g, o.gh, t_int, f_int),
-                              setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
+                o1.m[:] = o.m
+
+                benchmark_function('cyapply_gains_2', (o1.m, o.g, o.gh, t_int, f_int),
+                              setup=lambda: np.copyto(o1.m, o.m), check=lambda: abs(o1.m-mod).max()<1e-8)
+
+                # mod = o.m.copy()
+                #
+                # benchmark_function('cyapply_gains', (mod, o.g, o.gh, t_int, f_int),
+                #               setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
+                #
+                # mod = o.m.copy()
+                #
+                # benchmark_function('cyapply_gains_1', (mod, o.g, o.gh, t_int, f_int),
+                #               setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
+                #
+                # mod = o.m.copy()
+                #
+                # benchmark_function('cyapply_gains_2', (mod, o.g, o.gh, t_int, f_int),
+                #               setup=lambda: np.copyto(mod, o.m), check=lambda: abs(mod-mod0).max()<1e-8)
 
             args.pdb and nfailed and pdb.set_trace()
 
