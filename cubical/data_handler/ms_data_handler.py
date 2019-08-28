@@ -1364,13 +1364,15 @@ class MSDataHandler:
             # new column needs to be inserted -- get column description from column 'like_col'
             print("  inserting new column %s" % (col_name), file=log)
             desc = self.ms.getcoldesc(like_col)
-            desc['name'] = str(col_name)
-            desc['comment'] = str(desc['comment'].replace(" ", "_"))  # got this from Cyril, not sure why
+
+            desc[str('name')] = str(col_name)
+            desc[str('comment')] = str(desc['comment'].replace(" ", "_"))  # got this from Cyril, not sure why
             dminfo = self.ms.getdminfo(like_col)
-            dminfo["NAME"] =  str("{}-{}".format(dminfo["NAME"], col_name))
+            dminfo[str("NAME")] =  "{}-{}".format(dminfo["NAME"], col_name)
+
             # if a different type is specified, insert that
             if like_type:
-                desc['valueType'] = like_type
+                desc[str('valueType')] = like_type
             self.ms.addcols(desc, dminfo)
             return True
         return False
