@@ -556,7 +556,9 @@ class SolverMachine(object):
         self.stats.chunk.num_data_points = (vdm.flags_arr == 0).sum()  # nominal number of valid data points
 
         # for apply-only machines, precompute machine attributes and apply initial gain flags
+        
         if self.is_apply_only:
+            vdm.model_arr = np.zeros((1,1,)+vdm.obser_arr.shape)
             gm.precompute_attributes(vdm.obser_arr, vdm.model_arr, vdm.flags_arr, None)
             gm.flag_solutions(vdm.flags_arr, False)
             self.stats.chunk.num_solutions = vdm.gm.num_solutions
