@@ -365,6 +365,12 @@ class PerIntervalGains(MasterMachine):
 
         # number of data points per time/frequency/antenna
         numeq_tfa = unflagged.sum(axis=-1)
+        
+        if np.any(np.all(missing_intervals, axis=-1)) and log.verbosity() > 1:
+            self.raise_userwarning(
+                logging.CRITICAL,
+                "One or more directions (or its frequency intervals) are already fully flagged.",
+                90, raise_once="prior_fully_flagged_dirs", verbosity=2, color="red")
 
         # compute error estimates per direction, antenna, and interval
         if inv_var_chan is not None:
@@ -375,7 +381,7 @@ class PerIntervalGains(MasterMachine):
                 # mean |model|^2 per direction+TFA
                 modelsq = (model_arr*np.conj(model_arr)).real.sum(axis=(1,-1,-2,-3)) / \
                           (self.n_mod*self.n_cor*self.n_cor*numeq_tfa)
-                modelsq[:, numeq_tfa==0] = 0
+                modelsq[:, missing_intervals] = 0
 
                 sigmasq = 1.0/inv_var_chan                        # squared noise per channel. Could be infinite if no data
                 # take the sigma (in quadrature) over each interval
@@ -389,21 +395,21 @@ class PerIntervalGains(MasterMachine):
                               (self.interval_sum(modelsq, 1) * numeq_tfa)
                 # convert that into a gain error per direction,interval,antenna
                 self.prior_gain_error = np.sqrt(NSR_int)
+                # zero the ones corresponding to fully-flagged intervals, since we don't want to shout about them
+                self.prior_gain_error[missing_intervals] = 0
+                
                 if self.dd_term:
                     self.prior_gain_error[self.fix_directions, ...] = 0
 
                 pge_flag_invalid = np.logical_or(np.isnan(self.prior_gain_error),
                                                  np.isinf(self.prior_gain_error))
 
+                # check for intervals where the model sum is zero, as this shouldn't normally happen
                 invalid_models = np.logical_or(self.interval_sum(modelsq, 1) == 0,
                                                np.logical_or(np.isnan(self.interval_sum(modelsq, 1)),
                                                              np.isinf(self.interval_sum(modelsq, 1))))
-                if np.any(np.all(numeq_tfa == 0, axis=-1)) and log.verbosity() > 1:
-                    self.raise_userwarning(
-                        logging.CRITICAL,
-                        "One or more directions (or its frequency intervals) are already fully flagged.",
-                        90, raise_once="prior_fully_flagged_dirs", verbosity=2, color="red")
-
+                # if interval was missing (fully flagged), it's not "invalid"
+                invalid_models[missing_intervals] = False
                 if np.any(np.all(invalid_models, axis=-1)) and log.verbosity() > 1:
                     self.raise_userwarning(
                         logging.CRITICAL,
@@ -418,6 +424,7 @@ class PerIntervalGains(MasterMachine):
             # flag gains on max error
             self._n_flagged_on_max_error = None
             bad_gain_intervals = pge_flag_invalid
+            log(0).print("{}: max gain error {}, invalid PGEs {}".format(self.chunk_label, self.max_gain_error, bad_gain_intervals.sum()))
             if self.max_gain_error:
                 low_snr = self.prior_gain_error > self.max_gain_error
                 if low_snr.all(axis=0).all():
