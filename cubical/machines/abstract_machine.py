@@ -156,8 +156,12 @@ class MasterMachine:
 
     @property
     def propagates_flags(self):
-        return self._prop_flags == "always" or \
+        return self._prop_flags == "always" or self._prop_flags == "any" or \
                (self._prop_flags == "default" and not self.dd_term)
+
+    @property
+    def propagates_anydir_flags(self):
+        return self._prop_flags == "any"
 
     @property
     def maxiter (self):
@@ -336,7 +340,9 @@ class MasterMachine:
     def update_equation_counts(self, unflagged):
         """
         Sets up equation counters and normalization factors. Sets up the following attributes:
-        
+            - eqs_per_record
+                integer: gives the nominal number of equations per a visibility record, so e.g.
+                would be 8 for a full 2x2 complex correlation matrix
             - eqs_per_tf_slot (np.ndarray):
                 Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
             - eqs_per_antenna (np.ndarray)
@@ -351,14 +357,20 @@ class MasterMachine:
             unflagged (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) bool array indicating valid (not flagged) slots
         """
-        # (n_ant) vector containing the number of valid equations per antenna.
-        # Factor of two is necessary as we have the conjugate of each equation too.
 
-        self.eqs_per_antenna = 2 * np.sum(unflagged, axis=(0, 1, 2)) * self.n_mod
+        # equations per visibility slot. We have two (real/imag, or normal and conjugate) per model
+        # and per correlation product. This is just a normalization factor used in the bookkeeping.
+        # TODO: account for diag-only modes, where we have fewer corr products
+        self.eqs_per_record = 2 * self.n_mod * self.n_cor * self.n_cor
 
-        # (n_tim, n_fre) array containing number of valid equations for each time/freq slot.
+        # (n_ant) vector containing the number of valid equations per antenna (for any direction)
 
-        self.eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2)) * self.n_mod * self.n_cor * self.n_cor * 2
+        self.eqs_per_antenna = np.sum(unflagged, axis=(0, 1, 2)) * self.eqs_per_record
+
+        # (n_tim, n_fre) array containing number of valid equations for each time/freq slot
+
+        self.eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2)) * self.eqs_per_record
+
 
         with np.errstate(invalid='ignore', divide='ignore'):
             self._chisq_tf_norm_factor = 1./self.eqs_per_tf_slot
@@ -366,6 +378,10 @@ class MasterMachine:
 
         toteq = np.sum(self.eqs_per_tf_slot)
         self._chisq_norm_factor = 1./toteq if toteq else 0
+
+        self._chisq_tf_norm_factor_0 = self._chisq_tf_norm_factor
+        self._chisq_norm_factor_0 = self._chisq_norm_factor
+
 
     def compute_chisq(self, resid_arr, inv_var_chan):
         """

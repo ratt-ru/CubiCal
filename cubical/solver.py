@@ -99,6 +99,12 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     gm.precompute_attributes(obser_arr, model_arr, flags_arr, inv_var_chan)
 
+    # apply any flags raised in the precompute
+
+    new_flags = flags_arr & ~(FL.MISSING | FL.PRIOR) != 0
+    model_arr[:, :, new_flags, :, :] = 0
+    obser_arr[:, new_flags, :, :] = 0
+
     def get_flagging_stats():
         """Returns a string describing per-flagset statistics"""
         fstats = []
