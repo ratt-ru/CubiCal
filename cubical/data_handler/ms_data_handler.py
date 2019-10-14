@@ -163,7 +163,8 @@ class MSDataHandler:
                  feed_rotate_model="auto",
                  pa_rotate_model=True,
                  pa_rotate_montblanc=True,
-                 derotate_output=True):
+                 derotate_output=True,
+                 do_normalize_data=False):
         """
         Initialises a DataHandler object.
 
@@ -229,6 +230,7 @@ class MSDataHandler:
         self.beam_pattern = beam_pattern
         self.beam_l_axis = beam_l_axis
         self.beam_m_axis = beam_m_axis
+        self.do_normalize_data = True
 
         self.fid = fid if fid is not None else 0
 

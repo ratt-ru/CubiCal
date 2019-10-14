@@ -903,6 +903,17 @@ class MSTile(object):
                     data['weigh'] = weights0
                 del obvis0, uvw0, weights0
 
+            # normalize by amplitude, if needed
+            if self.dh.do_normalize_data:
+                dataabs = np.abs(obvis)
+                with np.errstate(divide='ignore'):
+                    obvis /= dataabs
+                    obvis[dataabs==0] = 0
+                if 'weigh' in data:
+                    data['weigh'] *= dataabs[np.newaxis, ...]
+                else:
+                    data['weigh'] = dataabs.reshape([1]+list(dataabs.shape))
+
             # compute PA rotation angles, if needed
             if self.dh.parallactic_machine is not None:
                 angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
