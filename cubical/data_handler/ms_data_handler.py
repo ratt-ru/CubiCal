@@ -230,7 +230,7 @@ class MSDataHandler:
         self.beam_pattern = beam_pattern
         self.beam_l_axis = beam_l_axis
         self.beam_m_axis = beam_m_axis
-        self.do_normalize_data = True
+        self.do_normalize_data = do_normalize_data
 
         self.fid = fid if fid is not None else 0
 

@@ -357,6 +357,7 @@ def main(debugging=False):
                            pa_rotate_model=GD["model"]["pa-rotate"],
                            pa_rotate_montblanc=GD["montblanc"]["pa-rotate"],
                            derotate_output=GD["out"]["derotate"],
+                           do_normalize_data=GD["data"]["normalize"]
                            )
 
         solver.metadata = ms.metadata
