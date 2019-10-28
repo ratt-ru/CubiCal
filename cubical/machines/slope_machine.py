@@ -264,7 +264,9 @@ class PhaseSlopeGains(ParameterisedGains):
         ParameterisedGains.restrict_solution(self)
         
         if self.ref_ant is not None:
-            self.slope_params -= self.slope_params[:,:,:,self.ref_ant,:,:,:][:,:,:,np.newaxis,:,0,0]
+            # complicated slice :) we take the 0,0 phase offset of the reference antenna,
+            # and subtract that from the phases of all other antennas and elements
+            self.slope_params -= self.slope_params[:,:,:,self.ref_ant,:,0,0][:,:,:,np.newaxis,:,np.newaxis,np.newaxis]
         for idir in self.fix_directions:
             self.slope_params[idir, ...] = 0
 

@@ -198,7 +198,7 @@ class PhaseDiagGains(PerIntervalGains):
         PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:
-            self.phases -= self.phases[:,:,:,self.ref_ant,:,:][:,:,:,np.newaxis,0,0]
+            self.phases -= self.phases[:,:,:,self.ref_ant,0,0][:,:,:,np.newaxis,np.newaxis,np.newaxis]
         for idir in self.fix_directions:
             self.phases[idir, ...] = 0
 
