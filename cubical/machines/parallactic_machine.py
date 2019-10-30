@@ -104,6 +104,9 @@ class parallactic_machine(object):
                     for rpi, rp in enumerate(self.__observer_positions)
                 ]
                 for t in unique_times])
+                
+            if log.verbosity > 1:
+                log(2).print("   PA of first antenna (deg): {}".format(unique_pa[:,0]*180/np.pi))
 
             for t, pa in zip(unique_times, unique_pa):
                 angles[utc_timestamp == t, :, :] += pa[:, np.newaxis]
@@ -117,11 +120,11 @@ class parallactic_machine(object):
         """
         if angles is None:
             angles = self.rotation_angles(utc_timestamp)
-        print("Rotation angles are {}".format(angles), file=log(2))
+        print("Rotation angles (deg): {}".format(angles*180/np.pi), file=log(2))
 
         ## OMS: Ben had it in the opposite direction originally, but I'm sure this is right, and matches VLA results
         pa = -angles if clockwise else angles
-
+        
         def mat_factory(pa, nchan, aindex, conjugate_transpose=False):
             def give_linear_mat(pa, nchan, aindex, conjugate_transpose=False):
                 """ 2D rotation matrix according to Hales, 2017: 
@@ -199,16 +202,18 @@ class parallactic_machine(object):
             if ub - lb == 0: 
                 break
             padded_vis = pad(vis[lb:ub, :, :])
-            p, q = np.triu_indices(np.max(list(set(a1[lb:ub]).union(set(a2[lb:ub]))))+1)  ## OMS: needs +1 or last baseline goes AWOL
-            for bl in zip(p, q):
-                blsel = np.logical_and(a1[lb:ub] == bl[0], a2[lb:ub] == bl[1])
+            a1s, a2s = a1[lb:ub], a2[lb:ub]
+            pq = set(zip(a1s, a2s))
+            for p, q in pq:
+                blsel = (a1s == p)&(a2s == q)
                 Pa1 = mat_factory(pa[lb:ub, :][blsel, :], 
                                   padded_vis.shape[1], 
-                                  bl[0])
+                                  p)
                 Pa2H = mat_factory(pa[lb:ub, :][blsel, :], 
                                    padded_vis.shape[1], 
-                                   bl[1], 
-                                   conjugate_transpose=True)
+                                  q, 
+                                  conjugate_transpose=True)
+                #import ipdb; ipdb.set_trace()
                 #if bl[0] == 0 and bl[1] == 1:
                 #    print("angles: {}".format(angles[lb,[0,1],:]), file=log(0))
                 #    print("P0: {}".format(Pa1[0,0]), file=log(0))

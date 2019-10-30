@@ -1159,8 +1159,8 @@ class MSTile(object):
 
             ### APPLY DEROTATION HERE
             if self.dh.derotate_output:
-                vis = data[column][rows, freq_slice]
-                vis[:] = self.dh.parallactic_machine.derotate(subset.time_col[rows], vis,
+                data[column][rows, freq_slice] = self.dh.parallactic_machine.derotate(subset.time_col[rows],
+                                                               data[column][rows, freq_slice],
                                                                subset.antea[rows], subset.anteb[rows],
                                                                angles=data['pa'][rows])
         if flag_cube is not None:

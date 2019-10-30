@@ -61,7 +61,8 @@ class Complex2x2Gains(PerIntervalGains):
             marr = model_arr[...,(0,1),(1,0)][:,0].sum(0)
             darr = data_arr[...,(0,1),(1,0)][0]
             mask = (flags_arr[...,np.newaxis]!=0)|(marr==0)
-            dm = darr*(np.conj(marr)/abs(marr))
+            with np.errstate(divide='ignore', invalid='ignore'):
+                dm = darr*(np.conj(marr)/abs(marr))
             dabs = np.abs(darr)
             dm[mask] = 0
             dabs[mask] = 0
@@ -74,7 +75,7 @@ class Complex2x2Gains(PerIntervalGains):
             pzd = np.angle(dm_sum/dabs_sum)
             pzd[dabs_sum==0] = 0
 
-            print("{}: PZD estimate {}".format(self.chunk_label, pzd), file=log(2))
+            print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(1))
             self.gains[:,:,:,:,1,1] = np.exp(-1j*pzd)[np.newaxis,:,:,np.newaxis]
 
 
