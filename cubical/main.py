@@ -468,6 +468,7 @@ def main(debugging=False):
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
+        solver.gm_factory.set_metadata(ms)
                                                        
         # create IFR-based gain machine. Only compute gains if we're loading a model
         # (i.e. not in load-apply mode)

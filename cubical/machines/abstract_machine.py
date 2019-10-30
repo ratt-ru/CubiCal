@@ -920,13 +920,14 @@ class MasterMachine:
             gm._load_solutions(self._init_sols)
             return gm
         
-        def set_metas(self, src):
+        def set_metadata(self, src):
             """
-            Sets database meta information source
+            Sets database metadata source
             
             Args:
                 src: instance of cubical.data_handler
             """
+            self.metadata = src.metadata
             for db in list(self._save_sols_byname.values()):
                 db.export_CASA_gaintable = self.global_options["out"].get("casa-gaintables", True)
                 db.set_metadata(src)

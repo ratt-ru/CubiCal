@@ -398,9 +398,10 @@ class casa_db_adaptor(PickledDatabase):
             Args:
                 src: a cubical.data_handler instance
         """
-        if six.PY3:
+        if six.PY3 and self.export_enabled:
             log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-            return
+            self.export_enabled = False
+
         if not isinstance(src, MSDataHandler):
             raise TypeError("src must be of type Cubical DataHandler")
 
