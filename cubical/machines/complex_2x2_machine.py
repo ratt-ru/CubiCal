@@ -6,6 +6,7 @@ from __future__ import print_function
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
 import numpy.ma as ma
+from numpy.ma import masked_array
 from cubical.flagging import FL
 import cubical.kernels
 
@@ -111,7 +112,7 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
 
         if self._estimate_pzd:
-            if self._pzd is not None:
+            if self._pzd is None:
                 marr = model_arr[...,(0,1),(1,0)][:,0].sum(0)
                 darr = data_arr[...,(0,1),(1,0)][0]
                 mask = (flags_arr[...,np.newaxis]!=0)|(marr==0)

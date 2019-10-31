@@ -158,7 +158,7 @@ class PerIntervalGains(MasterMachine):
         self._gh_update = self._ghinv_update = True
 
         self.default_gain = np.eye(2,2, dtype=float)
-        self.default_gain_errors = np.zeros((2,2), dtype=float)
+        self.default_gain_error = np.zeros((2,2), dtype=float)
 
     @classmethod
     def determine_allocators(cls, options):
