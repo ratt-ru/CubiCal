@@ -132,10 +132,10 @@ class PhaseDiagGains(PerIntervalGains):
 
         # construct phase solutions, applying mask from parent gains
         mask = solutions['gain'][0].mask
-        solutions['phase'] = masked_array(self.phases, mask)[..., (0, 1), (0, 1)], self.interval_grid
+        solutions['phase'] = masked_array(self.phases, mask)[..., (0, 1), (0, 1)], self.interval_grid, np.zeros(2, float)
 
         # phase error is same as gain error (small angle approx!)
-        solutions["phase.err"] = solutions["gain.err"][0][..., (0, 1), (0, 1)], self.interval_grid
+        solutions["phase.err"] = solutions["gain.err"][0][..., (0, 1), (0, 1)], self.interval_grid, np.zeros(2, float)
 
         return solutions
 
@@ -163,7 +163,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         # loaded -- do the housekeeping
 
-        self.restrict_solution()
+        self.restrict_solution(self.phases)
         np.multiply(self.phases, 1j, out=self.gains)
         np.exp(self.gains, out=self.gains)
         self._gains_loaded = True
@@ -185,25 +185,25 @@ class PhaseDiagGains(PerIntervalGains):
             update *= 0.5
         self.phases += update
 
-        self.restrict_solution()
+        self.restrict_solution(self.phases)
 
         np.multiply(self.phases, 1j, out=self.gains)
         np.exp(self.gains, out=self.gains)
         self.gains[...,0,1].fill(0)
         self.gains[...,1,0].fill(0)
 
-    def restrict_solution(self):
+    def restrict_solution(self, phases):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying
         any machine specific restrictions.
         """
 
-        PerIntervalGains.restrict_solution(self)
+        # PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:
-            self.phases -= self.phases[:,:,:,self.ref_ant,0,0][:,:,:,np.newaxis,np.newaxis,np.newaxis]
+            phases -= phases[:,:,:,self.ref_ant,0,0][:,:,:,np.newaxis,np.newaxis,np.newaxis]
         for idir in self.fix_directions:
-            self.phases[idir, ...] = 0
+            phases[idir, ...] = 0
 
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):

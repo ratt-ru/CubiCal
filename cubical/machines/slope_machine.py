@@ -132,9 +132,9 @@ class PhaseSlopeGains(ParameterisedGains):
         solutions = ParameterisedGains.export_solutions(self)
 
         for label, num in self._labels.items():
-            solutions[label] = masked_array(self.slope_params[...,num,(0,1),(0,1)]), self.interval_grid
+            solutions[label] = masked_array(self.slope_params[...,num,(0,1),(0,1)]), self.interval_grid, np.zeros(2, float)
             if self.posterior_slope_error is not None:
-                solutions[label+".err"] = masked_array(self.posterior_slope_error[..., num, :]), self.interval_grid
+                solutions[label+".err"] = masked_array(self.posterior_slope_error[..., num, :]), self.interval_grid, np.zeros(2, float)
 
         return solutions
 
@@ -159,7 +159,7 @@ class PhaseSlopeGains(ParameterisedGains):
                 loaded = True
 
         if loaded:
-            self.restrict_solution()
+            self.restrict_solution(self.slope_params)
             self.slope.construct_gains(self.slope_params, self.gains,
                                            self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
             self._gains_loaded = True
@@ -249,26 +249,26 @@ class PhaseSlopeGains(ParameterisedGains):
         
         self.slope_params += update
 
-        self.restrict_solution()
+        self.restrict_solution(self.slope_params)
 
         # Need to turn updated parameters into gains.
 
         self.slope.construct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
-    def restrict_solution(self):
+    def restrict_solution(self, slope_params):
         """
         Restricts the solution by invoking the inherited restrict_solution method and applying
         any machine specific restrictions.
         """
 
-        ParameterisedGains.restrict_solution(self)
+        # ParameterisedGains.restrict_solution(self)
         
         if self.ref_ant is not None:
             # complicated slice :) we take the 0,0 phase offset of the reference antenna,
             # and subtract that from the phases of all other antennas and elements
-            self.slope_params -= self.slope_params[:,:,:,self.ref_ant,:,0,0][:,:,:,np.newaxis,:,np.newaxis,np.newaxis]
+            slope_params -= slope_params[:,:,:,self.ref_ant,:,0,0][:,:,:,np.newaxis,:,np.newaxis,np.newaxis]
         for idir in self.fix_directions:
-            self.slope_params[idir, ...] = 0
+            slope_params[idir, ...] = 0
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """

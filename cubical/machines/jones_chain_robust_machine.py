@@ -435,12 +435,12 @@ class JonesChain(MasterMachine):
         """
         return self.active_term.check_convergence(min_delta_g)
 
-    def restrict_solution(self):
+    def restrict_solution(self, gains):
         """
         Restricts the solutions by, for example, selecting a reference antenna or taking only the 
         amplitude. 
         """
-        return self.active_term.restrict_solution()
+        return self.active_term.restrict_solution(gains)
 
     def flag_solutions(self, flags_arr, final=False):
         """ Flags gain solutions."""

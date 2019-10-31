@@ -78,10 +78,15 @@ class Complex2x2Gains(PerIntervalGains):
             dabs_sum = dabs_sum[...,0] + np.conj(dabs_sum[...,1])
             pzd = np.angle(dm_sum/dabs_sum)
             pzd[dabs_sum==0] = 0
+            wh = np.where(dabs_sum!=0)
+            if len(wh[0]):
+                pzd0 = pzd[wh[0][0], wh[0][1]]
+                self.default_gains = np.array([[1, 0], [0, np.exp(-1j*pzd0)]])
 
             print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
             self._exp_pzd = np.exp(-1j*pzd)
             self.gains[:,:,:,:,1,1] = self._exp_pzd[np.newaxis,:,:,np.newaxis]
+
 
 
     def compute_js(self, obser_arr, model_arr):
