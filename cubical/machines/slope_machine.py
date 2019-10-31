@@ -132,9 +132,9 @@ class PhaseSlopeGains(ParameterisedGains):
         solutions = ParameterisedGains.export_solutions(self)
 
         for label, num in self._labels.items():
-            solutions[label] = masked_array(self.slope_params[...,num,(0,1),(0,1)]), self.interval_grid, np.zeros(2, float)
+            solutions[label] = masked_array(self.slope_params[...,num,(0,1),(0,1)]), self.interval_grid
             if self.posterior_slope_error is not None:
-                solutions[label+".err"] = masked_array(self.posterior_slope_error[..., num, :]), self.interval_grid, np.zeros(2, float)
+                solutions[label+".err"] = masked_array(self.posterior_slope_error[..., num, :]), self.interval_grid
 
         return solutions
 

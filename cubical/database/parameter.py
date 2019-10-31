@@ -141,10 +141,6 @@ class Parameter(object):
         # If any parameter values are changed, PickledDatabase.save() can be called to write the database in
         # "consolidated" mode. In this mode, it's simply a pickle of all fully-populated parameters.
 
-    def set_default_value(self, default=None):
-        if default is not None:
-            self._default = default
-
     def _update_shape(self, shape, grid):
         """
         Called repeatedly during the prototype -> skeleton phase, as the 
@@ -532,8 +528,6 @@ class Parameter(object):
 
         # create output array of corresponding shape
         output_array = np.full(output_shape, self.empty, self.dtype)
-        if self._default is not None and self._default.shape == output_array.shape[-len(self._default.shape):]:
-            output_array[:] = self._default
 
         print("will interpolate {} solutions onto {} grid".format(self.name,
                                 "x".join(map(str, output_shape))), file=log(1))
@@ -678,8 +672,6 @@ class Parameter(object):
         # create output array of corresponding shape
         output_array = np.full(output_shape, self.empty, self.dtype)
         output_mask  = np.ones(output_shape, bool)
-        if self._default is not None and self._default.shape == output_array.shape[-len(self._default.shape):]:
-            output_array[:] = self._default
 
         print("will lookup {} solutions on {} grid".format(self.name,
                                 "x".join(map(str, output_shape))), file=log(1))

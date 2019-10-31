@@ -157,9 +157,6 @@ class PerIntervalGains(MasterMachine):
         # flag: have gains been updated
         self._gh_update = self._ghinv_update = True
 
-        self.default_gain = np.eye(2,2, dtype=float)
-        self.default_gain_error = np.zeros((2,2), dtype=float)
-
     @classmethod
     def determine_allocators(cls, options):
         kernel = cls.get_full_kernel(options, diag_gains=cls.determine_diagonality(options))
@@ -335,13 +332,13 @@ class PerIntervalGains(MasterMachine):
         
         mask = self.get_gain_mask()
 
-        sols = { "gain": (masked_array(self.gains, mask), self.gain_grid, self.default_gain) }
+        sols = { "gain": (masked_array(self.gains, mask), self.gain_grid) }
 
         if self.posterior_gain_error is not None:
-            sols["gain.err"] = (masked_array(self.posterior_gain_error, mask), self.gain_grid, self.default_gain_error)
+            sols["gain.err"] = (masked_array(self.posterior_gain_error, mask), self.gain_grid)
         else:
             sols["gain.err"] = (masked_array(np.zeros(self.gain_shape, float), np.ones(self.gain_shape, bool)),
-                                self.gain_grid, self.default_gain_error)
+                                self.gain_grid)
 
         return sols
 

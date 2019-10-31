@@ -132,10 +132,10 @@ class PhaseDiagGains(PerIntervalGains):
 
         # construct phase solutions, applying mask from parent gains
         mask = solutions['gain'][0].mask
-        solutions['phase'] = masked_array(self.phases, mask)[..., (0, 1), (0, 1)], self.interval_grid, np.zeros(2, float)
+        solutions['phase'] = masked_array(self.phases, mask)[..., (0, 1), (0, 1)], self.interval_grid
 
         # phase error is same as gain error (small angle approx!)
-        solutions["phase.err"] = solutions["gain.err"][0][..., (0, 1), (0, 1)], self.interval_grid, np.zeros(2, float)
+        solutions["phase.err"] = solutions["gain.err"][0][..., (0, 1), (0, 1)], self.interval_grid
 
         return solutions
 

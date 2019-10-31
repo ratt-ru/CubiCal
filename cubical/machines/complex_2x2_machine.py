@@ -69,16 +69,16 @@ class Complex2x2Gains(PerIntervalGains):
 
         mask = self.get_gain_mask()
 
-        sols = {"gain": (masked_array(self.gains, mask), self.gain_grid, self.default_gain)}
+        sols = {"gain": (masked_array(self.gains, mask), self.gain_grid)}
 
         if self.posterior_gain_error is not None:
-            sols["gain.err"] = (masked_array(self.posterior_gain_error, mask), self.gain_grid, self.default_gain_error)
+            sols["gain.err"] = (masked_array(self.posterior_gain_error, mask), self.gain_grid)
         else:
             sols["gain.err"] = (masked_array(np.zeros(self.gain_shape, float), np.ones(self.gain_shape, bool)),
-                                self.gain_grid, self.default_gain_error)
+                                self.gain_grid)
 
         if self._estimate_pzd:
-            sols["pzd"] = (self._pzd, self.interval_grid, 0.)
+            sols["pzd"] = (masked_array(self._pzd), self.interval_grid)
 
         return sols
 
@@ -129,11 +129,6 @@ class Complex2x2Gains(PerIntervalGains):
                 dabs_sum = dabs_sum[...,0] + np.conj(dabs_sum[...,1])
                 pzd = np.angle(dm_sum/dabs_sum)
                 pzd[dabs_sum==0] = 0
-                wh = np.where(dabs_sum!=0)
-                if len(wh[0]):
-                    pzd0 = pzd[wh[0][0], wh[0][1]]
-                    self.default_gain = np.array([[1, 0], [0, np.exp(-1j*pzd0)]])
-
                 print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
                 self._exp_pzd = np.exp(-1j*pzd)
             self.gains[:,:,:,:,1,1] = self._exp_pzd[np.newaxis,:,:,np.newaxis]

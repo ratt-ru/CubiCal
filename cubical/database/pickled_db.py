@@ -77,7 +77,7 @@ class PickledDatabase(iface_database):
         # this makes it easier to deal with I/O workers (all IO is done by one process)
         return parm
 
-    def add_chunk(self, name, array, grid={}, default=None):
+    def add_chunk(self, name, array, grid={}):
         """
         Adds a slice of values for a parameter.
 
@@ -94,7 +94,6 @@ class PickledDatabase(iface_database):
         assert (self.mode is "create")
         parm = self._parameters.get(name)
         assert (parm is not None)
-        parm.set_default_value(default)
         # dump parm to DB the first time a slice shows up
         if name not in self._parm_written:
             pickle.dump(parm, self._fobj, 2)

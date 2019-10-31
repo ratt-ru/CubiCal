@@ -884,12 +884,11 @@ class MasterMachine:
             # has the gain machine added a prefix to the names already (as the chain machine does)
             is_prefixed = sols.pop('prefixed', False)
             # populate values subdictionary
-            for label, (value, grid, default) in sols.items():
+            for label, (value, grid) in sols.items():
                 name = label if is_prefixed else "{}:{}".format(gm.jones_label, label)
                 subdict[name] = value.data
                 subdict["{}:grid__".format(name)]  = grid
                 subdict["{}:flags__".format(name)] = value.mask
-                subdict["{}:default__".format(name)] = default
 
         def get_solution_db(self, name):
             """
@@ -910,10 +909,9 @@ class MasterMachine:
             for name in subdict.keys():
                 if not name.endswith("__") and name in self._save_sols:
                     sd = subdict["{}:grid__".format(name)]
-                    default = subdict["{}:default__".format(name)]
                     grids = {key: sd[key] for key in sd.keys()}
                     self.get_solution_db(name).add_chunk(name, masked_array(subdict[name],
-                                                                       subdict[name+":flags__"]), grids, default)
+                                                                       subdict[name+":flags__"]), grids)
         def close(self):
             """
             Closes all solution databases and releases various caches.
