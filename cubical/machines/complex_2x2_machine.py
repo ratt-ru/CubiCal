@@ -45,7 +45,7 @@ class Complex2x2Gains(PerIntervalGains):
         # try guesstimating the PZD
         self._estimate_pzd = options["estimate-pzd"]
         # this will be set to exp(i*pzd) once the estimate is done
-        self._exp_pzd = 1
+        self._exp_pzd = self._pzd = None
         # only solve for off-diagonal terms
         self._offdiag_only = options["offdiag-only"]
 #        if label == "D":
@@ -56,35 +56,85 @@ class Complex2x2Gains(PerIntervalGains):
         """Returns true if the machine class, given the options, represents a diagonal gain"""
         return options['type'] == 'complex-diag' or options['update-type'] != 'full'
 
+    @staticmethod
+    def exportable_solutions():
+        """ Returns a dictionary of exportable solutions for this machine type. """
+        sols = PerIntervalGains.exportable_solutions()
+        sols["pzd"] = (0, ("time", "freq"))
+        return sols
+
+    def export_solutions(self):
+        """ Saves the solutions to a dict of {label: solutions,grids} items. """
+
+        mask = self.get_gain_mask()
+
+        sols = {"gain": (masked_array(self.gains, mask), self.gain_grid, self.default_gain)}
+
+        if self.posterior_gain_error is not None:
+            sols["gain.err"] = (masked_array(self.posterior_gain_error, mask), self.gain_grid, self.default_gain_error)
+        else:
+            sols["gain.err"] = (masked_array(np.zeros(self.gain_shape, float), np.ones(self.gain_shape, bool)),
+                                self.gain_grid, self.default_gain_error)
+
+        if self._estimate_pzd:
+            sols["pzd"] = (self._pzd, self.interval_grid, 0.)
+
+        return sols
+
+    def import_solutions(self, soldict):
+        """
+        Loads solutions from a dict.
+
+        Args:
+            soldict (dict):
+                Contains gains solutions which must be loaded.
+        """
+
+        sol = soldict.get("gain")
+        if sol is not None:
+            self.gains[:] = sol.data
+            # gain of all-1 are actually missing from the DB -- replace by unity
+            all_ones = (self.gains == 1. + 0j).all(axis=(-1, -2))
+            self.gains[all_ones, 0, 1] = self.gains[all_ones, 1, 0] = 0
+            # collapse the corr1/2 axes
+            self.gflags[sol.mask.any(axis=(-1, -2))] |= FL.MISSING
+            self._gains_loaded = True
+            self.restrict_solution(self.gains)
+        if "pzd" in soldict:
+            self._pzd = soldict["pzd"]
+            self._pzd_exp = np.exp(-1j*self._pzd)
+
+
     def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
         """
         """
         PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
 
         if self._estimate_pzd:
-            marr = model_arr[...,(0,1),(1,0)][:,0].sum(0)
-            darr = data_arr[...,(0,1),(1,0)][0]
-            mask = (flags_arr[...,np.newaxis]!=0)|(marr==0)
-            with np.errstate(divide='ignore', invalid='ignore'):
-                dm = darr*(np.conj(marr)/abs(marr))
-            dabs = np.abs(darr)
-            dm[mask] = 0
-            dabs[mask] = 0
-            # collapse time/freq axis into intervals and sum antenna axes
-            dm_sum = self.interval_sum(dm).sum(axis=(2,3))
-            dabs_sum = self.interval_sum(dabs).sum(axis=(2,3))
-            # sum off-diagonal terms
-            dm_sum = dm_sum[...,0] + np.conj(dm_sum[...,1])
-            dabs_sum = dabs_sum[...,0] + np.conj(dabs_sum[...,1])
-            pzd = np.angle(dm_sum/dabs_sum)
-            pzd[dabs_sum==0] = 0
-            wh = np.where(dabs_sum!=0)
-            if len(wh[0]):
-                pzd0 = pzd[wh[0][0], wh[0][1]]
-                self.default_gains = np.array([[1, 0], [0, np.exp(-1j*pzd0)]])
+            if self._pzd is not None:
+                marr = model_arr[...,(0,1),(1,0)][:,0].sum(0)
+                darr = data_arr[...,(0,1),(1,0)][0]
+                mask = (flags_arr[...,np.newaxis]!=0)|(marr==0)
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    dm = darr*(np.conj(marr)/abs(marr))
+                dabs = np.abs(darr)
+                dm[mask] = 0
+                dabs[mask] = 0
+                # collapse time/freq axis into intervals and sum antenna axes
+                dm_sum = self.interval_sum(dm).sum(axis=(2,3))
+                dabs_sum = self.interval_sum(dabs).sum(axis=(2,3))
+                # sum off-diagonal terms
+                dm_sum = dm_sum[...,0] + np.conj(dm_sum[...,1])
+                dabs_sum = dabs_sum[...,0] + np.conj(dabs_sum[...,1])
+                pzd = np.angle(dm_sum/dabs_sum)
+                pzd[dabs_sum==0] = 0
+                wh = np.where(dabs_sum!=0)
+                if len(wh[0]):
+                    pzd0 = pzd[wh[0][0], wh[0][1]]
+                    self.default_gain = np.array([[1, 0], [0, np.exp(-1j*pzd0)]])
 
-            print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
-            self._exp_pzd = np.exp(-1j*pzd)
+                print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
+                self._exp_pzd = np.exp(-1j*pzd)
             self.gains[:,:,:,:,1,1] = self._exp_pzd[np.newaxis,:,:,np.newaxis]
 
 
