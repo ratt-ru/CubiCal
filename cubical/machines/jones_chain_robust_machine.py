@@ -144,12 +144,12 @@ class JonesChain(MasterMachine):
 
         return soldict
 
-    def importable_solutions(self):
+    def importable_solutions(self, grid):
         """ Returns a dictionary of importable solutions for the chain. """
 
         soldict = {}
         for term in self.jones_terms:
-            soldict.update(term.importable_solutions())
+            soldict.update(term.importable_solutions(grid))
 
         return soldict
 
@@ -160,14 +160,14 @@ class JonesChain(MasterMachine):
         """
         raise RuntimeError("This method cannot be called on a Jones chain. This is a bug.")
 
-    def _load_solutions(self, init_sols):
+    def _load_solutions(self, init_sols, full_grid):
         """
         Helper method invoked by Factory.create_machine() to import existing solutions into machine.
 
         In the case of a chain, we invoke this method on every member.
         """
         for term in self.jones_terms:
-            term._load_solutions(init_sols)
+            term._load_solutions(init_sols, full_grid)
 
 
 

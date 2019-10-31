@@ -322,9 +322,10 @@ class PerIntervalGains(MasterMachine):
         return { "gain": (1+0j, ("dir", "time", "freq", "ant", "corr1", "corr2")),
                  "gain.err": (0., ("dir", "time", "freq", "ant", "corr1", "corr2")) }
 
-    def importable_solutions(self):
+    def importable_solutions(self, grid0):
         """ Returns a dictionary of importable solutions for this machine type. """
-        return { "gain": self.interval_grid }
+        return { "gain": dict(dir=grid0['dir'], ant=grid0['ant'], corr1=grid0['corr'], corr2=grid0['corr'],
+                              **self.interval_grid) }
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """

@@ -115,12 +115,15 @@ class PhaseDiagGains(PerIntervalGains):
 
         return exportables
 
-    def importable_solutions(self):
+    def importable_solutions(self, grid0):
         """ Returns a dictionary of importable solutions for this machine type. """
+        # can import 2x2 complex gain, with a corr1/corr2 axis
+        solutions = PerIntervalGains.importable_solutions(self, grid0)
 
-        # defines solutions we can import from
-        # can import phase, or also a 2x2 complex gain
-        return { 'gain': self.interval_grid, 'phase': self.interval_grid }
+        # but also phase (with a corr axis)
+        solutions['phase'] = dict(dir=grid0['dir'], ant=grid0['ant'], corr=grid0['corr'], **self.interval_grid)
+
+        return solutions
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """

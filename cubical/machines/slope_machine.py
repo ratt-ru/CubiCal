@@ -119,12 +119,12 @@ class PhaseSlopeGains(ParameterisedGains):
         gh = self.get_conj_gains()
         return gh, self.gains, 0
 
-    def importable_solutions(self):
+    def importable_solutions(self, grid0):
         """ Returns a dictionary of importable solutions for this machine type. """
-
-        # defines solutions we can import from
         # Note that complex gain (as a derived parameter) is exported, but not imported
-        return { label: self.interval_grid for label in self._labels.keys() }
+        # defines solutions we can import from
+        return { label: dict(dir=grid0['dir'], ant=grid0['ant'], corr=grid0['corr'], **self.interval_grid)
+                 for label in self._labels.keys() }
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """

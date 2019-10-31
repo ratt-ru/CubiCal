@@ -485,6 +485,6 @@ class casa_db_adaptor(PickledDatabase):
         # move to closed state before exporting and loading back and sorting data
         do_export = (self.mode is "create")
         PickledDatabase.close(self) 
-        if do_export:
+        if do_export and self.export_enabled:
             self.__export()
     

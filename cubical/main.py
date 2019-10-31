@@ -463,7 +463,7 @@ def main(debugging=False):
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
 
-        grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
+        grid = dict(dir=list(range(len(ms.model_directions))), ant=ms.antnames, corr=list(ms.feeds), time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,

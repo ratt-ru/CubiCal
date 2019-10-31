@@ -572,7 +572,7 @@ class MasterMachine:
 
         return {}
 
-    def importable_solutions(self):
+    def importable_solutions(self, grid0):
         """
         Returns dict of parameters that this machine can import, as {label: grid_dict}. Grid_dict 
         knows which grid the parameters must be interpolated onto for this machine. Called when a 
@@ -617,7 +617,7 @@ class MasterMachine:
 
         return machine_cls.Factory(machine_cls, *args, **kw)
 
-    def _load_solutions(self, init_sols):
+    def _load_solutions(self, init_sols, full_grid):
         """
         Helper method invoked by Factory.create_machine() to import existing solutions into machine.
         Looks for solutions corresponding to this machine's jones_label in init_sols, and
@@ -628,16 +628,36 @@ class MasterMachine:
         """
         sols = {}
         # collect importable solutions from DB, interpolate
-        for label, grids in self.importable_solutions().items():
+        for label, grids in self.importable_solutions(full_grid).items():
             db, prefix, interpolate = init_sols.get(self.jones_label, (None, None, False))
             name = "{}:{}".format(prefix, label)
             if db is not None:
                 if name in db:
+                    # check for matching grids
+                    mismatches = db[name].find_mismatched_grids(**grids)
+                    if mismatches:
+                        # are non-interpolatable axes also missing?
+                        missing_solutions = not all([interpolatable for _,_,interpolatable in mismatches])
+                        # info if only interpolatable entries missing, else warning
+                        if interpolate and not missing_solutions:
+                            report_func = log(0).print
+                        else:
+                            report_func = log.warn
+                        report_func("{}: {} grid not exactly matched in {}, interpolation may be required".format(
+                                self.chunk_label, name, db.filename))
+                        # report on axes one by one
+                        for axis, values, interpolatable in mismatches:
+                            report_func = log(0).print if interpolate and interpolatable else log.warn
+                            report_func("    {}: {} not matched{}".format(axis,
+                                                     "{} entries".format(len(values)) if len(values) > 5 else
+                                                     ", ".join(map(str, values)),
+                                                    (", will interpolate" if interpolate and interpolatable else "")))
+                    # if interpolating, this is allowed -- otherwise crash out
                     if interpolate:
                         print("{}: interpolating {} from {}".format(self.chunk_label, name, db.filename), file=log)
                         sols[label] = sol = db[name].reinterpolate(**grids)
                     else:
-                        if not db[name].match_grids(**grids):
+                        if mismatches:
                             raise ValueError("{} does not define {} on the correct grid. Consider using "
                                              "-xfer-from rather than -load-from".format(name, db.filename))
                         print("{}: loading {} from {}".format(self.chunk_label, name, db.filename), file=log)
@@ -917,7 +937,7 @@ class MasterMachine:
             """
             gm = self.machine_class(self.jones_label, data_arr, n_dir, n_mod, times, freqs,
                                     chunk_label, self.jones_options)
-            gm._load_solutions(self._init_sols)
+            gm._load_solutions(self._init_sols, self.grid)
             return gm
         
         def set_metadata(self, src):
