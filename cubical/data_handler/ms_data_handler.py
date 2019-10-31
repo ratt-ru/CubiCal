@@ -887,6 +887,8 @@ class MSDataHandler:
         ## So if we do have a slice, we should really read the column in and write it back out. This seems a waste
         ## for visibility columns (since presumably we're only interested in the slice), so we'll initialize the
         ## out-of-slice values with zeroes, and flag them out
+        if column == "BITFLAG" or column == "FLAG":
+            value[:] = np.bitwise_or.reduce(value, axis=2)[:,:,np.newaxis]
 
         if self._channel_slice == slice(None) and self._corr_slice == slice(None):
             return subset.putcol(column, value, startrow, nrows)

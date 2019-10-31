@@ -353,10 +353,13 @@ class PerIntervalGains(MasterMachine):
         sol = soldict.get("gain")
         if sol is not None:
             self.gains[:] = sol.data
+            # gain of all-1 are actually missing from the DB -- replace by unity
+            all_ones = (self.gains == 1.+0j).all(axis=(-1, -2)) 
+            self.gains[all_ones, 0, 1] = self.gains[all_ones, 1, 0] = 0
             # collapse the corr1/2 axes
             self.gflags[sol.mask.any(axis=(-1,-2))] |= FL.MISSING
             self._gains_loaded = True
-            self.restrict_solution()
+            self.restrict_solution(self.gains)
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """Precomputes various attributes of the machine before starting a solution"""
@@ -710,7 +713,7 @@ class PerIntervalGains(MasterMachine):
         self.n_cnvgd = (norm_diff_g <= min_delta_g**2).sum()
         self._frac_cnvgd = self.n_cnvgd / float(norm_diff_g.size)
 
-    def restrict_solution(self):
+    def restrict_solution(self, gains):
         """
         Restricts the solutions by, for example, selecting a reference antenna or taking only the 
         amplitude. 
@@ -719,24 +722,25 @@ class PerIntervalGains(MasterMachine):
         self._gh_update = self._ghinv_update = True
 
         if self.update_type == "diag":
-            self.gains[...,(0,1),(1,0)] = 0
+            gains[...,(0,1),(1,0)] = 0
         elif self.update_type == "phase-diag":
-            self.gains[...,(0,1),(1,0)] = 0
-            gdiag = self.gains[...,(0,1),(0,1)]
+            gains[...,(0,1),(1,0)] = 0
+            gdiag = abs(gains[...,(0,1),(0,1)])
             gnull = gdiag==0
             with np.errstate(invalid='ignore'):
-                gdiag /= abs(gdiag)
-            gdiag[gnull] = 0
+                gains[...,(0,1),(0,1)] /= abs(gdiag)
+            gains[gnull,(0,1),(0,1)]
         elif self.update_type == "amp-diag":
-            self.gains[...,(0,1),(1,0)] = 0
-            np.abs(self.gains, out=self.gains)
+            gains[...,(0,1),(1,0)] = 0
+            np.abs(gains, out=gains.real)
+            gains.imag[:] = 0
         
         ## explicitly roll back invalid gains to previously known good values
         #self.gains[self.gflags != 0] = self.old_gains[self.gflags != 0]
         
         # explicitly roll back gains to previously known good values for fixed directions
         for idir in self.fix_directions:
-            self.gains[idir, ...] = self.old_gains[idir, ...]
+            gains[idir, ...] = self.old_gains[idir, ...]
             self.posterior_gain_error[idir, ...] = 0
 
     @staticmethod

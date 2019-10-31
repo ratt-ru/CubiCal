@@ -638,6 +638,9 @@ class MSTile(object):
             table_subset = self.dh.data.selectrows(subset.rows0)
             flagcol = table_subset.getcol("FLAG")
             flagrow = table_subset.getcol("FLAG_ROW")
+            # flag all four corrs
+            flagcol0 = flagcol.copy()
+            flagcol[:] = np.logical_or.reduce(flagcol, axis=-1)[:,:,np.newaxis]
 
             bflagcol = np.zeros(flagcol.shape, np.int32)
             bflagrow = np.zeros(flagrow.shape, np.int32)
@@ -646,6 +649,9 @@ class MSTile(object):
 
             table_subset.putcol("BITFLAG", bflagcol)
             table_subset.putcol("BITFLAG_ROW", bflagrow)
+            if (flagcol0 != flagcol).any():
+                table_subset.putcol("FLAG", flagcol)
+                print("    {}: some flags were expanded to all correlations".format(self.label), file=log(1))
 
     def load(self, load_model=True):
         """
@@ -763,6 +769,7 @@ class MSTile(object):
 
             if self.dh._apply_flags:
                 flagcol = self.dh.fetchslice("FLAG", subset=table_subset)
+                flagcol[:] = np.logical_or.reduce(axis=-2)[:,:,np.newaxis]
                 flagrow = table_subset.getcol("FLAG_ROW")
                 flagcol[flagrow, :, :] = True
                 print("  read FLAG/FLAG_ROW", file=log(2))
@@ -1325,11 +1332,13 @@ class MSTile(object):
                     flag_col |= prior_flags
                 ratio = prior_flags.sum() / float(prior_flags.size)
                 print("  also transferring {:.2%} input flags (--flags-save-legacy apply)".format(ratio), file=log)
+                flag_col[:] = np.logical_or.reduce(axis=-2)[:,:,np.newaxis]
 
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
             if bflag_col is not None:
                 if ("bitflag" in only_save):
+                    self.bflagcol[:] = np.bitwise_or.reduce(axis=-2)[:,:,np.newaxis]
                     self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
                     totflags = (self.bflagcol != 0).sum()
                     self.dh.flagcounts['OUT'] += totflags

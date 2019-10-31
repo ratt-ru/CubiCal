@@ -656,6 +656,7 @@ class MasterMachine:
                     if interpolate:
                         print("{}: interpolating {} from {}".format(self.chunk_label, name, db.filename), file=log)
                         sols[label] = sol = db[name].reinterpolate(**grids)
+                        import ipdb; ipdb.set_trace()
                     else:
                         if mismatches:
                             raise ValueError("{} does not define {} on the correct grid. Consider using "

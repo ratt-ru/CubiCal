@@ -5,6 +5,7 @@
 from __future__ import print_function
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
+import numpy.ma as ma
 from cubical.flagging import FL
 import cubical.kernels
 
@@ -43,6 +44,9 @@ class Complex2x2Gains(PerIntervalGains):
 
         # try guesstimating the PZD
         self._estimate_pzd = options["estimate-pzd"]
+        # this will be set to exp(i*pzd) once the estimate is done
+        self._exp_pzd = 1
+        # only solve for off-diagonal terms
         self._offdiag_only = options["offdiag-only"]
 #        if label == "D":
 #            self.gains[:,:,:,:,1,1] = -1
@@ -75,8 +79,9 @@ class Complex2x2Gains(PerIntervalGains):
             pzd = np.angle(dm_sum/dabs_sum)
             pzd[dabs_sum==0] = 0
 
-            print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(1))
-            self.gains[:,:,:,:,1,1] = np.exp(-1j*pzd)[np.newaxis,:,:,np.newaxis]
+            print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
+            self._exp_pzd = np.exp(-1j*pzd)
+            self.gains[:,:,:,:,1,1] = self._exp_pzd[np.newaxis,:,:,np.newaxis]
 
 
     def compute_js(self, obser_arr, model_arr):
@@ -144,27 +149,45 @@ class Complex2x2Gains(PerIntervalGains):
 
         if self.dd_term and self.n_dir > 1:
             update += self.gains
+            
+        self.restrict_solution(update)
 
-        if self._offdiag_only:
-            update[...,(0,1),(0,1)] = 1
+        #if self._offdiag_only:
+        #    update[...,0,0] = 1
+        #    update[:,:,:,:,1,1] = self._exp_pzd[np.newaxis,:,:,np.newaxis]
 
         if self.iters % 2 == 0 or self.n_dir > 1:
             self.gains += update
             self.gains *= 0.5
+            self.restrict_solution(self.gains)
         else:
             np.copyto(self.gains, update)
 
-        self.restrict_solution()
-
-
-    def restrict_solution(self):
+    def restrict_solution(self, gains):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying
         any machine specific restrictions.
         """
         
-        PerIntervalGains.restrict_solution(self)
+        PerIntervalGains.restrict_solution(self, gains)
+        
+        if self._offdiag_only:
+            if self._estimate_pzd:
+                gains[:,:,:,:,0,0] = 1
+                gains[:,:,:,:,1,1] = self._exp_pzd[np.newaxis,:,:,np.newaxis]
+                #px = ma.masked_array(np.angle(gains[:,:,:,:,0,0]), self.gflags)
+                #py = ma.masked_array(np.angle(gains[:,:,:,:,1,1]), self.gflags)
+                # take phase difference, -pi to pi, and then mean over antennas
+                #pzd_exp = ma.exp(1j*(py-px))
+                #pzd = ma.angle(pzd_exp.product(axis=-1)) / pzd_exp.count(axis=-1)
+                #pzd = (ma.fmod(py - px, 2*np.pi) - np.pi).mean(axis=-1)
+                #print("{0}: PZD update is {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
+                # assign to all antennas
+                #gains[:,:,:,:,0,0] = 1
+                #gains[:,:,:,:,1,1] = np.exp(1j*pzd)[...,np.newaxis]
+            else:
+                gains[:,:,:,:,(0,1),(0,1)] = 1
 
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
-            self.gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
+            gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
