@@ -656,7 +656,7 @@ class MasterMachine:
                     if interpolate:
                         print("{}: interpolating {} from {}".format(self.chunk_label, name, db.filename), file=log)
                         sols[label] = sol = db[name].reinterpolate(**grids)
-                        import ipdb; ipdb.set_trace()
+#                        import ipdb; ipdb.set_trace()
                     else:
                         if mismatches:
                             raise ValueError("{} does not define {} on the correct grid. Consider using "
@@ -910,6 +910,7 @@ class MasterMachine:
                 if not name.endswith("__") and name in self._save_sols:
                     sd = subdict["{}:grid__".format(name)]
                     grids = {key: sd[key] for key in sd.keys()}
+                    log(1).print("saving solutions for {}".format(name))
                     self.get_solution_db(name).add_chunk(name, masked_array(subdict[name],
                                                                        subdict[name+":flags__"]), grids)
         def close(self):

@@ -61,8 +61,15 @@ class Complex2x2Gains(PerIntervalGains):
     def exportable_solutions():
         """ Returns a dictionary of exportable solutions for this machine type. """
         sols = PerIntervalGains.exportable_solutions()
-        sols["pzd"] = (0, ("time", "freq"))
+        sols["pzd"] = (0.0, ("time", "freq"))
         return sols
+
+    def importable_solutions(self, grid0):
+        """ Returns a dictionary of importable solutions for this machine type. """
+        sols = super(Complex2x2Gains, self).importable_solutions(grid0)
+        sols["pzd"] = dict(**self.interval_grid) 
+        return sols
+
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
@@ -91,6 +98,9 @@ class Complex2x2Gains(PerIntervalGains):
                 Contains gains solutions which must be loaded.
         """
 
+        if "pzd" in soldict:
+            self._pzd = soldict["pzd"]
+            self._exp_pzd = np.exp(-1j*self._pzd)
         sol = soldict.get("gain")
         if sol is not None:
             self.gains[:] = sol.data
@@ -101,9 +111,7 @@ class Complex2x2Gains(PerIntervalGains):
             self.gflags[sol.mask.any(axis=(-1, -2))] |= FL.MISSING
             self._gains_loaded = True
             self.restrict_solution(self.gains)
-        if "pzd" in soldict:
-            self._pzd = soldict["pzd"]
-            self._pzd_exp = np.exp(-1j*self._pzd)
+#        import ipdb; ipdb.set_trace()
 
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
@@ -130,6 +138,7 @@ class Complex2x2Gains(PerIntervalGains):
                 pzd = np.angle(dm_sum/dabs_sum)
                 pzd[dabs_sum==0] = 0
                 print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
+                self._pzd = pzd
                 self._exp_pzd = np.exp(-1j*pzd)
             self.gains[:,:,:,:,1,1] = self._exp_pzd[np.newaxis,:,:,np.newaxis]
 
