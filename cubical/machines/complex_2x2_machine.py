@@ -43,12 +43,9 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
 
-        # try guesstimating the PZD
-        self._estimate_pzd = options["estimate-pzd"]
-        # this will be set to exp(i*pzd) once the estimate is done
-        self._exp_pzd = self._pzd = None
         # only solve for off-diagonal terms
         self._offdiag_only = options["offdiag-only"]
+
 #        if label == "D":
 #            self.gains[:,:,:,:,1,1] = -1
 
@@ -57,112 +54,25 @@ class Complex2x2Gains(PerIntervalGains):
         """Returns true if the machine class, given the options, represents a diagonal gain"""
         return options['type'] == 'complex-diag' or options['update-type'] != 'full'
 
-    @staticmethod
-    def exportable_solutions():
-        """ Returns a dictionary of exportable solutions for this machine type. """
-        sols = PerIntervalGains.exportable_solutions()
-        sols["pzd"] = (0.0, ("time", "freq"))
-        return sols
-
-    def importable_solutions(self, grid0):
-        """ Returns a dictionary of importable solutions for this machine type. """
-        sols = super(Complex2x2Gains, self).importable_solutions(grid0)
-        sols["pzd"] = dict(**self.interval_grid) 
-        return sols
-
-
-    def export_solutions(self):
-        """ Saves the solutions to a dict of {label: solutions,grids} items. """
-
-        mask = self.get_gain_mask()
-
-        sols = {"gain": (masked_array(self.gains, mask), self.gain_grid)}
-
-        if self.posterior_gain_error is not None:
-            sols["gain.err"] = (masked_array(self.posterior_gain_error, mask), self.gain_grid)
-        else:
-            sols["gain.err"] = (masked_array(np.zeros(self.gain_shape, float), np.ones(self.gain_shape, bool)),
-                                self.gain_grid)
-
-        if self._estimate_pzd:
-            sols["pzd"] = (masked_array(self._pzd), self.interval_grid)
-
-        return sols
-
-    def import_solutions(self, soldict):
-        """
-        Loads solutions from a dict.
-
-        Args:
-            soldict (dict):
-                Contains gains solutions which must be loaded.
-        """
-
-        if "pzd" in soldict:
-            self._pzd = soldict["pzd"]
-            self._exp_pzd = np.exp(-1j*self._pzd)
-        sol = soldict.get("gain")
-        if sol is not None:
-            self.gains[:] = sol.data
-            # gain of all-1 are actually missing from the DB -- replace by unity
-            all_ones = (self.gains == 1. + 0j).all(axis=(-1, -2))
-            self.gains[all_ones, 0, 1] = self.gains[all_ones, 1, 0] = 0
-            # collapse the corr1/2 axes
-            self.gflags[sol.mask.any(axis=(-1, -2))] |= FL.MISSING
-            self._gains_loaded = True
-            self.restrict_solution(self.gains)
-#        import ipdb; ipdb.set_trace()
-
-
-    def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
-        """
-        """
-        PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
-
-        if self._estimate_pzd:
-            if self._pzd is None:
-                marr = model_arr[...,(0,1),(1,0)][:,0].sum(0)
-                darr = data_arr[...,(0,1),(1,0)][0]
-                mask = (flags_arr[...,np.newaxis]!=0)|(marr==0)
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    dm = darr*(np.conj(marr)/abs(marr))
-                dabs = np.abs(darr)
-                dm[mask] = 0
-                dabs[mask] = 0
-                # collapse time/freq axis into intervals and sum antenna axes
-                dm_sum = self.interval_sum(dm).sum(axis=(2,3))
-                dabs_sum = self.interval_sum(dabs).sum(axis=(2,3))
-                # sum off-diagonal terms
-                dm_sum = dm_sum[...,0] + np.conj(dm_sum[...,1])
-                dabs_sum = dabs_sum[...,0] + np.conj(dabs_sum[...,1])
-                pzd = np.angle(dm_sum/dabs_sum)
-                pzd[dabs_sum==0] = 0
-                print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
-                self._pzd = pzd
-                self._exp_pzd = np.exp(-1j*pzd)
-            self.gains[:,:,:,:,1,1] = self._exp_pzd[np.newaxis,:,:,np.newaxis]
-
-
-
     def compute_js(self, obser_arr, model_arr):
         """
-        This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
-        method. 
+        This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM
+        method.
 
         Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            model_arr (np.ndrray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 model visibilities.
 
         Returns:
             3-element tuple
-                
+
                 - J\ :sup:`H`\R (np.ndarray)
                 - (J\ :sup:`H`\J)\ :sup:`-1` (np.ndarray)
-                - Count of flags raised (int)     
+                - Count of flags raised (int)
         """
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
@@ -170,13 +80,12 @@ class Complex2x2Gains(PerIntervalGains):
         jh = self.get_new_jh(model_arr)
 
         self.kernel_solve.compute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
-        if self._offdiag_only:
-            jh[...,(0,1),(0,1)] = 0
 
         jhr = self.get_new_jhr()
         r = self.get_obs_or_res(obser_arr, model_arr)
 
         if self._offdiag_only:
+            jh[...,(0,1),(0,1)] = 0
             r[...,(0,1),(0,1)] = 0
 
         self.kernel_solve.compute_jhr(jh, r, jhr, self.t_int, self.f_int)
@@ -185,8 +94,12 @@ class Complex2x2Gains(PerIntervalGains):
 
         self.kernel_solve.compute_jhj(jh, jhj, self.t_int, self.f_int)
 
+        if "scalar" in self.update_type:
+            jhr[..., (0, 1), (0, 1)] = jhr[..., (0, 1), (0, 1)].mean(axis=-1)[..., np.newaxis]
+            jhj[..., (0, 1), (0, 1)] = jhj[..., (0, 1), (0, 1)].mean(axis=-1)[..., np.newaxis]
+
         flag_count = self.kernel_solve.compute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
-        
+
 #         if flag_count:
 #             import pdb; pdb.set_trace()
 
@@ -209,7 +122,7 @@ class Complex2x2Gains(PerIntervalGains):
 
         if self.dd_term and self.n_dir > 1:
             update += self.gains
-            
+
         self.restrict_solution(update)
 
         #if self._offdiag_only:
@@ -228,26 +141,9 @@ class Complex2x2Gains(PerIntervalGains):
         Restricts the solution by invoking the inherited restrict_soultion method and applying
         any machine specific restrictions.
         """
-        
-        PerIntervalGains.restrict_solution(self, gains)
-        
-        if self._offdiag_only:
-            if self._estimate_pzd:
-                gains[:,:,:,:,0,0] = 1
-                gains[:,:,:,:,1,1] = self._exp_pzd[np.newaxis,:,:,np.newaxis]
-                #px = ma.masked_array(np.angle(gains[:,:,:,:,0,0]), self.gflags)
-                #py = ma.masked_array(np.angle(gains[:,:,:,:,1,1]), self.gflags)
-                # take phase difference, -pi to pi, and then mean over antennas
-                #pzd_exp = ma.exp(1j*(py-px))
-                #pzd = ma.angle(pzd_exp.product(axis=-1)) / pzd_exp.count(axis=-1)
-                #pzd = (ma.fmod(py - px, 2*np.pi) - np.pi).mean(axis=-1)
-                #print("{0}: PZD update is {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
-                # assign to all antennas
-                #gains[:,:,:,:,0,0] = 1
-                #gains[:,:,:,:,1,1] = np.exp(1j*pzd)[...,np.newaxis]
-            else:
-                gains[:,:,:,:,(0,1),(0,1)] = 1
-
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
             gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
+
+        super(Complex2x2Gains, self).restrict_solution(gains)
+

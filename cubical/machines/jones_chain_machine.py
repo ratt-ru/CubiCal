@@ -56,7 +56,7 @@ class JonesChain(MasterMachine):
             jones_class = machine_types.get_machine_class(term_opts['type'])
             if jones_class is None:
                 raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
-            if jones_class not in (Complex2x2Gains, ComplexW2x2Gains) and term_opts['solvable']:
+            if not issubclass(jones_class, Complex2x2Gains) and not issubclass(jones_class, ComplexW2x2Gains) and term_opts['solvable']:
                 raise UserInputError("only complex-2x2 or robust-2x2 terms can be made solvable in a Jones chain")
             term = jones_class(term_opts["label"], data_arr, ndir, nmod, times, frequencies, chunk_label, term_opts)
             self.jones_terms.append(term)
@@ -560,12 +560,18 @@ class JonesChain(MasterMachine):
         def init_solutions(self):
             for opts in self.chain_options:
                 label = opts["label"]
+                jones_class = machine_types.get_machine_class(opts['type'])
+                if jones_class is None:
+                    raise UserInputError("unknown Jones class '{}'".format(opts['type']))
+                if not issubclass(jones_class, Complex2x2Gains) and not issubclass(jones_class, ComplexW2x2Gains) and \
+                        opts['solvable']:
+                    raise UserInputError("only complex-2x2 or robust-2x2 terms can be made solvable in a Jones chain")
                 self._init_solutions(label,
                                      self.make_filename(opts["xfer-from"], label) or
                                      self.make_filename(opts["load-from"], label),
                                      bool(opts["xfer-from"]),
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
-                                     Complex2x2Gains.exportable_solutions())
+                                     jones_class.exportable_solutions())
 
         def determine_allocators(self):
             return self.machine_class.determine_allocators(self.jones_options)

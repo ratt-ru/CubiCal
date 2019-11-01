@@ -106,7 +106,7 @@ class PerIntervalGains(MasterMachine):
         self._frac_cnvgd = 0
         self.iters = 0
         self.min_quorum = options["conv-quorum"]
-        self.update_type = options["update-type"]
+        self.update_type = set(options["update-type"].split("-"))
         self.ref_ant = options["ref-ant"]
         self.fix_directions = options["fix-dirs"] if options["fix-dirs"] is not None and \
                 options["fix-dirs"] != "" else []
@@ -360,7 +360,8 @@ class PerIntervalGains(MasterMachine):
             # collapse the corr1/2 axes
             self.gflags[sol.mask.any(axis=(-1,-2))] |= FL.MISSING
             self._gains_loaded = True
-            self.restrict_solution(self.gains)
+
+        self.restrict_solution(self.gains)
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """Precomputes various attributes of the machine before starting a solution"""
@@ -669,14 +670,15 @@ class PerIntervalGains(MasterMachine):
     @property
     def dof_per_antenna(self):
         """This property returns the number of real degrees of freedom per antenna, per solution interval"""
-        if self.update_type == "diag":
-            dofs = 4
-        elif self.update_type == "phase-diag":
+        if "diag" in self.update_type:
             dofs = 2
-        elif self.update_type == "amp-diag":
-            dofs = 2
+        elif "scalar" in self.update_type:
+            dofs = 1
         else:
-            dofs = 8
+            dofs = 4
+        if "amp" not in self.update_type and "phase" not in self.update_type:
+            dofs *= 2
+
         return dofs
 
     @property
@@ -722,17 +724,20 @@ class PerIntervalGains(MasterMachine):
         # raise flag so updates of G^H and G^-1 are computed
         self._gh_update = self._ghinv_update = True
 
-        if self.update_type == "diag":
+        if "diag" in self.update_type or "scalar" in self.update_type:
             gains[...,(0,1),(1,0)] = 0
-        elif self.update_type == "phase-diag":
-            gains[...,(0,1),(1,0)] = 0
-            gdiag = abs(gains[...,(0,1),(0,1)])
-            gnull = gdiag==0
+
+        if "scalar" in self.update_type:
+            gains[...,(0,1),(0,1)] = gains[...,(0,1),(0,1)].mean(axis=-1)[...,np.newaxis]
+
+        if "phase" in self.update_type:
+            gabs = abs(gains)
+            gnull = gabs==0
             with np.errstate(invalid='ignore'):
-                gains[...,(0,1),(0,1)] /= abs(gdiag)
-            gains[gnull,(0,1),(0,1)]
-        elif self.update_type == "amp-diag":
-            gains[...,(0,1),(1,0)] = 0
+                gains /= gabs
+            gains[gnull] = 0
+
+        if "amp" in self.update_type:
             np.abs(gains, out=gains.real)
             gains.imag[:] = 0
         
