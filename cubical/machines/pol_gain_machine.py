@@ -128,6 +128,12 @@ class PolarizationGains(Complex2x2Gains):
 
         # TODO: is there a way to re-estimate PZD from the update?
 
+        # re-estimate pzd
+        mask = self.gflags!=0
+        pzd = masked_array(gains[:, :, :, :, 1, 1] / gains[:, :, :, :, 0, 0], mask)
+        pzd = np.angle(pzd.sum(axis=(0,3)))
+        print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(0))
+
         gains[:, :, :, :, 0, 0] = 1
         gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
 
