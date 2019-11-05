@@ -41,8 +41,6 @@ class PolarizationGains(Complex2x2Gains):
             options (dict):
                 Dictionary of options.
         """
-        # disable tricky update types
-        options["update-type"] = "full"
         # note that this sets up self.kernel
         super(PolarizationGains, self).__init__(label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
@@ -127,20 +125,19 @@ class PolarizationGains(Complex2x2Gains):
         any machine specific restrictions.
         """
 
-        # TODO: is there a way to re-estimate PZD from the update?
-
-        if self._estimate_pzd:
-            # re-estimate pzd
-            mask = self.gflags!=0
-            pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
-            pzd = np.angle(pzd.sum(axis=(0,3)))
-            print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(0))
-            # import ipdb; ipdb.set_trace()
-            self._pzd = pzd
-            self._exp_pzd = np.exp(-1j * pzd)
+        if "xd" in self.update_type:
+            if self._estimate_pzd:
+                # re-estimate pzd
+                mask = self.gflags!=0
+                pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
+                pzd = np.angle(pzd.sum(axis=(0,3)))
+                print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(0))
+                # import ipdb; ipdb.set_trace()
+                self._pzd = pzd
+                self._exp_pzd = np.exp(-1j * pzd)
 
             gains[:, :, :, :, 0, 0] = 1
-            gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
+            gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis] if self._exp_pzd is not None else 1
 
             # px = ma.masked_array(np.angle(gains[:,:,:,:,0,0]), self.gflags)
             # py = ma.masked_array(np.angle(gains[:,:,:,:,1,1]), self.gflags)
@@ -158,4 +155,7 @@ class PolarizationGains(Complex2x2Gains):
     @property
     def dof_per_antenna(self):
         # two complex leakages, plus one common PZD across antennas
-        return 4 + 1./self.n_ant
+        if "xd" in self.update_type:
+            return 4 + 1./self.n_ant
+        else:
+            return 8
