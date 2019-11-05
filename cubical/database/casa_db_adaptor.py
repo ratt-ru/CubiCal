@@ -381,7 +381,7 @@ class casa_db_adaptor(PickledDatabase):
         """
         PickledDatabase.__init__(self)
         self.meta_avail = False
-        self.export_enabled = True
+        self.export_enabled = False
     
     @property
     def export_CASA_gaintable(self):
