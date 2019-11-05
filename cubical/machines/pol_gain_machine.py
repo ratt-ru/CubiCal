@@ -47,7 +47,8 @@ class PolarizationGains(Complex2x2Gains):
         super(PolarizationGains, self).__init__(label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
 
-        # this will be set to exp(i*pzd) once the PZD estimate is done
+        self._estimate_pzd = options["estimate-pzd"]
+        # this will be set to PZD and exp(-i*PZD) once the PZD estimate is done
         self._exp_pzd = self._pzd = None
 
     @classmethod
@@ -95,7 +96,7 @@ class PolarizationGains(Complex2x2Gains):
         """
         super(PolarizationGains, self).precompute_attributes(data_arr, model_arr, flags_arr, noise)
 
-        if self._pzd is None:
+        if self._pzd is None and self._estimate_pzd:
             marr = model_arr[..., (0, 1), (1, 0)][:, 0].sum(0)
             darr = data_arr[..., (0, 1), (1, 0)][0]
             mask = (flags_arr[..., np.newaxis] != 0) | (marr == 0)
@@ -128,28 +129,29 @@ class PolarizationGains(Complex2x2Gains):
 
         # TODO: is there a way to re-estimate PZD from the update?
 
-        # re-estimate pzd
-        mask = self.gflags!=0
-        pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
-        pzd = np.angle(pzd.sum(axis=(0,3)))
-        print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(0))
-        # import ipdb; ipdb.set_trace()
-        self._pzd = pzd
-        self._exp_pzd = np.exp(-1j * pzd)
+        if self._estimate_pzd:
+            # re-estimate pzd
+            mask = self.gflags!=0
+            pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
+            pzd = np.angle(pzd.sum(axis=(0,3)))
+            print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(0))
+            # import ipdb; ipdb.set_trace()
+            self._pzd = pzd
+            self._exp_pzd = np.exp(-1j * pzd)
 
-        gains[:, :, :, :, 0, 0] = 1
-        gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
+            gains[:, :, :, :, 0, 0] = 1
+            gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
 
-        # px = ma.masked_array(np.angle(gains[:,:,:,:,0,0]), self.gflags)
-        # py = ma.masked_array(np.angle(gains[:,:,:,:,1,1]), self.gflags)
-        # take phase difference, -pi to pi, and then mean over antennas
-        # pzd_exp = ma.exp(1j*(py-px))
-        # pzd = ma.angle(pzd_exp.product(axis=-1)) / pzd_exp.count(axis=-1)
-        # pzd = (ma.fmod(py - px, 2*np.pi) - np.pi).mean(axis=-1)
-        # print("{0}: PZD update is {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
-        # assign to all antennas
-        # gains[:,:,:,:,0,0] = 1
-        # gains[:,:,:,:,1,1] = np.exp(1j*pzd)[...,np.newaxis]
+            # px = ma.masked_array(np.angle(gains[:,:,:,:,0,0]), self.gflags)
+            # py = ma.masked_array(np.angle(gains[:,:,:,:,1,1]), self.gflags)
+            # take phase difference, -pi to pi, and then mean over antennas
+            # pzd_exp = ma.exp(1j*(py-px))
+            # pzd = ma.angle(pzd_exp.product(axis=-1)) / pzd_exp.count(axis=-1)
+            # pzd = (ma.fmod(py - px, 2*np.pi) - np.pi).mean(axis=-1)
+            # print("{0}: PZD update is {1} deg".format(self.chunk_label, pzd*180/np.pi), file=log(0))
+            # assign to all antennas
+            # gains[:,:,:,:,0,0] = 1
+            # gains[:,:,:,:,1,1] = np.exp(1j*pzd)[...,np.newaxis]
 
         super(PolarizationGains, self).restrict_solution(gains)
 
