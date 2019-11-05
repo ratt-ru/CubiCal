@@ -130,9 +130,12 @@ class PolarizationGains(Complex2x2Gains):
 
         # re-estimate pzd
         mask = self.gflags!=0
-        pzd = masked_array(gains[:, :, :, :, 1, 1] / gains[:, :, :, :, 0, 0], mask)
+        pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
         pzd = np.angle(pzd.sum(axis=(0,3)))
         print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(0))
+        # import ipdb; ipdb.set_trace()
+        self._pzd = pzd
+        self._exp_pzd = np.exp(-1j * pzd)
 
         gains[:, :, :, :, 0, 0] = 1
         gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
