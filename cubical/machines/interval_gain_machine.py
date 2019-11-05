@@ -450,13 +450,13 @@ class PerIntervalGains(MasterMachine):
                     ),
                     90, raise_once="invalid_models", verbosity=2, color="red")
                 # flag these as invalid
-                self.gflags[pge_flag_invalid] |= FL.INVALID
+                self.gflags[self._interval_to_gainres(pge_flag_invalid, 1)] |= FL.INVALID
 
             # log(0).print("{}: max gain error {}, invalid PGEs {}".format(self.chunk_label, self.max_gain_error, bad_gain_intervals.sum()))
 
             if self.max_gain_error:
                 low_snr = self.prior_gain_error > self.max_gain_error  # shape DTFA
-                self.gflags[low_snr] |= FL.LOWSNR
+                self.gflags[self._interval_to_gainres(low_snr, 1)] |= FL.LOWSNR
                 self._report_gain_flags(low_snr, "on low SNR", "your max-prior-error settings", self.low_snr_warn)
 
         # if INVALID or LOWSNR raised above, recompute equation counts
@@ -643,7 +643,7 @@ class PerIntervalGains(MasterMachine):
             # posterior_gain_error is at gain resolution (DTFACC)
             # the last axis is correlation -- we flag if any correlation is flagged
             highvar_gains = (self.posterior_gain_error > self.max_post_error).any(axis=(-1,-2))  # dir,time,freq,ant
-
+            highvar_gains = self._interval_to_gainres(highvar_gains, 1)
             # except if previously flagged
             highvar_gains &= ~flagged
             # raise FL.GVAR flag on these gains (and clear on all others!)
