@@ -45,14 +45,54 @@ class Complex2x2Gains(PerIntervalGains):
 
         # only solve for off-diagonal terms
         self._offdiag_only = options["offdiag-only"]
+        self._estimate_pzd = options["estimate-pzd"]
 
-#        if label == "D":
-#            self.gains[:,:,:,:,1,1] = -1
+        # this will be set to PZD and exp(-i*PZD) once the PZD estimate is done
+        self._pzd = 0
+        self._exp_pzd = 1
 
     @classmethod
     def determine_diagonality(cls, options):
         """Returns true if the machine class, given the options, represents a diagonal gain"""
-        return options['type'] == 'complex-diag' or options['update-type'] != 'full'
+        updates = set(options['update-type'].split("-"))
+        return options['type'] == 'complex-diag' or \
+               ('full' not in updates and 'leakage' not in updates)
+
+    @staticmethod
+    def exportable_solutions():
+        """ Returns a dictionary of exportable solutions for this machine type. """
+        sols = Complex2x2Gains.exportable_solutions()
+        sols["pzd"] = (0.0, ("time", "freq"))
+        return sols
+
+    def importable_solutions(self, grid0):
+        """ Returns a dictionary of importable solutions for this machine type. """
+        sols = super(Complex2x2Gains, self).importable_solutions(grid0)
+        if "pzd" in self.update_type:
+            sols["pzd"] = dict(**self.interval_grid)
+        return sols
+
+    def export_solutions(self):
+        """ Saves the solutions to a dict of {label: solutions,grids} items. """
+        sols = super(Complex2x2Gains, self).export_solutions()
+        if "pzd" in self.update_type:
+            sols["pzd"] = (masked_array(self._pzd if self._pzd is not None else 0.), self.interval_grid)
+        return sols
+
+    def import_solutions(self, soldict):
+        """
+        Loads solutions from a dict.
+
+        Args:
+            soldict (dict):
+                Contains gains solutions which must be loaded.
+        """
+        if "pzd" in self.update_type and "pzd" in soldict:
+            self._pzd = soldict["pzd"]
+            self._exp_pzd = np.exp(-1j * self._pzd)
+
+        super(Complex2x2Gains, self).import_solutions(soldict)
+
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -136,14 +176,71 @@ class Complex2x2Gains(PerIntervalGains):
         else:
             np.copyto(self.gains, update)
 
+    def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
+        """
+        """
+        super(Complex2x2Gains, self).precompute_attributes(data_arr, model_arr, flags_arr, noise)
+
+        if self._estimate_pzd and self._pzd is 0:
+            marr = model_arr[..., (0, 1), (1, 0)][:, 0].sum(0)
+            darr = data_arr[..., (0, 1), (1, 0)][0]
+            mask = (flags_arr[..., np.newaxis] != 0) | (marr == 0)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                dm = darr * (np.conj(marr) / abs(marr))
+            dabs = np.abs(darr)
+            dm[mask] = 0
+            dabs[mask] = 0
+            # collapse time/freq axis into intervals and sum antenna axes
+            dm_sum = self.interval_sum(dm).sum(axis=(2, 3))
+            dabs_sum = self.interval_sum(dabs).sum(axis=(2, 3))
+            # sum off-diagonal terms
+            dm_sum = dm_sum[..., 0] + np.conj(dm_sum[..., 1])
+            dabs_sum = dabs_sum[..., 0] + np.conj(dabs_sum[..., 1])
+            pzd = np.angle(dm_sum / dabs_sum)
+            pzd[dabs_sum == 0] = 0
+            print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd * 180 / np.pi), file=log(0))
+            self._pzd = pzd
+            self._exp_pzd = np.exp(-1j * pzd)
+
+            self.gains[:, :, :, :, 0, 0] = 1
+            self.gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
+
+
     def restrict_solution(self, gains):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying
         any machine specific restrictions.
         """
+        if "leakage" in self.update_type:
+            gains[:, :, :, :, 0, 0] = 1
+            gains[:, :, :, :, 1, 1] = 1
+
+        if "pzd" in self.update_type:
+            # re-estimate pzd
+            mask = self.gflags!=0
+            pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
+            pzd = np.angle(pzd.sum(axis=(0,3)))
+            print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(0))
+            # import ipdb; ipdb.set_trace()
+            self._pzd = pzd
+            self._exp_pzd = np.exp(-1j * pzd)
+
+            gains[:, :, :, :, 0, 0] = 1
+            gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
+
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
             gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
 
         super(Complex2x2Gains, self).restrict_solution(gains)
 
+    @property
+    def dof_per_antenna(self):
+        if "leakage" in self.update_type and "pzd" in self.update_type:
+            return 4 + 1./self.n_ant
+        elif "leakage" in self.update_type:
+            return 4
+        elif "pzd" in self.update_type:
+            return 1./self.n_ant
+        else:
+            return super(Complex2x2Gains, self).dof_per_antenna()
