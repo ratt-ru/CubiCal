@@ -381,7 +381,7 @@ class Parameter(object):
                 # better be an int now
                 if not isinstance(value, int):
                     raise ValueError("invalid axis {}={}".format(axis, value0))
-                slicer.append(self.grid_index[axes[axis]])
+                slicer.append(value)
             elif iaxis in self.interpolation_axes:
                 slicer.append(None)
             elif n == 1:
