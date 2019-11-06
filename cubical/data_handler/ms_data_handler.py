@@ -598,7 +598,7 @@ class MSDataHandler:
                                                            feed_basis=self._poltype,
                                                            feed_angles=feed_angles,
                                                            enable_rotation=self.rotate_model,
-                                                           enable_pa=pa_rotate_model,
+                                                           enable_pa=pa_rotate_model or derotate_output,
                                                            enable_derotation=self.derotate_output,
                                                            field_centre=tuple(np.rad2deg(self.phadir)))
         else:
