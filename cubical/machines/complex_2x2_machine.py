@@ -61,7 +61,7 @@ class Complex2x2Gains(PerIntervalGains):
     @staticmethod
     def exportable_solutions():
         """ Returns a dictionary of exportable solutions for this machine type. """
-        sols = Complex2x2Gains.exportable_solutions()
+        sols = PerIntervalGains.exportable_solutions()
         sols["pzd"] = (0.0, ("time", "freq"))
         return sols
 
@@ -211,9 +211,6 @@ class Complex2x2Gains(PerIntervalGains):
         Restricts the solution by invoking the inherited restrict_soultion method and applying
         any machine specific restrictions.
         """
-        if "leakage" in self.update_type:
-            gains[:, :, :, :, 0, 0] = 1
-            gains[:, :, :, :, 1, 1] = 1
 
         if "pzd" in self.update_type:
             # re-estimate pzd
@@ -227,6 +224,10 @@ class Complex2x2Gains(PerIntervalGains):
 
             gains[:, :, :, :, 0, 0] = 1
             gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
+            
+        elif "leakage" in self.update_type:
+            gains[:, :, :, :, 0, 0] = 1
+            gains[:, :, :, :, 1, 1] = 1
 
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
@@ -243,4 +244,4 @@ class Complex2x2Gains(PerIntervalGains):
         elif "pzd" in self.update_type:
             return 1./self.n_ant
         else:
-            return super(Complex2x2Gains, self).dof_per_antenna()
+            return super(Complex2x2Gains, self).dof_per_antenna
