@@ -203,7 +203,8 @@ class Complex2x2Gains(PerIntervalGains):
             dabs_sum = dabs_sum[..., 0] + np.conj(dabs_sum[..., 1])
             pzd = np.angle(dm_sum / dabs_sum)
             pzd[dabs_sum == 0] = 0
-            print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd * 180 / np.pi), file=log(2))
+            with np.printoptions(precision=4, suppress=True, linewidth=1000):
+                print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd * 180 / np.pi), file=log(2))
             self._pzd = pzd
             self._exp_pzd = np.exp(-1j * pzd)
 
@@ -219,10 +220,11 @@ class Complex2x2Gains(PerIntervalGains):
 
         if "pzd" in self.update_type:
             # re-estimate pzd
-            mask = self.gflags!=0
+            mask = self.gflags != 0
             pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
             pzd = np.angle(pzd.sum(axis=(0,3)))
-            print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(2))
+            with np.printoptions(precision=4, suppress=True, linewidth=1000):
+                print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(2))
             # import ipdb; ipdb.set_trace()
             self._pzd = pzd
             self._exp_pzd = np.exp(-1j * pzd)
@@ -230,13 +232,17 @@ class Complex2x2Gains(PerIntervalGains):
             gains[:, :, :, :, 0, 0] = 1
             gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
             
-        elif "leakage" in self.update_type:
-            gains[:, :, :, :, 0, 0] = 1
-            gains[:, :, :, :, 1, 1] = 1
+        if "leakage" in self.update_type:
+            if "pzd" not in self.update_type:
+                gains[:, :, :, :, 0, 0] = 1
+                gains[:, :, :, :, 1, 1] = 1
+                
             if "rel" in self.update_type and self.ref_ant is not None:
                 offset =  gains[:, :, :, self.ref_ant, 0, 1].copy()
-                gains[:, :, :, self.ref_ant, 0, 1] -= offset[..., np.newaxis]
-                gains[:, :, :, self.ref_ant, 1, 0] += np.conf(offset)[..., np.newaxis]
+                gains[..., 0, 1] -= offset[..., np.newaxis]
+                gains[..., 1, 0] += np.conj(offset)[..., np.newaxis]
+                with np.printoptions(precision=4, suppress=True, linewidth=1000):
+                    print("{0}: subtracting relative leakage offset {1}".format(self.chunk_label, offset), file=log(2))
 
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
