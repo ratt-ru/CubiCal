@@ -78,7 +78,7 @@ class SolverStats (object):
 
         dtype += self._chunk_stats_intermediate_fields
 
-        self._max_intermediate_fields = 10
+        self._max_intermediate_fields = 100
         for i in range(self._max_intermediate_fields):
             dtype += [("{}_{}".format(field, i), dt) for field, dt in self._chunk_stats_intermediate_fields]
 

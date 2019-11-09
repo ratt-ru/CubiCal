@@ -124,9 +124,14 @@ class Complex2x2Gains(PerIntervalGains):
         jhr = self.get_new_jhr()
         r = self.get_obs_or_res(obser_arr, model_arr)
 
+
         if self._offdiag_only:
             jh[...,(0,1),(0,1)] = 0
             r[...,(0,1),(0,1)] = 0
+            
+        if self._diag_only:
+            jh[...,(0,1),(1,0)] = 0
+            r[...,(0,1),(1,0)] = 0
 
         self.kernel_solve.compute_jhr(jh, r, jhr, self.t_int, self.f_int)
 
@@ -198,7 +203,7 @@ class Complex2x2Gains(PerIntervalGains):
             dabs_sum = dabs_sum[..., 0] + np.conj(dabs_sum[..., 1])
             pzd = np.angle(dm_sum / dabs_sum)
             pzd[dabs_sum == 0] = 0
-            print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd * 180 / np.pi), file=log(0))
+            print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd * 180 / np.pi), file=log(2))
             self._pzd = pzd
             self._exp_pzd = np.exp(-1j * pzd)
 
@@ -217,7 +222,7 @@ class Complex2x2Gains(PerIntervalGains):
             mask = self.gflags!=0
             pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
             pzd = np.angle(pzd.sum(axis=(0,3)))
-            print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(0))
+            print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(2))
             # import ipdb; ipdb.set_trace()
             self._pzd = pzd
             self._exp_pzd = np.exp(-1j * pzd)
@@ -234,6 +239,14 @@ class Complex2x2Gains(PerIntervalGains):
             gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
 
         super(Complex2x2Gains, self).restrict_solution(gains)
+        
+        if False:
+        #with np.printoptions(precision=4, suppress=True):
+            if self._jones_label == 'D':
+                for p in range(self.n_ant):
+                    for a in (0,1):
+                        for b in (0,1):
+                            log.error("D{}{} for antenna {}: {}".format(a+1, b+1, p, gains[0,0,:,p,a,b]))
 
     @property
     def dof_per_antenna(self):
