@@ -233,6 +233,10 @@ class Complex2x2Gains(PerIntervalGains):
         elif "leakage" in self.update_type:
             gains[:, :, :, :, 0, 0] = 1
             gains[:, :, :, :, 1, 1] = 1
+            if "rel" in self.update_type and self.ref_ant is not None:
+                offset =  gains[:, :, :, self.ref_ant, 0, 1].copy()
+                gains[:, :, :, self.ref_ant, 0, 1] -= offset[..., np.newaxis]
+                gains[:, :, :, self.ref_ant, 1, 0] += np.conf(offset)[..., np.newaxis]
 
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
