@@ -111,6 +111,15 @@ class PerIntervalGains(MasterMachine):
         self.min_quorum = options["conv-quorum"]
         self.update_type = set(options["update-type"].split("-"))
         self.ref_ant = options["ref-ant"]
+        if self.ref_ant is not None:
+            if type(self.ref_ant) is not str:
+                self.ref_ant = str(self.ref_ant)
+            if self.ref_ant[0] == "#":
+                self.ref_ant = int(self.ref_ant[1:])
+            else:
+                from cubical.solver import metadata
+                self.ref_ant = metadata.antenna_index[self.ref_ant]
+
         self.fix_directions = options["fix-dirs"] if options["fix-dirs"] is not None and \
                 options["fix-dirs"] != "" else []
 

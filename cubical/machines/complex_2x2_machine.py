@@ -220,8 +220,9 @@ class Complex2x2Gains(PerIntervalGains):
 
         if "pzd" in self.update_type:
             # re-estimate pzd
-            mask = self.gflags != 0
-            pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
+            mask = self.gflags!=0
+            with np.errstate(divide='ignore', invalid='ignore'):
+                pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
             pzd = np.angle(pzd.sum(axis=(0,3)))
             with np.printoptions(precision=4, suppress=True, linewidth=1000):
                 print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(2))
@@ -250,13 +251,12 @@ class Complex2x2Gains(PerIntervalGains):
 
         super(Complex2x2Gains, self).restrict_solution(gains)
         
-        if False:
-        #with np.printoptions(precision=4, suppress=True):
-            if self._jones_label == 'D':
-                for p in range(self.n_ant):
-                    for a in (0,1):
-                        for b in (0,1):
-                            log.error("D{}{} for antenna {}: {}".format(a+1, b+1, p, gains[0,0,:,p,a,b]))
+        # with np.printoptions(precision=4, suppress=True):
+        #     if self._jones_label == 'D':
+        #         for p in range(self.n_ant):
+        #             for a in (0,1):
+        #                 for b in (0,1):
+        #                     log.error("D{}{} for antenna {}: {}".format(a+1, b+1, p, gains[0,0,:,p,a,b]))
 
     @property
     def dof_per_antenna(self):
