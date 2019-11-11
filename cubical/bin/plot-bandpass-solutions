@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+from collections import OrderedDict
+import pylab
+import numpy as np
+
+from cubical.plots import gainsols
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="""Makes plots of leakage solutions""",
+                                     formatter_class=argparse.RawTextHelpFormatter)
+
+    parser.add_argument("-d", "--display", action="store_true", help="Display plots rather than saving them")
+
+    parser.add_argument("-o", "--output-name", type=str, metavar="FILENAME", help="Output filename")
+
+    parser.add_argument("--diag", type=str, choices=("ri", "ap"), default='ap', help="Plot diagonal elements as real/imag or amp/phase")
+
+    parser.add_argument("--off-diag", type=str, choices=("ri", "ap"), help="Also plot off-diagonal elements as real/imag or amp/phase")
+
+    # populate remaining parser options from standard object
+    gainsols.options.populate_argparse(parser)
+
+    parser.add_argument("files", nargs="+",
+                         help="""One or more CubiCal solution databases""")
+
+    options = gainsols.options = parser.parse_args()
+
+    for filename in options.files:
+        figtitle = filename
+        output_name = options.output_name or filename + ".png"
+
+        print("Trying to read {} as a CubiCal database".format(filename))
+        bb = gainsols.read_cubical_gains(filename, "B")
+
+        fig = gainsols.plot_bandpass_cc(bb, figtitle=figtitle, plot_diag=options.diag, plot_offdiag=options.off_diag)
+
+        if options.display:
+            print("Displaying plot")
+        else:
+            print("Saving plot to {}".format(output_name))
+            fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
+
+    if options.display:
+        pylab.show()

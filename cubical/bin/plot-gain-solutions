@@ -5,7 +5,7 @@ from collections import OrderedDict
 import pylab
 import numpy as np
 
-from cubical.plots import gainsols, leakages
+from cubical.plots import gainsols
 
 if __name__ == "__main__":
     import argparse
@@ -17,22 +17,26 @@ if __name__ == "__main__":
 
     parser.add_argument("-o", "--output-name", type=str, metavar="FILENAME", help="Output filename")
 
-    parser.add_argument("-r", "--ref-ant", metavar="ANTENNA", type=str, help="Impose a reference antenna on the leakages")
+    parser.add_argument("-b", "--plot-bandpass", action="store_true", help="Display bandpass plots too")
 
-    parser.add_argument("--diag", type=str, choices=("ri", "ap"), help="Also plot diagonal elements as real/imag or amp/phase")
-    parser.add_argument("--off-diag", type=str, choices=("ri", "ap"), default='ri', help="Also plot off-diagonal elements as real/imag or amp/phase")
+    parser.add_argument("-r", "--ref-ant", metavar="ANTENNA", type=str, help="Impose a reference antenna on the leakages")
 
     parser.add_argument("--diff", action="store_true", help="Make difference plots if possible")
 
-    # populate remaining parser options from standard object
-    gainsols.options.populate_argparse(parser)
+    parser.add_argument("--nrow", type=int, default=7, help="Plot rows")
+    parser.add_argument("--ncol", type=int, default=4, help="Plot columns")
+    parser.add_argument("--width", type=float, metavar="INCHES", default=4, help="Plot width")
+    parser.add_argument("--height", type=float, metavar="INCHES", default=3, help="Plot height")
+    parser.add_argument("--dpi", type=int, default=150, help="Plot DPI")
+    parser.add_argument("--font-size", type=int, default=6, help="Font size")
+    parser.add_argument("--min-freq", type=float, metavar="MHz", default=0, help="Start frequency")
+    parser.add_argument("--max-freq", type=float, metavar="MHz", default=0, help="End frequency")
+    parser.add_argument("--max-reim", type=float, metavar="VALUE", default=0.05, help="Sets re/im axis limits")
 
     parser.add_argument("files", nargs="+",
                          help="""One or more CubiCal solution databases or AIPS leakage files""")
 
-    parser.set_defaults(max_reim=0.05)
-
-    options = gainsols.options = parser.parse_args()
+    options = leakages.options = parser.parse_args()
 
     Daips0 = None
 
@@ -98,23 +102,33 @@ if __name__ == "__main__":
             if refant:
                 figtitle += " (re-referenced to antenna {})".format(refant)
 
-            fig = leakages.plot_leakages_aips(Daips, plot_diag=options.diag, plot_offdiag=options.off_diag,
-                                            figtitle=figtitle, diff=differential)
+
+            fig = leakages.plot_leakages_aips(Daips, reim=(-options.max_reim, options.max_reim),
+                                       minfreq=options.min_freq*1e+6 or None,
+                                       maxfreq=options.max_freq*1e+6 or None,
+                                       figsize=(options.width*options.ncol, options.height*options.nrow),
+                                       ncol=options.ncol,nrow=options.nrow,
+                                       figtitle=figtitle, plot_bandpass=options.plot_bandpass, diff=differential)
+
+            if options.display:
+                print("Displaying plot")
+#                fig.show()
+            else:
+                print("Saving plot to {}".format(output_name))
+                fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
 
         else:
             print("Trying to read {} as a CubiCal database".format(filename))
             Dcc = leakages.read_cubical_leakages(filename)
             if options.ref_ant:
                 figtitle += " (re-referenced to antenna {})".format(refant)
-            fig = leakages.plot_leakages_cc(Dcc, plot_diag=options.diag, plot_offdiag=options.off_diag,
-                                            refant=options.ref_ant, figtitle=figtitle)
-
-        if options.display:
-            print("Displaying plot")
-        #                fig.show()
-        else:
-            print("Saving plot to {}".format(output_name))
-            fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
+            fig = leakages.plot_leakages_cc(Dcc, reim=(-options.max_reim, options.max_reim),
+                                       minfreq=options.min_freq*1e+6 or None,
+                                       maxfreq=options.max_freq*1e+6 or None,
+                                       figsize=(options.width*options.ncol, options.height*options.nrow),
+                                       ncol=options.ncol,nrow=options.nrow,
+                                       refant=options.ref_ant,
+                                       figtitle=figtitle, plot_bandpass=options.plot_bandpass)
 
     if options.display:
         pylab.show()
