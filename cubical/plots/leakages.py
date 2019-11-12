@@ -6,39 +6,24 @@ import matplotlib.patches as mpatches
 from pylab import *
 import gainsols
 
-def plot_leakages_cc(D, FS=None, TS=slice(None), ANTS=slice(None), refant=None,
-                     plot_diag='ap', plot_offdiag='ri', diff=False, figtitle=None):
+def plot_leakages_cc(D, FS=None, TS=None, ANTS=slice(None), refant=None,
+                     plot_diag='ap', plot_offdiag='ri', figtitle=None):
     """Plots leakages from a CubiCal database"""
-    FS = gainsols.get_freq_slice(FS, D.grid[D.ax.freq])
+    sols = gainsols.prepare_sols_dict(G, FS, TS, ANTS)
 
-    sols = OrderedDict()
-    if type(TS) is int:
-        TS = slice(TS, TS + 1)
-    # get valid D solutions
-    if isinstance(ANTS, (list, tuple)):
-        ANTS = [(ant, D.grid[D.ax.ant][ant]) for ant in ANTS]
-    else:
-        ANTS = enumerate(D.grid[D.ax.ant][ANTS])
-    for iant, ant in ANTS:
-        # this gets the "raw" solutions for a given slice (antenna, correlation, etc.), and also the grid they're defined on,
-        # which could be a subset of the full grid given by the description
-        d00, (time, freq) = D.get_slice(ant=iant, corr1=0, corr2=0)
-        if d00 is None:
-            continue
-        d01, (time, freq) = D.get_slice(ant=iant, corr1=0, corr2=1)
-        d10, (time, freq) = D.get_slice(ant=iant, corr1=1, corr2=0)
-        d11, (time, freq) = D.get_slice(ant=iant, corr1=1, corr2=1)
-        d01 = d01 / d00
-        d10 = d10 / d11
-        sols[ant] = time[TS], freq[FS], d00[TS, FS], d01[TS, FS], d10[TS, FS], d11[TS, FS]
+    # renormalize
+    sols = OrderedDict([(ant, (t, f, d00, d01/d00, d10/d11, d11))
+                        for ant, (t, f, d00, d01, d10, d11) in sols.items()])
 
+    # apply new reference antenna
     if refant is not None:
         d01ref = sols[refant][3]
         sols = OrderedDict([(ant, (t, f, d00, d01 - d01ref, d10 + np.conj(d01ref), d11))
                             for ant, (t, f, d00, d01, d10, d11) in sols.items()])
 
     return gainsols.plot_bandpass(sols, plot_diag=plot_diag, plot_offdiag=plot_offdiag,
-                           gaintype=("Bandpass", "Leakage"), figtitle=figtitle)
+                                  gaintype=("Bandpass", "Leakage"), figtitle=figtitle)
+
 
 def plot_leakages_aips(Daips, FS=None, ANTS=slice(None),
                        plot_diag=None, plot_offdiag='ri', diff=False, figtitle=None):

@@ -37,6 +37,8 @@ class PlotOptions(PlotLimits):
         parser.add_argument("--font-size", type=int, default=6, help="Font size")
         parser.add_argument("--min-freq", type=float, metavar="MHz", default=0, help="Start frequency")
         parser.add_argument("--max-freq", type=float, metavar="MHz", default=0, help="End frequency")
+        parser.add_argument("--min-time", type=float, metavar="s", default=0, help="Start time")
+        parser.add_argument("--max-time", type=float, metavar="s", default=0, help="End time")
 
         parser.add_argument("--max-reim", type=float, metavar="VALUE", default=None, help="Sets re/im axis limits")
         parser.add_argument("--max-reim-1", type=float, metavar="VALUE", default=None, help="Sets re/im axis limits for off-diagonals")
@@ -48,9 +50,13 @@ class PlotOptions(PlotLimits):
 
 options = PlotOptions()
 
-def get_plot_limits(options, sols):
+def get_plot_limits(options, sols, time0=0):
     # get global plot limits
     auto_limits = PlotLimits()
+    auto_limits.min_time = 0
+    auto_limits.max_time = (max([max(time) for time,_,_,_,_,_ in sols.values()]) - time0)/3600.
+    auto_limits.min_freq = min([min(freq) for _,freq,_,_,_,_ in sols.values()])*1e-6
+    auto_limits.max_freq = max([max(freq) for _,freq,_,_,_,_ in sols.values()])*1e-6
     auto_limits.max_ampl = max([ max(abs(g00).max(), abs(g11).max()) for _, _, g00, g01, g10, g11 in sols.values()])
     auto_limits.max_ampl_1 = max([ max(abs(g01).max(), abs(g10).max()) for _, _, g00, g01, g10, g11 in sols.values()])
     auto_limits.min_ampl = min([ min(abs(g00).min(), abs(g11).min()) for _, _, g00, g01, g10, g11 in sols.values()])
@@ -119,7 +125,7 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
 
     for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(sols.items()):
         #    print "shape is {}, grid span is {} {}".format(d00.shape, time[[0,-1]], freq[[0,-1]])
-        freq = freq * 1e-9
+        freq = freq * 1e-6
 
         if plot_diag in ('ap', 'ri'):
             if nplot >= options.nrow*options.ncol:
@@ -129,7 +135,8 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
             ax = subplot(options.nrow, options.ncol, nplot)
             title("{} antenna {}".format(gaintype[0], ant), fontdict=fontdict_title)
             if (nplot - 1) / options.ncol == options.nrow - 1:
-                ax.set_xlabel("Frequency (GHz)", fontdict=fontdict)
+                ax.set_xlabel("Frequency (MHz)", fontdict=fontdict)
+            ax.set_xlim(lim.min_freq, lim.max_freq)
             ax.tick_params("x", direction="in")
 
             if plot_diag == 'ap':
@@ -159,7 +166,8 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
             title("Off-diag {} antenna {}".format(gaintype[1].lower(), ant), fontdict=fontdict_title)
             ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
             if (nplot - 1) / options.ncol == options.nrow - 1:
-                ax.set_xlabel("Frequency (GHz)", fontdict=fontdict)
+                ax.set_xlabel("Frequency (MHz)", fontdict=fontdict)
+            ax.set_xlim(lim.min_freq, lim.max_freq)
             ax.tick_params("x", direction="in")
 
             if plot_offdiag == 'ap':
@@ -181,111 +189,123 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
 
     print("{} plots generated ({} rows and {} columns)".format(nplot, options.nrow, options.ncol))
     return fig
-    # you can see this is a masked array, so flagged-out solutions are not plotted
 
-def plot_time_gains(sols, ncol=4, nrow=14, figsize=(16, 42), reim=False, plot_offdiag=True, gaintype="Gain", figtitle=None):
+def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Unnorm leakage"), figtitle=None):
     """
     Makes leakage plots given by sols dict
     """
-    fig = figure(figsize=figsize, dpi=options.dpi)
+    fig = figure(figsize=(options.ncol*options.width, options.nrow*options.height), dpi=options.dpi)
     tight_layout()
     subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95)
     if figtitle:
         fig.suptitle(figtitle, fontsize=options.font_size*2)
+    fontdict = dict(fontsize=options.font_size)
+    fontdict_title = dict(weight='bold', fontsize=options.font_size * 1.2)
 
     nplot = 0
 
+    time0 = min([time.min() for time,_,_,_,_,_ in sols.values()])
+
+    lim = get_plot_limits(options, sols, time0=time0)
+
+    def _make_reim_plot(ax, time, x1, x2, corrs, legend):
+        re1, im1, re2, im2 = "Re "+corrs[0], "Im "+corrs[0], "Re "+corrs[1], "Im "+corrs[1]
+        for fs in xrange(x1.shape[1]):
+            ax.plot(time, x1[:, fs].real, '+r', ms=2, label=re1 if not fs else None)
+            ax.plot(time, x1[:, fs].imag, '+b', ms=2, label=im1 if not fs else None)
+        for fs in xrange(x2.shape[1]):
+            ax.plot(time, x2[:, fs].real, '+c', ms=2, label=re1 if not fs else None)
+            ax.plot(time, x2[:, fs].imag, '+y', ms=2, label=im2 if not fs else None)
+        if legend:
+            ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
+                                   ("r", re1), ("b", im1),
+                                   ("c", re2), ("y", im2)
+                               ], loc="upper center", fontsize=options.font_size)
+
+    def _make_ap_plot(ax, time, x1, x2, corrs, legend):
+        amp1, ph1, amp2, ph2 = "|"+corrs[0]+"|", corrs[0]+ " phase", "|"+corrs[1]+"|", corrs[1]+" phase"
+        ax2 = ax.twinx()
+        ax2.set_ylim(-lim.max_phase, lim.max_phase)
+        for fs in range(x1.shape[1]):
+            ax2.plot(time, np.angle(x1[:, fs]) * 180 / math.pi, '.c', ms=0.5,
+                     label=ph1 if not fs else None)
+            ax2.plot(time, np.angle(x2[:, fs]) * 180 / math.pi, '.y', ms=0.5,
+                     label=ph2 if not fs else None)
+            ax.plot(time, abs(x1[:, fs]), '+r', ms=2, label=amp1 if not fs else None)
+            ax.plot(time, abs(x2[:, fs]), '+b', ms=2, label=amp2 if not fs else None)
+        if legend:
+            ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
+                                   ("r", amp1), ("b", amp2),
+                                   ("c", ph1),  ("y", ph2)
+                               ], loc="upper center", fontsize=options.font_size)
+        return ax2
+
+
     for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(sols.items()):
         #    print "shape is {}, grid span is {} {}".format(d00.shape, time[[0,-1]], freq[[0,-1]])
-        freq = freq * 1e-9
-        fontdict = dict(fontsize=options.font_size)
-        fontdict_title = dict(weight='bold', fontsize=options.font_size * 1.2)
+        time = (time-time0)/3600.
 
-        if plot_bandpass:
-            if nplot >= nrow*ncol:
+        if plot_diag in ('ap', 'ri'):
+            if nplot >= options.nrow*options.ncol:
                 print("Warning: out of plot space. You probably want to add more rows or columns")
                 break
             nplot += 1
-            ax = subplot(nrow, ncol, nplot)
-            title("{} antenna {}".format("Diff bandpass" if diff else "Bandpass",ant), fontdict=fontdict_title)
-            if (nplot - 1) / ncol == nrow - 1:
-                ax.set_xlabel("Frequency (GHz)", fontdict=fontdict)
+            ax = subplot(options.nrow, options.ncol, nplot)
+            title("{} antenna {}".format(gaintype[0], ant), fontdict=fontdict_title)
+            if (nplot - 1) / options.ncol == options.nrow - 1:
+                ax.set_xlabel("Time (h since start)", fontdict=fontdict)
             ax.tick_params("x", direction="in")
-            if nplot % ncol == 1:
-                ax.set_ylabel("Amplitude", fontdict=fontdict)
-            ax2 = ax.twinx()
-            ax2.set_ylim(-180, 180)
-            ax2.set_yticks([])
-            for ts in xrange(d00.shape[0]):
-                p1 = ax2.plot(freq, np.angle(d00[ts]) * 180 / math.pi, '.c', ms=0.5, label="RR phase" if not ts else None)
-                p2 = ax2.plot(freq, np.angle(d11[ts]) * 180 / math.pi, '.y', ms=0.5, label="LL phase" if not ts else None)
-                a1 = ax.plot(freq, abs(d00[ts]), '+r', ms=2, label="|RR|" if not ts else None)
-                a2 = ax.plot(freq, abs(d11[ts]), '+b', ms=2, label="|LL|" if not ts else None)
-            ax.set_ylim(0.99, 1.05)
-            if not iant:
-                ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
-                                   ("r", "|RR|"), ("b", "|LL|"),
-                                   ("c", "RR phase"), ("y", "LL phase")
-                                   ], loc="upper center", fontsize=options.font_size)
+
+            if plot_diag == 'ap':
+                if nplot % options.ncol == 1:
+                    ax.set_ylabel("Amplitude", fontdict=fontdict)
+                ax.set_ylim(lim.min_ampl, lim.max_ampl)
+                ax2 = _make_ap_plot(ax, freq, g00, g11, ("RR", "LL"), legend=not iant)
+                if nplot % options.ncol == 0:
+                    ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
+                else:
+                    ax2.set_yticks([])
+            else:
+                ax.set_ylim(-lim.max_reim, lim.max_reim)
+                _make_reim_plot(ax, time, g00, g11, ("RR", "LL"), legend=not iant)
+
             for axis in ax.xaxis, ax.yaxis:
                 for tick in axis.get_major_ticks():
                     tick.label.set_fontsize(options.font_size)
-        # legend([a1,a2,p1,p2],["|RR|","|LL|","RR phase"," LL phase"])
 
-        if nplot >= nrow*ncol:
-            print("Warning: out of plot space. You probably want to add more rows or columns")
-            break
-        nplot += 1
-        ax = subplot(nrow, ncol, nplot)
-        title("{} antenna {}".format("Diff leakages" if diff else "Leakages", ant), fontdict=fontdict_title)
-        ax.set_ylim(-0.3, 0.3)
-        if (nplot - 1) / ncol == nrow - 1:
-            ax.set_xlabel("Frequency (GHz)", fontdict=fontdict)
-        for axis in ax.xaxis, ax.yaxis:
-            for tick in axis.get_major_ticks():
-                tick.label.set_fontsize(options.font_size)
-        ax.tick_params("x", direction="in")
-        if reim:
-            for ts in xrange(d01.shape[0]):
-                ax.plot(freq, d01[ts].real, '+r', ms=2, label="Re RL" if not ts else None)
-                ax.plot(freq, d01[ts].imag, '+b', ms=2, label="Im RL" if not ts else None)
-            for ts in xrange(d10.shape[0]):
-                ax.plot(freq, d10[ts].real, '+c', ms=2, label="Re LR" if not ts else None)
-                ax.plot(freq, d10[ts].imag, '+y', ms=2, label="Im LR" if not ts else None)
-            if isinstance(reim, (list, tuple)):
-                ax.set_ylim(*reim)
-            if not iant:
-                ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
-                                   ("r", "Re RL"), ("b", "Im RL"),
-                                   ("c", "Re LR"), ("y", "Im LR")
-                                   ], loc="upper center", fontsize=options.font_size)
-        else:
-            ax2 = ax.twinx()
-            ax2.set_ylim(-180, 180)
-            if nplot % ncol == 0:
-                ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
+        if plot_offdiag in ('ap', 'ri'):
+            if nplot >= options.nrow*options.ncol:
+                print("Warning: out of plot space. You probably want to add more rows or columns")
+                break
+            nplot += 1
+
+            ax = subplot(options.nrow, options.ncol, nplot)
+            title("Off-diag {} antenna {}".format(gaintype[1].lower(), ant), fontdict=fontdict_title)
+            ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
+            if (nplot - 1) / options.ncol == options.nrow - 1:
+                ax.set_xlabel("Time (h since start)", fontdict=fontdict)
+            ax.tick_params("x", direction="in")
+
+            if plot_offdiag == 'ap':
+                if nplot % options.ncol == 1:
+                    ax.set_ylabel("Amplitude", fontdict=fontdict)
+                ax.set_ylim(lim.min_ampl_1, lim.max_ampl_1)
+                ax2 = _make_ap_plot(ax, time, g01, g10, ("RL", "LR"), legend=not iant)
+                if nplot % options.ncol == 0:
+                    ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
+                else:
+                    ax2.set_yticks([])
             else:
-                ax2.set_yticks([])
-            for ts in range(d01.shape[0]):
-                p1 = ax2.plot(freq, np.angle(d01[ts]) * 180 / math.pi, '.c', ms=0.5,
-                              label="RL phase" if not ts else None)
-                p2 = ax2.plot(freq, np.angle(d10[ts]) * 180 / math.pi, '.y', ms=0.5,
-                              label="LR phase" if not ts else None)
-                a1 = ax.plot(freq, abs(d01[ts]), '+r', ms=2, label="|RL|" if not ts else None)
-                a2 = ax.plot(freq, abs(d10[ts]), '+b', ms=2, label="|LR|" if not ts else None)
-            if not iant:
-                ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
-                                   ("r", "|RL|"), ("b", "|LR|"),
-                                   ("c", "RL phase"), ("y", "LR phase")
-                                   ], loc="upper center", fontsize=options.font_size)
-    #     plot(freq,d01[0].real,'.b',ms=.8,label="RL real")
-    #     plot(freq,d01[0].imag,'.r',ms=.8,label="RL imag")
-    #     plot(freq,d10[0].real,'.g',ms=.8,label="LR real")
-    #     plot(freq,d10[0].imag,'.m',ms=.8,label="LR imag")
-    # fig.tight_layout()
-    print("{} plots generated ({} rows and {} columns)".format(nplot, nrow, ncol))
+                ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
+                _make_reim_plot(ax, time, g01, g10, ("RL", "LR"), legend=not iant)
+
+            for axis in ax.xaxis, ax.yaxis:
+                for tick in axis.get_major_ticks():
+                    tick.label.set_fontsize(options.font_size)
+
+    print("{} plots generated ({} rows and {} columns)".format(nplot, options.nrow, options.ncol))
     return fig
-    # you can see this is a masked array, so flagged-out solutions are not plotted
+
 
 def get_freq_slice(FS, all_freqs):
     if FS is None:
@@ -302,43 +322,21 @@ def get_freq_slice(FS, all_freqs):
             FS = slice(None)
     return FS
 
-def plot_time_gains_cc(G, FS=None, TS=slice(None), ANTS=slice(None), refant=None, ncol=4, nrow=14,
-                    figsize=(16, 42), reim=False, minfreq=None, maxfreq=None,
-                    plot_offdiag=True, figtitle=None):
-    """Plots G solutions from a CubiCal database"""
-    FS = get_freq_slice(FS, minfreq, maxfreq,  G.grid[G.ax.freq])
+def get_time_slice(TS, all_times):
+    if TS is None:
+        return slice(None)
+    return TS
 
-    sols = OrderedDict()
-    if type(TS) is int:
-        TS = slice(TS, TS + 1)
-    # get valid D solutions
-    if isinstance(ANTS, (list, tuple)):
-        ANTS = [(ant, G.grid[G.ax.ant][ant]) for ant in ANTS]
-    else:
-        ANTS = enumerate(G.grid[G.ax.ant][ANTS])
-    for iant, ant in ANTS:
-        # this gets the "raw" solutions for a given slice (antenna, correlation, etc.), and also the grid they're defined on,
-        # which could be a subset of the full grid given by the description
-        g00, (time, freq) = G.get_slice(ant=iant, corr1=0, corr2=0)
-        if d00 is None:
-            continue
-        g01, (time, freq) = G.get_slice(ant=iant, corr1=0, corr2=1)
-        g10, (time, freq) = G.get_slice(ant=iant, corr1=1, corr2=0)
-        g11, (time, freq) = G.get_slice(ant=iant, corr1=1, corr2=1)
-        sols[ant] = time[TS], freq[FS], g00[TS, FS], g01[TS, FS], g10[TS, FS], g11[TS, FS]
-
-    plot_time_gains(sols, ncol=ncol, nrow=nrow, figsize=figsize, reim=reim, plot_offdiag=plot_offdiag, figtitle=figtitle)
-
-def plot_bandpass_cc(G, FS=None, TS=slice(None), ANTS=slice(None),
-                        minfreq=None, maxfreq=None,
-                        plot_diag='ap', plot_offdiag='', figtitle=None):
-    """Plots G solutions from a CubiCal database"""
+def prepare_sols_dict(G, FS=None, TS=None, ANTS=slice(None)):
+    """
+    Extract solutions slices into a dict
+    """
     FS = get_freq_slice(FS, G.grid[G.ax.freq])
+    TS = get_freq_slice(TS, G.grid[G.ax.time])
 
     sols = OrderedDict()
-    if type(TS) is int:
-        TS = slice(TS, TS + 1)
-    # get valid D solutions
+
+    # get valid solutions
     if isinstance(ANTS, (list, tuple)):
         ANTS = [(ant, G.grid[G.ax.ant][ant]) for ant in ANTS]
     else:
@@ -354,7 +352,20 @@ def plot_bandpass_cc(G, FS=None, TS=slice(None), ANTS=slice(None),
         g11, (time, freq) = G.get_slice(ant=iant, corr1=1, corr2=1)
         sols[ant] = time[TS], freq[FS], g00[TS, FS], g01[TS, FS], g10[TS, FS], g11[TS, FS]
 
+    return sols
+
+def plot_bandpass_cc(G, FS=None, TS=None, ANTS=slice(None),
+                        plot_diag='ap', plot_offdiag='', figtitle=None):
+    """Plots G solutions from a CubiCal database"""
+    sols = prepare_sols_dict(G, FS, TS, ANTS)
     plot_bandpass(sols, plot_diag=plot_diag, plot_offdiag=plot_offdiag, figtitle=figtitle)
+
+def plot_gain_cc(G, FS=None, TS=None, ANTS=slice(None),
+                        plot_diag='ap', plot_offdiag='', figtitle=None):
+    """Plots G solutions from a CubiCal database"""
+    sols = prepare_sols_dict(G, FS, TS, ANTS)
+    plot_gain(sols, plot_diag=plot_diag, plot_offdiag=plot_offdiag, figtitle=figtitle)
+
 
 def read_cubical_gains(filename, label="G"):
     """
