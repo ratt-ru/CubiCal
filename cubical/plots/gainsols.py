@@ -4,6 +4,7 @@ from cubical.tools import logger
 from collections import OrderedDict
 import matplotlib.patches as mpatches
 from pylab import *
+import re
 
 log = logger.getLogger("gain_plots")
 
@@ -398,7 +399,7 @@ def plot_gain_cc(G, FS=None, TS=None, ANTS=slice(None),
     return plot_gain(sols, plot_diag=plot_diag, plot_offdiag=plot_offdiag, figtitle=figtitle)
 
 
-def read_cubical_gains(filename, label="G"):
+def read_cubical_gains(filename, label=None):
     """
     Reads cCubiCal leakage solutions from a CubiCal DB
     """
@@ -407,6 +408,18 @@ def read_cubical_gains(filename, label="G"):
     db = pickled_db.PickledDatabase()
     db._load(filename)
     log.print("{} contains solutions for {}".format(filename, " ".join(db.names())))
+    # try to auto-pick a label
+    if label is None:
+        for name in db.names():
+            match = re.match("(\w+):gain", name)
+            if match:
+                label = match.group(1)
+                log.print("  gain label is {}".format(label))
+                break
+        else:
+            log.error("no gain entries found in database")
+            return None
+
     gg = db['{}:gain'.format(label)]
     log.print("  ",gg.shape, gg.axis_labels)  # axis info
     log.print("  can be interpolated over axes", gg.interpolation_axes)
