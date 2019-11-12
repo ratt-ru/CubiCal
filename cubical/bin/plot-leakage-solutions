@@ -7,7 +7,10 @@ import numpy as np
 
 from cubical.plots import gainsols, leakages
 
-if __name__ == "__main__":
+
+import ipdb
+
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="""Makes plots of leakage solutions""",
@@ -117,4 +120,9 @@ if __name__ == "__main__":
             fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
 
     if options.display:
-        pylab.show()
+       pylab.show()
+        
+if __name__ == "__main__":
+    with ipdb.launch_ipdb_on_exception():
+        main()
+  

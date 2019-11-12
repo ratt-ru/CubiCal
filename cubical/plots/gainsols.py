@@ -85,6 +85,19 @@ def get_plot_limits(options, sols, time0=0):
 
     return auto_limits
 
+def get_plot_counts(nsols, plots_per_sol):
+    num_plots = nsols*plots_per_sol
+    rows_needed = int(math.ceil(num_plots / float(options.ncol)))
+    log.info("{}x{} plots in {} columns need {} rows".format(nsols, plots_per_sol,options.ncol, rows_needed))
+    if rows_needed > options.nrow:
+        max_sols = options.nrow * options.ncol // plots_per_sol
+        log.warn("Not enough rows specified, displaying only first {} solutions".format(max_sols))
+    else:
+        max_sols = nsols
+    return max_sols, max_sols*plots_per_sol, rows_needed
+
+
+
 def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Offdiag bandpass"), figtitle=None):
     """
     Makes leakage plots given by sols dict
@@ -104,6 +117,40 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
     if x1.shape[0] > 100:
         log.warn("making bandpass plot for {} time slices, this better be intentional!".format(x1.shape[0]))
 
+    all_ri = 'ap' not in set([plot_diag, plot_offdiag])  # do we have only re/im plots?
+    all_ap = 'ri' not in set([plot_diag, plot_offdiag])  # do we have only phase plots?
+    max_sols, max_plots, rows_needed = get_plot_counts(len(sols), int(plot_diag in ('ap', 'ri')) + int(plot_offdiag in ('ap', 'ri')))
+
+    def _prep_plot(nplot, ant, num_gaintype, plot_type):
+        nplot += 1
+        ax = subplot(options.nrow, options.ncol, nplot)
+        last_row = (max_plots - nplot) < options.ncol
+
+        title("{} antenna {}".format(gaintype[num_gaintype], ant), fontdict=fontdict_title)
+
+        ax.set_xlim(lim.min_freq, lim.max_freq)
+        ax.tick_params("both", direction="in", labelsize=options.font_size)
+        ax2 = ax.twinx()
+        ax2.set_ylim(-lim.max_phase, lim.max_phase)
+        #ax2.set_xticks([])
+        ax2.tick_params("y", direction="in", labelsize=options.font_size)
+        if last_row:
+            ax.set_xlabel("Frequency (MHz)", fontdict=fontdict)
+        else:
+            ax.set_xticklabels([])
+        # label phase axis if needed
+        if not all_ri and nplot % options.ncol == 0:
+            ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
+        else:
+            ax2.set_yticklabels([])
+            if plot_type != 'ap':
+                ax2.set_yticks([])
+        for axis in ax.xaxis, ax.yaxis:
+            for tick in axis.get_major_ticks():
+                tick.label.set_fontsize(options.font_size)
+        ax.get_yaxis().get_major_formatter().set_useOffset(False)
+        return nplot, ax, ax2
+
     def _make_reim_plot(ax, freq, x1, x2, corrs, legend):
         re1, im1, re2, im2 = "Re "+corrs[0], "Im "+corrs[0], "Re "+corrs[1], "Im "+corrs[1]
         for ts in xrange(x1.shape[0]):
@@ -116,12 +163,10 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
             ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
                                    ("r", re1), ("b", im1),
                                    ("c", re2), ("y", im2)
-                               ], loc="upper center", fontsize=options.font_size)
+                               ], loc="upper center", ncol=2, fontsize=options.font_size)
 
-    def _make_ap_plot(ax, freq, x1, x2, corrs, legend):
+    def _make_ap_plot(ax, ax2, freq, x1, x2, corrs, legend):
         amp1, ph1, amp2, ph2 = "|"+corrs[0]+"|", corrs[0]+ " phase", "|"+corrs[1]+"|", corrs[1]+" phase"
-        ax2 = ax.twinx()
-        ax2.set_ylim(-lim.max_phase, lim.max_phase)
         for ts in range(x1.shape[0]):
             ax2.plot(freq, np.angle(x1[ts]) * 180 / math.pi, '.c', ms=0.5,
                      label=ph1 if not ts else None)
@@ -133,82 +178,45 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
             ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
                                    ("r", amp1), ("b", amp2),
                                    ("c", ph1),  ("y", ph2)
-                               ], loc="upper center", fontsize=options.font_size)
-        ax2.set_xticks([])
-        return ax2
-
-
-    plot_per_sol = int(plot_diag in ('ap', 'ri')) + int(plot_offdiag in ('ap', 'ri'))
-    num_plots = len(sols)*plot_per_sol
-    rows_needed = int(math.ceil(num_plots / float(options.ncol)))
-    if rows_needed > options.nrow:
-        log.warn("Not enough rows to display all plots, {} rows needed".format(rows_needed))
-    max_sols = options.nrow*options.ncol//plot_per_sol
+                               ], loc="upper center", ncol=2, fontsize=options.font_size)
 
     for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(sols.items()[:max_sols]):
         #    print "shape is {}, grid span is {} {}".format(d00.shape, time[[0,-1]], freq[[0,-1]])
         freq = freq * 1e-6
 
         if plot_diag in ('ap', 'ri'):
-            nplot += 1
-            ax = subplot(options.nrow, options.ncol, nplot)
-            last_row = (nplot - 1) // options.ncol == rows_needed-1
-
-            title("{} antenna {}".format(gaintype[0], ant), fontdict=fontdict_title)
-            ax.set_xlim(lim.min_freq, lim.max_freq)
-            ax.tick_params("x", direction="in")
+            nplot, ax, ax2 = _prep_plot(nplot, ant, 0, plot_diag)
 
             if plot_diag == 'ap':
                 if nplot % options.ncol == 1:
                     ax.set_ylabel("Amplitude", fontdict=fontdict)
                 ax.set_ylim(lim.min_ampl, lim.max_ampl)
-                ax2 = _make_ap_plot(ax, freq, g00, g11, ("RR", "LL"), legend=not iant)
-                if nplot % options.ncol == 0:
-                    ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
-                else:
-                    ax2.set_yticks([])
+                _make_ap_plot(ax, ax2, freq, g00, g11, ("RR", "LL"), legend=not iant)
+                # label axis if needed
+                #if all_ap and nplot % options.ncol > 1:
+                #    ax.set_yticklabels([])
             else:
                 ax.set_ylim(-lim.max_reim, lim.max_reim)
                 _make_reim_plot(ax, freq, g00, g11, ("RR", "LL"), legend=not iant)
-
-            if last_row:
-                ax.set_xlabel("Frequency (MHz)", fontdict=fontdict)
-            else:
-                ax.set_xticks([])
-            for axis in ax.xaxis, ax.yaxis:
-                for tick in axis.get_major_ticks():
-                    tick.label.set_fontsize(options.font_size)
+                # label axis if needed
+                #if all_ri and nplot % options.ncol > 1:
+                #    ax.set_yticklabels([])
 
         if plot_offdiag in ('ap', 'ri'):
-            nplot += 1
-            ax = subplot(options.nrow, options.ncol, nplot)
-            last_row = (nplot - 1) // options.ncol == rows_needed-1
-
-            title("Off-diag {} antenna {}".format(gaintype[1].lower(), ant), fontdict=fontdict_title)
-            ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
-            ax.set_xlim(lim.min_freq, lim.max_freq)
-            ax.tick_params("x", direction="in")
+            nplot, ax, ax2 = _prep_plot(nplot, ant, 1,  plot_offdiag)
 
             if plot_offdiag == 'ap':
                 if nplot % options.ncol == 1:
                     ax.set_ylabel("Amplitude", fontdict=fontdict)
                 ax.set_ylim(lim.min_ampl_1, lim.max_ampl_1)
-                ax2 = _make_ap_plot(ax, freq, g01, g10, ("RL", "LR"), legend=not iant)
-                if nplot % options.ncol == 0:
-                    ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
-                else:
-                    ax2.set_yticks([])
+                _make_ap_plot(ax, ax2, freq, g01, g10, ("RL", "LR"), legend=not iant)
             else:
                 ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
                 _make_reim_plot(ax, freq, g01, g10, ("RL", "LR"), legend=not iant)
+                # label axis if needed
+                #if all_ri and nplot % options.ncol > 1:
+                #    ax.set_yticklabels([])
 
-            if last_row:
-                ax.set_xlabel("Frequency (MHz)", fontdict=fontdict)
-            else:
-                ax.set_xticks([])
-            for axis in ax.xaxis, ax.yaxis:
-                for tick in axis.get_major_ticks():
-                    tick.label.set_fontsize(options.font_size)
 
     log.print("{} plots generated ({} rows and {} columns)".format(nplot, options.nrow, options.ncol))
     return fig
@@ -235,6 +243,40 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
     if x1.shape[1] > 100:
         log.warn("making gain plot for {} frequency slices, this better be intentional!".format(x1.shape[1]))
 
+    all_ri = 'ap' not in set([plot_diag, plot_offdiag])  # do we have only re/im plots?
+    all_ap = 'ri' not in set([plot_diag, plot_offdiag])  # do we have only phase plots?
+    max_sols, max_plots, rows_needed = get_plot_counts(len(sols), int(plot_diag in ('ap', 'ri')) + int(plot_offdiag in ('ap', 'ri')))
+
+    def _prep_plot(nplot, ant, num_gaintype, plot_type):
+        nplot += 1
+        ax = subplot(options.nrow, options.ncol, nplot)
+        last_row = (max_plots - nplot) < options.ncol
+
+        title("{} antenna {}".format(gaintype[num_gaintype], ant), fontdict=fontdict_title)
+
+        ax.set_xlim(lim.min_time, lim.max_time)
+        ax.tick_params("both", direction="in", labelsize=options.font_size)
+        ax2 = ax.twinx()
+        ax2.set_ylim(-lim.max_phase, lim.max_phase)
+        #ax2.set_xticks([])
+        ax2.tick_params("y", direction="in", labelsize=options.font_size)
+        if last_row:
+            ax.set_xlabel("Time (h since start)", fontdict=fontdict)
+        else:
+            ax.set_xticklabels([])
+        # label phase axis if needed
+        if not all_ri and nplot % options.ncol == 0:
+            ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
+        else:
+            ax2.set_yticklabels([])
+            if plot_type != 'ap':
+                ax2.set_yticks([])
+        for axis in ax.xaxis, ax.yaxis:
+            for tick in axis.get_major_ticks():
+                tick.label.set_fontsize(options.font_size)
+        ax.get_yaxis().get_major_formatter().set_useOffset(False)
+        return nplot, ax, ax2
+
     def _make_reim_plot(ax, time, x1, x2, corrs, legend):
         re1, im1, re2, im2 = "Re "+corrs[0], "Im "+corrs[0], "Re "+corrs[1], "Im "+corrs[1]
         for fs in xrange(x1.shape[1]):
@@ -247,12 +289,10 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
             ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
                                    ("r", re1), ("b", im1),
                                    ("c", re2), ("y", im2)
-                               ], loc="upper center", fontsize=options.font_size)
+                               ], loc="upper center", ncol=2, fontsize=options.font_size)
 
-    def _make_ap_plot(ax, time, x1, x2, corrs, legend):
+    def _make_ap_plot(ax, AX2, time, x1, x2, corrs, legend):
         amp1, ph1, amp2, ph2 = "|"+corrs[0]+"|", corrs[0]+ " phase", "|"+corrs[1]+"|", corrs[1]+" phase"
-        ax2 = ax.twinx()
-        ax2.set_ylim(-lim.max_phase, lim.max_phase)
         for fs in range(x1.shape[1]):
             ax2.plot(time, np.angle(x1[:, fs]) * 180 / math.pi, '.c', ms=0.5,
                      label=ph1 if not fs else None)
@@ -264,75 +304,35 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
             ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
                                    ("r", amp1), ("b", amp2),
                                    ("c", ph1),  ("y", ph2)
-                               ], loc="upper center", fontsize=options.font_size)
-        return ax2
-
+                               ], loc="upper center", ncol=2, fontsize=options.font_size)
 
     for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(sols.items()):
         #    print "shape is {}, grid span is {} {}".format(d00.shape, time[[0,-1]], freq[[0,-1]])
         time = (time-time0)/3600.
 
         if plot_diag in ('ap', 'ri'):
-            if nplot >= options.nrow*options.ncol:
-                log.print("Warning: out of plot space. You probably want to add more rows or columns")
-                break
-            nplot += 1
-            ax = subplot(options.nrow, options.ncol, nplot)
-            title("{} antenna {}".format(gaintype[0], ant), fontdict=fontdict_title)
-            if (nplot - 1) / options.ncol == options.nrow - 1:
-                ax.set_xlabel("Time (h since start)", fontdict=fontdict)
-            else:
-                ax.set_xticks([])
-            ax.tick_params("x", direction="in")
+            nplot, ax, ax2 = _prep_plot(nplot, ant, 0, plot_diag)
 
             if plot_diag == 'ap':
                 if nplot % options.ncol == 1:
                     ax.set_ylabel("Amplitude", fontdict=fontdict)
                 ax.set_ylim(lim.min_ampl, lim.max_ampl)
-                ax2 = _make_ap_plot(ax, time, g00, g11, ("RR", "LL"), legend=not iant)
-                if nplot % options.ncol == 0:
-                    ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
-                else:
-                    ax2.set_yticks([])
+                _make_ap_plot(ax, ax2, time, g00, g11, ("RR", "LL"), legend=not iant)
             else:
                 ax.set_ylim(-lim.max_reim, lim.max_reim)
                 _make_reim_plot(ax, time, g00, g11, ("RR", "LL"), legend=not iant)
 
-            for axis in ax.xaxis, ax.yaxis:
-                for tick in axis.get_major_ticks():
-                    tick.label.set_fontsize(options.font_size)
-
         if plot_offdiag in ('ap', 'ri'):
-            if nplot >= options.nrow*options.ncol:
-                log.print("Warning: out of plot space. You probably want to add more rows or columns")
-                break
-            nplot += 1
-
-            ax = subplot(options.nrow, options.ncol, nplot)
-            title("Off-diag {} antenna {}".format(gaintype[1].lower(), ant), fontdict=fontdict_title)
-            ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
-            if (nplot - 1) / options.ncol == options.nrow - 1:
-                ax.set_xlabel("Time (h since start)", fontdict=fontdict)
-            else:
-                ax.set_xticks([])
-            ax.tick_params("x", direction="in")
+            nplot, ax, ax2 = _prep_plot(nplot, ant, 1,  plot_offdiag)
 
             if plot_offdiag == 'ap':
                 if nplot % options.ncol == 1:
                     ax.set_ylabel("Amplitude", fontdict=fontdict)
                 ax.set_ylim(lim.min_ampl_1, lim.max_ampl_1)
-                ax2 = _make_ap_plot(ax, time, g01, g10, ("RL", "LR"), legend=not iant)
-                if nplot % options.ncol == 0:
-                    ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
-                else:
-                    ax2.set_yticks([])
+                _make_ap_plot(ax, ax2, time, g01, g10, ("RL", "LR"), legend=not iant)
             else:
                 ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
                 _make_reim_plot(ax, time, g01, g10, ("RL", "LR"), legend=not iant)
-
-            for axis in ax.xaxis, ax.yaxis:
-                for tick in axis.get_major_ticks():
-                    tick.label.set_fontsize(options.font_size)
 
     log.print("{} plots generated ({} rows and {} columns)".format(nplot, options.nrow, options.ncol))
     return fig
