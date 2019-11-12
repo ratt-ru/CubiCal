@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     parser.add_argument("-o", "--output-name", type=str, metavar="FILENAME", help="Output filename")
 
-    parser.add_argument("--label", type=str, metavar="LABEL", default_plot=label, help="Parameter label (default %default)")
+    parser.add_argument("--label", type=str, metavar="LABEL", default=label, help="Parameter label (default %(default)s)")
 
     parser.add_argument("-G", "--gain", action="store_true", help="Plot as time-variable gains")
 
