@@ -8,6 +8,7 @@ from cubical.plots import gainsols
 if __name__ == "__main__":
 
     _, scriptname = os.path.split(__file__)
+    print(scriptname)
 
     if scriptname.startswith("plot-gain"):
         gain, bandpass = True, False
@@ -56,7 +57,7 @@ if __name__ == "__main__":
         bb = gainsols.read_cubical_gains(filename, options.label)
 
         if gain:
-            fig = gainsols.plot_bandpass_cc(bb, figtitle=figtitle, plot_diag=options.diag, plot_offdiag=options.off_diag)
+            fig = gainsols.plot_gain_cc(bb, figtitle=figtitle, plot_diag=options.diag, plot_offdiag=options.off_diag)
             output_name = options.output_name or filename + (".gain.png" if both else ".png")
             if not options.display:
                 fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')

@@ -60,7 +60,8 @@ class _DefaultWriter(object):
             message = ModColor.Str(message, col=self.color, Bold=self.bold)
         self.logger.log(self.level if level_override is None else level_override, message)
 
-    print = write
+    def print(self, *args):
+        return self.write(" ".join(map(str, args)))
 
 class LoggerWrapper(object):
     def __init__(self, logger, verbose=None, log_verbose=None):
@@ -150,8 +151,8 @@ class LoggerWrapper(object):
         """
         _DefaultWriter(self.logger, logging.EXCEPTION, color=color).write(msg, print_once=print_once)
 
-
-    print = info
+    def print(self, *args):
+        return self.info(" ".join(map(str, args)))
 
     def write(self, message, level=logging.INFO, verbosity=0, print_once=None, color=None):
         # apply verbosity only to INFO levels

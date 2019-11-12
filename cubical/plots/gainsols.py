@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 from __future__ import print_function
-
+from cubical.tools import logger
 from collections import OrderedDict
 import matplotlib.patches as mpatches
 from pylab import *
+
+log = logger.getLogger("gain_plots")
+
 
 class PlotLimits(object):
     def __init__(self):
@@ -14,14 +17,16 @@ class PlotLimits(object):
         self.max_ampl = None
         self.min_ampl_1 = None
         self.max_ampl_1 = None
+        self.min_freq = None
+        self.max_freq = None
+        self.min_time = None
+        self.max_time = None
 
 class PlotOptions(PlotLimits):
     """This holds a set of common plotting options"""
     def __init__(self):
         self.dpi = 150
         self.font_size = 10
-        self.min_freq = None
-        self.max_freq = None
         self.ncol = 4
         self.nrow = 8
         self.width = 4
@@ -35,10 +40,10 @@ class PlotOptions(PlotLimits):
         parser.add_argument("--height", type=float, metavar="INCHES", default=3, help="Plot height")
         parser.add_argument("--dpi", type=int, default=150, help="Plot DPI")
         parser.add_argument("--font-size", type=int, default=6, help="Font size")
-        parser.add_argument("--min-freq", type=float, metavar="MHz", default=0, help="Start frequency")
-        parser.add_argument("--max-freq", type=float, metavar="MHz", default=0, help="End frequency")
-        parser.add_argument("--min-time", type=float, metavar="s", default=0, help="Start time")
-        parser.add_argument("--max-time", type=float, metavar="s", default=0, help="End time")
+        parser.add_argument("--min-freq", type=float, metavar="MHz", default=None, help="Start frequency")
+        parser.add_argument("--max-freq", type=float, metavar="MHz", default=None, help="End frequency")
+        parser.add_argument("--min-time", type=float, metavar="s", default=None, help="Start time")
+        parser.add_argument("--max-time", type=float, metavar="s", default=None, help="End time")
 
         parser.add_argument("--max-reim", type=float, metavar="VALUE", default=None, help="Sets re/im axis limits")
         parser.add_argument("--max-reim-1", type=float, metavar="VALUE", default=None, help="Sets re/im axis limits for off-diagonals")
@@ -54,9 +59,14 @@ def get_plot_limits(options, sols, time0=0):
     # get global plot limits
     auto_limits = PlotLimits()
     auto_limits.min_time = 0
-    auto_limits.max_time = (max([max(time) for time,_,_,_,_,_ in sols.values()]) - time0)/3600.
-    auto_limits.min_freq = min([min(freq) for _,freq,_,_,_,_ in sols.values()])*1e-6
-    auto_limits.max_freq = max([max(freq) for _,freq,_,_,_,_ in sols.values()])*1e-6
+    auto_limits.max_time = (max([max(time) for time,_,_,_,_,_ in sols.values() if len(time)] or [0]) - time0)/3600.
+    auto_limits.min_freq = min([min(freq) for _,freq,_,_,_,_ in sols.values() if len(freq)] or [0])*1e-6
+    auto_limits.max_freq = max([max(freq) for _,freq,_,_,_,_ in sols.values() if len(freq)] or [0])*1e-6
+    if auto_limits.max_time == auto_limits.min_time:
+        auto_limits.max_time += 1
+    if auto_limits.max_freq == auto_limits.min_freq:
+        auto_limits.max_freq += 1
+
     auto_limits.max_ampl = max([ max(abs(g00).max(), abs(g11).max()) for _, _, g00, g01, g10, g11 in sols.values()])
     auto_limits.max_ampl_1 = max([ max(abs(g01).max(), abs(g10).max()) for _, _, g00, g01, g10, g11 in sols.values()])
     auto_limits.min_ampl = min([ min(abs(g00).min(), abs(g11).min()) for _, _, g00, g01, g10, g11 in sols.values()])
@@ -75,7 +85,7 @@ def get_plot_limits(options, sols, time0=0):
 
     return auto_limits
 
-def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Unnorm leakage"), figtitle=None):
+def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Offdiag bandpass"), figtitle=None):
     """
     Makes leakage plots given by sols dict
     """
@@ -90,6 +100,9 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
     nplot = 0
 
     lim = get_plot_limits(options, sols)
+    x1 = sols.values()[0][2]
+    if x1.shape[0] > 100:
+        log.warn("making bandpass plot for {} time slices, this better be intentional!".format(x1.shape[0]))
 
     def _make_reim_plot(ax, freq, x1, x2, corrs, legend):
         re1, im1, re2, im2 = "Re "+corrs[0], "Im "+corrs[0], "Re "+corrs[1], "Im "+corrs[1]
@@ -129,7 +142,7 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
 
         if plot_diag in ('ap', 'ri'):
             if nplot >= options.nrow*options.ncol:
-                print("Warning: out of plot space. You probably want to add more rows or columns")
+                log.warn("Out of plot space. You probably want to add more rows or columns!")
                 break
             nplot += 1
             ax = subplot(options.nrow, options.ncol, nplot)
@@ -158,7 +171,7 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
 
         if plot_offdiag in ('ap', 'ri'):
             if nplot >= options.nrow*options.ncol:
-                print("Warning: out of plot space. You probably want to add more rows or columns")
+                log.print("Warning: out of plot space. You probably want to add more rows or columns")
                 break
             nplot += 1
 
@@ -187,10 +200,10 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
                 for tick in axis.get_major_ticks():
                     tick.label.set_fontsize(options.font_size)
 
-    print("{} plots generated ({} rows and {} columns)".format(nplot, options.nrow, options.ncol))
+    log.print("{} plots generated ({} rows and {} columns)".format(nplot, options.nrow, options.ncol))
     return fig
 
-def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Unnorm leakage"), figtitle=None):
+def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag gain"), figtitle=None):
     """
     Makes leakage plots given by sols dict
     """
@@ -207,6 +220,10 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Unno
     time0 = min([time.min() for time,_,_,_,_,_ in sols.values()])
 
     lim = get_plot_limits(options, sols, time0=time0)
+
+    x1 = sols.values()[0][2]
+    if x1.shape[1] > 100:
+        log.warn("making gain plot for {} frequency slices, this better be intentional!".format(x1.shape[1]))
 
     def _make_reim_plot(ax, time, x1, x2, corrs, legend):
         re1, im1, re2, im2 = "Re "+corrs[0], "Im "+corrs[0], "Re "+corrs[1], "Im "+corrs[1]
@@ -247,7 +264,7 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Unno
 
         if plot_diag in ('ap', 'ri'):
             if nplot >= options.nrow*options.ncol:
-                print("Warning: out of plot space. You probably want to add more rows or columns")
+                log.print("Warning: out of plot space. You probably want to add more rows or columns")
                 break
             nplot += 1
             ax = subplot(options.nrow, options.ncol, nplot)
@@ -260,7 +277,7 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Unno
                 if nplot % options.ncol == 1:
                     ax.set_ylabel("Amplitude", fontdict=fontdict)
                 ax.set_ylim(lim.min_ampl, lim.max_ampl)
-                ax2 = _make_ap_plot(ax, freq, g00, g11, ("RR", "LL"), legend=not iant)
+                ax2 = _make_ap_plot(ax, time, g00, g11, ("RR", "LL"), legend=not iant)
                 if nplot % options.ncol == 0:
                     ax2.set_ylabel("Phase (deg)", fontdict=fontdict)
                 else:
@@ -275,7 +292,7 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Unno
 
         if plot_offdiag in ('ap', 'ri'):
             if nplot >= options.nrow*options.ncol:
-                print("Warning: out of plot space. You probably want to add more rows or columns")
+                log.print("Warning: out of plot space. You probably want to add more rows or columns")
                 break
             nplot += 1
 
@@ -303,7 +320,7 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "Unno
                 for tick in axis.get_major_ticks():
                     tick.label.set_fontsize(options.font_size)
 
-    print("{} plots generated ({} rows and {} columns)".format(nplot, options.nrow, options.ncol))
+    log.print("{} plots generated ({} rows and {} columns)".format(nplot, options.nrow, options.ncol))
     return fig
 
 
@@ -358,13 +375,13 @@ def plot_bandpass_cc(G, FS=None, TS=None, ANTS=slice(None),
                         plot_diag='ap', plot_offdiag='', figtitle=None):
     """Plots G solutions from a CubiCal database"""
     sols = prepare_sols_dict(G, FS, TS, ANTS)
-    plot_bandpass(sols, plot_diag=plot_diag, plot_offdiag=plot_offdiag, figtitle=figtitle)
+    return plot_bandpass(sols, plot_diag=plot_diag, plot_offdiag=plot_offdiag, figtitle=figtitle)
 
 def plot_gain_cc(G, FS=None, TS=None, ANTS=slice(None),
                         plot_diag='ap', plot_offdiag='', figtitle=None):
     """Plots G solutions from a CubiCal database"""
     sols = prepare_sols_dict(G, FS, TS, ANTS)
-    plot_gain(sols, plot_diag=plot_diag, plot_offdiag=plot_offdiag, figtitle=figtitle)
+    return plot_gain(sols, plot_diag=plot_diag, plot_offdiag=plot_offdiag, figtitle=figtitle)
 
 
 def read_cubical_gains(filename, label="G"):
@@ -375,15 +392,15 @@ def read_cubical_gains(filename, label="G"):
     from cubical.database import pickled_db
     db = pickled_db.PickledDatabase()
     db._load(filename)
-    print("{} contains solutions for {}".format(filename, " ".join(db.names())))
+    log.print("{} contains solutions for {}".format(filename, " ".join(db.names())))
     gg = db['{}:gain'.format(label)]
-    print("  ",gg.shape, gg.axis_labels)  # axis info
-    print("  can be interpolated over axes", gg.interpolation_axes)
-    print("   antennas are", gg.grid[gg.ax.ant])
+    log.print("  ",gg.shape, gg.axis_labels)  # axis info
+    log.print("  can be interpolated over axes", gg.interpolation_axes)
+    log.print("   antennas are", gg.grid[gg.ax.ant])
     time, freq = gg.grid[gg.ax.time], gg.grid[gg.ax.freq]  # grid info
-    print("  grid span is ", time[[0, -1]], freq[[0, -1]])
+    log.print("  grid span is ", time[[0, -1]], freq[[0, -1]])
     minfreq, maxfreq = freq[[0, -1]]
     # this is how to check for valid slices
-    print("  valid antennas:", " ".join(map(str, [ant for ant in range(len(gg.grid[gg.ax.ant]))
+    log.print("  valid antennas:", " ".join(map(str, [ant for ant in range(len(gg.grid[gg.ax.ant]))
                                                   if gg.is_slice_valid(ant=ant, corr1=0, corr2=0)])))
     return gg
