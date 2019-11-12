@@ -134,21 +134,27 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
                                    ("r", amp1), ("b", amp2),
                                    ("c", ph1),  ("y", ph2)
                                ], loc="upper center", fontsize=options.font_size)
+        ax2.set_xticks([])
         return ax2
 
-    for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(sols.items()):
+
+    plot_per_sol = int(plot_diag in ('ap', 'ri')) + int(plot_offdiag in ('ap', 'ri'))
+    num_plots = len(sols)*plot_per_sol
+    rows_needed = int(math.ceil(num_plots / float(options.ncol)))
+    if rows_needed > options.nrow:
+        log.warn("Not enough rows to display all plots, {} rows needed".format(rows_needed))
+    max_sols = options.nrow*options.ncol//plot_per_sol
+
+    for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(sols.items()[:max_sols]):
         #    print "shape is {}, grid span is {} {}".format(d00.shape, time[[0,-1]], freq[[0,-1]])
         freq = freq * 1e-6
 
         if plot_diag in ('ap', 'ri'):
-            if nplot >= options.nrow*options.ncol:
-                log.warn("Out of plot space. You probably want to add more rows or columns!")
-                break
             nplot += 1
             ax = subplot(options.nrow, options.ncol, nplot)
+            last_row = (nplot - 1) // options.ncol == rows_needed-1
+
             title("{} antenna {}".format(gaintype[0], ant), fontdict=fontdict_title)
-            if (nplot - 1) / options.ncol == options.nrow - 1:
-                ax.set_xlabel("Frequency (MHz)", fontdict=fontdict)
             ax.set_xlim(lim.min_freq, lim.max_freq)
             ax.tick_params("x", direction="in")
 
@@ -165,21 +171,21 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
                 ax.set_ylim(-lim.max_reim, lim.max_reim)
                 _make_reim_plot(ax, freq, g00, g11, ("RR", "LL"), legend=not iant)
 
+            if last_row:
+                ax.set_xlabel("Frequency (MHz)", fontdict=fontdict)
+            else:
+                ax.set_xticks([])
             for axis in ax.xaxis, ax.yaxis:
                 for tick in axis.get_major_ticks():
                     tick.label.set_fontsize(options.font_size)
 
         if plot_offdiag in ('ap', 'ri'):
-            if nplot >= options.nrow*options.ncol:
-                log.print("Warning: out of plot space. You probably want to add more rows or columns")
-                break
             nplot += 1
-
             ax = subplot(options.nrow, options.ncol, nplot)
+            last_row = (nplot - 1) // options.ncol == rows_needed-1
+
             title("Off-diag {} antenna {}".format(gaintype[1].lower(), ant), fontdict=fontdict_title)
             ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
-            if (nplot - 1) / options.ncol == options.nrow - 1:
-                ax.set_xlabel("Frequency (MHz)", fontdict=fontdict)
             ax.set_xlim(lim.min_freq, lim.max_freq)
             ax.tick_params("x", direction="in")
 
@@ -196,6 +202,10 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
                 ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
                 _make_reim_plot(ax, freq, g01, g10, ("RL", "LR"), legend=not iant)
 
+            if last_row:
+                ax.set_xlabel("Frequency (MHz)", fontdict=fontdict)
+            else:
+                ax.set_xticks([])
             for axis in ax.xaxis, ax.yaxis:
                 for tick in axis.get_major_ticks():
                     tick.label.set_fontsize(options.font_size)
@@ -271,6 +281,8 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
             title("{} antenna {}".format(gaintype[0], ant), fontdict=fontdict_title)
             if (nplot - 1) / options.ncol == options.nrow - 1:
                 ax.set_xlabel("Time (h since start)", fontdict=fontdict)
+            else:
+                ax.set_xticks([])
             ax.tick_params("x", direction="in")
 
             if plot_diag == 'ap':
@@ -301,6 +313,8 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
             ax.set_ylim(-lim.max_reim_1, lim.max_reim_1)
             if (nplot - 1) / options.ncol == options.nrow - 1:
                 ax.set_xlabel("Time (h since start)", fontdict=fontdict)
+            else:
+                ax.set_xticks([])
             ax.tick_params("x", direction="in")
 
             if plot_offdiag == 'ap':
