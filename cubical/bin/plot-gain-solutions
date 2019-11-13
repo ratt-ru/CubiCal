@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 from __future__ import print_function
-import os.path
 import pylab
 
 from cubical.plots import gainsols, leakages
 
-if __name__ == "__main__":
-
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="""Makes plots of CubiCal gain solutions""",
@@ -39,12 +37,12 @@ if __name__ == "__main__":
     manytypes = (int(options.gain) + int(options.bandpass) + int(options.leakage)) > 1
 
     for filename in options.files:
-        figtitle = filename
-
         print("Trying to read from CubiCal database {} (label is {})".format(filename, options.label or "auto"))
         bb = gainsols.read_cubical_gains(filename, options.label)
         if not bb:
             continue
+
+        figtitle = "{} {}".format(filename, bb.name)
 
         if options.gain or bb.name[0] == "G":
             fig = gainsols.plot_gain_cc(bb, figtitle=figtitle, plot_diag=options.diag or "ap", plot_offdiag=options.off_diag)
@@ -67,3 +65,8 @@ if __name__ == "__main__":
 
     if options.display:
         pylab.show()
+
+if __name__ == "__main__":
+    import ipdb
+    with ipdb.launch_ipdb_on_exception():
+        main()

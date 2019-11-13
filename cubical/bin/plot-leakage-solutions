@@ -107,6 +107,8 @@ def main():
         else:
             print("Trying to read {} as a CubiCal database".format(filename))
             Dcc = leakages.read_cubical_leakages(filename)
+            figtitle = "{} {}".format(filename, Dcc.name)
+
             if options.ref_ant:
                 figtitle += " (re-referenced to antenna {})".format(refant)
             fig = leakages.plot_leakages_cc(Dcc, plot_diag=options.diag, plot_offdiag=options.off_diag,

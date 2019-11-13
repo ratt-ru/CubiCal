@@ -421,13 +421,15 @@ def read_cubical_gains(filename, label=None):
             return None
 
     gg = db['{}:gain'.format(label)]
-    log.print("  ",gg.shape, gg.axis_labels)  # axis info
-    log.print("  can be interpolated over axes", gg.interpolation_axes)
-    log.print("   antennas are", gg.grid[gg.ax.ant])
+    log.print("  axes are: {}; shape is {}".format(", ".join(gg.axis_labels), gg.shape))  # axis info
+    log.print("  can be interpolated over axes {}".format(" ".join([gg.axis_labels[i] for i in gg.interpolation_axes])))
     time, freq = gg.grid[gg.ax.time], gg.grid[gg.ax.freq]  # grid info
-    log.print("  grid span is ", time[[0, -1]], freq[[0, -1]])
-    minfreq, maxfreq = freq[[0, -1]]
-    # this is how to check for valid slices
-    log.print("  valid antennas:", " ".join(map(str, [ant for ant in range(len(gg.grid[gg.ax.ant]))
-                                                  if gg.is_slice_valid(ant=ant, corr1=0, corr2=0)])))
+    log.print("    time span {} h (start {:f}), freq span {} to {} MHz".format(
+                    (time[-1]-time[0])/3600, time[0], freq[0]*1e-6, freq[-1]*1e-6))
+
+    valid_ants = set([ant for iant, ant in enumerate(gg.grid[gg.ax.ant])
+                      if gg.is_slice_valid(ant=iant, corr1=0, corr2=0)])
+
+    log.print("  valid antennas:", " ".join([ant for ant in gg.grid[gg.ax.ant] if ant in valid_ants]))
+    log.print("  missing antennas:", " ".join([ant for ant in gg.grid[gg.ax.ant] if ant not in valid_ants] or ["none"]))
     return gg
