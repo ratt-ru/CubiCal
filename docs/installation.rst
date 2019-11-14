@@ -33,23 +33,34 @@ follows:
                               libcfitsio-dev)
 	sudo apt install -y $CUBICAL_DEPENDENCIES
 
+.. warning::
+
+	A known casacore bug can cause data corruption on large reads. If your
+	use-case falls in this category, please `build and install casacore from
+	source`_.
+
+	.. _`build and install casacore from source`: https://github.com/casacore/casacore
+
 If you wish to install CubiCal in a virtual environment (recommended), see
 `Using a virtual environment`_.
 
-.. note::
-
-	CubiCal predicts model visiblities using Montblanc_. The CPU version of Montblanc is
-	installed automatically. To install the GPU version of Montblanc, follow the
-	instructions here_ before installing cubical.
-
-	.. _Montblanc: https://arxiv.org/abs/1501.07719
-	.. _here: https://montblanc.readthedocs.io
-
-CubiCal can now be installed by running the following:
+CubiCal can be installed by running the following:
 
 .. code:: bash
 
 	pip3 install git+https://github.com/ratt-ru/CubiCal.git@1.4.0
+
+.. note::
+
+	CubiCal can predict model visiblities using Montblanc_, but it is not installed
+	by default. To install CubiCal with Montblanc, run:
+
+	.. _Montblanc: https://montblanc.readthedocs.io
+
+	.. code:: bash
+
+		pip3 install "cubical[lsm-support]@git+https://github.com/ratt-ru/CubiCal.git@1.4.0"
+
 
 .. warning::
 
@@ -59,6 +70,13 @@ CubiCal can now be installed by running the following:
 	.. code:: bash
 
 		pip3 install -e path/to/repo/
+
+	If you require Montblanc, run:
+
+	.. code:: bash
+
+		pip3 install -e path/to/repo/"[lsm-support]"
+
 
 Using a virtual environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
