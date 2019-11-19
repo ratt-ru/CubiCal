@@ -274,9 +274,9 @@ class PhaseSlopeGains(ParameterisedGains):
             # complicated slice :) we take the 0,0 phase offset of the reference antenna,
             # and subtract that from the phases of all other antennas and elements
             ref_slice = slice(self.ref_ant, self.ref_ant+1, 1)
-            ref_params = slope_params[:,:,:,ref_slice,:,(0,1),(0,1)]
-            slope_params[:,:,:,:,:,(0,1),(0,1)] -= ref_params
-        
+            ref_params = slope_params[:,:,:,ref_slice,:,0,0]
+            slope_params[:,:,:,:,:,(0,1),(0,1)] -= ref_params[..., None]
+
         for idir in self.fix_directions:
             slope_params[idir, ...] = 0
 
