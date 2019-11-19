@@ -89,6 +89,9 @@ class MasterMachine:
         self._dd_term = options.get('dd-term')
         self._maxiter = options.get('max-iter', 0)
 
+        self._diag_only = options.get('diag-only')
+        self._offdiag_only = options.get('offdiag-only')
+
         self._prop_flags = options.get('prop-flags', 'default')
 
         self._epsilon = options.get('epsilon')
@@ -145,6 +148,16 @@ class MasterMachine:
     def dd_term(self):
         """This property is true if the machine represents a direction-dependent gain"""
         return self._dd_term
+
+    @property
+    def diag_only(self):
+        """This property is true if the machine solves using diagonal visibilities only"""
+        return self._diag_only
+
+    @property
+    def offdiag_only(self):
+        """This property is true if the machine solves using off-diagonal visibilities only"""
+        return self._offdiag_only
 
     @property
     def epsilon(self):
@@ -243,7 +256,7 @@ class MasterMachine:
         return flag_count
 
     @abstractmethod
-    def compute_residual(self, obser_arr, model_arr, resid_arr, full2x2=True):
+    def compute_residual(self, obser_arr, model_arr, resid_arr, require_full=True):
         """
         This method should compute the residual at the the full time-frequency resolution of the
         data. Must populate resid_arr with the values of the residual. Function signature must be 
@@ -259,9 +272,9 @@ class MasterMachine:
             resid_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array in which to place the 
                 residual values.
-            full2x2 (bool):
+            require_full (bool):
                 If True, a full 2x2 residual is required. If False, only the terms used in the solution
-                (e.g. the diagonals) are required.
+                (e.g. if a solution is diagonal, only the diagonals) are required.
         """
 
         return NotImplementedError
@@ -360,8 +373,10 @@ class MasterMachine:
 
         # equations per visibility slot. We have two (real/imag, or normal and conjugate) per model
         # and per correlation product. This is just a normalization factor used in the bookkeeping.
-        # TODO: account for diag-only modes, where we have fewer corr products
-        self.eqs_per_record = 2 * self.n_mod * self.n_cor * self.n_cor
+        self.eqs_per_record = 2 * self.n_mod * self.n_cor
+        # full 2x2 as opposed to diag-only or off-diag-only? Multiply by 2
+        if not self.diag_only or self.offdiag_only:
+            self.eqs_per_record *= self.n_cor
 
         # (n_ant) vector containing the number of valid equations per antenna (for any direction)
 
@@ -383,7 +398,7 @@ class MasterMachine:
         self._chisq_norm_factor_0 = self._chisq_norm_factor
 
 
-    def compute_chisq(self, resid_arr, inv_var_chan):
+    def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
         """
         Computes chi-squared statistics based on given residuals.
         Args:
@@ -408,7 +423,12 @@ class MasterMachine:
         # finally sum over frequency intervals.
 
         chisq = np.zeros(resid_arr.shape[1:4], np.float64)
-        self.generics.compute_chisq(resid_arr, chisq)
+        if self.diag_only:
+            self.generics.compute_chisq_diag(resid_arr, chisq)
+        elif self.offdiag_only:
+            self.generics.compute_chisq_offdiag(resid_arr, chisq)
+        else:
+            self.generics.compute_chisq(resid_arr, chisq)
 
         # Normalize this by the per-channel variance.
 

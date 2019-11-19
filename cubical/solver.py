@@ -140,12 +140,8 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     resid_shape = [gm.n_mod, gm.n_tim, gm.n_fre, gm.n_ant, gm.n_ant, gm.n_cor, gm.n_cor]
 
     resid_arr = gm.allocate_vis_array(resid_shape, obser_arr.dtype, zeros=True)
-    gm.compute_residual(obser_arr, model_arr, resid_arr)
+    gm.compute_residual(obser_arr, model_arr, resid_arr, require_full=True)
     resid_arr[:,flags_arr!=0] = 0
-
-    # This flag is set to True when we have an up-to-date residual in resid_arr.
-    
-    have_residuals = True
 
     # apply MAD flagging
     madmax.set_mode(GD['madmax']['enable'])
@@ -177,12 +173,14 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         log.error("{} no solutions: {}; flags {}".format(label, gm.conditioning_status_string, get_flagging_stats()))
         return (obser_arr if compute_residuals else None), stats, None
 
-    def compute_chisq(statfield=None):
+    def compute_chisq(statfield=None, full=True):
         """
         Computes chi-squared statistic based on current residuals and noise estimates.
         Populates the stats object with it.
+
+        Full=True at the beginning and end of a solution, and it is passed to gm.compute_chisq()
         """
-        chisq, chisq_per_tf_slot, chisq_tot = gm.compute_chisq(resid_arr, inv_var_chan)
+        chisq, chisq_per_tf_slot, chisq_tot = gm.compute_chisq(resid_arr, inv_var_chan, require_full=full)
 
         if statfield:
             getattr(stats.chanant, statfield)[...]  = np.sum(chisq, axis=0)
@@ -191,7 +189,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
         return chisq_per_tf_slot, chisq_tot
 
-    chi, stats.chunk.chi2u = compute_chisq(statfield='initchi2')
+    chi, stats.chunk.chi2u = compute_chisq(statfield='initchi2', full=True)
     stats.chunk.chi2_0 = stats.chunk.chi2u_0 = stats.chunk.chi2u
 
     # The following provides conditioning information when verbose is set to > 0.
@@ -247,10 +245,6 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             if hasattr(gm, 'new_flags'):
                 gm.new_flags = new_flags
 
-        # log.print("{} {} {}".format(de.gains[1,5,2,5], de.posterior_gain_error[1,5,2,5], de.posterior_gain_error[1].mean()))
-        #
-        have_residuals = False
-
         # Compute values used in convergence tests. This check implicitly marks flagged gains as
         # converged.
 
@@ -271,7 +265,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
             old_chi, old_mean_chi = chi, float(stats.chunk.chi2u)
 
-            gm.compute_residual(obser_arr, model_arr, resid_arr)
+            gm.compute_residual(obser_arr, model_arr, resid_arr, require_full=False)
             resid_arr[:,flags_arr!=0] = 0
 
             # do mad max flagging, if requested
@@ -282,9 +276,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
                     gm.update_equation_counts(flags_arr != 0)
                     stats.chunk.num_mad_flagged = ((flags_arr&FL.MAD) != 0).sum()
 
-            chi, stats.chunk.chi2u = compute_chisq()
-
-            have_residuals = True
+            chi, stats.chunk.chi2u = compute_chisq(full=False)
 
             # Check for stalled solutions - solutions for which the residual is no longer improving.
             # Don't do this on a major step (i.e. when going from term to term in a chain), as the
@@ -341,8 +333,8 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     # check this again, because final round of flagging could have killed us
     if gm.has_valid_solutions:
         # Do we need to recompute the final residuals?
-        if (sol_opts['last-rites'] or compute_residuals) and (not have_residuals or flagged):
-            gm.compute_residual(obser_arr, model_arr, resid_arr)
+        if (sol_opts['last-rites'] or compute_residuals):
+            gm.compute_residual(obser_arr, model_arr, resid_arr, require_full=True)
             resid_arr[:,flags_arr!=0] = 0
 
             # do mad max flagging, if requested
@@ -357,7 +349,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         if sol_opts['last-rites']:
             stats.chunk.noise, inv_var_antchan, inv_var_ant, inv_var_chan = \
                                         stats.estimate_noise(resid_arr, flags_arr, residuals=True)
-            chi1, stats.chunk.chi2 = compute_chisq(statfield='chi2')
+            chi1, stats.chunk.chi2 = compute_chisq(statfield='chi2', full=True)
         else:
             stats.chunk.chi2 = stats.chunk.chi2u
 
@@ -520,7 +512,7 @@ class _VisDataManager(object):
             if imod is None, otherwise the model axis is omitted.
         """
         if not self._model_corrupted:
-            self.gm.apply_gains(self.model_arr)
+            self.gm.apply_gains(self.model_arr, full2x2=True)
             self._model_corrupted = True
         if imod is None:
             return self.model_arr
@@ -619,7 +611,7 @@ class SolverMachine(object):
                 log(0).print("{}: computing full residuals for final MadMax round".format(self.label))
                 resid_vis1 = self.vdm.corrupt_residual(self.sol_opts["subtract-model"], slice(None))
                 resid_vis = np.zeros_like(resid_vis1)
-                self.gm.apply_inv_gains(resid_vis1, resid_vis)
+                self.gm.apply_inv_gains(resid_vis1, resid_vis, full2x2=True)
                 del resid_vis1
 
             # run madmax on them
@@ -686,7 +678,7 @@ class SolveAndCorrect(SolveOnly):
         SolveOnly.run(self)
         # for corrected visibilities, take the first data/model pair only
         corr_vis = np.zeros_like(self.vdm.obser_arr)
-        self.gm.apply_inv_gains(self.vdm.obser_arr, corr_vis)
+        self.gm.apply_inv_gains(self.vdm.obser_arr, corr_vis, full2x2=True)
         return corr_vis
 
 class SolveAndSubtract(SolveOnly):
@@ -705,7 +697,7 @@ class SolveAndSubtract(SolveOnly):
         # correct residual if required
         if self.output_corrected_residuals:
             corr_vis = np.zeros_like(resid_vis)
-            self.gm.apply_inv_gains(resid_vis, corr_vis)
+            self.gm.apply_inv_gains(resid_vis, corr_vis, full2x2=True)
             return corr_vis
         else:
             return resid_vis
@@ -738,7 +730,7 @@ class CorrectOnly(SolverMachine):
                                    self.vdm.freq_slice, self.soldict)
 
         corr_vis = np.zeros_like(self.vdm.obser_arr)
-        self.gm.apply_inv_gains(self.vdm.obser_arr, corr_vis)
+        self.gm.apply_inv_gains(self.vdm.obser_arr, corr_vis, full2x2=True)
 
         return corr_vis
 
@@ -763,7 +755,7 @@ class SubtractOnly(SolverMachine):
         # correct residual if required
         if self.output_corrected_residuals:
             corr_vis = np.zeros_like(resid_vis)
-            self.gm.apply_inv_gains(resid_vis, corr_vis)
+            self.gm.apply_inv_gains(resid_vis, corr_vis, full2x2=True)
             return corr_vis
         else:
             return resid_vis

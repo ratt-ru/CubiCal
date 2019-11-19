@@ -52,17 +52,37 @@ class PerIntervalGains(MasterMachine):
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, options)
 
+        # === Kernel selection
+        # We have three types of (progressively faster) kernels: 2x2, Diag (diag gains), and DiagDiag (diag gains and data).
+        # We need to choose a kernel for the solve process, and a kernel for computing full residuals.
+        # The choice is based on three binary options that control kernel selection:
+        #
+        #  1. diag-data   (True if data is null on the off-diagonals)
+        #  2. diag-only   (True if only the diagonal terms should be used for the solution)
+        #  3. is_diagonal (True if the gain matrix is diagonal)
+        #
+        # Here's the selection matrix:
+        #
+        #  diag-data  diag-only  is_diagonal    solve kernel    full kernel
+        #  ---------  ---------  -----------    ------------    -----------
+        #      0          0           0             2x2            2x2
+        #      0          0           1            diag           diag
+        #      0          1           0             2x2            2x2
+        #      0          1           1          diag-diag        diag
+        #      1          0           0             2x2            2x2
+        #      1          0           1          diag-diag      diag-diag
+        #      1          1           0             2x2            2x2
+        #      1          1           1          diag-diag      diag-diag
+
         # select which kernels to use for computing full data
         self.kernel = self.get_full_kernel(options, self.is_diagonal)
 
-        # kernel used in solver is diag-diag in diag mode, else uses full kernel version
-        self._diag_only = options.get('diag-only')
-        self.kernel_solve = cubical.kernels.import_kernel('full_complex')
-        
-        #if options.get('diag-data') or options.get('diag-only'):
-        #    self.kernel_solve = cubical.kernels.import_kernel('diagdiag_complex')
-        #else:
-        #    self.kernel_solve = self.kernel
+        # as per matrix above, the solve kernel is the same as the full kernel, except if
+        # solving for diagonal terms only, with a diagonal gain, in which case we can use diag-diag.
+        if not options.get('diag-data') and self.diag_only and self.is_diagonal:
+            self.kernel_solve = cubical.kernels.import_kernel('diagdiag_complex')
+        else:
+            self.kernel_solve = self.kernel
 
         log(2).print("{} kernels are {} {}".format(label, self.kernel, self.kernel_solve))
 
@@ -176,18 +196,15 @@ class PerIntervalGains(MasterMachine):
 
     @classmethod
     def get_full_kernel(cls, options, diag_gains):
-        return cubical.kernels.import_kernel('full_complex')
-        # select which kernels to use
-        # (a) data is diagonal: this forces the use of diagonal gains and diag-diag kernels
-        if options.get('diag-data'):
-            return cubical.kernels.import_kernel('diagdiag_complex')
-        else:
-            # (b) data is 2x2, diagonal gains: use diagonal gain kernel
-            if diag_gains:
-                return cubical.kernels.import_kernel('diag_complex')
-            # (c) data and gains both 2x2: use full kernel
+        # return cubical.kernels.import_kernel('full_complex')
+        # select which kernels to use for full correction/residuals -- see selection matrix above
+        if diag_gains:
+            if options.get('diag-data'):
+                return cubical.kernels.import_kernel('diagdiag_complex')
             else:
-                return cubical.kernels.import_kernel('full_complex')
+                return cubical.kernels.import_kernel('diag_complex')
+        else:
+            return cubical.kernels.import_kernel('full_complex')
 
 
     def get_conj_gains(self):
@@ -242,7 +259,7 @@ class PerIntervalGains(MasterMachine):
         if self.n_dir > 1:
             if self._r is None:
                 self._r = np.empty_like(obser_arr)
-            self.compute_residual(obser_arr, model_arr, self._r)
+            self.compute_residual(obser_arr, model_arr, self._r, require_full=False)
             return self._r
         else:
             return obser_arr
@@ -298,26 +315,26 @@ class PerIntervalGains(MasterMachine):
         # function used to unpack interval resolution to gain resolution
         self._interval_to_gainres = self.copy_or_identity
 
-    def compute_residual(self, obser_arr, model_arr, resid_arr, full2x2=True):
+    def compute_residual(self, obser_arr, model_arr, resid_arr, require_full=True):
         gains_h = self.get_conj_gains()
 
         np.copyto(resid_arr, obser_arr)
 
-        (self.kernel if full2x2 else self.kernel_solve).compute_residual(model_arr,
-                                                                               self.gains, gains_h, resid_arr, *self.gain_intervals)
+        (self.kernel if require_full else self.kernel_solve).compute_residual(model_arr,
+                                                                self.gains, gains_h, resid_arr, *self.gain_intervals)
 
         return resid_arr
 
 
-    def apply_gains(self, model_arr, full2x2=True):
+    def apply_gains(self, model_arr, full2x2=True, dd_only=False):
         gains_h = self.get_conj_gains()
 
         (self.kernel if full2x2 else self.kernel_solve).apply_gains(model_arr,
-                                                                          self.gains, gains_h, *self.gain_intervals)
+                                        self.gains, gains_h, *self.gain_intervals)
 
         return model_arr
 
-    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True):
+    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, dd_only=False):
         g_inv, gh_inv, flag_count = self.get_inverse_gains()
 
         if corr_vis is None:

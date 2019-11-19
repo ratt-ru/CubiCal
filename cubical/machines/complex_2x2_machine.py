@@ -43,8 +43,6 @@ class Complex2x2Gains(PerIntervalGains):
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
 
-        # only solve for off-diagonal terms
-        self._offdiag_only = options["offdiag-only"]
         self._estimate_pzd = options["estimate-pzd"]
 
         # this will be set to PZD and exp(-i*PZD) once the PZD estimate is done
@@ -75,8 +73,8 @@ class Complex2x2Gains(PerIntervalGains):
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
         sols = super(Complex2x2Gains, self).export_solutions()
-        if "pzd" in self.update_type:
-            sols["pzd"] = (masked_array(self._pzd if self._pzd is not None else 0.), self.interval_grid)
+        if "pzd" in self.update_type and self._pzd is not None:
+            sols["pzd"] = (masked_array(self._pzd), self.interval_grid)
         return sols
 
     def import_solutions(self, soldict):
@@ -124,13 +122,16 @@ class Complex2x2Gains(PerIntervalGains):
         jhr = self.get_new_jhr()
         r = self.get_obs_or_res(obser_arr, model_arr)
 
-
-        if self._offdiag_only:
+        if self.offdiag_only:
             jh[...,(0,1),(0,1)] = 0
+            if r is obser_arr:
+                r = r.copy()
             r[...,(0,1),(0,1)] = 0
             
-        if self._diag_only:
+        if self.diag_only:
             jh[...,(0,1),(1,0)] = 0
+            if r is obser_arr:
+                r = r.copy()
             r[...,(0,1),(1,0)] = 0
 
         self.kernel_solve.compute_jhr(jh, r, jhr, self.t_int, self.f_int)

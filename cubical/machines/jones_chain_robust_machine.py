@@ -204,7 +204,7 @@ class JonesChain(MasterMachine):
 
             for ind in range(self.n_terms - 1, self.active_index, -1):
                 term = self.jones_terms[ind]
-                term.apply_gains(cached_model_arr)
+                term.apply_gains(cached_model_arr, full2x2=True)
 
             # collapse direction axis, if current term is non-DD
             if not self.active_term.dd_term and self.n_dir>1:
@@ -408,7 +408,7 @@ class JonesChain(MasterMachine):
 
         return corr_vis, flag_count
 
-    def apply_gains(self, vis):
+    def apply_gains(self, vis, full2x2=True):
         """
         Applies the gains to an array at full time-frequency resolution. 
 
@@ -499,9 +499,12 @@ class JonesChain(MasterMachine):
 
         return MasterMachine.next_iteration(self)[0], major_step
 
-    def compute_chisq(self, resid_arr, inv_var_chan):
+    def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
         """Computes chi-square using the active chain term"""
-        return self.active_term.compute_chisq(resid_arr, inv_var_chan)
+        if require_full:
+            return self.compute_chisq(resid_arr, inv_var_chan)
+        else:
+            return self.active_term.compute_chisq(resid_arr, inv_var_chan)
 
     @property
     def has_valid_solutions(self):

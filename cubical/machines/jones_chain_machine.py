@@ -198,7 +198,7 @@ class JonesChain(MasterMachine):
 
             for ind in range(self.n_terms - 1, self.active_index, -1):
                 term = self.jones_terms[ind]
-                term.apply_gains(cached_model_arr)
+                term.apply_gains(cached_model_arr, full2x2=True)
 
             # collapse direction axis, if current term is non-DD
             if not self.active_term.dd_term and self.n_dir>1:
@@ -226,9 +226,21 @@ class JonesChain(MasterMachine):
         if n_dir > 1:
             if self._r is None:
                 self._r = np.empty_like(obser_arr)
-            r = self.compute_residual(obser_arr, model_arr, self._r)
+            r = self.compute_residual(obser_arr, model_arr, self._r, require_full=False)
         else:
             r = obser_arr
+
+        if self.active_term.offdiag_only:
+            self.jh[..., (0, 1), (0, 1)] = 0
+            if r is obser_arr:
+                r = r.copy()
+            r[..., (0, 1), (0, 1)] = 0
+
+        if self.active_term.diag_only:
+            self.jh[..., (0, 1), (1, 0)] = 0
+            if r is obser_arr:
+                r = r.copy()
+            r[..., (0, 1), (1, 0)] = 0
 
         self._jhr.fill(0)
 
@@ -315,7 +327,7 @@ class JonesChain(MasterMachine):
 
 
     #@profile
-    def compute_residual(self, obser_arr, model_arr, resid_arr):
+    def compute_residual(self, obser_arr, model_arr, resid_arr, require_full=True):
         """
         This function computes the residual. This is the difference between the
         observed data, and the model data with the gains applied to it.
@@ -330,6 +342,9 @@ class JonesChain(MasterMachine):
             resid_arr (np.ndarray): 
                 Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the 
                 computed residuals should be placed.
+            require_full (bool):
+                If True, a full 2x2 residual is required. If False, only the terms used in the solution
+                (e.g. if a solution is diagonal, only the diagonals) are required.
 
         Returns:
             np.ndarray: 
@@ -337,11 +352,12 @@ class JonesChain(MasterMachine):
         """
         g, gh = self.accumulate_gains()
         np.copyto(resid_arr, obser_arr)
-        self.kernel.compute_residual(model_arr, g, gh, resid_arr, 1, 1)
+        kernel = self.kernel if require_full else self.active_term.kernel_solve
+        kernel.compute_residual(model_arr, g, gh, resid_arr, 1, 1)
 
         return resid_arr
 
-    def apply_inv_gains(self, resid_vis, corr_vis=None):
+    def apply_inv_gains(self, resid_vis, corr_vis=None, full2x2=True):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -367,7 +383,7 @@ class JonesChain(MasterMachine):
 
         return corr_vis, flag_count
 
-    def apply_gains(self, vis):
+    def apply_gains(self, vis, full2x2=True):
         """
         Applies the gains to an array at full time-frequency resolution. 
 
@@ -458,9 +474,12 @@ class JonesChain(MasterMachine):
 
         return MasterMachine.next_iteration(self)[0], major_step
 
-    def compute_chisq(self, resid_arr, inv_var_chan):
+    def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
         """Computes chi-square using the active chain term"""
-        return self.active_term.compute_chisq(resid_arr, inv_var_chan)
+        if require_full:
+            return super(JonesChain, self).compute_chisq(resid_arr, inv_var_chan)
+        else:
+            return self.active_term.compute_chisq(resid_arr, inv_var_chan)
 
     @property
     def has_valid_solutions(self):
@@ -484,6 +503,16 @@ class JonesChain(MasterMachine):
     def dd_term(self):
         """Gives corresponding property of the active chain term"""
         return any([ term.dd_term for term in self.jones_terms ])
+
+    @property
+    def diag_only(self):
+        """This property is true if the machine solves using diagonal visibilities only"""
+        return all([ term.diag_only for term in self.jones_terms ])
+
+    @property
+    def offdiag_only(self):
+        """This property is true if the machine solves using off-diagonal visibilities only"""
+        return all([ term.offdiag_only for term in self.jones_terms ])
 
     @property
     def iters(self):
@@ -558,6 +587,7 @@ class JonesChain(MasterMachine):
                                            global_options, opts)
 
         def init_solutions(self):
+            from cubical.main import UserInputError
             for opts in self.chain_options:
                 label = opts["label"]
                 jones_class = machine_types.get_machine_class(opts['type'])
