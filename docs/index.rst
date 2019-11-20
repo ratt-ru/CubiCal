@@ -15,10 +15,10 @@ Contents:
    installation
    usage
    parset
-   cubical
    performance
    licence
 
+.. cubical
 
 Indices and tables
 ==================
