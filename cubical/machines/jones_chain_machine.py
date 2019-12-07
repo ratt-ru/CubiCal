@@ -231,20 +231,24 @@ class JonesChain(MasterMachine):
             r = obser_arr
 
         if self.active_term.offdiag_only:
-            self.jh[..., (0, 1), (0, 1)] = 0
+            # self.jh[..., (0, 1), (0, 1)] = 0
             if r is obser_arr:
                 r = r.copy()
             r[..., (0, 1), (0, 1)] = 0
 
         if self.active_term.diag_only:
-            self.jh[..., (0, 1), (1, 0)] = 0
+            # self.jh[..., (0, 1), (1, 0)] = 0
             if r is obser_arr:
                 r = r.copy()
             r[..., (0, 1), (1, 0)] = 0
 
         self._jhr.fill(0)
 
+        #if self.active_term.jones_label == "D":
+        #    import ipdb; ipdb.set_trace()
+
         self.active_term.kernel.compute_jhr(self.jh, r, self._jhr, 1, 1)
+
 
         for ind in range(0, self.active_index, 1):
             term = self.jones_terms[ind]
@@ -259,6 +263,10 @@ class JonesChain(MasterMachine):
 
         flag_count = self.active_term.kernel.compute_jhjinv(self._jhj, self._jhjinv,
                                                     self.active_term.gflags, self.active_term.eps, FL.ILLCOND)
+
+        #if self.active_term.jones_label == "D":
+        #    import ipdb; ipdb.set_trace()
+
         return self._jhrint, self._jhjinv, flag_count
 
     def implement_update(self, jhr, jhjinv):

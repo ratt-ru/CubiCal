@@ -110,6 +110,7 @@ def main():
             figtitle = "{} {}".format(filename, Dcc.name)
 
             if options.ref_ant:
+                refant = options.ref_ant
                 figtitle += " (re-referenced to antenna {})".format(refant)
             fig = leakages.plot_leakages_cc(Dcc, plot_diag=options.diag, plot_offdiag=options.off_diag,
                                             refant=options.ref_ant, figtitle=figtitle)
