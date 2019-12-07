@@ -27,6 +27,7 @@ class MasterMachine:
     It also provides a Factory class that takes care of creating machines and interfacing with 
     solution tables on disk.
     """
+    __user_warnings = []
 
     def __init__(self, jones_label, data_arr, ndir, nmod, times, freqs, chunk_label, options, diagonal=None):
         """
@@ -74,7 +75,7 @@ class MasterMachine:
 
         """
         import cubical.kernels
-        self.cygenerics = cubical.kernels.import_kernel('cygenerics')
+        self.generics = cubical.kernels.import_kernel('generics')
 
         self._jones_label = jones_label
         self.chunk_label = chunk_label
@@ -398,7 +399,7 @@ class MasterMachine:
         # finally sum over frequency intervals.
 
         chisq = np.zeros(resid_arr.shape[1:4], np.float64)
-        self.cygenerics.cycompute_chisq(resid_arr, chisq)
+        self.generics.compute_chisq(resid_arr, chisq)
 
         # Normalize this by the per-channel variance.
 
@@ -641,6 +642,28 @@ class MasterMachine:
         # if anything at all was loaded from DB, import
         if sols:
             self.import_solutions(sols)
+
+    @classmethod
+    def raise_userwarning(self, level, msg, sort_index, verbosity=0, raise_once=None, color=None):
+        """
+        Raise user warning to be summarized after solving
+        """
+        MasterMachine.__user_warnings.append({
+            "level": level,
+            "msg": msg,
+            "sort_index": sort_index,
+            "raise_once": raise_once,
+            "verbosity": verbosity,
+            "color": color})
+
+    @classmethod
+    def collect_warnings(self):
+        """
+        Sorted list of user warnings raised during solving
+        """
+        res = sorted(MasterMachine.__user_warnings, key=lambda d: d.get("sort_index", 0))
+        MasterMachine.__user_warnings = []
+        return res
 
     class Factory(object):
         """

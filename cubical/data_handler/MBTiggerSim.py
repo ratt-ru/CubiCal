@@ -5,6 +5,7 @@
 """
 Handles the interface between measurement sets, CubiCal and Montblanc.
 """
+from __future__ import print_function
 from builtins import range
 import numpy as np
 import montblanc
@@ -145,7 +146,7 @@ class MSSourceProvider(SourceProvider):
         utc_times = np.unique(self._times[self.sort_ind])[lt:ut]
         dt_start = __mjd2dt([np.min(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
         dt_end = __mjd2dt([np.max(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
-        log.info("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end))
+        log(2).print("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end))
         return mbu.parallactic_angles(
                         np.unique(self._times[self.sort_ind])[lt:ut],
                         self._antpos[la:ua],

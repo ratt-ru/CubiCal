@@ -126,4 +126,5 @@ clip-after = 5
 max-iter = 200 
 conv-quorum = 0.99 
 term-iters = 2 
-
+max-prior-error = .44
+max-post-error = .44

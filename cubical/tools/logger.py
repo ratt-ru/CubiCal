@@ -42,17 +42,23 @@ def getLogFilename():
 
 class _DefaultWriter(object):
     """A default writer logs messages to a logger"""
+    __print_once_keys = []
     def __init__(self, logger, level, color=None, bold=None):
         self.logger = logger
         self.level = level
         self.color = (color or "red") if bold else color
         self.bold = bool(color) if bold is None else bold
 
-    def write(self, message):
+    def write(self, message, level_override=None, print_once=None):
+        if print_once is not None:
+            if print_once in _DefaultWriter.__print_once_keys:
+                return
+            _DefaultWriter.__print_once_keys = list(set(_DefaultWriter.__print_once_keys + [print_once]))
+
         message = message.rstrip()
         if self.color and message:  # do not colorize empty messages, else "\n" is issued independently
             message = ModColor.Str(message, col=self.color, Bold=self.bold)
-        self.logger.log(self.level, message)
+        self.logger.log(self.level if level_override is None else level_override, message)
 
     print = write
 
@@ -80,10 +86,6 @@ class LoggerWrapper(object):
         self.logger.addHandler(self.logfile_handler)
         self.logger.addFilter(_log_filter)
 
-        # make logger methods available
-        for method in "log", "debug", "info", "warning", "error", "critical", "exception":
-            setattr(self,method, getattr(self.logger, method))
-
     def verbosity(self, set_verb=None):
         if set_verb is not None:
             self._verbose = set_verb
@@ -110,29 +112,50 @@ class LoggerWrapper(object):
         # effective verbosity level is either set explicitly when the writer is created, or else use global level
         return _DefaultWriter(self.logger, logging.INFO - level, color=color)
     
-    def warn(self, msg, color=None):
+    def warn(self, msg, color=None, print_once=None):
         """
         Wrapper for log.warn
         """
-        _DefaultWriter(self.logger, logging.WARN, color=color).write(msg)
-    
-    def error(self, msg, color="red"):
+        _DefaultWriter(self.logger, logging.WARN, color=color).write(msg, print_once=print_once)
+
+    warning = warn
+
+    def error(self, msg, color="red", print_once=None):
         """
         Wrapper for log.error
         """
-        _DefaultWriter(self.logger, logging.ERROR, color=color).write(msg)
+        _DefaultWriter(self.logger, logging.ERROR, color=color).write(msg, print_once=print_once)
         
-    def info(self, msg, color=None):
+    def info(self, msg, color=None, print_once=None):
         """
         Wrapper for log.info
         """
-        _DefaultWriter(self.logger, logging.INFO, color=color).write(msg)
-    
+        _DefaultWriter(self.logger, logging.INFO, color=color).write(msg, print_once=print_once)
+
+    def critical(self, msg, color=None, print_once=None):
+        """
+        Wrapper for log.critical
+        """
+        _DefaultWriter(self.logger, logging.CRITICAL, color=color).write(msg, print_once=print_once)
+
+    def debug(self, msg, color=None, print_once=None):
+        """
+        Wrapper for log.debug
+        """
+        _DefaultWriter(self.logger, logging.DEBUG, color=color).write(msg, print_once=print_once)
+
+    def exception(self, msg, color=None, print_once=None):
+        """
+        Wrapper for log.exception
+        """
+        _DefaultWriter(self.logger, logging.EXCEPTION, color=color).write(msg, print_once=print_once)
+
+
     print = info
 
-    def write(self, message):
-        return self.logger.info(message.rstrip())
-
+    def write(self, message, level=logging.INFO, verbosity=0, print_once=None, color=None):
+        _DefaultWriter(self.logger, level - int(verbosity), color=color).write(message,
+                                                                               print_once=print_once)
 
 _proc_status = '/proc/%d/status' % os.getpid()
 
@@ -256,9 +279,13 @@ class ColorStrippingFormatter(logging.Formatter):
         if self.strip:
             return re.sub("\033\\[[0-9]+m", "", msg, 0)
         else:
+            msg = re.sub("^INFO      ", "\033[1;37;42mINFO      \033[0m", msg)
+            msg = re.sub("^WARNING   ", "\033[1;37;43mWARNING   \033[0m", msg)
+            msg = re.sub("^CRITICAL  ", "\033[1;5;41mCRITICAL  \033[0m", msg)
+            msg = re.sub("^ERROR     ", "\033[1;5;41mERROR     \033[0m", msg)
             return msg
 
-_fmt = " - %(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
+_fmt = "%(levelname)-10s%(separator)s - %(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
 #        _fmt = "%(asctime)s %(name)-25.25s | %(message)s"
 _datefmt = '%H:%M:%S'#'%H:%M:%S.%f'
 _logfile_formatter = ColorStrippingFormatter(_fmt, _datefmt, strip=True)

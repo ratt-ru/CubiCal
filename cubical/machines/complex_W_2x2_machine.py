@@ -11,7 +11,7 @@ import cubical.kernels
 import time
 
 from cubical.tools import logger
-log = logger.getLogger("solver")  #TODO check this "complex_2x2"
+log = logger.getLogger("robust_2x2")  #TODO check this "complex_2x2"
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -44,7 +44,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options)
 
-        self.cykernel_robust = cubical.kernels.import_kernel("cyfull_W_complex")
+        self.kernel_robust = cubical.kernels.import_kernel("full_W_complex")
 
         self.residuals = np.empty_like(data_arr)
 
@@ -57,6 +57,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.npol = options.get("robust-npol", 2.) #testing if the number of polarizations really have huge effects
 
         self.v_int = options.get("robust-int", 1)
+
+        self.cov_scale = options.get("robust-scale", True) # scale the covariance by n_corr*2
 
     @classmethod
     def determine_diagonality(cls, options):
@@ -89,20 +91,20 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         jh = self.get_new_jh(model_arr)
 
-        self.cykernel_robust.cycompute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
+        self.kernel_robust.compute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
         jhwr = self.get_new_jhr()
 
         if self.iters == 1:
             self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
-        self.cykernel_robust.cycompute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
+        self.kernel_robust.compute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
 
         jhwj, jhwjinv = self.get_new_jhj()
 
-        self.cykernel_robust.cycompute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
+        self.kernel_robust.compute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
 
-        flag_count = self.cykernel_robust.cycompute_jhjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
+        flag_count = self.kernel_robust.compute_jhjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
 
         return jhwr, jhwjinv, flag_count
 
@@ -113,15 +115,19 @@ class ComplexW2x2Gains(PerIntervalGains):
         # jhjinv is 2x2 block-diagonal, with Hermitian blocks. TODO: what's the variance on the off-diagonals?
         # variance of gain is diagonal of jhjinv
         # not sure about how the  weights affects the posterior variance. here we actually pass jhwj, not jhj
-
         if self.posterior_gain_error is None:
             self.posterior_gain_error = np.zeros_like(jhjinv.real)
-        diag = jhjinv[..., (0, 1), (0, 1)].real
+        
+        #----normalising to reduce the effects of the weights on jhj---#
+        #----not sure if this is the best way to do this---------------#
+        
+        norm = ((1/2.)*np.average(self.weights[:,self.new_flags==0,:].real))**2
+        diag = norm*jhjinv[..., (0, 1), (0, 1)].real
         self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
 
         update = self.init_update(jhr)
-        self.cykernel_robust.cycompute_update(jhr, jhjinv, update)
+        self.kernel_robust.compute_update(jhr, jhjinv, update)
 
         # if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
         update += self.gains
@@ -186,19 +192,30 @@ class ComplexW2x2Gains(PerIntervalGains):
           
         else:
 
-            unflagged = self.new_flags==False
-        
-            num_init_unflaged_eqs = np.sum(unflagged)
+            unflagged = self.new_flags==False 
 
-            Nvis = num_init_unflaged_eqs/2. #only half of the visibilties are used for covariance computation
+            Nvis = np.sum(unflagged)/2. #only half of the visibilties are used for covariance computation
 
             ompstd = np.zeros((4,4), dtype=self.dtype)
 
-            self.cykernel_robust.cycompute_cov(self.residuals, ompstd, self.weights)
+            self.kernel_robust.compute_cov(self.residuals, ompstd, self.weights)
+
+            #---scaling the variance in this case improves the robust solver performance----------#
+            #---if the covariance and variance are close the residuals are dominated by sources---#
+            if self.cov_scale:
+                if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
+                    norm = 2*self.npol*Nvis
+                else:
+                    norm = Nvis
+            else:
+                norm = Nvis
+
+            if self.iters % 5 == 0 or self.iters == 1:
+                print("{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis), file=log(2))
 
             # removing the offdiagonal correlations
 
-            std = np.diagonal(ompstd/Nvis) + self.eps**2 # To avoid division by zero
+            std = np.diagonal(ompstd/norm) + self.eps**2 # To avoid division by zero
 
             covinv = np.eye(4, dtype=self.dtype)
 
@@ -267,7 +284,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         # import pdb; pdb.set_trace()
 
-        self.cykernel_robust.cycompute_weights(self.residuals, covinv, w, v, self.npol)
+        self.kernel_robust.compute_weights(self.residuals, covinv, w, v, self.npol)
 
         # re-set weights for visibillities flagged from start to 0
         w[:,self.new_flags,:] = 0
@@ -276,14 +293,15 @@ class ComplexW2x2Gains(PerIntervalGains):
         aa, ab = np.tril_indices(self.n_ant, -1)
         w_real = np.real(w[:,:,:,aa,ab,0].flatten())
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
-        norm = np.average(w_nzero) 
+
+        # norm = np.average(w_nzero) 
   
-        self.weights = w/norm
+        self.weights = w #/norm
         
         #-----------computing the v parameter---------------------#
         # This computation is only done after a certain number of iterations. Default is 5
         if self.iters % self.v_int == 0 or self.iters == 1:
-            wn = w_nzero/norm 
+            wn = w_nzero #/norm 
             self.v = _brute_solve_v(wn)
         
         return 

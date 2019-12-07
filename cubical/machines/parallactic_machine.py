@@ -91,7 +91,7 @@ class parallactic_machine(object):
         if self.__enable_pa:
             dt_start = self.__mjd2dt([np.min(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
             dt_end = self.__mjd2dt([np.max(utc_timestamp)])[0].strftime('%Y/%m/%d %H:%M:%S')
-            print("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end), file=log(1))
+            print("Computing parallactic angles for times between %s and %s UTC" % (dt_start, dt_end), file=log(2))
 
             unique_times = np.unique(utc_timestamp)
             unique_pa = np.asarray([
@@ -234,7 +234,7 @@ class parallactic_machine(object):
         if not self.__enable_rotation:
             return vis
         if ack:
-            log.info("Applying P Jones to sky (precomputed)")
+            log(2).print("Applying P Jones to sky (precomputed)")
         return self.__apply_rotation(utc_timestamp, vis, a1, a2, angles=angles, clockwise=False)
 
     def derotate(self, utc_timestamp, vis, a1, a2, angles=None, ack=True):
@@ -246,7 +246,7 @@ class parallactic_machine(object):
         if not self.__enable_derotation:
             return vis
         if ack:
-            log.info("Applying P Jones to corrected data (precomputed)")
+            log(2).print("Applying P Jones to corrected data (precomputed)")
         return self.__apply_rotation(utc_timestamp, vis, a1, a2, angles=angles, clockwise=True)
 
     @property
