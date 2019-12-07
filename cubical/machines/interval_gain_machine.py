@@ -150,7 +150,7 @@ class PerIntervalGains(MasterMachine):
 
         if not (type(self.fix_directions) is list and
                 all(map(lambda x: type(x) is int, self.fix_directions))):
-            raise ArgumentError("Fix directions must be number or list of numbers")
+            raise ValueError("fix-dir must be number or list of numbers")
 
         # True if gains are loaded from a DB
         self._gains_loaded = False
@@ -205,7 +205,6 @@ class PerIntervalGains(MasterMachine):
                 return cubical.kernels.import_kernel('diag_complex')
         else:
             return cubical.kernels.import_kernel('full_complex')
-
 
     def get_conj_gains(self):
         if self._gh is None:
@@ -325,7 +324,6 @@ class PerIntervalGains(MasterMachine):
 
         return resid_arr
 
-
     def apply_gains(self, model_arr, full2x2=True, dd_only=False):
         gains_h = self.get_conj_gains()
 
@@ -341,7 +339,7 @@ class PerIntervalGains(MasterMachine):
             corr_vis = np.empty_like(obser_arr)
 
         (self.kernel if full2x2 else self.kernel_solve).compute_corrected(obser_arr,
-                                                                                g_inv, gh_inv, corr_vis, *self.gain_intervals)
+                                                            g_inv, gh_inv, corr_vis, *self.gain_intervals)
 
         return corr_vis, flag_count
 

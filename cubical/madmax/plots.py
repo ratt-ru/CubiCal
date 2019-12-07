@@ -17,8 +17,8 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
     resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
     resmask[:] = fl_prior[..., np.newaxis, np.newaxis] #| absres[0, :, :, p, q]==0
     res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
-    vmin = max(res.min(), 1e-9)
-    vmax = res.max()
+    vmin = float(max(res.min(), 1e-9))
+    vmax = float(res.max())
     if vmin != vmax:
         from matplotlib.colors import LogNorm
         norm = LogNorm(vmin, vmax)
@@ -177,12 +177,13 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
                 if per_corr:
                     for ic1, c1 in enumerate(metadata.feeds.upper()):
                         for ic2, c2 in enumerate(metadata.feeds.upper()):
-                            pylab.axhline(medmad[0, ic1, ic2], ls="-", color=colors[ic1][ic2])
-                            pylab.text(0, medmad[0, ic1, ic2], "MMAD", color=colors[ic1][ic2],
+                            if not medmad.mask[0, ic1, ic2]: 
+                                pylab.axhline(medmad[0, ic1, ic2], ls="-", color=colors[ic1][ic2])
+                                pylab.text(0, medmad[0, ic1, ic2], "MMAD", color=colors[ic1][ic2],
                                        ha='right', va='center', size='x-small')
-                            if med_thr is not None:
-                                pylab.axhline(med_thr[0, ic1, ic2], ls=":", color=colors[ic1][ic2])
-                                pylab.text(0, med_thr[0, ic1, ic2], "threshold", color=colors[ic1][ic2],
+                                if med_thr is not None:
+                                    pylab.axhline(med_thr[0, ic1, ic2], ls=":", color=colors[ic1][ic2])
+                                    pylab.text(0, med_thr[0, ic1, ic2], "threshold", color=colors[ic1][ic2],
                                            ha='right', va='center', size='x-small')
                 else:
                     pylab.axhline(medmad[0], ls="-", color="blue")

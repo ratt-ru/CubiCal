@@ -132,16 +132,23 @@ class MasterMachine:
     @classmethod
     def determine_allocators(cls, options):
         """
-        Returns allocation functions appropriate to the machine class and set of machine options.
-        Different machines may prefer different memory layouts, so other code needs to know up front which allocators
-        to use.
-        Returns tuple of vis_allocator, flag_allocator.
+        Class method. Given a machine class and a set of options, returns allocator
+        functions appropriate to this machine type.
+
+        Returns:
+            tuple:
+                - visibility array allocator
+                - flag array allocator
+                - gain array allocator
         """
         return NotImplementedError
 
     @classmethod
     def determine_diagonality(cls, options):
-        """Returns true if the machine class, given the options, represents a diagonal gain"""
+        """
+        Class method. Given a machine class and a set of options, returns True if the machine is
+        going to represent a diagonal-only gain term.
+        """
         return NotImplementedError
 
     @property

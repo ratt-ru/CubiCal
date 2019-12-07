@@ -40,6 +40,7 @@ logger.init("cc")
 # manually set the log levels to something less annoying.
 
 import logging
+import warnings
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 GD = None
@@ -260,6 +261,15 @@ def main(debugging=False):
             parser.write_to_parset(out_parset)
 
         enable_pdb = GD["debug"]["pdb"]
+
+        if GD["debug"]["escalate-warnings"]:
+            warnings.simplefilter('error', UserWarning)
+            np.seterr(all='raise')
+            if GD["debug"]["escalate-warnings"] > 1:
+                warnings.filterwarnings("error")
+
+        # clean up shared memory from any previous runs
+        shm_utils.cleanupStaleShm()
 
         # now setup logging
         logger.logToFile(basename + ".log", append=GD["log"]["append"])
@@ -622,7 +632,8 @@ def main(debugging=False):
             import traceback
             print(ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__,
                                                                     exc, traceback.format_exc())), file=log)
-            if enable_pdb and not type(exc) is UserInputError:
+            if enable_pdb and type(exc) is not UserInputError:
+                warnings.filterwarnings("default")  # in case pdb itself throws a warning
                 from cubical.tools import pdb
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)
