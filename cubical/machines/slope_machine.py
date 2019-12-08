@@ -11,6 +11,7 @@ def _normalize(x, dtype):
     """
     Helper function: normalizes array to [0,1] interval.
     """
+
     if len(x) > 1:
         return ((x - x[0]) / (x[-1] - x[0])).astype(dtype)
     elif len(x) == 1:
@@ -244,7 +245,8 @@ class PhaseSlopeGains(ParameterisedGains):
 
         self.slope.compute_update(jhr, jhjinv, update)
 
-        if self.iters%2 == 0:
+        # It is safer to average every iteration when using a phase only solver.
+        if self.iters%1 == 0:
             update *= 0.5
         
         self.slope_params += update
@@ -255,18 +257,26 @@ class PhaseSlopeGains(ParameterisedGains):
 
         self.slope.construct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
+
     def restrict_solution(self, slope_params):
         """
         Restricts the solution by invoking the inherited restrict_solution method and applying
         any machine specific restrictions.
         """
 
-        # ParameterisedGains.restrict_solution(self)
+        #ParameterisedGains.restrict_solution(self)
         
+        # These need to be set here as we do not call the interval restrict solutions - 
+        # out solutions are the parameters and not the gains themselves.
+        self._gh_update = self._ghinv_update = True
+
         if self.ref_ant is not None:
             # complicated slice :) we take the 0,0 phase offset of the reference antenna,
             # and subtract that from the phases of all other antennas and elements
-            slope_params -= slope_params[:,:,:,self.ref_ant,:,0,0][:,:,:,np.newaxis,:,np.newaxis,np.newaxis]
+            ref_slice = slice(self.ref_ant, self.ref_ant+1, 1)
+            ref_params = slope_params[:,:,:,ref_slice,:,0,0]
+            slope_params[:,:,:,:,:,(0,1),(0,1)] -= ref_params[..., None]
+
         for idir in self.fix_directions:
             slope_params[idir, ...] = 0
 
@@ -299,3 +309,4 @@ class PhaseSlopeGains(ParameterisedGains):
         self.jhjinv = np.zeros_like(jhj)
 
         self.slope.compute_jhjinv(jhj, self.jhjinv, self.eps)
+
