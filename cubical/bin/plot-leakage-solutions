@@ -1,0 +1,130 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+from collections import OrderedDict
+import pylab
+import numpy as np
+
+from cubical.plots import gainsols, leakages
+
+
+import ipdb
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="""Makes plots of leakage solutions""",
+                                     formatter_class=argparse.RawTextHelpFormatter)
+
+    parser.add_argument("-d", "--display", action="store_true", help="Display plots rather than saving them")
+
+    parser.add_argument("-o", "--output-name", type=str, metavar="FILENAME", help="Output filename")
+
+    parser.add_argument("-r", "--ref-ant", metavar="ANTENNA", type=str, help="Impose a reference antenna on the leakages")
+
+    parser.add_argument("--diag", type=str, choices=("ri", "ap"), help="Also plot diagonal elements as real/imag or amp/phase")
+    parser.add_argument("--off-diag", type=str, choices=("ri", "ap"), default='ri', help="Also plot off-diagonal elements as real/imag or amp/phase")
+
+    parser.add_argument("--diff", action="store_true", help="Make difference plots if possible")
+
+    # populate remaining parser options from standard object
+    gainsols.options.populate_argparse(parser)
+
+    parser.add_argument("files", nargs="+",
+                         help="""One or more CubiCal solution databases or AIPS leakage files""")
+
+    parser.set_defaults(max_reim=0.05)
+
+    options = gainsols.options = parser.parse_args()
+
+    Daips0 = None
+
+    for filename in options.files:
+        figtitle = filename
+        output_name = options.output_name or filename + ".png"
+        differential = False
+        refant = None
+
+        # check file type
+        line0 = open(filename).readline().strip()
+        if line0.startswith("PD TABLE"):
+            print("{} seems to be an AIPS PD table printout".format(filename))
+
+            leak, antennas, freq = Daips = leakages.read_aips_leakages(filename)
+            ant_index = {a: i for i, a in enumerate(antennas)}
+
+            figtitle = filename
+            output_name = options.output_name or filename + ".png"
+            differential = False
+            refant = None
+
+            if options.ref_ant and options.ref_ant != "auto":
+                refant = options.ref_ant
+                leakages.apply_ref_ant(leak, options.ref_ant, ant_index)
+
+            if options.diff:
+                if Daips0 is None:
+                    Daips0 = Daips
+                    filename0 = filename
+                else:
+                    figtitle = "{} minus {}".format(filename, filename0)
+                    output_name = options.output_name or filename + ".diff.png"
+                    differential = True
+
+                    leak0, antennas0, freq0 = Daips0
+                    ant0_index = {a: i for i, a in enumerate(antennas0)}
+
+                    if len(freq) != len(freq0) or (freq != freq0).any():
+                        "{}: frequency axis mismatch, can't show difference to {}".format(filename, filename0)
+                        continue
+
+                    # look for best reference antenna
+                    rms_diff = OrderedDict()
+                    if options.ref_ant == "auto":
+                        #print("Picking reference antenna for differencing")
+                        for refant in set(antennas) & set(antennas0):
+                            leakages.apply_ref_ant(leak, refant, ant_index)
+                            leakages.apply_ref_ant(leak0, refant, ant0_index)
+                            diffleak = leakages.subtract_leakages(leak, antennas, leak0, ant0_index)
+                            rms_diff[refant] = diffleak[...,(0,1),(1,0)].std(axis=(1,-1)).mean(axis=1)
+                            #print("  ref ant {}: mean rms {}".format(refant,rms_diff[refant]))
+                        imin = np.argmin(np.array(rms_diff.values()))
+                        refant = rms_diff.keys()[imin]
+                        print("Auto-picking reference antenna {}".format(refant))
+                        leakages.apply_ref_ant(leak, refant, ant_index)
+                        leakages.apply_ref_ant(leak0, refant, ant0_index)
+
+                    diffleak = leakages.subtract_leakages(leak, antennas, leak0, ant0_index)
+
+                    Daips = diffleak, antennas, freq
+
+            if refant:
+                figtitle += " (re-referenced to antenna {})".format(refant)
+
+            fig = leakages.plot_leakages_aips(Daips, plot_diag=options.diag, plot_offdiag=options.off_diag,
+                                            figtitle=figtitle, diff=differential)
+
+        else:
+            print("Trying to read {} as a CubiCal database".format(filename))
+            Dcc = leakages.read_cubical_leakages(filename)
+            figtitle = "{} {}".format(filename, Dcc.name)
+
+            if options.ref_ant:
+                figtitle += " (re-referenced to antenna {})".format(refant)
+            fig = leakages.plot_leakages_cc(Dcc, plot_diag=options.diag, plot_offdiag=options.off_diag,
+                                            refant=options.ref_ant, figtitle=figtitle)
+
+        if options.display:
+            print("Displaying plot")
+        #                fig.show()
+        else:
+            print("Saving plot to {}".format(output_name))
+            fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
+
+    if options.display:
+       pylab.show()
+        
+if __name__ == "__main__":
+    with ipdb.launch_ipdb_on_exception():
+        main()
+  

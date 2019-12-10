@@ -281,6 +281,8 @@ class MSDataHandler:
         self.metadata.antenna_name = antnames
         self.metadata.antenna_name_short = antnames_short = [name[prefix_length:] for name in antnames]
         self.metadata.antenna_name_prefix = antnames[0][:prefix_length]
+        self.metadata.antenna_index = {name: i for i, name in enumerate(self.metadata.antenna_name_prefix)}
+        self.metadata.antenna_index.update({name: i for i, name in enumerate(antnames)})
 
         self.metadata.baseline_name = { (p,q): "{}-{}".format(antnames[p], antnames_short[q])
                                         for p in range(self.nants) for q in range(p+1, self.nants)}
@@ -598,7 +600,7 @@ class MSDataHandler:
                                                            feed_basis=self._poltype,
                                                            feed_angles=feed_angles,
                                                            enable_rotation=self.rotate_model,
-                                                           enable_pa=pa_rotate_model,
+                                                           enable_pa=pa_rotate_model or derotate_output,
                                                            enable_derotation=self.derotate_output,
                                                            field_centre=tuple(np.rad2deg(self.phadir)))
         else:

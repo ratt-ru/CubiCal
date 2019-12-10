@@ -61,7 +61,7 @@ class Complex2x2Gains(PerIntervalGains):
     @staticmethod
     def exportable_solutions():
         """ Returns a dictionary of exportable solutions for this machine type. """
-        sols = Complex2x2Gains.exportable_solutions()
+        sols = PerIntervalGains.exportable_solutions()
         sols["pzd"] = (0.0, ("time", "freq"))
         return sols
 
@@ -124,9 +124,14 @@ class Complex2x2Gains(PerIntervalGains):
         jhr = self.get_new_jhr()
         r = self.get_obs_or_res(obser_arr, model_arr)
 
+
         if self._offdiag_only:
             jh[...,(0,1),(0,1)] = 0
             r[...,(0,1),(0,1)] = 0
+            
+        if self._diag_only:
+            jh[...,(0,1),(1,0)] = 0
+            r[...,(0,1),(1,0)] = 0
 
         self.kernel_solve.compute_jhr(jh, r, jhr, self.t_int, self.f_int)
 
@@ -198,7 +203,8 @@ class Complex2x2Gains(PerIntervalGains):
             dabs_sum = dabs_sum[..., 0] + np.conj(dabs_sum[..., 1])
             pzd = np.angle(dm_sum / dabs_sum)
             pzd[dabs_sum == 0] = 0
-            print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd * 180 / np.pi), file=log(0))
+            with np.printoptions(precision=4, suppress=True, linewidth=1000):
+                print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd * 180 / np.pi), file=log(2))
             self._pzd = pzd
             self._exp_pzd = np.exp(-1j * pzd)
 
@@ -211,28 +217,46 @@ class Complex2x2Gains(PerIntervalGains):
         Restricts the solution by invoking the inherited restrict_soultion method and applying
         any machine specific restrictions.
         """
-        if "leakage" in self.update_type:
-            gains[:, :, :, :, 0, 0] = 1
-            gains[:, :, :, :, 1, 1] = 1
 
         if "pzd" in self.update_type:
             # re-estimate pzd
             mask = self.gflags!=0
-            pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
             pzd = np.angle(pzd.sum(axis=(0,3)))
-            print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(0))
+            with np.printoptions(precision=4, suppress=True, linewidth=1000):
+                print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(2))
             # import ipdb; ipdb.set_trace()
             self._pzd = pzd
             self._exp_pzd = np.exp(-1j * pzd)
 
             gains[:, :, :, :, 0, 0] = 1
             gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
+            
+        if "leakage" in self.update_type:
+            if "pzd" not in self.update_type:
+                gains[:, :, :, :, 0, 0] = 1
+                gains[:, :, :, :, 1, 1] = 1
+                
+            if "rel" in self.update_type and self.ref_ant is not None:
+                offset =  gains[:, :, :, self.ref_ant, 0, 1].copy()
+                gains[..., 0, 1] -= offset[..., np.newaxis]
+                gains[..., 1, 0] += np.conj(offset)[..., np.newaxis]
+                with np.printoptions(precision=4, suppress=True, linewidth=1000):
+                    print("{0}: subtracting relative leakage offset {1}".format(self.chunk_label, offset), file=log(2))
 
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
             gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
 
         super(Complex2x2Gains, self).restrict_solution(gains)
+        
+        # with np.printoptions(precision=4, suppress=True):
+        #     if self._jones_label == 'D':
+        #         for p in range(self.n_ant):
+        #             for a in (0,1):
+        #                 for b in (0,1):
+        #                     log.error("D{}{} for antenna {}: {}".format(a+1, b+1, p, gains[0,0,:,p,a,b]))
 
     @property
     def dof_per_antenna(self):
@@ -243,4 +267,4 @@ class Complex2x2Gains(PerIntervalGains):
         elif "pzd" in self.update_type:
             return 1./self.n_ant
         else:
-            return super(Complex2x2Gains, self).dof_per_antenna()
+            return super(Complex2x2Gains, self).dof_per_antenna

@@ -374,14 +374,14 @@ class Parameter(object):
         slicer = []
         for iaxis, (axis, n) in enumerate(zip(self.axis_labels, self.shape)):
             if axis in axes:
-                value = axes[axis]
+                value = value0 = axes[axis]
                 # if value of axis is in the grid index, look it up
-                if axis in self.grid_index:
-                    value = self.grid_index[axis].get(value, None)
+                if axis in self.grid_index and value in self.grid_index[axis]:
+                    value = self.grid_index[axis][value]
                 # better be an int now
                 if not isinstance(value, int):
-                    raise ValueError("invalid axis {}={}".format(axis, value))
-                slicer.append(self.grid_index[axes[axis]])
+                    raise ValueError("invalid axis {}={}".format(axis, value0))
+                slicer.append(value)
             elif iaxis in self.interpolation_axes:
                 slicer.append(None)
             elif n == 1:

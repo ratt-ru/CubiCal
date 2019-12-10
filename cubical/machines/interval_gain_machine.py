@@ -56,10 +56,13 @@ class PerIntervalGains(MasterMachine):
         self.kernel = self.get_full_kernel(options, self.is_diagonal)
 
         # kernel used in solver is diag-diag in diag mode, else uses full kernel version
-        if options.get('diag-data') or options.get('diag-only'):
-            self.kernel_solve = cubical.kernels.import_kernel('diagdiag_complex')
-        else:
-            self.kernel_solve = self.kernel
+        self._diag_only = options.get('diag-only')
+        self.kernel_solve = cubical.kernels.import_kernel('full_complex')
+        
+        #if options.get('diag-data') or options.get('diag-only'):
+        #    self.kernel_solve = cubical.kernels.import_kernel('diagdiag_complex')
+        #else:
+        #    self.kernel_solve = self.kernel
 
         log(2).print("{} kernels are {} {}".format(label, self.kernel, self.kernel_solve))
 
@@ -108,6 +111,15 @@ class PerIntervalGains(MasterMachine):
         self.min_quorum = options["conv-quorum"]
         self.update_type = set(options["update-type"].split("-"))
         self.ref_ant = options["ref-ant"]
+        if self.ref_ant is not None:
+            if type(self.ref_ant) is not str:
+                self.ref_ant = str(self.ref_ant)
+            if self.ref_ant[0] == "#":
+                self.ref_ant = int(self.ref_ant[1:])
+            else:
+                from cubical.solver import metadata
+                self.ref_ant = metadata.antenna_index[self.ref_ant]
+
         self.fix_directions = options["fix-dirs"] if options["fix-dirs"] is not None and \
                 options["fix-dirs"] != "" else []
 
@@ -164,6 +176,7 @@ class PerIntervalGains(MasterMachine):
 
     @classmethod
     def get_full_kernel(cls, options, diag_gains):
+        return cubical.kernels.import_kernel('full_complex')
         # select which kernels to use
         # (a) data is diagonal: this forces the use of diagonal gains and diag-diag kernels
         if options.get('diag-data'):

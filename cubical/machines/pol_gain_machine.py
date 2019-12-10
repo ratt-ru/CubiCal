@@ -126,7 +126,7 @@ class PolarizationGains(Complex2x2Gains):
         """
 
         if "xd" in self.update_type:
-            if self._estimate_pzd:
+            if self._estimate_pzd and self.solvable:
                 # re-estimate pzd
                 mask = self.gflags!=0
                 pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
