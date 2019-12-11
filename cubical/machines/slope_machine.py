@@ -99,18 +99,29 @@ class PhaseSlopeGains(ParameterisedGains):
             # is no guarantee that the band will be perfectly split, this may
             # need to be a loop over frequency solution intervals.
 
+            pad_width = options["padding"]
+            padding_scheme = [(0,0),]*interval_data.ndim
+            padding_scheme[2] = (pad_width, pad_width)
+
             for i in range(self.n_freint):
                 edges = self.f_bins + [None]
                 slice_fs = self.chunk_fs[edges[i]:edges[i+1]]
 
-                fft_data = np.fft.fft(
-                    interval_data[:, :, edges[i]:edges[i+1]], axis=2)
+                padded_fs = np.pad(slice_fs,
+                                   ((pad_width, pad_width)),
+                                   "constant")
+
+                padded_data = np.pad(interval_data[:, :, edges[i]:edges[i+1]],
+                                     padding_scheme,
+                                     "constant")
+
+                fft_data = np.fft.fft(padded_data, axis=2)
 
                 # Convert the normalised frequency values into delay values.
                 # Note the factor of 2*pi which is introduced.
 
                 delta_freq = slice_fs[1] - slice_fs[0]
-                n_freq = slice_fs.size
+                n_freq = padded_fs.size
                 fft_freq = np.fft.fftfreq(n_freq, delta_freq)*2*np.pi
 
                 # Find the delay value at which the FFT of the data is
