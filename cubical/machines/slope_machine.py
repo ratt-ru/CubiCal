@@ -37,13 +37,13 @@ class PhaseSlopeGains(ParameterisedGains):
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a diagonal phase-slope gain machine.
-        
+
         Args:
             label (str):
                 Label identifying the Jones term.
-            data_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
             ndir (int):
                 Number of directions.
             nmod (nmod):
@@ -52,8 +52,8 @@ class PhaseSlopeGains(ParameterisedGains):
                 Times for the data being processed.
             chunk_fs (np.ndarray):
                 Frequencies for the data being processsed.
-            options (dict): 
-                Dictionary of options. 
+            options (dict):
+                Dictionary of options.
         """
         ParameterisedGains.__init__(self, label, data_arr, ndir, nmod,
                                     chunk_ts, chunk_fs, chunk_label, options)
@@ -61,8 +61,12 @@ class PhaseSlopeGains(ParameterisedGains):
         self.slope_type = options["type"]
         self.n_param = 3 if self.slope_type == "tf-plane" else 2
 
-        self.param_shape = [self.n_dir, self.n_timint, self.n_freint, 
+        self.param_shape = [self.n_dir, self.n_timint, self.n_freint,
                             self.n_ant, self.n_param, self.n_cor, self.n_cor]
+
+        # This needs to change - we want to initialise these slope params
+        # from the fourier transform along the relevant axis.
+
         self.slope_params = np.zeros(self.param_shape, dtype=self.ftype)
         self.posterior_slope_error = None
 
@@ -75,11 +79,56 @@ class PhaseSlopeGains(ParameterisedGains):
         elif self.slope_type == "f-slope":
             self.slope = cubical.kernels.import_kernel("f_slope")
             self._labels = dict(phase=0, delay=1)
+
+            # Ref ant data.
+
+            ref_ant_data = data_arr[:,:,:,self.ref_ant]
+
+            # Average over non-zero points.
+
+            interval_data = np.add.reduceat(ref_ant_data, self.t_bins, 1)
+            interval_smpl = np.add.reduceat(ref_ant_data != 0, self.t_bins, 1)
+            selection = np.where(interval_smpl)
+            interval_data[selection] /= interval_smpl[selection]
+
+            fft_data = np.fft.fft(interval_data, axis=2)
+
+            delta_freq = self.chunk_fs[1] - self.chunk_fs[0]
+            n_freq = self.chunk_fs.size
+            fft_freq = np.fft.fftfreq(n_freq, delta_freq)
+
+            delay_est_ind = np.argmax(np.abs(fft_data), axis=2)
+            delay_est_ind = np.expand_dims(delay_est_ind, axis=2)
+
+            bad_smpl = np.add.reduceat(interval_data, self.f_bins, 2)
+            selection = np.where(bad_smpl == 0)
+
+            delay_est = fft_freq[delay_est_ind]*2*np.pi
+
+            delay_est[selection] = 0
+
+            # from bokeh.plotting import figure, save, output_file
+            # output_file("delay.html")
+            # p = figure(plot_width=600, plot_height=600)
+            # p.line(fft_freq, np.abs(fft_data[0,0,:,1,0,0]))
+            # save(p)
+            self.slope_params[:,:,:,:,1,:,:] = -1*delay_est[:, :, :, :, :, :]
+            self.slope_params[...,(1,0), (0,1)] = 0
+
+            # print(selection, self.slope_params, self.slope_params.shape)
+
+            # print(delay_est)
+            # print(self.slope_params.shape)
+
         elif self.slope_type == "t-slope":
             self.slope = cubical.kernels.import_kernel("t_slope")
             self._labels = dict(phase=0, rate=1)
         else:
             raise RuntimeError("unknown machine type '{}'".format(self.slope_type))
+
+        self.slope.construct_gains(self.slope_params, self.gains,
+                                   self.chunk_ts, self.chunk_fs, self.t_int,
+                                   self.f_int)
 
         # kernel used in solver is diag-diag in diag mode, else uses full kernel version
         if options.get('diag-data') or options.get('diag-only'):
@@ -112,7 +161,7 @@ class PhaseSlopeGains(ParameterisedGains):
             "delay.err": (0., ("dir", "time", "freq", "ant", "corr")),
             "rate.err": (0., ("dir", "time", "freq", "ant", "corr")),
         })
-        
+
         return exportables
 
     def get_inverse_gains(self):
@@ -140,14 +189,14 @@ class PhaseSlopeGains(ParameterisedGains):
         return solutions
 
     def import_solutions(self, soldict):
-        """ 
-        Loads solutions from a dict. 
-        
+        """
+        Loads solutions from a dict.
+
         Args:
             soldict (dict):
                 Contains gains solutions which must be loaded.
         """
-        
+
         # Note that this is inherently very flexible. For example, we can init from a solutions
         # table which only has a "phase" entry, e.g. one generated by a phase_only solver (and the
         # delay will then be left at zero).
@@ -167,14 +216,14 @@ class PhaseSlopeGains(ParameterisedGains):
 
     def compute_js(self, obser_arr, model_arr):
         """
-        This function computes the J\ :sup:`H`\R term of the GN/LM method. 
+        This function computes the J\ :sup:`H`\R term of the GN/LM method.
 
         Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            model_arr (np.ndrray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 model visibilities.
 
         Returns:
@@ -248,7 +297,7 @@ class PhaseSlopeGains(ParameterisedGains):
         # It is safer to average every iteration when using a phase only solver.
         if self.iters%1 == 0:
             update *= 0.5
-        
+
         self.slope_params += update
 
         self.restrict_solution(self.slope_params)
@@ -265,8 +314,8 @@ class PhaseSlopeGains(ParameterisedGains):
         """
 
         #ParameterisedGains.restrict_solution(self)
-        
-        # These need to be set here as we do not call the interval restrict solutions - 
+
+        # These need to be set here as we do not call the interval restrict solutions -
         # out solutions are the parameters and not the gains themselves.
         self._gh_update = self._ghinv_update = True
 
@@ -286,7 +335,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         Args:
             model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing
                 model visibilities.
         """
         ParameterisedGains.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
