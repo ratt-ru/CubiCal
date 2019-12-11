@@ -80,45 +80,57 @@ class PhaseSlopeGains(ParameterisedGains):
             self.slope = cubical.kernels.import_kernel("f_slope")
             self._labels = dict(phase=0, delay=1)
 
-            # Ref ant data.
+            # Select all baslines containing the reference antenna.
 
-            ref_ant_data = data_arr[:,:,:,self.ref_ant]
+            ref_ant_data = data_arr[:, :, :, self.ref_ant]
 
-            # Average over non-zero points.
+            # Average over time solution intervals. This should improve SNR,
+            # but is not always necesssary.
 
             interval_data = np.add.reduceat(ref_ant_data, self.t_bins, 1)
             interval_smpl = np.add.reduceat(ref_ant_data != 0, self.t_bins, 1)
             selection = np.where(interval_smpl)
             interval_data[selection] /= interval_smpl[selection]
 
+            # FFT the data along the frequency axis. TODO: Need to consider
+            # what happens if we solve for few delays across the band. As there
+            # is no guarantee that the band will be perfectly split, this may
+            # need to be a loop over frequency solution intervals.
+
             fft_data = np.fft.fft(interval_data, axis=2)
+
+            # Convert the normalised frequency values into delay values. Note
+            # the factor of 2*pi which is introduced.
 
             delta_freq = self.chunk_fs[1] - self.chunk_fs[0]
             n_freq = self.chunk_fs.size
-            fft_freq = np.fft.fftfreq(n_freq, delta_freq)
+            fft_freq = np.fft.fftfreq(n_freq, delta_freq)*2*np.pi
+
+            # Find the delay value at which the FFT of the data is maximised.
+            # As we do not pad the values, this only a rough approximation of
+            # the delay. We also reintroduce the frequency axis for
+            # consistency.
 
             delay_est_ind = np.argmax(np.abs(fft_data), axis=2)
             delay_est_ind = np.expand_dims(delay_est_ind, axis=2)
 
+            # Get the delay estimates. Note that we may have bad guesses at
+            # this point.
+
+            delay_est = fft_freq[delay_est_ind]
+
+            # Check for bad data points (bls missing across all channels) and
+            # set their estimates to zero.
             bad_smpl = np.add.reduceat(interval_data, self.f_bins, 2)
             selection = np.where(bad_smpl == 0)
-
-            delay_est = fft_freq[delay_est_ind]*2*np.pi
-
             delay_est[selection] = 0
 
-            # from bokeh.plotting import figure, save, output_file
-            # output_file("delay.html")
-            # p = figure(plot_width=600, plot_height=600)
-            # p.line(fft_freq, np.abs(fft_data[0,0,:,1,0,0]))
-            # save(p)
-            self.slope_params[:,:,:,:,1,:,:] = -1*delay_est[:, :, :, :, :, :]
+            # Zero the off diagonals and take the negative delay values -
+            # this is necessary as we technically get the delay corresponding
+            # to the conjugate term.
+
+            self.slope_params[..., 1, :, :] = -1*delay_est
             self.slope_params[...,(1,0), (0,1)] = 0
-
-            # print(selection, self.slope_params, self.slope_params.shape)
-
-            # print(delay_est)
-            # print(self.slope_params.shape)
 
         elif self.slope_type == "t-slope":
             self.slope = cubical.kernels.import_kernel("t_slope")
