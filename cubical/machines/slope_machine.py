@@ -11,6 +11,7 @@ def _normalize(x, dtype):
     """
     Helper function: normalizes array to [0,1] interval.
     """
+
     if len(x) > 1:
         return ((x - x[0]) / (x[-1] - x[0])).astype(dtype)
     elif len(x) == 1:
@@ -36,13 +37,13 @@ class PhaseSlopeGains(ParameterisedGains):
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a diagonal phase-slope gain machine.
-        
+
         Args:
             label (str):
                 Label identifying the Jones term.
-            data_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
             ndir (int):
                 Number of directions.
             nmod (nmod):
@@ -51,8 +52,8 @@ class PhaseSlopeGains(ParameterisedGains):
                 Times for the data being processed.
             chunk_fs (np.ndarray):
                 Frequencies for the data being processsed.
-            options (dict): 
-                Dictionary of options. 
+            options (dict):
+                Dictionary of options.
         """
         ParameterisedGains.__init__(self, label, data_arr, ndir, nmod,
                                     chunk_ts, chunk_fs, chunk_label, options)
@@ -60,8 +61,12 @@ class PhaseSlopeGains(ParameterisedGains):
         self.slope_type = options["type"]
         self.n_param = 3 if self.slope_type == "tf-plane" else 2
 
-        self.param_shape = [self.n_dir, self.n_timint, self.n_freint, 
+        self.param_shape = [self.n_dir, self.n_timint, self.n_freint,
                             self.n_ant, self.n_param, self.n_cor, self.n_cor]
+
+        # This needs to change - we want to initialise these slope params
+        # from the fourier transform along the relevant axis.
+
         self.slope_params = np.zeros(self.param_shape, dtype=self.ftype)
         self.posterior_slope_error = None
 
@@ -74,11 +79,86 @@ class PhaseSlopeGains(ParameterisedGains):
         elif self.slope_type == "f-slope":
             self.slope = cubical.kernels.import_kernel("f_slope")
             self._labels = dict(phase=0, delay=1)
+
+            # Select all baslines containing the reference antenna.
+
+            ref_ant_data = data_arr[:, :, :, self.ref_ant]
+
+            # Average over time solution intervals. This should improve SNR,
+            # but is not always necesssary.
+
+            interval_data = np.add.reduceat(ref_ant_data, self.t_bins, 1)
+            interval_smpl = np.add.reduceat(ref_ant_data != 0, self.t_bins, 1)
+            selection = np.where(interval_smpl)
+            interval_data[selection] /= interval_smpl[selection]
+
+            bad_bins = np.add.reduceat(interval_data, self.f_bins, 2)
+
+            # FFT the data along the frequency axis. TODO: Need to consider
+            # what happens if we solve for few delays across the band. As there
+            # is no guarantee that the band will be perfectly split, this may
+            # need to be a loop over frequency solution intervals.
+
+            pad_width = options["padding"]
+            padding_scheme = [(0,0),]*interval_data.ndim
+            padding_scheme[2] = (pad_width, pad_width)
+
+            for i in range(self.n_freint):
+                edges = self.f_bins + [None]
+                slice_fs = self.chunk_fs[edges[i]:edges[i+1]]
+
+                padded_fs = np.pad(slice_fs,
+                                   ((pad_width, pad_width)),
+                                   "constant")
+
+                padded_data = np.pad(interval_data[:, :, edges[i]:edges[i+1]],
+                                     padding_scheme,
+                                     "constant")
+
+                fft_data = np.fft.fft(padded_data, axis=2)
+
+                # Convert the normalised frequency values into delay values.
+                # Note the factor of 2*pi which is introduced.
+
+                delta_freq = slice_fs[1] - slice_fs[0]
+                n_freq = padded_fs.size
+                fft_freq = np.fft.fftfreq(n_freq, delta_freq)*2*np.pi
+
+                # Find the delay value at which the FFT of the data is
+                # maximised. As we do not pad the values, this only a rough
+                # approximation of the delay. We also reintroduce the
+                # frequency axis for consistency.
+
+                delay_est_ind = np.argmax(np.abs(fft_data), axis=2)
+                delay_est_ind = np.expand_dims(delay_est_ind, axis=2)
+
+                # Get the delay estimates. Note that we may have bad guesses
+                # at this point.
+
+                delay_est = fft_freq[delay_est_ind]
+
+                # Check for bad data points (bls missing across all channels)
+                # and set their estimates to zero.
+
+                selection = np.where(bad_bins[:, :, i:i+1] == 0)
+                delay_est[selection] = 0
+
+                # Zero the off diagonals and take the negative delay values -
+                # this is necessary as we technically get the delay
+                # corresponding to the conjugate term.
+
+                self.slope_params[..., i:i+1, :, 1, :, :] = -1*delay_est
+                self.slope_params[..., (1,0), (0,1)] = 0
+
         elif self.slope_type == "t-slope":
             self.slope = cubical.kernels.import_kernel("t_slope")
             self._labels = dict(phase=0, rate=1)
         else:
             raise RuntimeError("unknown machine type '{}'".format(self.slope_type))
+
+        self.slope.construct_gains(self.slope_params, self.gains,
+                                   self.chunk_ts, self.chunk_fs, self.t_int,
+                                   self.f_int)
 
         # kernel used in solver is diag-diag in diag mode, else uses full kernel version
         if options.get('diag-data') or options.get('diag-only'):
@@ -111,7 +191,7 @@ class PhaseSlopeGains(ParameterisedGains):
             "delay.err": (0., ("dir", "time", "freq", "ant", "corr")),
             "rate.err": (0., ("dir", "time", "freq", "ant", "corr")),
         })
-        
+
         return exportables
 
     def get_inverse_gains(self):
@@ -139,14 +219,14 @@ class PhaseSlopeGains(ParameterisedGains):
         return solutions
 
     def import_solutions(self, soldict):
-        """ 
-        Loads solutions from a dict. 
-        
+        """
+        Loads solutions from a dict.
+
         Args:
             soldict (dict):
                 Contains gains solutions which must be loaded.
         """
-        
+
         # Note that this is inherently very flexible. For example, we can init from a solutions
         # table which only has a "phase" entry, e.g. one generated by a phase_only solver (and the
         # delay will then be left at zero).
@@ -166,14 +246,14 @@ class PhaseSlopeGains(ParameterisedGains):
 
     def compute_js(self, obser_arr, model_arr):
         """
-        This function computes the J\ :sup:`H`\R term of the GN/LM method. 
+        This function computes the J\ :sup:`H`\R term of the GN/LM method.
 
         Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            model_arr (np.ndrray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 model visibilities.
 
         Returns:
@@ -244,9 +324,10 @@ class PhaseSlopeGains(ParameterisedGains):
 
         self.slope.compute_update(jhr, jhjinv, update)
 
-        if self.iters%2 == 0:
+        # It is safer to average every iteration when using a phase only solver.
+        if self.iters%1 == 0:
             update *= 0.5
-        
+
         self.slope_params += update
 
         self.restrict_solution(self.slope_params)
@@ -255,18 +336,26 @@ class PhaseSlopeGains(ParameterisedGains):
 
         self.slope.construct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
+
     def restrict_solution(self, slope_params):
         """
         Restricts the solution by invoking the inherited restrict_solution method and applying
         any machine specific restrictions.
         """
 
-        # ParameterisedGains.restrict_solution(self)
-        
+        #ParameterisedGains.restrict_solution(self)
+
+        # These need to be set here as we do not call the interval restrict solutions -
+        # out solutions are the parameters and not the gains themselves.
+        self._gh_update = self._ghinv_update = True
+
         if self.ref_ant is not None:
             # complicated slice :) we take the 0,0 phase offset of the reference antenna,
             # and subtract that from the phases of all other antennas and elements
-            slope_params -= slope_params[:,:,:,self.ref_ant,:,0,0][:,:,:,np.newaxis,:,np.newaxis,np.newaxis]
+            ref_slice = slice(self.ref_ant, self.ref_ant+1, 1)
+            ref_params = slope_params[:,:,:,ref_slice,:,0,0]
+            slope_params[:,:,:,:,:,(0,1),(0,1)] -= ref_params[..., None]
+
         for idir in self.fix_directions:
             slope_params[idir, ...] = 0
 
@@ -276,7 +365,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         Args:
             model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing
                 model visibilities.
         """
         ParameterisedGains.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
@@ -299,3 +388,4 @@ class PhaseSlopeGains(ParameterisedGains):
         self.jhjinv = np.zeros_like(jhj)
 
         self.slope.compute_jhjinv(jhj, self.jhjinv, self.eps)
+
