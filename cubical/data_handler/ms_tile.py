@@ -1338,7 +1338,7 @@ class MSTile(object):
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
             if bflag_col is not None:
                 if ("bitflag" in only_save):
-                    self.bflagcol[:] = np.bitwise_or.reduce(axis=-2)[:,:,np.newaxis]
+                    self.bflagcol[:] = np.bitwise_or.reduce(self.bflagcol, axis=2)[:,:,np.newaxis]
                     self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
                     totflags = (self.bflagcol != 0).sum()
                     self.dh.flagcounts['OUT'] += totflags
