@@ -95,7 +95,6 @@ setup(name='cubical',
       zip_safe=False,
       scripts = ['cubical/bin/print-cubical-stats',
                  'cubical/bin/plot-leakage-solutions',
-                 'cubical/bin/plot-bandpass-solutions',
                  'cubical/bin/plot-gain-solutions' ],
       entry_points={'console_scripts': ['gocubical = cubical.main:main']},
       extras_require={
