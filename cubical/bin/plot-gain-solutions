@@ -14,7 +14,10 @@ def main():
 
     parser.add_argument("-o", "--output-name", type=str, metavar="FILENAME", help="Output filename")
 
-    parser.add_argument("--label", type=str, metavar="LABEL", help="Force parameter label")
+    parser.add_argument("--label", type=str, metavar="LABEL", help="Force jones label, default auto-detects")
+
+    parser.add_argument("-p", "--parameter", type=str, metavar="NAME", default="gain",
+                        help="Parameter name when plotting parameterized gains. Default is 'gain'.")
 
     parser.add_argument("-G", "--gain", action="store_true", help="Force plotting as time-variable gains")
 
@@ -38,11 +41,15 @@ def main():
 
     for filename in options.files:
         print("Trying to read from CubiCal database {} (label is {})".format(filename, options.label or "auto"))
-        bb = gainsols.read_cubical_gains(filename, options.label)
+        bb = gainsols.read_cubical_gains(filename, options.label, options.parameter)
         if not bb:
             continue
 
         figtitle = "{} {}".format(filename, bb.name)
+
+        # force gain-style plots if default can't be established
+        if not options.gain and not options.bandpass and bb.name[0] not in "GBD":
+            options.gain = True
 
         if options.gain or bb.name[0] == "G":
             fig = gainsols.plot_gain_cc(bb, figtitle=figtitle, plot_diag=options.diag or "ap", plot_offdiag=options.off_diag)

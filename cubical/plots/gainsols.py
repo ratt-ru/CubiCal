@@ -40,7 +40,7 @@ class PlotOptions(PlotLimits):
         parser.add_argument("--width", type=float, metavar="INCHES", default=4, help="Plot width")
         parser.add_argument("--height", type=float, metavar="INCHES", default=3, help="Plot height")
         parser.add_argument("--dpi", type=int, default=150, help="Plot DPI")
-        parser.add_argument("--font-size", type=int, default=6, help="Font size")
+        parser.add_argument("--font-size", type=int, default=6, metavar="POINTS", help="Font size")
         parser.add_argument("--min-freq", type=float, metavar="MHz", default=None, help="Start frequency")
         parser.add_argument("--max-freq", type=float, metavar="MHz", default=None, help="End frequency")
         parser.add_argument("--min-time", type=float, metavar="s", default=None, help="Start time")
@@ -68,8 +68,14 @@ def get_plot_limits(options, sols, time0=0):
     if auto_limits.max_freq == auto_limits.min_freq:
         auto_limits.max_freq += 1
 
-    auto_limits.max_ampl = max([ max(abs(g00).max(), abs(g11).max()) for _, _, g00, g01, g10, g11 in sols.values()])
-    auto_limits.max_ampl_1 = max([ max(abs(g01).max(), abs(g10).max()) for _, _, g00, g01, g10, g11 in sols.values()])
+    max_ampls_diag = { ant: max(abs(g00).max(), abs(g11).max()) for ant, (_, _, g00, g01, g10, g11) in sols.items() }
+    log.print("max diag amplitude per antenna:", ", ".join([ "{}: {}".format(ant, val) for ant, val in sorted(max_ampls_diag.items())]))
+    auto_limits.max_ampl = max(max_ampls_diag.values())
+
+    max_ampls_offdiag = { ant: max(abs(g01).max(), abs(g10).max()) for ant, (_, _, g00, g01, g10, g11) in sols.items() }
+    log.print("max off-diag amplitude per antenna:", ", ".join([ "{}: {}".format(ant, val) for ant, val in sorted(max_ampls_offdiag.items())]))
+    auto_limits.max_ampl_1 = max(max_ampls_offdiag.values())
+
     auto_limits.min_ampl = min([ min(abs(g00).min(), abs(g11).min()) for _, _, g00, g01, g10, g11 in sols.values()])
     auto_limits.min_ampl_1 = min([ min(abs(g01).min(), abs(g10).min()) for _, _, g00, g01, g10, g11 in sols.values()])
     auto_limits.max_phase = max([ max([abs(np.angle(g)).max() for g in ggs[2:]]) for ggs in sols.values()])*180/np.pi
@@ -311,6 +317,9 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
         #    print "shape is {}, grid span is {} {}".format(d00.shape, time[[0,-1]], freq[[0,-1]])
         time = (time-time0)/3600.
 
+        if nplot >= max_plots:
+            break
+
         if plot_diag in ('ap', 'ri'):
             nplot, ax, ax2 = _prep_plot(nplot, ant, 0, plot_diag)
 
@@ -322,6 +331,9 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
             else:
                 ax.set_ylim(-lim.max_reim, lim.max_reim)
                 _make_reim_plot(ax, time, g00, g11, ("RR", "LL"), legend=not iant)
+
+        if nplot >= max_plots:
+            break
 
         if plot_offdiag in ('ap', 'ri'):
             nplot, ax, ax2 = _prep_plot(nplot, ant, 1,  plot_offdiag)
@@ -359,6 +371,28 @@ def get_time_slice(TS, all_times):
         return slice(None)
     return TS
 
+
+def _get_jones_element_index(G, ant, corr1=0, corr2=0):
+    if 'corr1' in G.axis_index and 'corr2' in G.axis_index:
+        return dict(ant=ant, corr1=corr1, corr2=corr2)
+    elif 'corr' in G.axis_index:
+        if corr1 == corr2:
+            return dict(ant=ant, corr=corr1)
+        else:
+            return None
+    else:
+        if corr1 == corr2:
+            return dict(ant=ant)
+        else:
+            return None
+
+def _get_jones_element_slice(G, ant, corr1=0, corr2=0):
+    index = _get_jones_element_index(G, ant, corr1, corr2)
+    if index is None:
+        return None, (None, None)
+    return G.get_slice(**index)
+
+
 def prepare_sols_dict(G, FS=None, TS=None, ANTS=slice(None)):
     """
     Extract solutions slices into a dict
@@ -376,13 +410,17 @@ def prepare_sols_dict(G, FS=None, TS=None, ANTS=slice(None)):
     for iant, ant in ANTS:
         # this gets the "raw" solutions for a given slice (antenna, correlation, etc.), and also the grid they're defined on,
         # which could be a subset of the full grid given by the description
-        g00, (time, freq) = G.get_slice(ant=iant, corr1=0, corr2=0)
+        g00, (time, freq) = _get_jones_element_slice(G, ant=iant, corr1=0, corr2=0)
         if g00 is None:
             continue
-        g01, (time, freq) = G.get_slice(ant=iant, corr1=0, corr2=1)
-        g10, (time, freq) = G.get_slice(ant=iant, corr1=1, corr2=0)
-        g11, (time, freq) = G.get_slice(ant=iant, corr1=1, corr2=1)
-        sols[ant] = time[TS], freq[FS], g00[TS, FS], g01[TS, FS], g10[TS, FS], g11[TS, FS]
+        g01, (time, freq) = _get_jones_element_slice(G, ant=iant, corr1=0, corr2=1)
+        g10, (time, freq) = _get_jones_element_slice(G, ant=iant, corr1=1, corr2=0)
+        g11, (time, freq) = _get_jones_element_slice(G, ant=iant, corr1=1, corr2=1)
+        sols[ant] = time[TS], freq[FS], \
+                        g00[TS, FS], \
+                        (g01[TS, FS] if g01 is not None else np.array([0.])), \
+                        (g10[TS, FS] if g10 is not None else np.array([0.])), \
+                        g11[TS, FS]
 
     return sols
 
@@ -399,7 +437,7 @@ def plot_gain_cc(G, FS=None, TS=None, ANTS=slice(None),
     return plot_gain(sols, plot_diag=plot_diag, plot_offdiag=plot_offdiag, figtitle=figtitle)
 
 
-def read_cubical_gains(filename, label=None):
+def read_cubical_gains(filename, label=None, component="gain"):
     """
     Reads cCubiCal leakage solutions from a CubiCal DB
     """
@@ -411,7 +449,7 @@ def read_cubical_gains(filename, label=None):
     # try to auto-pick a label
     if label is None:
         for name in db.names():
-            match = re.match("(\w+):gain", name)
+            match = re.match("(\\w+):{}".format(component), name)
             if match:
                 label = match.group(1)
                 log.print("  gain label is {}".format(label))
@@ -419,16 +457,21 @@ def read_cubical_gains(filename, label=None):
         else:
             log.error("no gain entries found in database")
             return None
-
-    gg = db['{}:gain'.format(label)]
+    gg = db['{}:{}'.format(label, component)]
+    log.print("  loading {}:{} solutions".format(label, component))
     log.print("  axes are: {}; shape is {}".format(", ".join(gg.axis_labels), gg.shape))  # axis info
     log.print("  can be interpolated over axes {}".format(" ".join([gg.axis_labels[i] for i in gg.interpolation_axes])))
     time, freq = gg.grid[gg.ax.time], gg.grid[gg.ax.freq]  # grid info
     log.print("    time span {} h (start {:f}), freq span {} to {} MHz".format(
                     (time[-1]-time[0])/3600, time[0], freq[0]*1e-6, freq[-1]*1e-6))
 
+    corr00 = {}
+    for axis in 'corr', 'corr1', 'corr2':
+        if axis in gg.axis_index:
+            corr00[axis] = 0
+
     valid_ants = set([ant for iant, ant in enumerate(gg.grid[gg.ax.ant])
-                      if gg.is_slice_valid(ant=iant, corr1=0, corr2=0)])
+                      if gg.is_slice_valid(**_get_jones_element_index(gg, iant, 0, 0))])
 
     log.print("  valid antennas:", " ".join([ant for ant in gg.grid[gg.ax.ant] if ant in valid_ants]))
     log.print("  missing antennas:", " ".join([ant for ant in gg.grid[gg.ax.ant] if ant not in valid_ants] or ["none"]))

@@ -6,6 +6,9 @@ from cubical.machines.parameterised_machine import ParameterisedGains
 import numpy as np
 from numpy.ma import masked_array
 import cubical.kernels
+from cubical.tools import logger
+
+log = logger.getLogger("slopes")
 
 def _normalize(x, dtype):
     """
@@ -60,6 +63,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         self.slope_type = options["type"]
         self.n_param = 3 if self.slope_type == "tf-plane" else 2
+        self._estimate_delays = options["estimate-delays"]
 
         self.param_shape = [self.n_dir, self.n_timint, self.n_freint,
                             self.n_ant, self.n_param, self.n_cor, self.n_cor]
@@ -80,75 +84,79 @@ class PhaseSlopeGains(ParameterisedGains):
             self.slope = cubical.kernels.import_kernel("f_slope")
             self._labels = dict(phase=0, delay=1)
 
-            # Select all baslines containing the reference antenna.
+            if self._estimate_delays:
+                # Select all baselines containing the reference antenna.
 
-            ref_ant_data = data_arr[:, :, :, self.ref_ant]
+                ref_ant_data = data_arr[:, :, :, self.ref_ant]
 
-            # Average over time solution intervals. This should improve SNR,
-            # but is not always necesssary.
+                # Average over time solution intervals. This should improve SNR,
+                # but is not always necesssary.
 
-            interval_data = np.add.reduceat(ref_ant_data, self.t_bins, 1)
-            interval_smpl = np.add.reduceat(ref_ant_data != 0, self.t_bins, 1)
-            selection = np.where(interval_smpl)
-            interval_data[selection] /= interval_smpl[selection]
+                interval_data = np.add.reduceat(ref_ant_data, self.t_bins, 1)
+                interval_smpl = np.add.reduceat(ref_ant_data != 0, self.t_bins, 1)
+                selection = np.where(interval_smpl)
+                interval_data[selection] /= interval_smpl[selection]
 
-            bad_bins = np.add.reduceat(interval_data, self.f_bins, 2)
+                bad_bins = np.add.reduceat(interval_data, self.f_bins, 2)
 
-            # FFT the data along the frequency axis. TODO: Need to consider
-            # what happens if we solve for few delays across the band. As there
-            # is no guarantee that the band will be perfectly split, this may
-            # need to be a loop over frequency solution intervals.
+                # FFT the data along the frequency axis. TODO: Need to consider
+                # what happens if we solve for few delays across the band. As there
+                # is no guarantee that the band will be perfectly split, this may
+                # need to be a loop over frequency solution intervals.
 
-            pad_width = options["padding"]
-            padding_scheme = [(0,0),]*interval_data.ndim
-            padding_scheme[2] = (pad_width, pad_width)
+                pad_width = options["padding"]
+                padding_scheme = [(0,0),]*interval_data.ndim
+                padding_scheme[2] = (pad_width, pad_width)
 
-            for i in range(self.n_freint):
-                edges = self.f_bins + [None]
-                slice_fs = self.chunk_fs[edges[i]:edges[i+1]]
+                for i in range(self.n_freint):
+                    edges = self.f_bins + [None]
+                    slice_fs = self.chunk_fs[edges[i]:edges[i+1]]
 
-                padded_fs = np.pad(slice_fs,
-                                   ((pad_width, pad_width)),
-                                   "constant")
+                    padded_fs = np.pad(slice_fs,
+                                       ((pad_width, pad_width)),
+                                       "constant")
 
-                padded_data = np.pad(interval_data[:, :, edges[i]:edges[i+1]],
-                                     padding_scheme,
-                                     "constant")
+                    padded_data = np.pad(interval_data[:, :, edges[i]:edges[i+1]],
+                                         padding_scheme,
+                                         "constant")
 
-                fft_data = np.fft.fft(padded_data, axis=2)
+                    fft_data = np.fft.fft(padded_data, axis=2)
 
-                # Convert the normalised frequency values into delay values.
-                # Note the factor of 2*pi which is introduced.
+                    # Convert the normalised frequency values into delay values.
+                    # Note the factor of 2*pi which is introduced.
 
-                delta_freq = slice_fs[1] - slice_fs[0]
-                n_freq = padded_fs.size
-                fft_freq = np.fft.fftfreq(n_freq, delta_freq)*2*np.pi
+                    delta_freq = slice_fs[1] - slice_fs[0]
+                    n_freq = padded_fs.size
+                    fft_freq = np.fft.fftfreq(n_freq, delta_freq)*2*np.pi
 
-                # Find the delay value at which the FFT of the data is
-                # maximised. As we do not pad the values, this only a rough
-                # approximation of the delay. We also reintroduce the
-                # frequency axis for consistency.
+                    # Find the delay value at which the FFT of the data is
+                    # maximised. As we do not pad the values, this only a rough
+                    # approximation of the delay. We also reintroduce the
+                    # frequency axis for consistency.
 
-                delay_est_ind = np.argmax(np.abs(fft_data), axis=2)
-                delay_est_ind = np.expand_dims(delay_est_ind, axis=2)
+                    delay_est_ind = np.argmax(np.abs(fft_data), axis=2)
+                    delay_est_ind = np.expand_dims(delay_est_ind, axis=2)
 
-                # Get the delay estimates. Note that we may have bad guesses
-                # at this point.
+                    # Get the delay estimates. Note that we may have bad guesses
+                    # at this point.
 
-                delay_est = fft_freq[delay_est_ind]
+                    delay_est = fft_freq[delay_est_ind]
 
-                # Check for bad data points (bls missing across all channels)
-                # and set their estimates to zero.
+                    # Check for bad data points (bls missing across all channels)
+                    # and set their estimates to zero.
 
-                selection = np.where(bad_bins[:, :, i:i+1] == 0)
-                delay_est[selection] = 0
+                    selection = np.where(bad_bins[:, :, i:i+1] == 0)
+                    delay_est[selection] = 0
 
-                # Zero the off diagonals and take the negative delay values -
-                # this is necessary as we technically get the delay
-                # corresponding to the conjugate term.
+                    # Zero the off diagonals and take the negative delay values -
+                    # this is necessary as we technically get the delay
+                    # corresponding to the conjugate term.
 
-                self.slope_params[..., i:i+1, :, 1, :, :] = -1*delay_est
-                self.slope_params[..., (1,0), (0,1)] = 0
+                    self.slope_params[..., i:i+1, :, 1, :, :] = -1*delay_est
+                    self.slope_params[..., (1,0), (0,1)] = 0
+                    log(1).print("{}: slope estimates are {}".format(chunk_label,
+                                        self.slope_params[..., i:i+1, :, 1, (0,0), (1,1)]))
+
 
         elif self.slope_type == "t-slope":
             self.slope = cubical.kernels.import_kernel("t_slope")
