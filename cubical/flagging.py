@@ -29,7 +29,7 @@ class FL(object):
     MISSING  = dtype(1<<1)    # missing data or solution
     INVALID  = dtype(1<<2)    # invalid data (zero, inf, nan)
     ILLCOND  = dtype(1<<3)    # solution ill conditioned - bad inverse
-    NOCONV   = dtype(1<<4)    # no convergence
+    DIVERGE  = dtype(1<<4)    # divergence
     CHISQ    = dtype(1<<5)    # excessive chisq
     GOOB     = dtype(1<<6)    # gain solution out of bounds
     BOOM     = dtype(1<<7)    # gain solution exploded (i.e. went to inf/nan)

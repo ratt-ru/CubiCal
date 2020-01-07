@@ -271,10 +271,14 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             # do mad max flagging, if requested
             thr1, thr2 = madmax.get_mad_thresholds()
             if thr1 or thr2:
+                num_mad_flagged_prior = stats.chunk.num_mad_flagged
                 if madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2,
                                              "{} iter {} ({})".format(label, num_iter, gm.jones_label)):
                     gm.update_equation_counts(flags_arr != 0)
                     stats.chunk.num_mad_flagged = ((flags_arr&FL.MAD) != 0).sum()
+                    if stats.chunk.num_mad_flagged != num_mad_flagged_prior:
+                        log(2).print("{}: {} new MadMax flags".format(label,
+                                        stats.chunk.num_mad_flagged - stats.chunk.num_mad_flagged))
 
             chi, stats.chunk.chi2u = compute_chisq(full=False)
 
@@ -287,7 +291,26 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             else:
                 delta_chi = old_chi - chi
                 stats.chunk.num_stalled = np.sum((delta_chi <= gm.delta_chi*old_chi))
-                stats.chunk.num_diverged = np.sum((delta_chi < -0.1 * old_chi))
+                diverged_tf_slots = delta_chi < -0.1 * old_chi
+                stats.chunk.num_diverged = diverged_tf_slots.sum()
+                # at first iteration, flag immediate divergers
+                if sol_opts['flag-divergence'] and stats.chunk.num_diverged and num_iter == 1:
+                    model_arr[:, :, diverged_tf_slots] = 0
+                    obser_arr[:, diverged_tf_slots] = 0
+
+                    # find previously unflagged visibilities that have become flagged due to divergence
+                    new_flags = (flags_arr == 0)
+                    new_flags[~diverged_tf_slots] = 0
+
+                    flags_arr[diverged_tf_slots] |= FL.DIVERGE
+
+                    num_nf = new_flags.sum()
+                    log.warn("{}: {:.2%} slots diverging, {} new data flags".format(label,
+                                    diverged_tf_slots.sum()/float(diverged_tf_slots.size), num_nf))
+
+                    # Adding the below lines for the robust solver so that flags should be apply to the weights
+                    if hasattr(gm, 'new_flags'):
+                        gm.new_flags |= new_flags
 
             stats.chunk.frac_stalled = stats.chunk.num_stalled / float(chi.size)
             stats.chunk.frac_diverged = stats.chunk.num_diverged / float(chi.size)
@@ -615,6 +638,7 @@ class SolverMachine(object):
         if self.stats.chunk.num_mad_flagged and self.madmax.trial_mode:
             self.vdm.flags_arr &= ~FL.MAD
             self.stats.chunk.num_mad_flagged = 0
+        num_mad_flagged_prior = self.stats.chunk.num_mad_flagged
 
         # apply final round of madmax on residuals, if asked to
         if GD['madmax']['residuals']:
@@ -628,6 +652,9 @@ class SolverMachine(object):
                 resid_vis = np.zeros_like(resid_vis1)
                 self.gm.apply_inv_gains(resid_vis1, resid_vis, full2x2=True)
                 del resid_vis1
+
+            # clear the SKIPSOL flag to also flag data that's been omitted from the solutions
+            self.vdm.flags_arr &= ~FL.SKIPSOL
 
             # run madmax on them
             self.madmax.set_mode(GD['madmax']['residuals'])
@@ -654,7 +681,8 @@ class SolverMachine(object):
             flagstatus.append("gain flags {} ({:.2%} total)".format(" ".join(fstats), nfl/float(nsol)))
 
         if self.stats.chunk.num_mad_flagged:
-            flagstatus.append("MadMax took out {} visibilities".format(self.stats.chunk.num_mad_flagged))
+            flagstatus.append("MadMax took out {} visibilities ({} in final round)".format(
+                        self.stats.chunk.num_mad_flagged, self.stats.chunk.num_mad_flagged - num_mad_flagged_prior))
 
         if flagstatus:
             n_new_flags = (self.vdm.flags_arr&~(FL.MISSING|FL.SKIPSOL) != 0).sum() - self.stats.chunk.num_prior_flagged

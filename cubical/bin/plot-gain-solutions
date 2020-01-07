@@ -52,13 +52,17 @@ def main():
             options.gain = True
 
         if options.gain or bb.name[0] == "G":
-            fig = gainsols.plot_gain_cc(bb, figtitle=figtitle, plot_diag=options.diag or "ap", plot_offdiag=options.off_diag)
+            fig = gainsols.plot_gain_cc(bb, figtitle=figtitle,
+                                        component = options.parameter,
+                                        plot_diag=options.diag or "ap", plot_offdiag=options.off_diag)
             output_name = options.output_name or filename + (".gain.png" if manytypes else ".png")
             if not options.display:
                 fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
 
         if options.bandpass or bb.name[0] == "B":
-            fig = gainsols.plot_bandpass_cc(bb, figtitle=figtitle, plot_diag=options.diag or "ap", plot_offdiag=options.off_diag)
+            fig = gainsols.plot_bandpass_cc(bb, figtitle=figtitle,
+                                            component=options.parameter,
+                                            plot_diag=options.diag or "ap", plot_offdiag=options.off_diag)
             output_name = options.output_name or filename + (".bandpass.png" if manytypes else ".png")
             if not options.display:
                 fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
