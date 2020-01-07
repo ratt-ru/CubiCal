@@ -35,10 +35,17 @@ class Flagger(object):
 
         self.mad_threshold = GD['madmax']['threshold']
         self.medmad_threshold = GD['madmax']['global-threshold']
+        
+        # make copies of theses lists, since we manipuate them in get_thresholds()
         if not isinstance(self.mad_threshold, list):
             self.mad_threshold = [self.mad_threshold]
+        else:
+            self.mad_threshold = list(self.mad_threshold)
         if not isinstance(self.medmad_threshold, list):
             self.medmad_threshold = [self.medmad_threshold]
+        else:
+            self.medmad_threshold = list(self.medmad_threshold)
+            
         self.mad_diag = GD['madmax']['diag']
         self.mad_offdiag = self.metadata.num_corrs == 4 and GD['madmax']['offdiag']
         if not self.mad_diag and not self.mad_offdiag:

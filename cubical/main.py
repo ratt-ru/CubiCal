@@ -503,7 +503,7 @@ def main(debugging=False):
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
-        chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
+        chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers-1, 1)
         if GD["dist"]["max-chunks"]:
             chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
 

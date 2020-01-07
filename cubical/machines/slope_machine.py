@@ -2,6 +2,7 @@
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
+from __future__ import print_function
 from cubical.machines.parameterised_machine import ParameterisedGains
 import numpy as np
 from numpy.ma import masked_array
@@ -83,7 +84,6 @@ class PhaseSlopeGains(ParameterisedGains):
         elif self.slope_type == "f-slope":
             self.slope = cubical.kernels.import_kernel("f_slope")
             self._labels = dict(phase=0, delay=1)
-
             if self._estimate_delays:
                 # Select all baselines containing the reference antenna.
 
@@ -121,6 +121,8 @@ class PhaseSlopeGains(ParameterisedGains):
                                          "constant")
 
                     fft_data = np.fft.fft(padded_data, axis=2)
+                    
+                    fft_data[0,0,0,:,:,:] = 0
 
                     # Convert the normalised frequency values into delay values.
                     # Note the factor of 2*pi which is introduced.
@@ -141,6 +143,9 @@ class PhaseSlopeGains(ParameterisedGains):
                     # at this point.
 
                     delay_est = fft_freq[delay_est_ind]
+                    delay_est[...,(0,1),(1,0)] = 0
+                    
+                    # import ipdb; ipdb.set_trace()
 
                     # Check for bad data points (bls missing across all channels)
                     # and set their estimates to zero.
@@ -154,8 +159,10 @@ class PhaseSlopeGains(ParameterisedGains):
 
                     self.slope_params[..., i:i+1, :, 1, :, :] = -1*delay_est
                     self.slope_params[..., (1,0), (0,1)] = 0
-                    log(1).print("{}: slope estimates are {}".format(chunk_label,
-                                        self.slope_params[..., i:i+1, :, 1, (0,0), (1,1)]))
+                    log(1).print("{}: slope estimates are {}, {}".format(chunk_label,
+                                        " ".join(map(str, self.slope_params[..., i:i+1, :, 1, 0, 0])),
+                                        " ".join(map(str, self.slope_params[..., i:i+1, :, 1, 1, 1]))
+                                         ))
 
 
         elif self.slope_type == "t-slope":
@@ -223,6 +230,13 @@ class PhaseSlopeGains(ParameterisedGains):
             solutions[label] = masked_array(self.slope_params[...,num,(0,1),(0,1)]), self.interval_grid
             if self.posterior_slope_error is not None:
                 solutions[label+".err"] = masked_array(self.posterior_slope_error[..., num, :]), self.interval_grid
+
+        
+        with np.printoptions(precision=3, linewidth=100000, threshold=10000): 
+            log(1).print("{}: slope solutions are {}, {}".format(self.chunk_label,
+                            self.slope_params[..., :, :, 1, 0, 0],
+                            self.slope_params[..., :, :, 1, 1, 1]))
+
 
         return solutions
 
@@ -315,7 +329,13 @@ class PhaseSlopeGains(ParameterisedGains):
             self.posterior_slope_error = np.sqrt(var_slope)
         else:
             np.sqrt(var_slope, out=self.posterior_slope_error)
-
+            
+        #import ipdb; ipdb.set_trace()
+        with np.printoptions(precision=3, linewidth=100000, threshold=10000): 
+            log(1).print("Iteration {}".format(self.iters))
+            log(1).print("slope variance X: ", var_slope[0,:,0,:,1,0].max(axis=0))
+            log(1).print("slope variance Y: ", var_slope[0,:,0,:,1,1].max(axis=0))
+            
         # variance of gain is sum of slope parameter variances
         if self._gerr is None:
             self._gerr = var_slope.sum(axis=-2)
@@ -331,10 +351,21 @@ class PhaseSlopeGains(ParameterisedGains):
         update = self.init_update(jhr)
 
         self.slope.compute_update(jhr, jhjinv, update)
+        
+        with np.printoptions(precision=3, linewidth=100000, threshold=10000): 
+            log(1).print("proposed slope update X: ", update[0,:,0,:,1,0,0].max(axis=0))
+            log(1).print("proposed slope update Y: ", update[0,:,0,:,1,1,1].max(axis=0))
+            log(1).print("proposed phase update X (deg): ", update[0,:,0,:,0,0,0].max(axis=0)*180/np.pi)
+            log(1).print("proposed phase update Y (deg): ", update[0,:,0,:,0,1,1].max(axis=0)*180/np.pi)
 
         # It is safer to average every iteration when using a phase only solver.
         if self.iters%1 == 0:
             update *= 0.5
+        
+        # suppress slope updates for the first 10 iterations, to let phase settle    
+        #if self.iters < 10:
+        #    update *= 0.01
+        #    log(1).print("update damped")
 
         self.slope_params += update
 

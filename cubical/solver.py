@@ -423,12 +423,21 @@ class _VisDataManager(object):
         ## OMS: take sqrt() of weights since that's the correct thing to use in whitening
         self.obser_arr, self.model_arr, self.flags_arr, self.weight_arr = \
             obser_arr, model_arr, flags_arr, weight_arr
+        if GD['data']['normalize']:
+            self._normalization = np.abs(obser_arr)
+        else:
+            self._normalization = None
         if weight_arr is not None:
             if legacy_version12_weights:
                 # self.weight_arr[:] = np.sqrt(self.weight_arr.mean(axis=(-1,-2)))[..., np.newaxis, np.newaxis]
+                if self._normalization is not None:
+                    self.weight_arr = weight_arr*self._normalization
                 self.weight_arr[:] = self.weight_arr.mean(axis=(-1,-2))[..., np.newaxis, np.newaxis]
             else:
                 np.sqrt(self.weight_arr, out=self.weight_arr)
+                if self._normalization is not None:
+                    self.weight_arr *= self._normalization
+            
         self._wobs_arr = self._wmod_arr = None
         self.freq_slice = freq_slice
         self._model_corrupted = False
@@ -449,6 +458,12 @@ class _VisDataManager(object):
                 # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
                 # as they will already get zero weight in data_handler
                 self._wobs_arr[:, self.flags_arr!=0, :, :] = 0
+            if self._normalization is not None:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    self._wobs_arr /= self._normalization[np.newaxis,...]
+                    self._wobs_arr[(self._normalization==0)[np.newaxis,...]] = 0
+                self._normalization = None
+              
         return self._wobs_arr
 
     @property

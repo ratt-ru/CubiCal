@@ -902,25 +902,27 @@ class MSTile(object):
                 # still need to adjust conjugate rows
                 obvis0[subset.rebin_row_map<0] = obvis0[subset.rebin_row_map<0].conjugate()
                 nrows = nrows0
-                obvis = data['obvis'] = obvis0
+                data['obvis'] = obvis0
+                obvis = data['obvis']   # can't string assigmnent together: x = dict['key'] = y does not guarantee that x is dict['key']!!!
                 data['flags'] = flag_arr0
                 flag_arr = data['flags']
-                uvwco = data['uvwco'] = uvw0
+                data['uvwco'] = uvw0
+                uvwco = data['uvwco']
                 if num_weights:
                     data['weigh'] = weights0
                 del obvis0, uvw0, weights0
-
+                
             # normalize by amplitude, if needed
-            if self.dh.do_normalize_data:
-                dataabs = np.abs(obvis)
-                with np.errstate(divide='ignore'):
-                    obvis /= dataabs
-                    obvis[dataabs==0] = 0
-                if 'weigh' in data:
-                    data['weigh'] *= dataabs[np.newaxis, ...]
-                else:
-                    data['weigh'] = dataabs.reshape([1]+list(dataabs.shape))
-
+#            if self.dh.do_normalize_data:
+#                dataabs = np.abs(obvis)
+#                with np.errstate(divide='ignore'):
+#                    obvis /= dataabs
+#                    obvis[dataabs==0] = 0
+#                if 'weigh' in data:
+#                    data['weigh'] *= dataabs[np.newaxis, ...]
+#                else:
+#                    data['weigh'] = dataabs.reshape([1]+list(dataabs.shape))
+                    
             # compute PA rotation angles, if needed
             if self.dh.parallactic_machine is not None:
                 angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
