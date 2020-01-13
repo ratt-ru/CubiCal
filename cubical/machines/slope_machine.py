@@ -104,49 +104,59 @@ class PhaseSlopeGains(ParameterisedGains):
                 # is no guarantee that the band will be perfectly split, this may
                 # need to be a loop over frequency solution intervals.
 
-                pad_width = options["padding"]
-                padding_scheme = [(0,0),]*interval_data.ndim
-                padding_scheme[2] = (pad_width, pad_width)
-
+                pad_factor = options["pad-factor"]
+                
                 for i in range(self.n_freint):
                     edges = self.f_bins + [None]
                     slice_fs = self.chunk_fs[edges[i]:edges[i+1]]
 
-                    padded_fs = np.pad(slice_fs,
-                                       ((pad_width, pad_width)),
-                                       "constant")
+                    slice_data = interval_data[:, :, edges[i]:edges[i+1]]
 
-                    padded_data = np.pad(interval_data[:, :, edges[i]:edges[i+1]],
-                                         padding_scheme,
-                                         "constant")
-
-                    fft_data = np.fft.fft(padded_data, axis=2)
-                    
-                    fft_data[0,0,0,:,:,:] = 0
+                    fft_data = np.abs(np.fft.fft(slice_data, n=slice_data.size*pad_factor, axis=2))
+                    fft_data = np.fft.fftshift(fft_data, axes=2)
 
                     # Convert the normalised frequency values into delay values.
-                    # Note the factor of 2*pi which is introduced.
 
                     delta_freq = slice_fs[1] - slice_fs[0]
-                    n_freq = padded_fs.size
-                    fft_freq = np.fft.fftfreq(n_freq, delta_freq)*2*np.pi
+                    fft_freq = np.fft.fftfreq(slice_data.size*pad_factor, delta_freq)
+                    fft_freq = np.fft.fftshift(fft_freq)
 
                     # Find the delay value at which the FFT of the data is
                     # maximised. As we do not pad the values, this only a rough
                     # approximation of the delay. We also reintroduce the
                     # frequency axis for consistency.
 
-                    delay_est_ind = np.argmax(np.abs(fft_data), axis=2)
+                    delay_est_ind = np.argmax(fft_data, axis=2)
                     delay_est_ind = np.expand_dims(delay_est_ind, axis=2)
 
-                    # Get the delay estimates. Note that we may have bad guesses
-                    # at this point.
+                    # What follows is remnants of testing the delay code. Leaving here
+                    # for now, in case I need the interpolation code.
 
+                    #ilo = delay_est_ind - 1
+                    #ihi = delay_eit_ind + 1
+
+                    #all_inds = np.ix_(*[range(ax) for ax in fft_data.shape])
+                    #max_inds = tuple(all_inds[i] if i!=2 else delay_est_ind for i in range(len(all_inds))) 
+                    #ilo = tuple(all_inds[i] if i!=2 else delay_est_ind - 1 for i in range(len(all_inds)))
+                    #ihi = tuple(all_inds[i] if i!=2 else delay_est_ind + 1 for i in range(len(all_inds)))
+
+                    #alo = fft_data[ilo]
+                    #ahi = fft_data[ihi]
+                    #amax = fft_data[max_inds]
+
+                    #denom = alo + ahi - 2*amax
+                    #fpk = np.round(delay_est_ind - fft_freq.size/2 - (ahi - amax)/denom)
+                    #fpk[~np.isfinite(fpk)] = 0
+                    #delay_est = fpk/fft_freq.size
+                    #delay_est /= delta_freq
+
+                    #delay_correction = (ahi - amax)/denom
+                    #delay_correction[~np.isfinite(delay_correction)] = 0
+                    #delay_correction /= (fft_freq.size*delta_freq)
+                
                     delay_est = fft_freq[delay_est_ind]
                     delay_est[...,(0,1),(1,0)] = 0
                     
-                    # import ipdb; ipdb.set_trace()
-
                     # Check for bad data points (bls missing across all channels)
                     # and set their estimates to zero.
 
@@ -159,6 +169,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
                     self.slope_params[..., i:i+1, :, 1, :, :] = -1*delay_est
                     self.slope_params[..., (1,0), (0,1)] = 0
+                    
                     log(1).print("{}: slope estimates are {}, {}".format(chunk_label,
                                         " ".join(map(str, self.slope_params[..., i:i+1, :, 1, 0, 0])),
                                         " ".join(map(str, self.slope_params[..., i:i+1, :, 1, 1, 1]))
@@ -382,7 +393,7 @@ class PhaseSlopeGains(ParameterisedGains):
         any machine specific restrictions.
         """
 
-        #ParameterisedGains.restrict_solution(self)
+        # ParameterisedGains.restrict_solution(self)
         # These need to be set here as we do not call the interval restrict solutions -
         # out solutions are the parameters and not the gains themselves.
         self._gh_update = self._ghinv_update = True
