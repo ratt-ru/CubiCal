@@ -112,13 +112,15 @@ class PhaseSlopeGains(ParameterisedGains):
 
                     slice_data = interval_data[:, :, edges[i]:edges[i+1]]
 
-                    fft_data = np.abs(np.fft.fft(slice_data, n=slice_data.size*pad_factor, axis=2))
+                    slice_nchan = slice_data.shape[2]
+
+                    fft_data = np.abs(np.fft.fft(slice_data, n=slice_nchan*pad_factor, axis=2))
                     fft_data = np.fft.fftshift(fft_data, axes=2)
 
                     # Convert the normalised frequency values into delay values.
 
                     delta_freq = slice_fs[1] - slice_fs[0]
-                    fft_freq = np.fft.fftfreq(slice_data.size*pad_factor, delta_freq)
+                    fft_freq = np.fft.fftfreq(slice_nchan*pad_factor, delta_freq)
                     fft_freq = np.fft.fftshift(fft_freq)
 
                     # Find the delay value at which the FFT of the data is
