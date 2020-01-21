@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from builtins import range
 import numpy as np
@@ -28,13 +37,13 @@ class PerIntervalGains(MasterMachine):
     def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, options):
         """
         Initialises a gain machine which supports solution intervals.
-        
+
         Args:
             label (str):
                 Label identifying the Jones term.
-            data_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
             ndir (int):
                 Number of directions.
             nmod (nmod):
@@ -43,7 +52,7 @@ class PerIntervalGains(MasterMachine):
                 Times for the data being processed.
             freqs (np.ndarray):
                 Frequencies for the data being processsed.
-            options (dict): 
+            options (dict):
                 Dictionary of options.
             diag_gains (bool):
                 If True, gains are diagonal-only. Else gains are full 2x2.
@@ -232,31 +241,31 @@ class PerIntervalGains(MasterMachine):
 
     def init_gains(self):
         """
-        Construct gain and flag arrays. Normally we have one gain/one flag per interval, but 
+        Construct gain and flag arrays. Normally we have one gain/one flag per interval, but
         subclasses may redefine this, if they deal with e.g. full-resolution gains.
-        
-        Sets up the following attributes: 
+
+        Sets up the following attributes:
             gain_shape (list):
                 shape of the gains array, i.e. (n_dir, NT, NF, n_ant, n_cor, n_cor)
                 Default version has NT=n_timint, NF=n_freint, i.e. one gain per interval.
-                 
+
             gain_grid (dict):
                 grid on which gains are defined, as a dict of {'time': times, 'freq': frequencies},
                 where times is a vector of NT points and frequencies is a vector of NF points.
-                
+
             gains (np.ndarray):
                 gains array of the specified shape
-                
+
             gflags (np.ndarray):
                 gain flags array of the same shape, minus the two correlation axes
-                
+
             gain_intervals (list):
                 intervals on which gains are defined. Default version has [t_int, f_int].
-                
+
             _gainres_to_fullres (callable):
                 function to go from an array of gain shape to full time/freq resolution
                 (default uses unpack_intervals)
-            
+
             _interval_to_gainres (callable):
                 function to go from an array of interval shape to gain shape (default is identity)
         """
@@ -318,7 +327,7 @@ class PerIntervalGains(MasterMachine):
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
-        
+
         mask = self.get_gain_mask()
 
         sols = { "gain": (masked_array(self.gains, mask), self.gain_grid) }
@@ -331,9 +340,9 @@ class PerIntervalGains(MasterMachine):
         return sols
 
     def import_solutions(self, soldict):
-        """ 
-        Loads solutions from a dict. 
-        
+        """
+        Loads solutions from a dict.
+
         Args:
             soldict (dict):
                 Contains gains solutions which must be loaded.
@@ -380,7 +389,7 @@ class PerIntervalGains(MasterMachine):
                 sigmasq = 1.0/inv_var_chan                        # squared noise per channel. Could be infinite if no data
                 # take the sigma (in quadrature) over each interval
                 # divided by quadrature unflagged contributing interferometers per interval
-                # this yields var<g> 
+                # this yields var<g>
                 # (numeq_tfa becomes number of unflagged points per interval, antenna)
                 numeq_tfa = self.interval_sum(numeq_tfa)
                 sigmasq[np.logical_or(np.isnan(sigmasq), np.isinf(sigmasq))] = 0.0
@@ -696,17 +705,17 @@ class PerIntervalGains(MasterMachine):
 
     def check_convergence(self, min_delta_g):
         """
-        Updates the convergence parameters of the current time-frequency chunk. 
+        Updates the convergence parameters of the current time-frequency chunk.
 
         Args:
             min_delta_g (float):
                 Threshold for the minimum change in the gains - convergence criterion.
         """
-        
+
         diff_g = np.square(np.abs(self.old_gains - self.gains))
         diff_g[self.flagged] = 0
         diff_g = diff_g.sum(axis=(-1,-2,-3))
-        
+
         norm_g = np.square(np.abs(self.gains))
         norm_g[self.flagged] = 1
         norm_g = norm_g.sum(axis=(-1,-2,-3))
@@ -719,8 +728,8 @@ class PerIntervalGains(MasterMachine):
 
     def restrict_solution(self):
         """
-        Restricts the solutions by, for example, selecting a reference antenna or taking only the 
-        amplitude. 
+        Restricts the solutions by, for example, selecting a reference antenna or taking only the
+        amplitude.
         """
         # raise flag so updates of G^H and G^-1 are computed
         self._gh_update = self._ghinv_update = True
@@ -737,10 +746,10 @@ class PerIntervalGains(MasterMachine):
         elif self.update_type == "amp-diag":
             self.gains[...,(0,1),(1,0)] = 0
             np.abs(self.gains, out=self.gains)
-        
+
         ## explicitly roll back invalid gains to previously known good values
         #self.gains[self.gflags != 0] = self.old_gains[self.gflags != 0]
-        
+
         # explicitly roll back gains to previously known good values for fixed directions
         for idir in self.fix_directions:
             self.gains[idir, ...] = self.old_gains[idir, ...]
@@ -763,7 +772,7 @@ class PerIntervalGains(MasterMachine):
             arr (np.ndarray):
                 Array with adjacent time and frequency axes.
             tdim_ind (int, optional):
-                Position of time axis in array axes. 
+                Position of time axis in array axes.
 
         Returns:
             np.ndarray:
@@ -783,7 +792,7 @@ class PerIntervalGains(MasterMachine):
             arr (np.ndarray):
                 Array with adjacent time and frequency axes.
             tdim_ind (int, optional):
-                Position of time axis in array axes. 
+                Position of time axis in array axes.
 
         Returns:
             np.ndarray:
@@ -794,21 +803,21 @@ class PerIntervalGains(MasterMachine):
 
     def interval_and(self, arr, tdim_ind=0, out=None):
         """
-        Helper method. Logical-ands an array with full resolution time/freq axes into time/freq 
+        Helper method. Logical-ands an array with full resolution time/freq axes into time/freq
         intervals.
 
         Args:
             arr (np.ndarray):
                 Array with adjacent time and frequency axes.
             tdim_ind (int, optional):
-                Position of time axis in array axes. 
+                Position of time axis in array axes.
 
         Returns:
             np.ndarray:
                 Array with interval resolution.
         """
 
-        return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind), 
+        return np.logical_and.reduceat(np.logical_and.reduceat(arr, self.t_bins, tdim_ind),
                                                                     self.f_bins, tdim_ind+1, out=out)
     @property
     def converged_fraction(self):

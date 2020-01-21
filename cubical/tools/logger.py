@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
@@ -111,7 +120,7 @@ class LoggerWrapper(object):
         """
         # effective verbosity level is either set explicitly when the writer is created, or else use global level
         return _DefaultWriter(self.logger, logging.INFO - level, color=color)
-    
+
     def warn(self, msg, color=None, print_once=None):
         """
         Wrapper for log.warn
@@ -125,7 +134,7 @@ class LoggerWrapper(object):
         Wrapper for log.error
         """
         _DefaultWriter(self.logger, logging.ERROR, color=color).write(msg, print_once=print_once)
-        
+
     def info(self, msg, color=None, print_once=None):
         """
         Wrapper for log.info

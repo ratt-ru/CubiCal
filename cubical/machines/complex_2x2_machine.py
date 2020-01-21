@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
@@ -19,13 +28,13 @@ class Complex2x2Gains(PerIntervalGains):
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a 2x2 complex gain machine.
-        
+
         Args:
             label (str):
                 Label identifying the Jones term.
-            data_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
             ndir (int):
                 Number of directions.
             nmod (nmod):
@@ -34,8 +43,8 @@ class Complex2x2Gains(PerIntervalGains):
                 Times for the data being processed.
             chunk_fs (np.ndarray):
                 Frequencies for the data being processsed.
-            options (dict): 
-                Dictionary of options. 
+            options (dict):
+                Dictionary of options.
         """
         # note that this sets up self.kernel
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
@@ -80,23 +89,23 @@ class Complex2x2Gains(PerIntervalGains):
 
     def compute_js(self, obser_arr, model_arr):
         """
-        This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
-        method. 
+        This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM
+        method.
 
         Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            model_arr (np.ndrray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 model visibilities.
 
         Returns:
             3-element tuple
-                
+
                 - J\ :sup:`H`\R (np.ndarray)
                 - (J\ :sup:`H`\J)\ :sup:`-1` (np.ndarray)
-                - Count of flags raised (int)     
+                - Count of flags raised (int)
         """
 
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
@@ -120,7 +129,7 @@ class Complex2x2Gains(PerIntervalGains):
         self.kernel_solve.compute_jhj(jh, jhj, self.t_int, self.f_int)
 
         flag_count = self.kernel_solve.compute_jhjinv(jhj, jhjinv, self.gflags, self.eps, FL.ILLCOND)
-        
+
 #         if flag_count:
 #             import pdb; pdb.set_trace()
 
@@ -161,7 +170,7 @@ class Complex2x2Gains(PerIntervalGains):
         Restricts the solution by invoking the inherited restrict_soultion method and applying
         any machine specific restrictions.
         """
-        
+
         PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:

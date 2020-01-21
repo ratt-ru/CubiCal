@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
@@ -18,13 +27,13 @@ class PhaseDiagGains(PerIntervalGains):
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
         Initialises a diagonal phase-only gain machine.
-        
+
         Args:
             label (str):
                 Label identifying the Jones term.
-            data_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
             ndir (int):
                 Number of directions.
             nmod (nmod):
@@ -33,8 +42,8 @@ class PhaseDiagGains(PerIntervalGains):
                 Times for the data being processed.
             chunk_fs (np.ndarray):
                 Frequencies for the data being processsed.
-            options (dict): 
-                Dictionary of options. 
+            options (dict):
+                Dictionary of options.
         """
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod,
                                   chunk_ts, chunk_fs, chunk_label, options)
@@ -47,7 +56,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         self.phases = self.kernel.allocate_gain_array(self.gain_shape, dtype=self.ftype, zeros=True)
         self.gains = np.empty_like(self.phases, dtype=self.dtype)
-        self.gains[:] = np.eye(self.n_cor) 
+        self.gains[:] = np.eye(self.n_cor)
         self.old_gains = self.gains.copy()
 
     @classmethod
@@ -68,14 +77,14 @@ class PhaseDiagGains(PerIntervalGains):
 
     def compute_js(self, obser_arr, model_arr):
         """
-        This function computes the J\ :sup:`H`\R term of the GN/LM method. 
+        This function computes the J\ :sup:`H`\R term of the GN/LM method.
 
         Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            model_arr (np.ndrray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 model visibilities.
 
         Returns:
@@ -209,7 +218,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         Args:
             model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing
                 model visibilities.
         """
         PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)

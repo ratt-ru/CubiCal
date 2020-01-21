@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from builtins import range
 from cubical.machines.abstract_machine import MasterMachine
@@ -18,20 +27,20 @@ log = logger.getLogger("jones_chain")
 class JonesChain(MasterMachine):
     """
     This class implements a gain machine for an arbitrary chain of Jones matrices. Most of its
-    functionality is consistent with a complex 2x2 solver - many of its methods mimic those of the 
+    functionality is consistent with a complex 2x2 solver - many of its methods mimic those of the
     underlying complex 2x2 machines.
     """
 
     def __init__(self, label, data_arr, ndir, nmod, times, frequencies, chunk_label, jones_options):
         """
         Initialises a chain of complex 2x2 gain machines.
-        
+
         Args:
             label (str):
                 Label identifying the Jones term.
-            data_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
             ndir (int):
                 Number of directions.
             nmod (nmod):
@@ -40,8 +49,8 @@ class JonesChain(MasterMachine):
                 Times for the data being processed.
             frequencies (np.ndarray):
                 Frequencies for the data being processsed.
-            jones_options (dict): 
-                Dictionary of options pertaining to the chain. 
+            jones_options (dict):
+                Dictionary of options pertaining to the chain.
         """
         from cubical.main import UserInputError
         # This instantiates the number of complex 2x2 elements in our chain. Each element is a
@@ -160,7 +169,7 @@ class JonesChain(MasterMachine):
     def _load_solutions(self, init_sols):
         """
         Helper method invoked by Factory.create_machine() to import existing solutions into machine.
-        
+
         In the case of a chain, we invoke this method on every member.
         """
         for term in self.jones_terms:
@@ -169,26 +178,26 @@ class JonesChain(MasterMachine):
     #@profile
     def compute_js(self, obser_arr, model_arr):
         """
-        This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
+        This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM
         method. This method is more complicated than a more conventional gain machine. The use of
-        a chain means there are additional terms which need to be considered when computing the 
+        a chain means there are additional terms which need to be considered when computing the
         parameter updates.
 
         Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            model_arr (np.ndrray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 model visibilities.
 
         Returns:
             3-element tuple
-                
+
                 - J\ :sup:`H`\R (np.ndarray)
                 - (J\ :sup:`H`\J)\ :sup:`-1` (np.ndarray)
-                - Count of flags raised (int)     
-        """     
+                - Count of flags raised (int)
+        """
 
         n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.active_term.gains.shape
 
@@ -222,7 +231,7 @@ class JonesChain(MasterMachine):
         for ind in range(self.active_index, -1, -1):
             term = self.jones_terms[ind]
             self.chain.compute_jh(self.jh, term.gains, *term.gain_intervals)
-            
+
         if n_dir > 1:
             if self._r is None:
                 self._r = np.empty_like(obser_arr)
@@ -321,18 +330,18 @@ class JonesChain(MasterMachine):
         observed data, and the model data with the gains applied to it.
 
         Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 observed visibilities.
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            model_arr (np.ndrray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 model visibilities.
-            resid_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the 
+            resid_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array into which the
                 computed residuals should be placed.
 
         Returns:
-            np.ndarray: 
+            np.ndarray:
                 Array containing the result of computing D - GMG\ :sup:`H`.
         """
         g, gh = self.accumulate_gains()
@@ -346,15 +355,15 @@ class JonesChain(MasterMachine):
         Applies the inverse of the gain estimates to the observed data matrix.
 
         Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
                 observed visibilities.
-            corr_vis (np.ndarray or None, optional): 
-                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
+            corr_vis (np.ndarray or None, optional):
+                if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array
                 into which the corrected visibilities should be placed.
 
         Returns:
-            np.ndarray: 
+            np.ndarray:
                 Array containing the result of G\ :sup:`-1`\DG\ :sup:`-H`.
         """
 
@@ -369,11 +378,11 @@ class JonesChain(MasterMachine):
 
     def apply_gains(self, vis):
         """
-        Applies the gains to an array at full time-frequency resolution. 
+        Applies the gains to an array at full time-frequency resolution.
 
         Args:
             model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing
                 model visibilities.
 
         Returns:
@@ -386,7 +395,7 @@ class JonesChain(MasterMachine):
 
     def check_convergence(self, min_delta_g):
         """
-        Updates the convergence info of the current time-frequency chunk. 
+        Updates the convergence info of the current time-frequency chunk.
 
         Args:
             min_delta_g (float):
@@ -396,8 +405,8 @@ class JonesChain(MasterMachine):
 
     def restrict_solution(self):
         """
-        Restricts the solutions by, for example, selecting a reference antenna or taking only the 
-        amplitude. 
+        Restricts the solutions by, for example, selecting a reference antenna or taking only the
+        amplitude.
         """
         return self.active_term.restrict_solution()
 
@@ -437,8 +446,8 @@ class JonesChain(MasterMachine):
 
     def next_iteration(self):
         """
-        Updates the iteration count on the relevant element of the Jones chain. It will also handle 
-        updating the active Jones term. Ultimately, this should handle any complicated 
+        Updates the iteration count on the relevant element of the Jones chain. It will also handle
+        updating the active Jones term. Ultimately, this should handle any complicated
         convergence/term switching functionality.
         """
 

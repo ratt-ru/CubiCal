@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 #
@@ -45,8 +54,8 @@ on_rtd = os.environ.get('READTHEDOCS') == 'True'
 
 if on_rtd:
     requirements = ['numpy',
-                    'numba', 
-                    'futures; python_version <= "2.7"', 
+                    'numba',
+                    'futures; python_version <= "2.7"',
                     'matplotlib',
                     'scipy']
 else:
@@ -54,8 +63,8 @@ else:
                     'numpy',
                     'numba',
                     'python-casacore<=3.0.0; python_version <= "2.7"',
-                    'python-casacore<=3.0.0; python_version >= "3.0"', 
-                    'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
+                    'python-casacore<=3.0.0; python_version >= "3.0"',
+                    'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master',
                     'matplotlib<3.0',
                     'scipy',
                     'astro-tigger-lsm',
@@ -81,11 +90,11 @@ setup(name='cubical',
       license='GNU GPL v3',
       long_description=long_description,
       long_description_content_type='text/markdown',
-      packages=['cubical', 
+      packages=['cubical',
                 'cubical.data_handler',
                 'cubical.machines',
-                'cubical.tools', 
-                'cubical.kernels', 
+                'cubical.tools',
+                'cubical.kernels',
                 'cubical.plots',
                 'cubical.database',
                 'cubical.madmax'],

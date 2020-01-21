@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from cubical.machines.interval_gain_machine import PerIntervalGains
 import numpy as np
@@ -17,19 +26,19 @@ class ComplexW2x2Gains(PerIntervalGains):
     """
     This class implements the weighted full complex 2x2 gain machine based on the Complex T-distribution
     """
-    
+
     def __init__(self, label, data_arr, ndir, nmod,
                  chunk_ts, chunk_fs, chunk_label, options):
 
         """
         Initialises a weighted complex 2x2 gain machine.
-        
+
         Args:
             label (str):
                 Label identifying the Jones term.
-            data_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
             ndir (int):
                 Number of directions.
             nmod (nmod):
@@ -38,8 +47,8 @@ class ComplexW2x2Gains(PerIntervalGains):
                 Times for the data being processed.
             chunk_fs (np.ndarray):
                 Frequencies for the data being processsed.
-            options (dict): 
-                Dictionary of options. 
+            options (dict):
+                Dictionary of options.
         """
 
         PerIntervalGains.__init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options)
@@ -49,7 +58,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.residuals = np.empty_like(data_arr)
 
         self.save_weights = options.get("robust-save-weights", False)
-        
+
         self.label = label
 
         self.cov_type = options.get("robust-cov", "compute") #adding an option to compute residuals covariance or just assume 1 as in Robust-t paper
@@ -71,22 +80,22 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         Args:
             obser_arr (np.array): Array containing the observed visibilities.
-            
+
             model_arr (np.array): Array containing the model visibilities.
-            
+
             gains (np.array): Array containing the current gain estimates.
 
         Returns:
             Returns:
-            
+
             jhwr (np.array): Array containing the result of computing (J^H)WR.
-            
+
             jhwjinv (np.array): Array containing the result of computing (J^HW.J)^-1
-            
+
             flag_count:     Number of flagged (ill-conditioned) elements
         """
         w = self.weights
-        
+
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
 
         jh = self.get_new_jh(model_arr)
@@ -98,7 +107,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         if self.iters == 1:
             self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
-        self.kernel_robust.compute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
+        self.kernel_robust.compute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO
 
         jhwj, jhwjinv = self.get_new_jhj()
 
@@ -108,7 +117,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         return jhwr, jhwjinv, flag_count
 
-    
+
     #@profile
     def implement_update(self, jhr, jhjinv):
 
@@ -117,10 +126,10 @@ class ComplexW2x2Gains(PerIntervalGains):
         # not sure about how the  weights affects the posterior variance. here we actually pass jhwj, not jhj
         if self.posterior_gain_error is None:
             self.posterior_gain_error = np.zeros_like(jhjinv.real)
-        
+
         #----normalising to reduce the effects of the weights on jhj---#
         #----not sure if this is the best way to do this---------------#
-        
+
         norm = ((1/2.)*np.average(self.weights[:,self.new_flags==0,:].real))**2
         diag = norm*jhjinv[..., (0, 1), (0, 1)].real
         self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
@@ -142,27 +151,27 @@ class ComplexW2x2Gains(PerIntervalGains):
 
     def compute_update(self, model_arr, obser_arr):
         """
-        This method is expected to compute the parameter update. 
-        
+        This method is expected to compute the parameter update.
+
         The standard implementation simply calls compute_js() and implement_update(), here we are
-        overriding it because we need to update weights as well. 
+        overriding it because we need to update weights as well.
 
         Args:
-            model_arr (np.ndarray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
-                model visibilities. 
-            
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing
+                model visibilities.
+
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
         """
-        
+
         jhwr, jhwjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
         self.implement_update(jhwr, jhwjinv)
 
         # Computing the weights
-        
+
         self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
 
         self.update_weights()
@@ -170,10 +179,10 @@ class ComplexW2x2Gains(PerIntervalGains):
         return flag_count
 
     def compute_covinv(self):
-        
+
         """
-        This functions computes the 4x4 covariance matrix of the residuals visibilities, 
-        and it approximtes it inverse. I self.cov_type is set to 1, the covariance maxtrix is 
+        This functions computes the 4x4 covariance matrix of the residuals visibilities,
+        and it approximtes it inverse. I self.cov_type is set to 1, the covariance maxtrix is
         assumed to be the Identity matrix as in the Robust-t paper.
 
         Args:
@@ -189,10 +198,10 @@ class ComplexW2x2Gains(PerIntervalGains):
         if self.cov_type == "identity":
 
             covinv = np.eye(4, dtype=self.dtype)
-          
+
         else:
 
-            unflagged = self.new_flags==False 
+            unflagged = self.new_flags==False
 
             Nvis = np.sum(unflagged)/2. #only half of the visibilties are used for covariance computation
 
@@ -222,29 +231,29 @@ class ComplexW2x2Gains(PerIntervalGains):
             if self.cov_type == "hybrid":
                 if np.max(np.abs(std)) < 1:
                     covinv[np.diag_indices(4)]= 1/std
-                    
+
             elif self.cov_type == "compute":
                 covinv[np.diag_indices(4)]= 1/std
-               
+
             else:
                 raise RuntimeError("unknown robust-cov setting")
-        
+
         if self.npol == 2:
             covinv[(1,2), (1,2)] = 0
-            
+
 
         return covinv
-    
+
 
     def update_weights(self):
-        
+
         """
             This computes the weights, given the latest residual visibilities and the v parameter.
             w[i] = (v+2*npol)/(v + 2*r[i].T.cov.r[i]. Next v is update using the newly compute weights.
-        
+
             Args:
                 r (np.array): Array of the residual visibilities.
-                covinc (np.array) : Array containing the inverse of 
+                covinc (np.array) : Array containing the inverse of
                covariance of residual visibilities
                 w (np.array): Array containing the weights
                 v (float) : v -- number of degrees of freedom
@@ -259,15 +268,15 @@ class ComplexW2x2Gains(PerIntervalGains):
             Args:
                 wn : the weights flaten in to a 1D array
             Returns:
-                root (float) : The root of f or minimum point    
+                root (float) : The root of f or minimum point
             """
 
             m = len(wn)
 
-            
+
             vfunc = lambda a: special.digamma(a+self.npol) - np.log(a+self.npol) - \
                         special.digamma(a) + np.log(a) + (1./m)*np.sum(np.log(wn) - wn) + 1
-            
+
 
             vvals = np.arange(2, 101, 1, dtype=float) #search for v in the range (2, 100)
             fvals = vfunc(vvals)
@@ -275,7 +284,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
             if self.iters % 5 == 0 or self.iters == 1:
                 print("{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root), file=log(2))
-            
+
             return root
 
         covinv = self.compute_covinv()
@@ -294,20 +303,20 @@ class ComplexW2x2Gains(PerIntervalGains):
         w_real = np.real(w[:,:,:,aa,ab,0].flatten())
         w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
 
-        # norm = np.average(w_nzero) 
-  
+        # norm = np.average(w_nzero)
+
         self.weights = w #/norm
-        
+
         #-----------computing the v parameter---------------------#
         # This computation is only done after a certain number of iterations. Default is 5
         if self.iters % self.v_int == 0 or self.iters == 1:
-            wn = w_nzero #/norm 
+            wn = w_nzero #/norm
             self.v = _brute_solve_v(wn)
-        
-        return 
+
+        return
 
     def restrict_solution(self):
-        
+
         PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:
@@ -322,7 +331,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         Args:
             model_arr (np.ndarray):
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing
                 model visibilities.
             flags_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing  flags
@@ -330,7 +339,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
 
         self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
-        
+
         self.weights = np.ones(self.weights_shape, dtype=self.dtype)
         self.weights[:,flags_arr!=0] = 0
         self.new_flags = flags_arr!=0

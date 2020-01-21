@@ -1,9 +1,18 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
-Handles parameter databases which can contain solutions and other relevant values. 
+Handles parameter databases which can contain solutions and other relevant values.
 """
 import numpy as np
 from cubical.tools import logger
@@ -14,11 +23,11 @@ from .database.casa_db_adaptor import casa_db_adaptor
 def create(filename, metadata={}, backup=True):
     """
     Creates a new parameter database.
-    
+
     Args:
-        filename (str): 
+        filename (str):
             Name of file to save DB to.
-        metadata (dict, optional): 
+        metadata (dict, optional):
             Optional dictionary of metadata.
         backup (bool, optional):
             If True, and an old database with the same filename exists, make a backup.
@@ -30,7 +39,7 @@ def create(filename, metadata={}, backup=True):
 
     db = casa_db_adaptor()
     db._create(filename, metadata, backup)
-    
+
     return db
 
 def load(filename):
@@ -38,7 +47,7 @@ def load(filename):
     Loads a parameter database
 
     Args:
-        filename (str): 
+        filename (str):
             Name of file to load DB from.
 
     Returns:
@@ -48,7 +57,7 @@ def load(filename):
 
     db = casa_db_adaptor()
     db._load(filename)
-    
+
     return db
 
 

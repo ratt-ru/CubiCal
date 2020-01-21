@@ -1,9 +1,18 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
-Handles parameter databases which can contain solutions and other relevant values. 
+Handles parameter databases which can contain solutions and other relevant values.
 """
 from __future__ import print_function
 from future.moves import pickle
@@ -37,9 +46,9 @@ class PickledDatabase(iface_database):
         Creates a parameter database given by the filename and opens it in "create" mode.
 
         Args:
-            filename (str): 
+            filename (str):
                 Name of database.
-            metadata (dict, optional): 
+            metadata (dict, optional):
                 Optional metadata to be stored in DB.
             backup (bool, optional):
                 If True, and an old database with the same filename exists, make a backup.
@@ -87,7 +96,7 @@ class PickledDatabase(iface_database):
             array (:obj:`~numpy.ma.core.MaskedArray`):
                 The values which are to be added.
             grid (dict, optional):
-                Grid coordinates for each sliced parameter axis. 
+                Grid coordinates for each sliced parameter axis.
 
         """
 

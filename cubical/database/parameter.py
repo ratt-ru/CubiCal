@@ -1,9 +1,18 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
-Handles parameter databases which can contain solutions and other relevant values. 
+Handles parameter databases which can contain solutions and other relevant values.
 """
 from __future__ import print_function
 from builtins import range
@@ -18,7 +27,7 @@ import itertools
 
 class _Record(object):
     """
-    Helper class: a record is initialized from a dict, and has attributes corresponding to the 
+    Helper class: a record is initialized from a dict, and has attributes corresponding to the
     dict keys.
     """
 
@@ -32,16 +41,16 @@ class Parameter(object):
     Defines a parameter object. A parameter represents an N-dimensional set of values (and flags),
     along with axis information.
 
-    A parameter has two types of axes: continuous and interpolatable (e.g. time, frequency), 
-    and discrete (e.g. antenna, direction, correlation). Internally, a parameter is stored as 
-    a set of masked arrays (e.g. 2D time/frequency arrays), one such "slice" per each discrete 
+    A parameter has two types of axes: continuous and interpolatable (e.g. time, frequency),
+    and discrete (e.g. antenna, direction, correlation). Internally, a parameter is stored as
+    a set of masked arrays (e.g. 2D time/frequency arrays), one such "slice" per each discrete
     point (e.g. per each antenna, direction, correlation, etc.)
 
-    Each such slice may be accessed directly with get_slice() (e.g. get_slice(ant=N,corr1=0,corr2=1)) 
+    Each such slice may be accessed directly with get_slice() (e.g. get_slice(ant=N,corr1=0,corr2=1))
     The returned array is a reference to the underlying slice, and may be modified. Note that each
     slice can (in principle) be defined on a different subset of the overall continuous grid.
 
-    A parameter also supports reinterpolation onto a different continuous grid. This is slower 
+    A parameter also supports reinterpolation onto a different continuous grid. This is slower
     (and returns a new array). This is done via the reinterpolate() method.
     """
 
@@ -56,7 +65,7 @@ class Parameter(object):
                 A numpy data type.
             axes (list):
                 Axis names (str).
-            interpolation_axes (list, optional): 
+            interpolation_axes (list, optional):
                 Axes over which interpolation will be supported (1 or 2 axes).
             empty (various, optional):
                 Empty value for undefined parameters, usually 0.
@@ -134,10 +143,10 @@ class Parameter(object):
 
     def _update_shape(self, shape, grid):
         """
-        Called repeatedly during the prototype -> skeleton phase, as the 
+        Called repeatedly during the prototype -> skeleton phase, as the
         solver generates solutions for subsets of the overall parameter space.
-        Updates shape of each axis based on the supplied shape and grid. Grid is a dict of 
-        {axis: coordinates}, and need only be supplied for shapes that are a partial 
+        Updates shape of each axis based on the supplied shape and grid. Grid is a dict of
+        {axis: coordinates}, and need only be supplied for shapes that are a partial
         slice along an axis.
 
         Args:
@@ -213,8 +222,8 @@ class Parameter(object):
         return True
 
     def _to_norm(self, iaxis, g):
-        """ 
-        Converts grid of given axis to normalized grid. 
+        """
+        Converts grid of given axis to normalized grid.
 
         Args:
             iaxis ():
@@ -230,7 +239,7 @@ class Parameter(object):
         return (g - gmin) / gmax
 
     def _from_norm(self, iaxis, g):
-        """ Converts grid of given axis to unnormalized grid. 
+        """ Converts grid of given axis to unnormalized grid.
 
         Args:
             iaxis ():
@@ -247,7 +256,7 @@ class Parameter(object):
 
     def _init_arrays(self):
         """
-        Initializes internal arrays based on skeleton information. This begins the skeleton -> 
+        Initializes internal arrays based on skeleton information. This begins the skeleton ->
         populated transition.
         """
 
@@ -260,7 +269,7 @@ class Parameter(object):
 
     def _paste_slice(self, item):
         """
-        "Pastes" a subset of values into the internal arrays. Called repeatedly during the skeleton 
+        "Pastes" a subset of values into the internal arrays. Called repeatedly during the skeleton
         -> populated transition.
 
         Args:
@@ -280,7 +289,7 @@ class Parameter(object):
 
     def _finalize_arrays(self):
         """
-        Finalizes internal arrays by breaking them into slices. This completes the skeleton -> 
+        Finalizes internal arrays by breaking them into slices. This completes the skeleton ->
         populated transition.
         """
 
@@ -370,7 +379,7 @@ class Parameter(object):
     def get_slice(self, **axes):
         """
         Returns array and grids associated with given slice, as given by keyword arguments.
-        Note that a single index must be specified for all discrete axes with a size of greater 
+        Note that a single index must be specified for all discrete axes with a size of greater
         than 1. Array may be None, to indicate no solutions for the given slice.
         """
 
@@ -381,7 +390,7 @@ class Parameter(object):
     def is_slice_valid(self, **axes):
         """
         Returns True if there are valid solutions for a given slice, as given by keyword arguments.
-        Note that a single index must be specified for all discrete axes with a size of greater 
+        Note that a single index must be specified for all discrete axes with a size of greater
         than 1.
         """
 
@@ -391,7 +400,7 @@ class Parameter(object):
 
     def get_cube(self):
         """
-        Returns full cube of solutions (dimensions of all axes), interpolated onto the superset of 
+        Returns full cube of solutions (dimensions of all axes), interpolated onto the superset of
         all slice grids.
         """
         return self.lookup(grid={self.axis_labels[iaxis]: self.grid[iaxis]
@@ -403,10 +412,10 @@ class Parameter(object):
         Helper function, to interpolate a named parameter onto the specified grid.
 
         Args:
-            grid (dict): 
+            grid (dict):
                 Axes to be returned. For interpolatable axes, grid should be a vector of coordinates
-                (the superset of all slice coordinates will be used if an axis is not supplied). 
-                Discrete axes may be specified as a single index, or a vector of indices, or a 
+                (the superset of all slice coordinates will be used if an axis is not supplied).
+                Discrete axes may be specified as a single index, or a vector of indices, or a
                 slice object. If any axis is missing, the full axis is returned.
 
         Returns:
@@ -469,16 +478,16 @@ class Parameter(object):
         Interpolates named parameter onto the specified grid.
 
         Args:
-            grid (dict): 
+            grid (dict):
                 Axes to be returned. For interpolatable axes, grid should be a vector of coordinates
-                (the superset of all slice coordinates will be used if an axis is not supplied). 
-                Discrete axes may be specified as a single index, or a vector of indices, or a 
+                (the superset of all slice coordinates will be used if an axis is not supplied).
+                Discrete axes may be specified as a single index, or a vector of indices, or a
                 slice object. If any axis is missing, the full axis is returned.
 
         Returns:
             :obj:`~numpy.ma.core.MaskedArray`:
-                Masked array of interpolated values. Mask will indicate values that could not be 
-                interpolated. Shape of masked array will correspond to the order axes defined by 
+                Masked array of interpolated values. Mask will indicate values that could not be
+                interpolated. Shape of masked array will correspond to the order axes defined by
                 the parameter, omitting the axes in \*\*grid for which only a single index has been
                 specified.
         """
@@ -616,10 +625,10 @@ class Parameter(object):
         the grid values must match exactly. Any missing values will be masked out.
 
         Args:
-            grid (dict): 
+            grid (dict):
                 Axes to be returned. For interpolatable axes, grid should be a vector of coordinates
-                (the superset of all slice coordinates will be used if an axis is not supplied). 
-                Discrete axes may be specified as a single index, or a vector of indices, or a 
+                (the superset of all slice coordinates will be used if an axis is not supplied).
+                Discrete axes may be specified as a single index, or a vector of indices, or a
                 slice object. If any axis is missing, the full axis is returned.
 
         Returns:
@@ -690,7 +699,7 @@ class Parameter(object):
         (if not, then reinterpolate() should be used).
 
         Args:
-            grid (dict): 
+            grid (dict):
                 Grid coordinates to look up
 
         Returns:
@@ -704,7 +713,7 @@ class Parameter(object):
         return True
 
     def release_cache(self):
-        """ 
+        """
         Scrubs the object in preparation for saving to a file (e.g. removes cache data etc.)
         """
         self._interpolators = {}

@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
 Cython kernels for Mad Max flagger
 """
@@ -79,8 +88,8 @@ def compute_mad(absres, flags, diag=1, offdiag=1):
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_mad_internals(absres, flags, diag=1, offdiag=1):
     """
-    Given the absolute values of the residuals and a flag array, computes the per-antenna mad estimates. 
-    For the per-antenna, per-correlation variant, see compute_mad_per_corr. Keyword args establish which 
+    Given the absolute values of the residuals and a flag array, computes the per-antenna mad estimates.
+    For the per-antenna, per-correlation variant, see compute_mad_per_corr. Keyword args establish which
     correlations to include in the median computation.
 
     Args:
@@ -124,7 +133,7 @@ def compute_mad_internals(absres, flags, diag=1, offdiag=1):
     valid_arr = np.ones((n_mod, n_tim, n_fre, n_ant, n_ant), np.uint8)
 
     for ibl in prange(n_bl):
-        aa, ab = bls[ibl][0], bls[ibl][1]  
+        aa, ab = bls[ibl][0], bls[ibl][1]
         for m in range(n_mod):
             valid_vals = np.empty((n_cor*n_tim*n_fre), np.float32)
             n_valid_vals = 0
@@ -132,7 +141,7 @@ def compute_mad_internals(absres, flags, diag=1, offdiag=1):
                 c1, c2 = corr[ic][0], corr[ic][1] # Correlation indices.
                 for t in range(n_tim):
                     for f in range(n_fre):
-                        # Select a single correlation from absres. 
+                        # Select a single correlation from absres.
                         val = absres[m, t, f, aa, ab, c1, c2]
                         # If it is non-zero and unflagged, add it to the array.
                         # Otherwise, mark as invalid.
@@ -151,7 +160,7 @@ def compute_mad_internals(absres, flags, diag=1, offdiag=1):
 
 def compute_mad_per_corr(absres, flags, diag=1, offdiag=1):
     """Wrapper function for non-numba functionality."""
-    
+
     mad_arr, mad_arr_fl, valid_arr = compute_mad_per_corr_internals(absres, flags, diag, offdiag)
 
     return np.ma.masked_array(mad_arr, mad_arr_fl, fill_value=0), valid_arr
@@ -159,7 +168,7 @@ def compute_mad_per_corr(absres, flags, diag=1, offdiag=1):
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_mad_per_corr_internals(absres, flags, diag=1, offdiag=1):
     """
-    Given the absolute values of the residuals and a flag array, computes the per-antenna, per-correlation 
+    Given the absolute values of the residuals and a flag array, computes the per-antenna, per-correlation
     mad estimates. Keyword args establish which correlations to include in the median computation.
 
     Args:
@@ -203,7 +212,7 @@ def compute_mad_per_corr_internals(absres, flags, diag=1, offdiag=1):
     valid_arr = np.ones((n_mod, n_tim, n_fre, n_ant, n_ant), np.uint8)
 
     for ibl in prange(n_bl):
-        aa, ab = bls[ibl][0], bls[ibl][1]  
+        aa, ab = bls[ibl][0], bls[ibl][1]
         for m in range(n_mod):
             valid_vals = np.empty((n_cor*n_tim*n_fre), np.float32)
             for ic in range(n_cor):
@@ -211,7 +220,7 @@ def compute_mad_per_corr_internals(absres, flags, diag=1, offdiag=1):
                 n_valid_vals = 0
                 for t in range(n_tim):
                     for f in range(n_fre):
-                        # Select a single correlation from absres. 
+                        # Select a single correlation from absres.
                         val = absres[m, t, f, aa, ab, c1, c2]
                         # If it is non-zero and unflagged, add it to the array.
                         # Otherwise, mark as invalid.
@@ -277,7 +286,7 @@ def threshold_mad(absres, thr, flags, flagbit, valid_arr, diag=1, offdiag=1):
     n_cor = corr.shape[0]
 
     for ibl in prange(n_bl):
-        aa, ab = bls[ibl][0], bls[ibl][1]  
+        aa, ab = bls[ibl][0], bls[ibl][1]
         for t in range(n_tim):
             for f in range(n_fre):
                 good_models = flagged = 0

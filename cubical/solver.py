@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
 Implements the solver loop.
 """
@@ -26,7 +35,7 @@ log = logger.getLogger("solver")
 #log.verbosity(2)
 
 # global defaults dict
-GD = None 
+GD = None
 
 # MS metadata
 metadata = None
@@ -54,26 +63,26 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     Main body of the GN/LM method. Handles iterations and convergence tests.
 
     Args:
-        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`): 
+        gm (:obj:`~cubical.machines.abstract_machine.MasterMachine`):
             The gain machine which will be used in the solver loop.
-        obser_arr (np.ndarray): 
-            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-            visibilities. 
-        model_arr (np.ndarray): 
-            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model 
-            visibilities. 
-        flags_arr (np.ndarray): 
+        obser_arr (np.ndarray):
+            Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+            visibilities.
+        model_arr (np.ndarray):
+            Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing model
+            visibilities.
+        flags_arr (np.ndarray):
             Shape (n_tim, n_fre, n_ant, n_ant) integer array containing flag data.
-        sol_opts (dict): 
+        sol_opts (dict):
             Solver options (see [sol] section in DefaultParset.cfg).
-        label (str, optional):             
+        label (str, optional):
             Label identifying the current chunk (e.g. "D0T1F2").
-        compute_residuals (bool, optional): 
+        compute_residuals (bool, optional):
             If set, the final residuals will be computed and returned.
 
     Returns:
         2-element tuple
-            
+
             - resid (np.ndarray)
                 The final residuals (if compute_residuals is set), else None.
             - stats (:obj:`~cubical.statistics.SolverStats`)
@@ -112,7 +121,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     def update_stats(flags, statfields):
         """
-        This function updates the solver stats object with a count of valid data points used for chi-sq 
+        This function updates the solver stats object with a count of valid data points used for chi-sq
         calculations
         """
         unflagged = (flags==0)
@@ -126,7 +135,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             getattr(stats.chanant,  field+'n')[...] = np.sum(nterms, axis=0)
             getattr(stats.timeant,  field+'n')[...] = np.sum(nterms, axis=1)
             getattr(stats.timechan, field+'n')[...] = np.sum(nterms, axis=2)
-    
+
     update_stats(flags_arr, ('initchi2', 'chi2'))
 
     # Initialize a residual array.
@@ -138,7 +147,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     resid_arr[:,flags_arr!=0] = 0
 
     # This flag is set to True when we have an up-to-date residual in resid_arr.
-    
+
     have_residuals = True
 
     # apply MAD flagging
@@ -855,7 +864,7 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
             pdb.set_trace()
 
         corr_vis = solver_machine.run()
-        
+
         # Panic if amplitude has gone crazy
 
         if debug_opts['panic-amplitude']:

@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
 Cython kernels for the 2x2 complex gain machine. Functions require output arrays to be
 provided. Common dimensions of arrays are:
@@ -97,7 +106,7 @@ def compute_residual(m, g, gh, r, t_int, f_int):
     broadcast_dirs = np.array([d%g_dir for d in range(n_dir)])
 
     for ibl in prange(n_bl):
-        aa, ab = bls[ibl][0], bls[ibl][1]  
+        aa, ab = bls[ibl][0], bls[ibl][1]
         for i in range(n_mod):
             for t in range(n_tim):
                 bt = broadcast_times[t]
@@ -105,7 +114,7 @@ def compute_residual(m, g, gh, r, t_int, f_int):
                     bf = broadcast_freqs[f]
                     for d in range(n_dir):
                         bd = broadcast_dirs[d]
-                    
+
                         g00 = g[bd,bt,bf,aa,0,0]
                         g01 = g[bd,bt,bf,aa,0,1]
                         g10 = g[bd,bt,bf,aa,1,0]
@@ -129,7 +138,7 @@ def compute_residual(m, g, gh, r, t_int, f_int):
                     r[i,t,f,ab,aa,0,0] = r[i,t,f,aa,ab,0,0].conjugate()
                     r[i,t,f,ab,aa,1,0] = r[i,t,f,aa,ab,0,1].conjugate()
                     r[i,t,f,ab,aa,0,1] = r[i,t,f,aa,ab,1,0].conjugate()
-                    r[i,t,f,ab,aa,1,1] = r[i,t,f,aa,ab,1,1].conjugate()     
+                    r[i,t,f,ab,aa,1,1] = r[i,t,f,aa,ab,1,1].conjugate()
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jh(m, g, jh, t_int, f_int):
@@ -185,9 +194,9 @@ def compute_jh(m, g, jh, t_int, f_int):
                         m01 = m[d,i,t,f,aa,ab,0,1]
                         m10 = m[d,i,t,f,aa,ab,1,0]
                         m11 = m[d,i,t,f,aa,ab,1,1]
-                        
-                        jh[d,i,t,f,aa,ab,0,0] = (g00*m00 + g01*m10) 
-                        jh[d,i,t,f,aa,ab,0,1] = (g00*m01 + g01*m11) 
+
+                        jh[d,i,t,f,aa,ab,0,0] = (g00*m00 + g01*m10)
+                        jh[d,i,t,f,aa,ab,0,1] = (g00*m01 + g01*m11)
                         jh[d,i,t,f,aa,ab,1,0] = (g10*m00 + g11*m10)
                         jh[d,i,t,f,aa,ab,1,1] = (g10*m01 + g11*m11)
 
@@ -230,7 +239,7 @@ def compute_jhr(jh, r, jhr, t_int, f_int):
                 for f in range(n_fre):
                     bf = broadcast_freqs[f]
                     for d in range(n_dir):
-                        
+
                         r00 = r[i,t,f,aa,ab,0,0]
                         r01 = r[i,t,f,aa,ab,0,1]
                         r10 = r[i,t,f,aa,ab,1,0]
@@ -241,10 +250,10 @@ def compute_jhr(jh, r, jhr, t_int, f_int):
                         jhh10 = jh[d,i,t,f,ab,aa,1,0]
                         jhh11 = jh[d,i,t,f,ab,aa,1,1]
 
-                        jhr[d,bt,bf,aa,0,0] += (r00*jhh00 + r01*jhh10) 
+                        jhr[d,bt,bf,aa,0,0] += (r00*jhh00 + r01*jhh10)
                         jhr[d,bt,bf,aa,0,1] += (r00*jhh01 + r01*jhh11)
                         jhr[d,bt,bf,aa,1,0] += (r10*jhh00 + r11*jhh10)
-                        jhr[d,bt,bf,aa,1,1] += (r10*jhh01 + r11*jhh11) 
+                        jhr[d,bt,bf,aa,1,1] += (r10*jhh01 + r11*jhh11)
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhj(jh, jhj, t_int, f_int):
@@ -286,12 +295,12 @@ def compute_jhj(jh, jhj, t_int, f_int):
 
                         j00 = jh[d,i,t,f,ab,aa,0,0]
                         j01 = jh[d,i,t,f,ab,aa,0,1]
-                        j10 = jh[d,i,t,f,ab,aa,1,0] 
+                        j10 = jh[d,i,t,f,ab,aa,1,0]
                         j11 = jh[d,i,t,f,ab,aa,1,1]
 
                         jh00 = jh[d,i,t,f,ab,aa,0,0].conjugate()
                         jh01 = jh[d,i,t,f,ab,aa,1,0].conjugate()
-                        jh10 = jh[d,i,t,f,ab,aa,0,1].conjugate() 
+                        jh10 = jh[d,i,t,f,ab,aa,0,1].conjugate()
                         jh11 = jh[d,i,t,f,ab,aa,1,1].conjugate()
 
                         jhj[d,bt,bf,aa,0,0] += (jh00*j00 + jh01*j10)
@@ -334,9 +343,9 @@ def compute_update(jhr, jhjinv, upd):
                     jhjinv01 = jhjinv[d,t,f,aa,0,1]
                     jhjinv10 = jhjinv[d,t,f,aa,1,0]
                     jhjinv11 = jhjinv[d,t,f,aa,1,1]
-                    
-                    upd[d,t,f,aa,0,0] = (jhr00*jhjinv00 + jhr01*jhjinv10) 
-                    upd[d,t,f,aa,0,1] = (jhr00*jhjinv01 + jhr01*jhjinv11) 
+
+                    upd[d,t,f,aa,0,0] = (jhr00*jhjinv00 + jhr01*jhjinv10)
+                    upd[d,t,f,aa,0,1] = (jhr00*jhjinv01 + jhr01*jhjinv11)
                     upd[d,t,f,aa,1,0] = (jhr10*jhjinv00 + jhr11*jhjinv10)
                     upd[d,t,f,aa,1,1] = (jhr10*jhjinv01 + jhr11*jhjinv11)
 
@@ -440,7 +449,7 @@ def apply_gains(m, g, gh, t_int, f_int):
     broadcast_dirs = np.array([d%g_dir for d in range(n_dir)])
 
     for ibl in prange(n_bl):
-        aa, ab = bls[ibl][0], bls[ibl][1]  
+        aa, ab = bls[ibl][0], bls[ibl][1]
         for i in range(n_mod):
             for t in range(n_tim):
                 bt = broadcast_times[t]
@@ -448,7 +457,7 @@ def apply_gains(m, g, gh, t_int, f_int):
                     bf = broadcast_freqs[f]
                     for d in range(n_dir):
                         bd = broadcast_dirs[d]
-                        
+
                         g00 = g[bd,bt,bf,aa,0,0]
                         g01 = g[bd,bt,bf,aa,0,1]
                         g10 = g[bd,bt,bf,aa,1,0]
@@ -482,7 +491,7 @@ def apply_gains(m, g, gh, t_int, f_int):
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def right_multiply_gains(g, g_next, t_int, f_int):
     """
-    Multiples two gain terms in place. Result has full time and frequency resolution 
+    Multiples two gain terms in place. Result has full time and frequency resolution
     even if g_next does does not. For use in Jones chain.
 
     NOTE: THIS MAY BE INCORRECT/BACKWARDS.

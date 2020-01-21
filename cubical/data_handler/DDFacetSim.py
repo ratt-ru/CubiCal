@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 
 from __future__ import print_function
 try:
@@ -24,14 +33,14 @@ from concurrent.futures import (ProcessPoolExecutor as PPE,
                                 ThreadPoolExecutor as TPE)
 import hashlib
 
-def init_degridders(dir_CFs, 
+def init_degridders(dir_CFs,
                     dir_DCs,
-                    CFs_dict, 
-                    freqs, 
-                    subregion_index, 
-                    lmShift, 
-                    dname, 
-                    nfreqbands, 
+                    CFs_dict,
+                    freqs,
+                    subregion_index,
+                    lmShift,
+                    dname,
+                    nfreqbands,
                     DataCorrelationFormat,
                     sems,
                     npix,
@@ -79,13 +88,13 @@ class DDFacetSim(object):
     __exec_pool = None
     __IN_PARALLEL_INIT = False
     def __init__(self, num_processes=0):
-        """ 
+        """
             Initializes a DDFacet model predictor
         """
         self.__direction = None
         self.__model = None
         self.init_sems()
-    
+
     @classmethod
     def initialize_pool(cls, num_processes=0):
         if num_processes > 1:
@@ -100,7 +109,7 @@ class DDFacetSim(object):
     def set_direction(self, val):
         """ sets the direction in the cubical model cube to pack model data into """
         self.__direction = val
-    
+
     def set_model_provider(self, model):
         """ sets the model provider """
         if not isinstance(model, DicoSourceProvider.DicoSourceProvider):
@@ -129,7 +138,7 @@ class DDFacetSim(object):
         cls.__degridding_semaphores = ["Semaphore.cubidegrid{0:d}".format(i) for i in
                                         range(NSemaphores)]
         _pyGridderSmearPolsClassic.pySetSemaphores(cls.__degridding_semaphores)
-    
+
     @classmethod
     def del_sems(cls):
         """ Deinit semaphores """
@@ -137,8 +146,8 @@ class DDFacetSim(object):
         cls.__degridding_semaphores = None
 
     def bandmapping(self, vis_freqs, nbands):
-        """ 
-            Gives the frequency mapping for visibility to degrid band 
+        """
+            Gives the frequency mapping for visibility to degrid band
             For now we assume linear regular spacing, so we may end up
             with a completely empty band somewhere in the middle
             if we have spws that are separated in frequency
@@ -186,20 +195,20 @@ class DDFacetSim(object):
         GD["DDESolutions"]["JonesMode"] = "Full" 	  # #options:Scalar|Diag|Full
         GD["DDESolutions"]["Type"] = "Nearest" # Deprecated? #options:Krigging|Nearest
         GD["DDESolutions"]["Scale"] = 1.      # Deprecated? #metavar:DEG
-        GD["DDESolutions"]["gamma"] = 4.	  # Deprecated? 
-        GD["RIME"]["FFTMachine"] = "FFTW" 
-        GD["Comp"]["BDAJones"] = 0         # If disabled, gridders and degridders will apply a Jones terms per visibility. 
-                                           # If 'grid', gridder will apply them per BDA block, if 'both' so will the degridder. This is faster but possibly less 
+        GD["DDESolutions"]["gamma"] = 4.	  # Deprecated?
+        GD["RIME"]["FFTMachine"] = "FFTW"
+        GD["Comp"]["BDAJones"] = 0         # If disabled, gridders and degridders will apply a Jones terms per visibility.
+                                           # If 'grid', gridder will apply them per BDA block, if 'both' so will the degridder. This is faster but possibly less
                                            # accurate, if you have rapidly evolving Jones terms.
         GD["DDESolutions"]["DDModeGrid"] = "AP"	  # In the gridding step, apply Jones matrices Amplitude (A) or Phase (P) or Amplitude&Phase (AP)
         GD["DDESolutions"]["DDModeDeGrid"] = "AP"	  # In the degridding step, apply Jones matrices Amplitude (A) or Phase (P) or Amplitude&Phase (AP)
         GD["DDESolutions"]["ScaleAmpGrid"] = 0 # Deprecated?
         GD["DDESolutions"]["ScaleAmpDeGrid"] = 0	  # Deprecated?
         GD["DDESolutions"]["CalibErr"] = 10.	  # Deprecated?
-        GD["DDESolutions"]["ReWeightSNR"] = 0.	  # Deprecated? 
+        GD["DDESolutions"]["ReWeightSNR"] = 0.	  # Deprecated?
         GD["RIME"]["BackwardMode"] = "BDA"
         GD["RIME"]["ForwardMode"] = "Classic" # Only classic for now... why would you smear unnecessarily in a model predict??
-        
+
         # INIT degridder machine from DDF
         band_frequencies, freq_mapping = self.bandmapping(freqs, dh.degrid_opts["NDegridBand"])
         src.set_frequency(band_frequencies)
@@ -210,7 +219,7 @@ class DDFacetSim(object):
             log.info("This is the first time predicting for '{0:s}' direction '{1:s}'. "
                      "Initializing degridder for {2:d} facets - this may take a wee bit of time.".format(
                          str(self.__model), str(self.__direction), src.subregion_count))
-            DDFacetSim.__initted_CF_directions.append(dname)    
+            DDFacetSim.__initted_CF_directions.append(dname)
             DDFacetSim.__direction_CFs[dname] = DDFacetSim.__direction_CFs.get(dname, []) + list(DDFacetSim.__ifacet + np.arange(src.subregion_count)) #unique facet index for this subregion
             DDFacetSim.__ifacet += src.subregion_count
             for sri in range(src.subregion_count):
@@ -220,12 +229,12 @@ class DDFacetSim(object):
         # init in parallel
         futures = []
         for subregion_index in range(src.subregion_count):
-            init_args = (DDFacetSim.__direction_CFs.readwrite(), 
+            init_args = (DDFacetSim.__direction_CFs.readwrite(),
                         DDFacetSim.__detaper_cache.readwrite(),
                         DDFacetSim.__CF_dict["{}.{}".format(dname, subregion_index)].readwrite(),
                         freqs,
                         subregion_index,
-                        np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * 
+                        np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) *
                                     src.pixel_scale / 3600.0),
                         dname,
                         dh.degrid_opts["NDegridBand"],
@@ -245,15 +254,15 @@ class DDFacetSim(object):
                 expt = f.exception()
                 if expt is not None:
                     raise expt
-        
+
         # construct handles after the initialization has been completed
         for subregion_index in range(src.subregion_count):
-            init_degridders(DDFacetSim.__direction_CFs.readwrite(), 
+            init_degridders(DDFacetSim.__direction_CFs.readwrite(),
                             DDFacetSim.__detaper_cache.readwrite(),
                             DDFacetSim.__CF_dict["{}.{}".format(dname, subregion_index)].readwrite(),
                             freqs,
                             subregion_index,
-                            np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * 
+                            np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) *
                                        src.pixel_scale / 3600.0),
                             dname,
                             dh.degrid_opts["NDegridBand"],
@@ -269,7 +278,7 @@ class DDFacetSim(object):
 
     @classmethod
     def __detaper_model(cls, gm, model_image, idfacet):
-        """ Detapers model image by the fourier inverse of the convolution kernel 
+        """ Detapers model image by the fourier inverse of the convolution kernel
             Assertions that the tapering function is larger than the model facet,
             both are square and odd sized
         """
@@ -280,7 +289,7 @@ class DDFacetSim(object):
         return model_image
 
     def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs, model_type):
-        """ Predicts model data for the set direction of the dico source provider 
+        """ Predicts model data for the set direction of the dico source provider
             returns a ndarray model of shape nrow x nchan x 4
         """
         if self.__direction is None:
@@ -315,22 +324,22 @@ class DDFacetSim(object):
             model_image = DDFacetSim.__detaper_model(gm, model_image.view(), self.__direction_CFs[dname][subregion_index]).copy() # degridder don't respect strides must be contiguous
 
             # apply normalization factors for FFT
-            model_image[...] *= (model_image.shape[3] ** 2) * (gm.WTerm.OverS ** 2) 
+            model_image[...] *= (model_image.shape[3] ** 2) * (gm.WTerm.OverS ** 2)
 
             region_model += -1 * gm.get( #default of the degridder is to subtract from the previous model
-                times=tile_subset.time_col, 
-                uvw=uvwco.astype(dtype=np.float64).copy(), 
-                visIn=model, 
-                flag=flagged, 
-                A0A1=[tile_subset.antea.astype(dtype=np.int32).copy(), tile_subset.anteb.astype(dtype=np.int32).copy()], 
-                ModelImage=model_image, 
+                times=tile_subset.time_col,
+                uvw=uvwco.astype(dtype=np.float64).copy(),
+                visIn=model,
+                flag=flagged,
+                A0A1=[tile_subset.antea.astype(dtype=np.int32).copy(), tile_subset.anteb.astype(dtype=np.int32).copy()],
+                ModelImage=model_image,
                 PointingID=src.direction,
                 Row0Row1=(0, -1),
-                DicoJonesMatrices=None, 
-                freqs=freqs.astype(dtype=np.float64).copy(), 
+                DicoJonesMatrices=None,
+                freqs=freqs.astype(dtype=np.float64).copy(),
                 ImToGrid=False,
-                TranformModelInput="FT", 
-                ChanMapping=np.array(freq_mapping, dtype=np.int32), 
+                TranformModelInput="FT",
+                ChanMapping=np.array(freq_mapping, dtype=np.int32),
                 sparsification=None)
 
         model_corr_slice = np.s_[0] if model_type == "cplxscalar" else \
@@ -348,5 +357,5 @@ def _cleanup_degridders():
     DDFacetSim.del_sems()
     DDFacetSim.dealloc_degridders()
     DDFacetSim.shutdown_pool()
-        
+
 atexit.register(_cleanup_degridders)

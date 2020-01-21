@@ -1,9 +1,18 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
-Kernels for the Jones chain machine. Functions require output arrays to be 
+Kernels for the Jones chain machine. Functions require output arrays to be
 provided. Common dimensions of arrays are:
 
 +----------------+------+
@@ -47,11 +56,11 @@ allocate_flag_array = full_complex.allocate_flag_array
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jh(jh, g, t_int, f_int):
     """
-    Given J\ :sup:`H` (initially populated with the model array) and gains, computes the non-zero 
+    Given J\ :sup:`H` (initially populated with the model array) and gains, computes the non-zero
     elements of J\ :sup:`H`. J\ :sup:`H` has full time and frequency resolution - solution intervals
-    are used to correctly associate the gains with the model. The result here contains the useful 
+    are used to correctly associate the gains with the model. The result here contains the useful
     elements of J\ :sup:`H` but does not look like the analytic solution. This function is called
-    multiple times during a chain computation. Each call applies a different gain term.   
+    multiple times during a chain computation. Each call applies a different gain term.
 
     Args:
         jh (np.complex64 or np.complex128):
@@ -105,9 +114,9 @@ def compute_jh(jh, g, t_int, f_int):
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def apply_left_inv_jones(jhr, ginv, t_int, f_int):
     """
-    Applies the inverse of a gain array the left side of J\ :sup:`H`\R. J\ :sup:`H`\R has full time 
-    and frequency resolution - solution intervals are used to correctly associate the gains with 
-    the model. This is a special function which is unique to the Jones chain.    
+    Applies the inverse of a gain array the left side of J\ :sup:`H`\R. J\ :sup:`H`\R has full time
+    and frequency resolution - solution intervals are used to correctly associate the gains with
+    the model. This is a special function which is unique to the Jones chain.
 
     Args:
         jhr (np.complex64 or np.complex128):
@@ -156,8 +165,8 @@ def apply_left_inv_jones(jhr, ginv, t_int, f_int):
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def sum_jhr_intervals(jhr, jhrint, t_int, f_int):
     """
-    Collapses J\ :sup:`H`\R to be cosistent with the solution intervals for the current gain of 
-    interest. This is necessary as each gain term in a chain may have unique solution intervals. 
+    Collapses J\ :sup:`H`\R to be cosistent with the solution intervals for the current gain of
+    interest. This is necessary as each gain term in a chain may have unique solution intervals.
 
     Args:
         jhr (np.complex64 or np.complex128):
@@ -218,7 +227,7 @@ def compute_residual(m, r):
     n_bl = bls.shape[0]
 
     for ibl in prange(n_bl):
-        aa, ab = bls[ibl][0], bls[ibl][1]  
+        aa, ab = bls[ibl][0], bls[ibl][1]
         for i in range(n_mod):
             for t in range(n_tim):
                 for f in range(n_fre):

@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from six import add_metaclass
 from abc import ABCMeta, abstractmethod, abstractproperty
@@ -23,8 +32,8 @@ class MasterMachine:
     """
     This is a base class for all solution machines. It is completely generic and lays out the basic
     requirements for all machines.
-    
-    It also provides a Factory class that takes care of creating machines and interfacing with 
+
+    It also provides a Factory class that takes care of creating machines and interfacing with
     solution tables on disk.
     """
     __user_warnings = []
@@ -32,10 +41,10 @@ class MasterMachine:
     def __init__(self, jones_label, data_arr, ndir, nmod, times, freqs, chunk_label, options, diagonal=None):
         """
         Initializes a gain machine.
-        
+
         All supplied arguments are copied to attributes of the same name. In addition, the following
         attributes or properties are populated. These may be considered part of the official machine interface.
-            
+
             - solvable:
                 from options['solvable'], default False
             - dd_term:
@@ -50,13 +59,13 @@ class MasterMachine:
                 iteration counter, reset to 0.
             - maxiters:
                 from options['max-iters'], default 0
-        
+
         Args:
             jones_label (str):
                 Label identifying the Jones term.
-            data_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            data_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
             ndir (int):
                 Number of directions.
             nmod (nmod):
@@ -182,23 +191,23 @@ class MasterMachine:
     @abstractmethod
     def compute_js(self, obser_arr, model_arr):
         """
-        This method is expected to compute (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R. 
-        
-        Args:
-            model_arr (np.ndrray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                model visibilities.
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the 
-                observed visibilities.            
+        This method is expected to compute (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R.
 
-        
+        Args:
+            model_arr (np.ndrray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
+                model visibilities.
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing the
+                observed visibilities.
+
+
         Returns:
             3-element tuple
-                
+
                 - J\ :sup:`H`\R (np.ndarray)
                 - (J\ :sup:`H`\J)\ :sup:`-1` (np.ndarray)
-                - Count of flags raised (int)     
+                - Count of flags raised (int)
         """
 
         return NotImplementedError
@@ -206,9 +215,9 @@ class MasterMachine:
     @abstractmethod
     def implement_update(self, jhr, jhjinv):
         """
-        Internal method implementing a parameter update. The standard compute_update() implementation 
+        Internal method implementing a parameter update. The standard compute_update() implementation
         calls compute_js() and _implement_update() at each iteration step.
-        
+
         Args:
             jhr (np.ndarray):
                 J\ :sup:`H`\R term
@@ -219,18 +228,18 @@ class MasterMachine:
 
     def compute_update(self, model_arr, obser_arr):
         """
-        This method is expected to compute the parameter update. 
-        
-        The standard implementation simply calls compute_js() and implement_update(), but subclasses are free to 
+        This method is expected to compute the parameter update.
+
+        The standard implementation simply calls compute_js() and implement_update(), but subclasses are free to
         override.
 
         Args:
-            model_arr (np.ndarray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
-                model visibilities. 
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing
+                model visibilities.
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
         """
         jhr, jhjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
@@ -242,18 +251,18 @@ class MasterMachine:
     def compute_residual(self, obser_arr, model_arr, resid_arr, full2x2=True):
         """
         This method should compute the residual at the the full time-frequency resolution of the
-        data. Must populate resid_arr with the values of the residual. Function signature must be 
+        data. Must populate resid_arr with the values of the residual. Function signature must be
         consistent with the one defined here.
 
         Args:
-            obser_arr (np.ndarray): 
-                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
-                visibilities. 
-            model_arr (np.ndarray): 
-                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing 
+            obser_arr (np.ndarray):
+                Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
+                visibilities.
+            model_arr (np.ndarray):
+                Shape (n_dir, n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing
                 model visibilities.
             resid_arr (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array in which to place the 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array in which to place the
                 residual values.
             full2x2 (bool):
                 If True, a full 2x2 residual is required. If False, only the terms used in the solution
@@ -272,10 +281,10 @@ class MasterMachine:
 
         Args:
             obser_arr (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed
                 visibilities.
             corr_vis (np.ndarray or None, optional):
-                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array to fill with the corrected 
+                Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array to fill with the corrected
                 visibilities.
             full2x2 (bool):
                 If True, gains should be applied to the full 2x2 matrix. If False, only the terms used in the solution
@@ -285,18 +294,18 @@ class MasterMachine:
 
         Returns:
             2-element tuple
-                
+
                 - Corrected visibilities (np.ndarray)
                 - Flags raised (int)
         """
-        
+
         return NotImplementedError
 
     @abstractmethod
     def apply_gains(self, model_arr, full2x2=True, dd_only=False):
         """
         This method should be able to apply the gains associated with the gain
-        to an array at full time-frequency resolution. 
+        to an array at full time-frequency resolution.
         Function signature must be consistent with the one defined here.
 
         Args:
@@ -336,7 +345,7 @@ class MasterMachine:
     def update_equation_counts(self, unflagged):
         """
         Sets up equation counters and normalization factors. Sets up the following attributes:
-        
+
             - eqs_per_tf_slot (np.ndarray):
                 Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
             - eqs_per_antenna (np.ndarray)
@@ -378,7 +387,7 @@ class MasterMachine:
 
         Returns:
             3-tuple consisting of
-            
+
              - chisq (np.ndarray):
                 (n_tim, n_fre, n_ant) array of chi-squared per antenna and time/frequency slot
              - chisq_per_tf_slot  (np.ndarray):
@@ -408,9 +417,9 @@ class MasterMachine:
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """
-        This method is called before starting a solution. The base version computes a variety of useful 
-        parameters regarding the conditioning and degrees of freedom of the current time-frequency chunk. 
-        Subclasses can redefine this to precompute other useful stuff (i.e. things that do not vary with 
+        This method is called before starting a solution. The base version computes a variety of useful
+        parameters regarding the conditioning and degrees of freedom of the current time-frequency chunk.
+        Subclasses can redefine this to precompute other useful stuff (i.e. things that do not vary with
         iteration).
 
         Args:
@@ -422,7 +431,7 @@ class MasterMachine:
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing integer flags
             inv_var_chan (np.ndarray)
                 Shape (nfreq,) array of 1/sigma^2 per channel
-                
+
         Returns:
             bool np.ndarray, shape (n_tim, n_fre, n_ant, n_ant), indicating the inverse of flags
         """
@@ -446,19 +455,19 @@ class MasterMachine:
     def flag_solutions(self, flag_arr, final=False):
         """
         This method allows the machine to flag gains solutions. It iis called after each itration (final=False),
-        and then once again after convergence (final=True). 
-        
+        and then once again after convergence (final=True).
+
         This method can propagate the flags raised by the gain machine back into the data flags.
-        
+
         Args:
             flag_arr (np.ndarray):
-                Shape (n_tim, n_fre, n_ant, n_ant) array containing data flags. 
-            final (bool): 
+                Shape (n_tim, n_fre, n_ant, n_ant) array containing data flags.
+            final (bool):
                 False while iterating, True after convergence.
-            
+
         Returns:
             True if any new flags have been propagated to the data
-        
+
         """
         return NotImplementedError
 
@@ -466,7 +475,7 @@ class MasterMachine:
     def num_gain_flags(self, mask=None):
         """
         This method returns the number of gains flagged, and the total number of gains.
-        
+
         Args:
             mask (int):
                 Flag mask to apply. If None, ~FL.MISSING is expected to be used
@@ -483,7 +492,7 @@ class MasterMachine:
         """
         This method should update the current iteration counter, as well as handling any more complicated
         behaviour required for multiple Jones terms. Default version just bumps the iteration counter.
-        
+
         Returns:
             Tuple of two values
                 - value of iteration counter
@@ -495,8 +504,8 @@ class MasterMachine:
     @abstractmethod
     def restrict_solution(self):
         """
-        This method should perform any necessary restrictions on the solution, eg. selecting a 
-        reference antenna or taking only the amplitude. Function signature must be consistent with 
+        This method should perform any necessary restrictions on the solution, eg. selecting a
+        reference antenna or taking only the amplitude. Function signature must be consistent with
         the one defined here.
         """
 
@@ -505,7 +514,7 @@ class MasterMachine:
     @abstractproperty
     def has_converged(self):
         """
-        This property must return the convergence status of the gain machine. 
+        This property must return the convergence status of the gain machine.
         """
         return NotImplementedError
 
@@ -521,7 +530,7 @@ class MasterMachine:
     def conditioning_status_string(self):
         """
         This property must return a conditioning status string for the gain machine, e.g.
-        
+
         """
         return NotImplementedError
 
@@ -550,7 +559,7 @@ class MasterMachine:
         """
         Returns dict of {label: (empty_value, axes_list)} describing the types of parameters that
         this machine can export. Axes is a list of axis labels. Static method, as it is called
-        before any GM is actually created. If empty_value is float or complex, global precision 
+        before any GM is actually created. If empty_value is float or complex, global precision
         settings will be used.
         """
 
@@ -558,8 +567,8 @@ class MasterMachine:
 
     def importable_solutions(self):
         """
-        Returns dict of parameters that this machine can import, as {label: grid_dict}. Grid_dict 
-        knows which grid the parameters must be interpolated onto for this machine. Called when a 
+        Returns dict of parameters that this machine can import, as {label: grid_dict}. Grid_dict
+        knows which grid the parameters must be interpolated onto for this machine. Called when a
         machine has been created (so grids are available).
         """
 
@@ -569,12 +578,12 @@ class MasterMachine:
     def export_solutions(self):
         """
         This method returns the solutions as a dict of {label: masked_array, grid} elements. Arrays
-        are masked since solutions have associated flags. Labels must be consistent with whatever 
-        exportable_solutions() returns, but not all solutions promised by exportable_solutions() 
+        are masked since solutions have associated flags. Labels must be consistent with whatever
+        exportable_solutions() returns, but not all solutions promised by exportable_solutions()
         will actually need to be exported.
-        
-        Grid is a dict, defining axes on which solutions are given, e.g. {'time': vector, 
-        'freq': vector}. Note that axes which are fully spanned (e.g. antenna, correlation) need 
+
+        Grid is a dict, defining axes on which solutions are given, e.g. {'time': vector,
+        'freq': vector}. Note that axes which are fully spanned (e.g. antenna, correlation) need
         not be present in the grid.
         """
 
@@ -583,7 +592,7 @@ class MasterMachine:
     @abstractmethod
     def import_solutions(self, solutions_dict):
         """
-        This method loads the internal solutions from a dict of {label: array} elements. Labels 
+        This method loads the internal solutions from a dict of {label: array} elements. Labels
         must be in importable_solutions. Array are masked since solutions have associated flags.
         Array shapes will conform to importable_solutions() results.
         """
@@ -595,7 +604,7 @@ class MasterMachine:
     def create_factory(machine_cls, *args, **kw):
         """
         This method creates a Machine Factory that will initialize the correct type of gain machine.
-        This must be called via the subclasses, so that the factory gets the proper class 
+        This must be called via the subclasses, so that the factory gets the proper class
         information.
         """
 
@@ -606,7 +615,7 @@ class MasterMachine:
         Helper method invoked by Factory.create_machine() to import existing solutions into machine.
         Looks for solutions corresponding to this machine's jones_label in init_sols, and
         invokes import_solutions() as appropriate.
-        
+
         Args:
             init_sols: dict of initial solutions, given as {jones_label:(database, prefix)}
         """
@@ -660,10 +669,10 @@ class MasterMachine:
 
     class Factory(object):
         """
-        A Machine Factory class is created as a singleton: it is responsible for creating and initializing 
-        individual gain machines for chunks of the solution space. The purpose of a factory is to hold "global" 
+        A Machine Factory class is created as a singleton: it is responsible for creating and initializing
+        individual gain machines for chunks of the solution space. The purpose of a factory is to hold "global"
         information for the solution overall (e.g. the overall time/frequency range etc.)
-        
+
         TODO: directions must also be passed in
         """
 
@@ -673,16 +682,16 @@ class MasterMachine:
 
             Args:
                 machine_cls: the class of the gain machine that will be created
-                
+
                 grid: the grid on which solutions are expected, for axes that are already known (antennas, correlations)
                   A dictionary of {axis_name:values_vector}. time/freq need not be supplied, as it is filled in chunk by chunk.
-                  
+
                 double_precision: if True, gain machines will use 64-bit float arithmetic
-                
+
                 apply_only: if True, solutions are only applied, not solved for
-                
+
                 global_options: dict of global options for CubiCal (GD)
-                
+
                 jones_options: dict of Jones term options for the specific Jones term
             """
             self.global_options = global_options
@@ -727,21 +736,21 @@ class MasterMachine:
 
         def make_filename(self, filename, jones_label=None):
             """
-            Helper method: expands full filename a from templated filename. This uses the standard 
-            str.format() function, passing in self.global_options, as well as JONES=jones_label, as keyword 
+            Helper method: expands full filename a from templated filename. This uses the standard
+            str.format() function, passing in self.global_options, as well as JONES=jones_label, as keyword
             arguments. This allows for filename templates that include strings from the global options
             dictionary, e.g. "{data[ms]}-ddid{sel[ddid]}".
-            
+
             Args:
-                filename (str): 
+                filename (str):
                     the templated filename
                 jones_label (str, optional):
                     Jones matrix label, overrides self.jones_label if specified.
-                
+
             Returns:
                 str:
                     Expanded filename
-                
+
             """
             return expand_templated_name(filename,
                                          JONES=jones_label or self.jones_label)
@@ -749,9 +758,9 @@ class MasterMachine:
         def _init_solutions(self, label, load_from, interpolate, save_to, exportables):
             """
             Internal helper implementation for init_solutions(): this initializes a pair of solution databases.
-            
+
             Args:
-                label (str): 
+                label (str):
                     the Jones matrix label
                 load_from (str):
                     filename of solution DB to load from. Can be empty or None.
@@ -762,7 +771,7 @@ class MasterMachine:
                 exportables (dict):
                     Dictionary of {key: (empty_value, axis_list)} describing the solutions that will be saved.
                     As returned by exportable_solutions() of the gain machine.
-                
+
             """
             # init solutions from database
             if load_from:
@@ -783,7 +792,7 @@ class MasterMachine:
                           interpolation_axes=("time", "freq")):
             """
             Internal helper method for _init_solutions(). Defines a parameter to be saved.
-            
+
             Args:
                 save_to (str):
                     filename of solution DB to save to. Can be empty or None.
@@ -830,13 +839,13 @@ class MasterMachine:
             """
             Exports a slice of solutions from a gain machine into a shared dictionary.
             We use shared memory (shared_dict.SharedDict) objects to pass solutions between
-            worker (solver) processes and the I/O process which ultimately saves them. This 
+            worker (solver) processes and the I/O process which ultimately saves them. This
             method is called on the solver process side to populate the shared dict.
-            
+
             Args:
                 gm:
                     An instance of a gain machine
-                    
+
                 subdict (shared_dict.SharedDict):
                     Shared dictionary to be populated (this is generally a subdict of some
                     larger shared dictionary, uniquely assigned to this solver process)
@@ -903,11 +912,11 @@ class MasterMachine:
                                     chunk_label, self.jones_options)
             gm._load_solutions(self._init_sols)
             return gm
-        
+
         def set_metas(self, src):
             """
             Sets database meta information source
-            
+
             Args:
                 src: instance of cubical.data_handler
             """

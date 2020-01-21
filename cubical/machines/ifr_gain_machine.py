@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 import numpy as np
 from numpy.ma import masked_array
@@ -16,16 +25,16 @@ log = logger.getLogger("gain_machine")
 class IfrGainMachine(object):
     """
     Interferometer-based gain machine.
-    
-    Note that this class is outside of the normal gain machine hierarchy. It wraps all the 
-    functionality required to manage IFR-based gain (aka baseline-based corrections) 
+
+    Note that this class is outside of the normal gain machine hierarchy. It wraps all the
+    functionality required to manage IFR-based gain (aka baseline-based corrections)
     calculations.
     """
 
     def __init__(self, gmfactory, ifrgain_opts, compute=True):
         """
         Initializes the IFR-based gains machinery.
-        
+
         Args:
             gmfactory:      a GainMachine Factory is used to manage the solution databases
             ifrgain_opts:   dict of options
@@ -95,7 +104,7 @@ class IfrGainMachine(object):
     def apply(self, obser_arr, freq_slice):
         """
         Applies IFR-based gains (if any) to input data
-        
+
         Args:
             obser_arr:   data array (shape ntime,nfreq,nant,nant,ncorr,ncorr)
             freq_slice: frequency slice in data array
@@ -106,11 +115,11 @@ class IfrGainMachine(object):
 
     def update(self, obser_arr, corrupt_model, flags, freq_slice, soldict):
         """
-        Computes update to interferometer gains based on data and corrupt model. Saves this to 
+        Computes update to interferometer gains based on data and corrupt model. Saves this to
         SharedDict of solutions.
 
         Args:
-            obser_arr:      data array (nmod,ntime,nfreq,nant,nant,ncorr,ncorr) 
+            obser_arr:      data array (nmod,ntime,nfreq,nant,nant,ncorr,ncorr)
             corrupt_model:  corrupt model array (nmod,ntime,nfreq,nant,nant,ncorr,ncorr)
             flags:          flags array, same shape as data
             freq_slice:     frequency slice which is being updated
@@ -134,7 +143,7 @@ class IfrGainMachine(object):
     def accumulate(self, subdict):
         """
         Gets solutions from SharedDict populated by update(), and updates internal accumulators
-        based on this. 
+        based on this.
         Args:
             subdict: dict populated by update() above
 
@@ -155,7 +164,7 @@ class IfrGainMachine(object):
 
     def save(self):
         """
-        Finalizes the IFR gain solutions, and saves them to the database  
+        Finalizes the IFR gain solutions, and saves them to the database
         """
         if not self.is_computing():
             return

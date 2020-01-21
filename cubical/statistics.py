@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
 Handles solver statistics.
 """
@@ -19,7 +28,7 @@ log = logger.getLogger("stats")
 
 class SolverStats (object):
     """
-    SolverStats is a container for various per-chunk statistics collected during the solving 
+    SolverStats is a container for various per-chunk statistics collected during the solving
     process.
     """
     def __init__ (self, obj):
@@ -90,7 +99,7 @@ class SolverStats (object):
 
     def save(self, filename):
         """
-        Pickles contents to file. Better than pickling whole object, as the pickle then only 
+        Pickles contents to file. Better than pickling whole object, as the pickle then only
         contains standard classes (i.e. don't need CubiCal to read it).
 
         Args:
@@ -111,7 +120,7 @@ class SolverStats (object):
     def estimate_noise (self, data, flags, residuals=False):
         """
         Given a data cube with dimensions (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) and a flag cube
-        with dimensions (n_tim, n_fre, n_ant, n_ant), this function estimates the noise in the data 
+        with dimensions (n_tim, n_fre, n_ant, n_ant), this function estimates the noise in the data
         by taking the differences between adjacent channels.
 
         Sum of delta-visibilities squared, and sum of valid terms, is stored in the 'dv2', 'dv2n' or
@@ -127,8 +136,8 @@ class SolverStats (object):
 
         Returns:
             tuple:
-                Noise, inverse_noise_per_antenna_channel_squared, inverse_noise_per_antenna_squared 
-                and inverse_noise_per_channel_squared. 
+                Noise, inverse_noise_per_antenna_channel_squared, inverse_noise_per_antenna_squared
+                and inverse_noise_per_channel_squared.
         """
 
         n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor = data.shape
@@ -148,10 +157,10 @@ class SolverStats (object):
 
         # Square the absolute value of the difference between channel-adjacent visibilities and sum
         # over correlations. Normalize the result by n_cor*n_cor*4. The factor of 4 arises because
-        # Var<c1-c2> = Var<c1>+Var<c2> and Var<c>=Var<r>+Var<i>. Thus, the square of the abs 
+        # Var<c1-c2> = Var<c1>+Var<c2> and Var<c>=Var<r>+Var<i>. Thus, the square of the abs
         # difference between two complex visibilities has contributions from _four_ noise terms.
 
-        # TODO: When fewer than 4 correlations are provided, the normalisation needs to be 
+        # TODO: When fewer than 4 correlations are provided, the normalisation needs to be
         # different.
 
         # TODO: Something smart with multiple-model calibration. Currently only the first dataset
@@ -170,7 +179,7 @@ class SolverStats (object):
 
         deltaflags = ~deltaflags
 
-        # Sum into the various stats arrays (use dvis2 or dvis2p field, depending on whether 
+        # Sum into the various stats arrays (use dvis2 or dvis2p field, depending on whether
         # pre- or post-solver noise is being estimated)
 
         dv2attr = 'dr2'   if residuals else 'dv2'
@@ -197,17 +206,17 @@ class SolverStats (object):
         inv_var_chan[validchans&~np.isfinite(inv_var_chan)] = inv_var
 
         # Antennas/channels with no data end up with NaNs here, so replace them with 0.
-        
+
         inv_var_antchan[~np.isfinite(inv_var_antchan)] = 0
         inv_var_ant[~np.isfinite(inv_var_ant)] = 0
         inv_var_chan[~np.isfinite(inv_var_chan)] = 0
-        
+
         return noise_est, inv_var_antchan, inv_var_ant, inv_var_chan
 
     @staticmethod
     def add_records(recarray, recarray2):
         """ Adds two record-type arrays together. """
-        
+
         for field in recarray.dtype.fields.keys():
             recarray[field] += recarray2[field]
 
@@ -225,21 +234,21 @@ class SolverStats (object):
 
     def _concatenate(self, stats):
         """
-        Concatenates stats from a dictionary (indexed by time_index,freq_index) into a single 
+        Concatenates stats from a dictionary (indexed by time_index,freq_index) into a single
         object.
 
         Args:
             stats (dict):
                 A dictionary of useful solver statistics.
         """
-        
+
         # Get lists of unique time and channel indices occurring in the dict.
-        
+
         times = sorted(set([time for time, _ in stats.keys()]))
         chans = sorted(set([chan for _, chan in stats.keys()]))
 
         # Concatenate and add up cumulative stats.
-        
+
         self.chanant = np.concatenate([stats[times[0], chan].chanant for chan in chans], axis=0)
 
         for time in times[1:]:
@@ -249,18 +258,18 @@ class SolverStats (object):
         self.timeant = np.concatenate([stats[time, chans[0]].timeant for time in times], axis=0)
 
         for chan in chans[1:]:
-            self.add_records(self.timeant, 
+            self.add_records(self.timeant,
                 np.concatenate([stats[time, chan].timeant for time in times], axis=0))
 
         self.timechan = \
             np.concatenate([np.concatenate([stats[time, chan].timechan for time in times], axis=0)
                 for chan in chans], axis=1)
 
-        # Note that for some reason np.concatenate of record arrays produces structured arrays 
+        # Note that for some reason np.concatenate of record arrays produces structured arrays
         # instead of nd.recarrays - normalize_records() will convert them back.
 
         # Normalize by number of values.
-        
+
         self.chanant = self.normalize_records(self.chanant)
         self.timeant = self.normalize_records(self.timeant)
         self.timechan = self.normalize_records(self.timechan)
@@ -325,7 +334,7 @@ class SolverStats (object):
 
     def apply_flagcube(self, flag3):
         """
-        Applies additional flag cube to statistics. Basically, if something is flagged in the 
+        Applies additional flag cube to statistics. Basically, if something is flagged in the
         output based on chi-sq or other criteria, we want to remove it from the stats.
 
         Args:

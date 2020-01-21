@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from builtins import range
 from cubical.database.pickled_db import PickledDatabase
 from cubical.data_handler.ms_data_handler import MSDataHandler
@@ -23,15 +32,15 @@ BLANK_TABLE_TARBALL = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 class casa_caltable_factory(object):
         """
             Gaintable Factory
-            
+
             Useful methods for creating and writing CASA-style gaintables
         """
-        
+
         @classmethod
         def init_empty(cls, db, filename, solfreqs, solants, field_ndir=1, is_complex=True, viscal_label="B Jones"):
             """
                 Initialize empty calibration table with metadata
-                
+
                 Args:
                     db: a cubical pickled_db instance
                     filename: filename of CASA gaintable to be written
@@ -46,12 +55,12 @@ class casa_caltable_factory(object):
                 return
             if os.path.exists(filename):
                 if os.path.isfile(filename):
-                    log.error("CASA calibration table destination already exists but is not a directory. Will not remove.")    
+                    log.error("CASA calibration table destination already exists but is not a directory. Will not remove.")
                     return
                 else:
                     log.info("Destination CASA gain table '%s' exists. Will overwrite." % filename)
                     shutil.rmtree(filename) # CASA convention is to overwrite
-                    
+
             basedir = os.path.dirname(filename) or '.'
             subprocess.check_output(["tar", "zxvf", BLANK_TABLE_TARBALL, "-C", basedir])
             os.rename(os.path.join(basedir, BLANK_TABLE_NAME), filename)
@@ -67,7 +76,7 @@ class casa_caltable_factory(object):
                 t.putcol("MOUNT", np.array(db.antmount)[antorder])
                 t.putcol("NAME", np.array(db.antnames)[antorder])
                 t.putcol("STATION", np.array(db.antstation)[antorder])
-                
+
             assert "field" in db.metadata, "Solver field not passed in metadata. This is a bug"
             assert type(db.metadata["field"]) is int, "Currently only supports single field"
             selfield = np.arange(len(db.fieldname)) == db.metadata["field"]
@@ -81,7 +90,7 @@ class casa_caltable_factory(object):
                 t.putcol("NAME", np.array(map(str, ["%s_DIR_%d" % (f, fdi) for fdi, f in enumerate([db.fieldname[np.where(selfield)[0][0]]] * field_ndir)])).T)
                 t.putcol("SOURCE_ID", np.tile(db.fieldsrcid[selfield], (field_ndir, 1)) + np.arange(field_ndir).T)
                 t.putcol("TIME", np.tile(db.fieldtime[selfield], (field_ndir, 1)))
-    
+
             with tbl("%s::OBSERVATION" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.obsobserver))
                 (len(db.obstimerange) != 0) and t.putcol("TIME_RANGE", db.obstimerange)
@@ -92,17 +101,17 @@ class casa_caltable_factory(object):
                 (len(db.obsproject) != 0) and t.putcol("PROJECT", db.obsproject)
                 (len(db.obsreleasedate) != 0) and t.putcol("RELEASE_DATE", db.obsreleasedate)
                 (len(db.obstelescopename) != 0) and t.putcol("TELESCOPE_NAME", db.obstelescopename)
-            
+
             with tbl("%s::SPECTRAL_WINDOW" % str(filename), ack=False, readonly=False) as t:
                 t.addrows(nrows=len(db.sel_ddids))
                 # Per DDID determine solution spacing in frequency
                 for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
                     minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
-                    maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
+                    maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid])
                     ddsolfreqs = solfreqs[np.logical_and(solfreqs >= minfreq,
                                                          solfreqs <= maxfreq)]
-                    # assume linearly-spaced solutions for N - 1 solutions along grid and last solution 
+                    # assume linearly-spaced solutions for N - 1 solutions along grid and last solution
                     # may have different spacing if solution interval does not exactly divide number of channels
                     if ddsolfreqs.size > 1:
                         ch0 = np.min(db.spwchanfreq)
@@ -112,7 +121,7 @@ class casa_caltable_factory(object):
                         ddsolwidth[-1] = ddsolwidthmax + (chN - (ddsolfreqs.size * ddsolwidthmax + ch0))
                     else:
                         ddsolwidth = db.spwtotalbandwidth
-                        
+
                     t.putcell("MEAS_FREQ_REF", iddid, db.spwmeasfreq[spwid])
                     t.putcell("CHAN_FREQ", iddid, ddsolfreqs)
                     t.putcell("REF_FREQUENCY", iddid, db.spwreffreq[spwid])
@@ -127,22 +136,22 @@ class casa_caltable_factory(object):
                     t.putcell("NET_SIDEBAND", iddid, db.spwnetsideband[spwid])
                     t.putcell("NUM_CHAN", iddid, ddsolfreqs.size)
                     t.putcell("TOTAL_BANDWIDTH", iddid, maxfreq - minfreq)
-                    
+
             with tbl(str(filename), ack=False, readonly=False) as t:
                 t.putkeyword("ParType", "Complex" if is_complex else "Float")
                 t.putkeyword("VisCal", viscal_label)
-                
+
                 if not is_complex:
                     cdesc = t.getcoldesc("CPARAM")
                     cdesc["valueType"] = "float"
                     t.addcols({"FPARAM": cdesc})
                     t.removecols("CPARAM")
-                        
+
         @classmethod
         def create_G_table(cls, db, gname, outname = "Gphase"):
             """
                 Write diagonal G-phase caltable
-                
+
                 Args:
                     db: a cubical pickled_db instance
                     gname: name of pickled_db solutions to export
@@ -156,7 +165,7 @@ class casa_caltable_factory(object):
                 return
             paramerrs = cls.__check_param_err(db, gname)
             assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr'), "DB table in unrecognized format"
-            
+
             ddids = db.sel_ddids
             ndir = len(db[gname].grid[db[gname].ax.dir])
             ntime = len(db[gname].grid[db[gname].ax.time])
@@ -166,26 +175,26 @@ class casa_caltable_factory(object):
             nrow = ndir * ntime * \
                     nant * len(ddids)
             assert ncorr == 2, "Expected diagnonal Jones matrix"
-            
-            cls.init_empty(db, 
-                           db.filename + ".%s.casa" % outname, 
+
+            cls.init_empty(db,
+                           db.filename + ".%s.casa" % outname,
                            db[gname].grid[db[gname].ax.freq],
                            db[gname].grid[db[gname].ax.ant],
                            field_ndir=ndir,
                            viscal_label="G Jones")
-            
+
             with tbl(str(db.filename + ".%s.casa" % outname), ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
                 for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
                     minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
-                    maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
+                    maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid])
                     ddsolfreqindx = np.argwhere(np.logical_and(db[gname].grid[db[gname].ax.freq] >= minfreq,
                                                                db[gname].grid[db[gname].ax.freq] <= maxfreq))
                     params = np.swapaxes(db[gname].get_cube()[:, :, ddsolfreqindx, :, :],
-                                         2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) 
+                                         2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr)
                     paramerrs = np.swapaxes(paramerrs[:, :, ddsolfreqindx, :, :],
-                                            2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr) 
+                                            2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr)
                     flags = np.ma.getmaskarray(params)
                     fieldid = np.repeat(np.arange(ndir), ntime * nant) # dir (marked as field) is slowest varying
                     time = np.repeat(np.tile(db[gname].grid[db[gname].ax.time], ndir), nant)
@@ -196,7 +205,7 @@ class casa_caltable_factory(object):
                     t.putcol("FIELD_ID", fieldid, startrow=nrowsdd * iddid)
                     t.putcol("SPECTRAL_WINDOW_ID", np.ones(ant1.shape) * iddid, startrow=nrowsdd * iddid) # new spectral window with freq range for these sols
                     t.putcol("ANTENNA1", ant1, startrow=nrowsdd * iddid)
-                    t.putcol("ANTENNA2", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) 
+                    t.putcol("ANTENNA2", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid)
                     t.putcol("INTERVAL", np.zeros(ant1.shape), startrow=nrowsdd * iddid) #TODO: unclear from MEMO 229
                     t.putcol("SCAN_NUMBER", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) #TODO this FK info is not available yet @oms
                     t.putcol("OBSERVATION_ID", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) #TODO this FK info is not available yet @oms
@@ -217,7 +226,7 @@ class casa_caltable_factory(object):
         def create_B_table(cls, db, gname, outname = "B", diag=True):
             """
                 Write diagonal B-Jones caltable
-                
+
                 Args:
                     db: a cubical pickled_db instance
                     gname: name of pickled_db solutions to export
@@ -232,7 +241,7 @@ class casa_caltable_factory(object):
                 return
             paramerrs = cls.__check_param_err(db, gname)
             assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr1', 'corr2'), "DB table in unrecognized format"
-            
+
             ddids = db.sel_ddids
             ndir = len(db[gname].grid[db[gname].ax.dir])
             ntime = len(db[gname].grid[db[gname].ax.time])
@@ -243,25 +252,25 @@ class casa_caltable_factory(object):
             nrow = ndir * ntime * \
                     nant * len(ddids)
             assert ncorr1 == ncorr2 and ncorr1 == 2, "Expected 2x2 solution, this is a bug"
-            
-            cls.init_empty(db, 
-                           db.filename + ".%s.casa" % outname, 
+
+            cls.init_empty(db,
+                           db.filename + ".%s.casa" % outname,
                            db[gname].grid[db[gname].ax.freq],
                            db[gname].grid[db[gname].ax.ant],
                            field_ndir=ndir,
                            viscal_label="B Jones" if diag else "D Jones")
-            
+
             with tbl(str(db.filename) + ".%s.casa" % outname, ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
-                
+
                 for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
                     minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
-                    maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
+                    maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid])
                     ddsolfreqindx = np.argwhere(np.logical_and(db[gname].grid[db[gname].ax.freq] >= minfreq,
                                                                db[gname].grid[db[gname].ax.freq] <= maxfreq))
                     jones_entries = [0, 3] if diag else [1, 2] # diagonal or crosshands
-                    params = np.swapaxes(db[gname].get_cube()[:, :, ddsolfreqindx, :, :], 
+                    params = np.swapaxes(db[gname].get_cube()[:, :, ddsolfreqindx, :, :],
                                          2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr1 * ncorr2)[:, :, jones_entries]
                     paramerrs = np.swapaxes(paramerrs[:, :, ddsolfreqindx, :, :],
                                             2, 3).reshape(ndir * ntime * nant, len(ddsolfreqindx), ncorr1 * ncorr2)[:, :, jones_entries]
@@ -275,7 +284,7 @@ class casa_caltable_factory(object):
                     t.putcol("FIELD_ID", fieldid, startrow=nrowsdd * iddid)
                     t.putcol("SPECTRAL_WINDOW_ID", np.ones(ant1.shape) * iddid, startrow=nrowsdd * iddid) # new spectral window with freq range for these sols
                     t.putcol("ANTENNA1", ant1, startrow=nrowsdd * iddid)
-                    t.putcol("ANTENNA2", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) 
+                    t.putcol("ANTENNA2", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid)
                     t.putcol("INTERVAL", np.zeros(ant1.shape), startrow=nrowsdd * iddid) #TODO: unclear from MEMO 229
                     t.putcol("SCAN_NUMBER", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) #TODO this FK info is not available yet @oms
                     t.putcol("OBSERVATION_ID", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) #TODO this FK info is not available yet @oms
@@ -284,12 +293,12 @@ class casa_caltable_factory(object):
                     t.putcol("FLAG", flags, startrow=nrowsdd * iddid)
                     t.putcol("SNR", np.ones(params.shape) * np.inf, startrow=nrowsdd * iddid) #TODO this is not available @oms
                     t.putcol("WEIGHT", np.ones(params.shape), startrow=nrowsdd * iddid) #TODO this is not available @oms
-                    
+
         @classmethod
         def create_D_table(cls, db, gname, outname = "D"):
             """
                 Wrapper for off-diagonal B-Jones (leakage / "D") Jones table
-                
+
                 Args:
                     db: a cubical pickled_db instance
                     gname: name of pickled_db solutions to export
@@ -299,12 +308,12 @@ class casa_caltable_factory(object):
                 log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
                 return
             cls.create_B_table(db, gname, outname, diag=False)
-        
+
         @classmethod
         def create_K_table(cls, db, gname, outname = "K"):
             """
                 Write real-valued K-Jones table
-                
+
                 Args:
                     db: a cubical pickled_db instance
                     gname: name of pickled_db solutions to export
@@ -318,7 +327,7 @@ class casa_caltable_factory(object):
                 return
             paramerrs = cls.__check_param_err(db, gname)
             assert db[gname].axis_labels == ('dir', 'time', 'freq', 'ant', 'corr'), "DB table in unrecognized format"
-            
+
             ddids = db.sel_ddids
             ndir = len(db[gname].grid[db[gname].ax.dir])
             ntime = len(db[gname].grid[db[gname].ax.time])
@@ -328,21 +337,21 @@ class casa_caltable_factory(object):
             nrow = ndir * ntime * \
                     nant * len(ddids)
             assert ncorr == 2, "Expected diagnonal Jones matrix"
-            
-            cls.init_empty(db, 
-                           db.filename + ".%s.casa" % outname, 
+
+            cls.init_empty(db,
+                           db.filename + ".%s.casa" % outname,
                            db[gname].grid[db[gname].ax.freq],
                            db[gname].grid[db[gname].ax.ant],
                            field_ndir=ndir,
                            is_complex=False,
                            viscal_label="K Jones")
-            
+
             with tbl(str(db.filename + ".%s.casa" % outname), ack=False, readonly=False) as t:
                 t.addrows(nrows=nrow)
                 for iddid, ddid in enumerate(db.sel_ddids):
                     spwid = db.ddid_spw_map[ddid]
                     minfreq = np.min(db.spwchanfreq[spwid] - 0.5 * db.spwchanwidth[spwid])
-                    maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid]) 
+                    maxfreq = np.max(db.spwchanfreq[spwid] + 0.5 * db.spwchanwidth[spwid])
                     ddsolfreqindx = np.argwhere(np.logical_and(db[gname].grid[db[gname].ax.freq] >= minfreq,
                                                                db[gname].grid[db[gname].ax.freq] <= maxfreq))
                     # note -- CASA K table delays are in nanoseconds. This presumes delays in the cubical tables are already denormalized into seconds
@@ -360,7 +369,7 @@ class casa_caltable_factory(object):
                     t.putcol("FIELD_ID", fieldid, startrow=nrowsdd * iddid)
                     t.putcol("SPECTRAL_WINDOW_ID", np.ones(ant1.shape) * iddid, startrow=nrowsdd * iddid) # new spectral window with freq range for these sols
                     t.putcol("ANTENNA1", ant1, startrow=nrowsdd * iddid)
-                    t.putcol("ANTENNA2", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) 
+                    t.putcol("ANTENNA2", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid)
                     t.putcol("INTERVAL", np.zeros(ant1.shape), startrow=nrowsdd * iddid) #TODO: unclear from MEMO 229
                     t.putcol("SCAN_NUMBER", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) #TODO this FK info is not available yet @oms
                     t.putcol("OBSERVATION_ID", np.ones(ant1.shape) * -1, startrow=nrowsdd * iddid) #TODO this FK info is not available yet @oms
@@ -369,32 +378,32 @@ class casa_caltable_factory(object):
                     t.putcol("FLAG", flags, startrow=nrowsdd * iddid)
                     t.putcol("SNR", np.ones(params.shape) * np.inf, startrow=nrowsdd * iddid) #TODO this is not available @oms
                     t.putcol("WEIGHT", np.ones(params.shape), startrow=nrowsdd * iddid) #TODO this is not available @oms
-        
+
 class casa_db_adaptor(PickledDatabase):
-    
+
     def __init__(self):
         """
             CASA-style gaintable adaptor for Cubical pickled_db database writer
-            
+
             This adaptor adds functionality to export databases to CASA gaintables
             which can be read and plotted in CASA plotms or similar diagnostic utilities.
         """
         PickledDatabase.__init__(self)
         self.meta_avail = False
         self.export_enabled = True
-    
+
     @property
     def export_CASA_gaintable(self):
         return self.export_enabled
-    
+
     @export_CASA_gaintable.setter
     def export_CASA_gaintable(self, value):
         self.export_enabled = value
-    
+
     def set_metadata(self, src):
         """
             Sets up metadata taken from data provider
-            
+
             Args:
                 src: a cubical.data_handler instance
         """
@@ -451,7 +460,7 @@ class casa_db_adaptor(PickledDatabase):
             self.meta_avail = True
         else:
             self.meta_avail = False
-            
+
 
     def __export(self):
         """ exports the database to CASA gaintables """
@@ -459,7 +468,7 @@ class casa_db_adaptor(PickledDatabase):
             log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
             return
         self._load(self.filename)
-        
+
         if not self.meta_avail:
             log.error("Measurement metadata not set. Cannot write CASA-style gaintable.")
         elif not self.export_enabled:
@@ -476,14 +485,14 @@ class casa_db_adaptor(PickledDatabase):
             if "G:delay" in self.names():
                 assert "G:delay.err" in self.names(), "Delay error not present in solutions db? This is a bug"
                 casa_caltable_factory.create_K_table(self, "G:delay")
-                
+
         self.close()
-            
+
     def close(self):
         """ see iface_database.close() for details """
         # move to closed state before exporting and loading back and sorting data
         do_export = (self.mode is "create")
-        PickledDatabase.close(self) 
+        PickledDatabase.close(self)
         if do_export:
             self.__export()
-    
+

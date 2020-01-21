@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 
 # This module has been adapted from the DDFacet package,
 # (c) Cyril Tasse et al., see http://github.com/saopicc/DDFacet
@@ -19,7 +28,7 @@ log = logger.getLogger("dynoptparse")
 
 #global Parset
 #Parset=parsets.Parset("/media/tasse/data/DDFacet/Parset/DefaultParset.cfg")
-#D=Parset.DicoPars 
+#D=Parset.DicoPars
 
 
 class ForgivingParser(optparse.OptionParser):
@@ -161,10 +170,10 @@ class DynamicOptionParser(object):
         for group, group_dict in self._defaults.items():
             if group in skip_groups or '_NameTemplate' in group_dict:
                 continue
-    
+
             title = self._groups.get(group, (group, None))[0]
             print(ModColor.Str("[{}] {}".format(group, title), col="green"), file=dest)
-    
+
             for name, value in group_dict.items():
                 if name[0] != "_":   # skip "internal" values such as "_Help"
                     attrs = self._attributes.get(group).get(name, {})
@@ -263,14 +272,14 @@ class DynamicOptionParser(object):
 
 def test():
     OP = MyOptParse()
-    
+
     OP.start_group("* Data","Data")
     OP.add_option('MSName', 'foo.ms')
     OP.add_option('ColName', 'COLUMN')
     config = OP.read_input()
 
     return config
-    
+
 
 if __name__=="__main__":
     test()

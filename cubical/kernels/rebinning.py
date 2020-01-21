@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
 Cython kernels for various rebinning operations. Common dimensions of arrays are:
 
@@ -87,7 +96,7 @@ def rebin_vis(vis, vis0, uvw, uvw0, flag, flag0, weights, weights0, num_weights,
             for c in range(n_cor0):
 		# Output flags accumulate all input flags across the bin with bitwise-OR.
 		# However, below we'll clear them if at least one unflagged visibility was present.
-                flag[row, f, c] |= flag0[row0, f0, c]  
+                flag[row, f, c] |= flag0[row0, f0, c]
                 if not flag0[row0, f0, c]:
                     # accumulate weights
                     if num_weights:

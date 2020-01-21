@@ -1,12 +1,21 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
-Handles the flagging of data. 
+Handles the flagging of data.
 """
 
-# This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does, 
+# This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
 # even if one is only trying to save figures to .png.
 from __future__ import print_function
 from builtins import range
@@ -123,7 +132,7 @@ class Flagsets (object):
 
         Returns:
             list or None:
-                A list of flagset names, in the order in which they were created or None if BITFLAG 
+                A list of flagset names, in the order in which they were created or None if BITFLAG
                 column is missing (so flagsets are unavailable.)
         """
 
@@ -136,14 +145,14 @@ class Flagsets (object):
         Args:
             name (str):
                 Name of flagset.
-            create (bool, optional): 
+            create (bool, optional):
                 If True and flagset is missing, creates named flagset, else raises exception.
-    
+
         Raises:
             TypeError:
                 If the MS does not contain a BITFLAG column.
             ValueError:
-                If the named flagset is not found and create is False. 
+                If the named flagset is not found and create is False.
             ValueError:
                 If there are too many flagsets to create a new one.
         """
@@ -176,7 +185,7 @@ class Flagsets (object):
 
     def remove_flagset (self, *fsnames):
         """
-        Removes the named flagset(s). 
+        Removes the named flagset(s).
 
         Args:
             fsnames (tuple):
@@ -186,7 +195,7 @@ class Flagsets (object):
             int:
                 Flagmask corresponding to the removed flagsets.
         """
-        
+
         # lookup all flagsets, raise error if any not found
         if self.bits is None:
             raise TypeError("MS does not contain a BITFLAG column, cannot use flagsets")
@@ -270,7 +279,7 @@ def flag_chisq (st, GD, basename, nddid):
     flag = (chi2 > chi_median_thresh * median)
     chi2[flag] = np.ma.masked
     nflag = flag.sum()
-    print("{} slots ({:.2%}) flagged on chi2 > {}*median".format(nflag, nflag/float(total), 
+    print("{} slots ({:.2%}) flagged on chi2 > {}*median".format(nflag, nflag/float(total),
                                                                                 chi_median_thresh), file=log)
 
     if make_plots:
@@ -282,7 +291,7 @@ def flag_chisq (st, GD, basename, nddid):
 
     flag2 = (chi2n < np_median_thresh * median_np)
     n_new = (flag2&~flag).sum()
-    print("{} more slots ({:.2%}) flagged on counts < {}*median".format(n_new, 
+    print("{} more slots ({:.2%}) flagged on counts < {}*median".format(n_new,
                                                             n_new/float(total), np_median_thresh), file=log)
     flag |= flag2
 

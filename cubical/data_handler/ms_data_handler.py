@@ -1,7 +1,16 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from builtins import range
 from six import string_types
@@ -34,7 +43,7 @@ def _divide_up(n, k):
 
 def _parse_slice(arg, what="slice"):
     """
-    Helper function. Parses an string argument into a slice.  
+    Helper function. Parses an string argument into a slice.
     Supports e.g. "5~7" (inclusive range), "5:8" (pythonic range). An optional ":STEP" may be added
 
     Args:
@@ -49,7 +58,7 @@ def _parse_slice(arg, what="slice"):
 
     Raises:
         TypeError:
-            If the type of arg is not understood. 
+            If the type of arg is not understood.
         ValueError:
             If the slice cannot be parsed.
     """
@@ -88,7 +97,7 @@ def _parse_range(arg, nmax):
 
     Raises:
         TypeError:
-            If the type of arg is not log = logger.getLogger("data_handler")erstood. 
+            If the type of arg is not log = logger.getLogger("data_handler")erstood.
         ValueError:
             If the range cannot be parlog = logger.getLogger("data_handler").
     """
@@ -761,7 +770,7 @@ class MSDataHandler:
 
         Returns:
             str:
-                A TAQL query string. 
+                A TAQL query string.
         """
 
         if taql:
@@ -806,7 +815,7 @@ class MSDataHandler:
         Convenience function similar to fetch(), but assumes a column of NFREQxNCORR shape,
         and calls pyrap.tables.table.getcolslice() if there's a channel slice to be applied,
         else just uses getcol().
-        
+
         Args:
             startrow (int):
                 Starting row to read.
@@ -905,36 +914,36 @@ class MSDataHandler:
 
     def define_chunk(self, chunk_time, rebin_time, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """
-        Fetches indexing columns (TIME, DDID, ANTENNA1/2) and defines the chunk dimensions for 
+        Fetches indexing columns (TIME, DDID, ANTENNA1/2) and defines the chunk dimensions for
         the data.
 
         Args:
-            tdim (int): 
+            tdim (int):
                 Timeslots per chunk.
-            fdim (int): 
+            fdim (int):
                 Frequencies per chunk.
-            chunk_by (str or None, optional):   
+            chunk_by (str or None, optional):
                 If set, chunks will have boundaries imposed by jumps in the listed columns
-            chunk_by_jump (int, optional): 
+            chunk_by_jump (int, optional):
                 The magnitude of a jump has to be over this value to force a chunk boundary.
-            chunks_per_tile (int, optional): 
+            chunks_per_tile (int, optional):
                 The minimum number of chunks to be placed in a single tile.
             max_chunks_per_tile (int, optional)
                 The maximum number of chunks to be placed in a single tile.
-            
+
         Attributes:
             antea (np.ndarray): ANTENNA1 column of MS subset.
-            anteb (np.ndarray): 
+            anteb (np.ndarray):
                 ANTENNA2 column of MS subset.
-            ddid_col (np.ndarray): 
+            ddid_col (np.ndarray):
                 DDID column of MS subset.
-            time_col (np.ndarray): 
+            time_col (np.ndarray):
                 TIME column of MS subset.
-            times (np.ndarray):    
+            times (np.ndarray):
                 Timeslot index number with same size as self.time_col.
-            uniq_times (np.ndarray): 
+            uniq_times (np.ndarray):
                 Unique timestamps in time_col.
-                
+
         Returns:
             max_chunks, tile_list:
                 - max number of chunks per tile
@@ -1056,10 +1065,10 @@ class MSDataHandler:
 
         # Number of timeslots per time chunk
         self.chunk_ntimes = []
-        
+
         # Unique timestamps per time chunk
         self.chunk_timestamps = []
-        
+
         # For each time chunk, create a mask for associated binned and unbinned rows
         timechunk_masks = []
         timechunk_masks0 = []
@@ -1323,7 +1332,7 @@ class MSDataHandler:
         Converts a 3D flag cube (ntime, nddid, nchan) back into the MS style.
 
         Args:
-            flag3 (np.ndarray): 
+            flag3 (np.ndarray):
                 Input array which is to be made MS friendly.
 
         Returns:
@@ -1388,11 +1397,11 @@ class MSDataHandler:
         Inserts a new column into the measurement set.
 
         Args:
-            col_name (str): 
+            col_name (str):
                 Name of target column.
-            like_col (str, optional): 
+            like_col (str, optional):
                 Column will be patterned on the named column.
-            like_type (str or None, optional): 
+            like_type (str or None, optional):
                 If set, column type will be changed.
 
         Returns:
@@ -1463,10 +1472,10 @@ class MSDataHandler:
         Saves flags to column in MS.
 
         Args:
-            flags (np.ndarray): 
+            flags (np.ndarray):
                 Flag values to be written to column.
         """
-        
+
         print("Writing out new flags", file=log)
         try:
             bflag_col = self.fetch("BITFLAG")

@@ -1,9 +1,18 @@
-# CubiCal: a radio interferometric calibration suite
-# (c) 2017 Rhodes University & Jonathan S. Kenyon
-# http://github.com/ratt-ru/CubiCal
-# This code is distributed under the terms of GPLv2, see LICENSE.md for details
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 """
-Cython kernels for the robust 2x2 complex gain machine. Functions require output 
+Cython kernels for the robust 2x2 complex gain machine. Functions require output
 arrays to be provided. Common dimensions of arrays are:
 
 +----------------+------+
@@ -139,10 +148,10 @@ def compute_jhwr(jh, r, w, jhwr, t_int, f_int):
 
                         w0 = w[i,t,f,aa,ab,0]
 
-                        jhwr[d,bt,bf,aa,0,0] += (r00*jhh00 + r01*jhh10)*w0 
-                        jhwr[d,bt,bf,aa,0,1] += (r00*jhh01 + r01*jhh11)*w0 
-                        jhwr[d,bt,bf,aa,1,0] += (r10*jhh00 + r11*jhh10)*w0 
-                        jhwr[d,bt,bf,aa,1,1] += (r10*jhh01 + r11*jhh11)*w0 
+                        jhwr[d,bt,bf,aa,0,0] += (r00*jhh00 + r01*jhh10)*w0
+                        jhwr[d,bt,bf,aa,0,1] += (r00*jhh01 + r01*jhh11)*w0
+                        jhwr[d,bt,bf,aa,1,0] += (r10*jhh00 + r11*jhh10)*w0
+                        jhwr[d,bt,bf,aa,1,1] += (r10*jhh01 + r11*jhh11)*w0
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhwj(jh, w, jhwj, t_int, f_int):
@@ -185,12 +194,12 @@ def compute_jhwj(jh, w, jhwj, t_int, f_int):
 
                         j00 = jh[d,i,t,f,ab,aa,0,0]
                         j01 = jh[d,i,t,f,ab,aa,0,1]
-                        j10 = jh[d,i,t,f,ab,aa,1,0] 
+                        j10 = jh[d,i,t,f,ab,aa,1,0]
                         j11 = jh[d,i,t,f,ab,aa,1,1]
 
                         jh00 = jh[d,i,t,f,ab,aa,0,0].conjugate()
                         jh01 = jh[d,i,t,f,ab,aa,1,0].conjugate()
-                        jh10 = jh[d,i,t,f,ab,aa,0,1].conjugate() 
+                        jh10 = jh[d,i,t,f,ab,aa,0,1].conjugate()
                         jh11 = jh[d,i,t,f,ab,aa,1,1].conjugate()
 
                         w0 = w[i,t,f,aa,ab,0]
@@ -203,7 +212,7 @@ def compute_jhwj(jh, w, jhwj, t_int, f_int):
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_weights(r, ic, w, v, npol):
     """
-    This function updates the weights, using the expression: 
+    This function updates the weights, using the expression:
         w[i] = (v+2*npol)/(v + 2*r[i].T.cov.r[i])
 
     Args:
@@ -216,7 +225,7 @@ def compute_weights(r, ic, w, v, npol):
         v (float):
             Degrees of freedom of the t-distribution.
         npol (float):
-            Number of polarizations (correlations) in use.            
+            Number of polarizations (correlations) in use.
     """
     n_mod = r.shape[0]
     n_tim = r.shape[1]
@@ -225,7 +234,7 @@ def compute_weights(r, ic, w, v, npol):
 
     all_bls = np.array([[i,j] for i in range(n_ant) for j in range(n_ant) if i!=j], dtype=np.int32)
     n_bl = all_bls.shape[0]
-    
+
     for ibl in prange(n_bl):
         aa, ab = all_bls[ibl][0], all_bls[ibl][1]
         for i in range(n_mod):
@@ -247,23 +256,23 @@ def compute_weights(r, ic, w, v, npol):
                             (rc00*ic[0,2] + rc01*ic[1,2] + rc10*ic[2,2] + rc11*ic[3,2])*r10 + \
                             (rc00*ic[0,3] + rc01*ic[1,3] + rc10*ic[2,3] + rc11*ic[3,3])*r11
 
-                    w[i,t,f,aa,ab,0] = (v + npol)/(v + denom.real) # using LB derivation     
+                    w[i,t,f,aa,ab,0] = (v + npol)/(v + denom.real) # using LB derivation
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_cov(r, ic, w):
     """
-    This function computes the un-normlaised weighted covariance matrix of 
-    the visibilities using the expression: 
+    This function computes the un-normlaised weighted covariance matrix of
+    the visibilities using the expression:
         cov = r.conj()*w.r
-    
+
     Args:
         r (np.complex64 or np.complex128):
             Typed memoryview of residual array with dimensions (m, t, f, a, a, c, c).
         ic (np.complex64 or np.complex128):
             Typed memoryview of weighted inverse covariance array with dimensions (4,4).
         w (np.complex64 or np.complex128):
-            Typed memoryview of weight array with dimensions (m, t, f, a, a, 1).         
-    """    
+            Typed memoryview of weight array with dimensions (m, t, f, a, a, 1).
+    """
     n_mod = r.shape[0]
     n_tim = r.shape[1]
     n_fre = r.shape[2]
@@ -271,9 +280,9 @@ def compute_cov(r, ic, w):
 
     bls = np.array([[i,j] for i in range(n_ant) for j in range(i+1, n_ant)], dtype=np.int32)
     n_bl = bls.shape[0]
-    
+
     for ibl in prange(n_bl):
-        aa, ab = bls[ibl][0], bls[ibl][1]  
+        aa, ab = bls[ibl][0], bls[ibl][1]
         for i in range(n_mod):
             for t in range(n_tim):
                 for f in range(n_fre):
