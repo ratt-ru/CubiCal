@@ -65,6 +65,16 @@ class PhaseSlopeGains(ParameterisedGains):
         self.slope_type = options["type"]
         self.n_param = 3 if self.slope_type == "tf-plane" else 2
         self._estimate_delays = options["estimate-delays"]
+        self._pin_slope_iters = options["pin-slope-iters"]
+
+        if self._pin_slope_iters > self.maxiter:
+            raise ValueError("Slope pinning iterations is greater than the maximum "
+                             "number of iterations. Please check term-iters, max-iters "
+                             "and pin-slope-iters.")
+
+        if (self.slope_type != "f-slope") and (self._pin_slope_iters != 0):
+            raise ValueError("Slope pinning is not supported for modes other than "
+                             "f-slope. Please ensure that pin-slope-iters is zero.")
 
         self.param_shape = [self.n_dir, self.n_timint, self.n_freint,
                             self.n_ant, self.n_param, self.n_cor, self.n_cor]
@@ -104,7 +114,7 @@ class PhaseSlopeGains(ParameterisedGains):
                 # is no guarantee that the band will be perfectly split, this may
                 # need to be a loop over frequency solution intervals.
 
-                pad_factor = options["pad-factor"]
+                pad_factor = options["delay-estimate-pad-factor"]
                 
                 for i in range(self.n_freint):
                     edges = self.f_bins + [None]
@@ -131,31 +141,6 @@ class PhaseSlopeGains(ParameterisedGains):
                     delay_est_ind = np.argmax(fft_data, axis=2)
                     delay_est_ind = np.expand_dims(delay_est_ind, axis=2)
 
-                    # What follows is remnants of testing the delay code. Leaving here
-                    # for now, in case I need the interpolation code.
-
-                    #ilo = delay_est_ind - 1
-                    #ihi = delay_eit_ind + 1
-
-                    #all_inds = np.ix_(*[range(ax) for ax in fft_data.shape])
-                    #max_inds = tuple(all_inds[i] if i!=2 else delay_est_ind for i in range(len(all_inds))) 
-                    #ilo = tuple(all_inds[i] if i!=2 else delay_est_ind - 1 for i in range(len(all_inds)))
-                    #ihi = tuple(all_inds[i] if i!=2 else delay_est_ind + 1 for i in range(len(all_inds)))
-
-                    #alo = fft_data[ilo]
-                    #ahi = fft_data[ihi]
-                    #amax = fft_data[max_inds]
-
-                    #denom = alo + ahi - 2*amax
-                    #fpk = np.round(delay_est_ind - fft_freq.size/2 - (ahi - amax)/denom)
-                    #fpk[~np.isfinite(fpk)] = 0
-                    #delay_est = fpk/fft_freq.size
-                    #delay_est /= delta_freq
-
-                    #delay_correction = (ahi - amax)/denom
-                    #delay_correction[~np.isfinite(delay_correction)] = 0
-                    #delay_correction /= (fft_freq.size*delta_freq)
-                
                     delay_est = fft_freq[delay_est_ind]
                     delay_est[...,(0,1),(1,0)] = 0
                     
@@ -195,6 +180,16 @@ class PhaseSlopeGains(ParameterisedGains):
             self.kernel_solve = cubical.kernels.import_kernel('phase_only')
 
         self._jhr0 = self._gerr = None
+
+    @property
+    def has_converged(self):
+        """ Returns convergence status. """
+
+        condition_1 = self.converged_fraction >= self.min_quorum
+        condition_2 = self.iters >= self.maxiter
+        condition_3 = self.iters > self._pin_slope_iters
+
+        return (condition_1 or condition_2) and condition_3
 
     @classmethod
     def determine_diagonality(cls, options):
@@ -249,7 +244,6 @@ class PhaseSlopeGains(ParameterisedGains):
             log(1).print("{}: slope solutions are {}, {}".format(self.chunk_label,
                             self.slope_params[..., :, :, 1, 0, 0],
                             self.slope_params[..., :, :, 1, 1, 1]))
-
 
         return solutions
 
@@ -370,6 +364,11 @@ class PhaseSlopeGains(ParameterisedGains):
             log(1).print("proposed slope update Y: ", update[0,:,0,:,1,1,1].max(axis=0))
             log(1).print("proposed phase update X (deg): ", update[0,:,0,:,0,0,0].max(axis=0)*180/np.pi)
             log(1).print("proposed phase update Y (deg): ", update[0,:,0,:,0,1,1].max(axis=0)*180/np.pi)
+
+        # Pin the delay component if self._pin_slope_iters is set. Note that
+        # this is likely incorrect for delay+rate calibration.
+        if self.iters < self._pin_slope_iters:
+            update[..., 1, :, :] = 0
 
         # It is safer to average every iteration when using a phase only solver.
         if self.iters%1 == 0:
