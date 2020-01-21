@@ -1,3 +1,16 @@
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from builtins import range
 import math,cmath
@@ -11,14 +24,14 @@ from cubical.plots import DPI, ZOOM, make_antenna_xaxis
 
 def _abs(x):
     """
-    Works around numpy bug with abs() of masked arrays producing a 
+    Works around numpy bug with abs() of masked arrays producing a
     ComplexWarning(Casting complex values to real discards the imaginary part)
     """
     if ma.isMA(x):
         return ma.masked_array(np.abs(x.data), x.mask)
     else:
         return ma.masked_array(np.abs(x))
-    
+
 
 
 def _cmp_antenna (sa, sb):
@@ -84,7 +97,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
     # load baseline info, if MS is available
     antpos = list(zip(ms.antnames, ms.antpos))
     # make dictionary of IFR name: baseline length
-    baseline = { metadata.baseline_name[p,q]: metadata.baseline_length[p,q] 
+    baseline = { metadata.baseline_name[p,q]: metadata.baseline_length[p,q]
                  for p in range(ms.nants) for q in range(p+1, ms.nants) }
     feeds = [ (x+y).upper() for x in metadata.feeds for y in metadata.feeds ]
 

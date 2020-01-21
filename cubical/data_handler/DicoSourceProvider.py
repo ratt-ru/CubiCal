@@ -1,3 +1,16 @@
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 try:
     from DDFacet.Imager import ModModelMachine as MMM
@@ -55,8 +68,8 @@ class DicoSourceProvider(object):
         if cachename not in DicoSourceProvider.__cached_providers:
             log.info("Initializing new source provider for DDFacet model '{0:s}' into regions specified by '{1:s}'.".format(
                 fn, clustercat if clustercat is not None else 'die'))
-            self.__clustercat = self.__read_regions_file(clustercat, 
-                                                         facet_padding_factor, 
+            self.__clustercat = self.__read_regions_file(clustercat,
+                                                         facet_padding_factor,
                                                          max_facet_size,
                                                          min_nfacet_per_axis)
             DicoSourceProvider.__cached_providers[cachename] = self.__clustercat
@@ -131,10 +144,10 @@ class DicoSourceProvider(object):
             nsplit = max(1, max(min_nfacet_per_axis, int(np.ceil(reg_size_deg / max_size))))
             return BoundingBoxFactory.SplitBox(reg, nsubboxes=nsplit, check_mask_outofbounds=True)
         log(2).print("\tSplitting regions into facetted regions, with maximum unpadded size of {0:.2f} degrees per facet".format(max_size))
-        clusters = [aasubreg for aareg in map(lambda reg: __split_regular_region(reg, max_size), clusters) 
+        clusters = [aasubreg for aareg in map(lambda reg: __split_regular_region(reg, max_size), clusters)
                     for aasubreg in aareg]
         clusters = map(lambda reg: BoundingBoxFactory.AxisAlignedBoundingBox(reg, square=True, check_mask_outofbounds=False), clusters)
-        
+
         def __pad_cluster(c, padding_factor):
             npx,_ = c.box_npx # square facet at this point
             # this returns an odd npix:
@@ -146,7 +159,7 @@ class DicoSourceProvider(object):
         BoundingConvexHull.normalize_masks(clusters)
         log(2).print("\tCaching regional weight maps for future predicts")
         map(lambda x: x.mask, clusters) # cache mask
-        dirs = {} 
+        dirs = {}
         for c in clusters:
             dirs[c.name] = dirs.get(c.name, []) + [c]
         return dirs
@@ -158,13 +171,13 @@ class DicoSourceProvider(object):
         """
         return ["die"] if self.__clustercat is None else \
             self.__clustercat.keys()
-    
+
     def set_direction(self, v):
         """ sets the cluster (direction) index to predict from """
         if v not in self._cluster_keys:
             raise KeyError("Unknown direction '{0:s}' for model '{1:s}'".format(str(v), str(self)))
         self.__current_direction = v
-    
+
     @property
     def _nclus(self):
         return len(self.__clustercat.keys())
@@ -182,7 +195,7 @@ class DicoSourceProvider(object):
         if model_image.shape[2] != model_image.shape[3]:
             raise ValueError("Expected square grid")
         model_image[...] = 0
-        for v in np.linspace(model_image.shape[2]//2 * first_position_from_centre, 
+        for v in np.linspace(model_image.shape[2]//2 * first_position_from_centre,
                              model_image.shape[2]//2 * last_position_from_edge, nterms):
             model_image[:, :, model_image.shape[2]//2 - int(v), model_image.shape[3]//2 - int(v)] = 1.0
             model_image[:, :, model_image.shape[2]//2 + int(v), model_image.shape[3]//2 + int(v)] = 1.0

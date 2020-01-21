@@ -1,3 +1,16 @@
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from builtins import range
 import multiprocessing, os, sys, traceback
@@ -72,7 +85,7 @@ def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc
 def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinity, main_affinity, use_montblanc, montblanc_threads):
     """
     Sets up parallelism, affinities and other properties of worker processes.
-    
+
     Args:
         ncpu (int):
             max number of cores to use
@@ -137,12 +150,12 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     props = worker_process_properties["Process-1"] = dict(label="io", environ={})
 
     # allocate cores to I/O process, if asked to pin it
-    
+
     # for now, since we can't figure out this tensorflow affinity shit
     if affinity is not None and io_affinity and use_montblanc:
         io_affinity = None
         print("Montblanc currently does not support CPU affinity settings: ignoring --dist-pin-io", file=log(0,"red"))
-        
+
     if affinity is not None and io_affinity:
         num_io_cores = montblanc_threads if use_montblanc else 1
         io_cores = list(range(core,core+num_io_cores*corestep,corestep))
@@ -209,7 +222,7 @@ def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solv
     # by the I/O worker
     global tile_list
     tile_list = _tile_list
-    
+
     if num_workers:
         return _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts, out_opts)
     else:
@@ -219,16 +232,16 @@ def run_process_loop(ms, _tile_list, load_model, single_chunk, solver_type, solv
 def _run_multi_process_loop(ms, load_model, solver_type, solver_opts, debug_opts, out_opts):
     """
     Runs the main loop in multiprocessing mode.
-    
+
     Args:
-        ms: 
-        nworker: 
-        nthread: 
-        load_model: 
-        single_chunk: 
-        solver_type: 
-        solver_opts: 
-        debug_opts: 
+        ms:
+        nworker:
+        nthread:
+        load_model:
+        single_chunk:
+        solver_type:
+        solver_opts:
+        debug_opts:
         out_opts:
     Returns:
         Stats dictionary
@@ -327,14 +340,14 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
     Runs the main loop in single-CPU mode.
 
     Args:
-        ms: 
-        nworker: 
-        nthread: 
-        load_model: 
-        single_chunk: 
-        solver_type: 
-        solver_opts: 
-        debug_opts: 
+        ms:
+        nworker:
+        nthread:
+        load_model:
+        single_chunk:
+        solver_type:
+        solver_opts:
+        debug_opts:
         out_opts: output options from GD
     Returns:
         Stats dictionary

@@ -1,3 +1,16 @@
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from __future__ import print_function
 from builtins import range
 import numpy as np
@@ -21,8 +34,8 @@ try:
 except AttributeError:
     # No line profiler, provide a pass-through version
     def profile(func): return func
-    builtins.profile = profile 
-    
+    builtins.profile = profile
+
 
 class Flagger(object):
     def __init__(self, GD, chunk_label, metadata, stats):
@@ -158,7 +171,7 @@ class Flagger(object):
                         for c1,x1 in enumerate(self.metadata.feeds.upper()):
                             for c2,x2 in enumerate(self.metadata.feeds.upper()):
                                 mm = mad[0,p,q,c1,c2] if self.mad_per_corr else mad[0,p,q]
-                                subplot_titles[c1,c2] = "{}{} residuals (MAD {:.3g})".format(x1, x2, 0 if mm is np.ma.masked else mm) 
+                                subplot_titles[c1,c2] = "{}{} residuals (MAD {:.3g})".format(x1, x2, 0 if mm is np.ma.masked else mm)
                         try:
                             figure = plots.make_dual_absres_plot(absres, flags_arr!=0, baddies, p, q, self.metadata, subplot_titles)
                             # make plot title with some info

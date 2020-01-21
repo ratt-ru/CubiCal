@@ -1,3 +1,16 @@
+#   Copyright 2020 Jonathan Simon Kenyon
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
 from builtins import range
 
 import numpy as np
@@ -11,8 +24,8 @@ use_cache = cubical.kernels.use_cache
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_2x2_inverse(x, xinv, flags, eps, flagbit):
     """
-    Given an array x of dimensions (d,t,i,a,2,2), computes the inverse of every 2x2 block. 
-    Takes flags of shape (d,t,f,a) into account, and will flag elements if the inverse is 
+    Given an array x of dimensions (d,t,i,a,2,2), computes the inverse of every 2x2 block.
+    Takes flags of shape (d,t,f,a) into account, and will flag elements if the inverse is
     too large.
 
     Args:
@@ -58,7 +71,7 @@ def compute_2x2_inverse(x, xinv, flags, eps, flagbit):
                                 x[d,t,f,aa,0,1] * x[d,t,f,aa,1,0]
 
                         if (denom*denom.conjugate()).real<=eps:
-                            
+
                             xinv[d,t,f,aa,0,0] = 0
                             xinv[d,t,f,aa,1,1] = 0
                             xinv[d,t,f,aa,0,1] = 0
@@ -80,7 +93,7 @@ def compute_2x2_inverse(x, xinv, flags, eps, flagbit):
 def compute_diag_inverse(x, xinv, flags, eps, flagbit):
     """
     Given an array x of dimensions (d,t,i,a,2,2), computes the inverse of every 2x2 block,
-    under the assumption that the off-diagonal entries are zero. Takes flags of shape 
+    under the assumption that the off-diagonal entries are zero. Takes flags of shape
     (d,t,f,a) into account, and will flag elements if the inverse is too large.
 
     Args:
@@ -113,12 +126,12 @@ def compute_diag_inverse(x, xinv, flags, eps, flagbit):
         for t in range(n_tim):
             for f in range(n_fre):
                 for d in range(n_dir):
-                    
+
                     xinv[d,t,f,aa,0,1] = xinv[d,t,f,aa,1,0] = 0
-                    
+
                     if flags[d,t,f,aa]:
                         xinv[d,t,f,aa,0,0] = xinv[d,t,f,aa,1,1] = 0
-                    
+
                     else:
                         denom = x[d,t,f,aa,0,0] * x[d,t,f,aa,1,1]
                         if (denom.real**2 + denom.imag**2)<=eps:
