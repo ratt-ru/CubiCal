@@ -497,7 +497,7 @@ def main(debugging=False):
         else:
             chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
             max_chunks_per_tile = 0
-            if GD["dist"]["max_chunks"]:
+            if GD["dist"]["max-chunks"]:
                 chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
                 max_chunks_per_tile = GD["dist"]["max-chunks"]
 
