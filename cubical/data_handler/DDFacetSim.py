@@ -4,9 +4,14 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 
 from __future__ import print_function
+import six
 try:
     from DDFacet.Imager import ClassDDEGridMachine
-    from DDFacet.cbuild.Gridder import _pyGridderSmearPolsClassic
+    if six.PY3:
+        import DDFacet.cbuild.Gridder._pyGridderSmearPolsClassic3x as _pyGridderSmearPolsClassic
+    else:
+        import DDFacet.cbuild.Gridder._pyGridderSmearPolsClassic27 as _pyGridderSmearPolsClassic
+    from DDFacet.cbuild.Gridder import _pyGridderSmearPolsClassic27
     from DDFacet.ToolsDir.ModToolBox import EstimateNpix
     from DDFacet.Array import shared_dict
     from DDFacet.ToolsDir import ModFFTW
