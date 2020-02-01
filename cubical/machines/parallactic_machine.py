@@ -105,7 +105,7 @@ class parallactic_machine(object):
                 ]
                 for t in unique_times])
                 
-            if log.verbosity > 1:
+            if log.verbosity() > 1:
                 log(2).print("   PA of first antenna (deg): {}".format(unique_pa[:,0]*180/np.pi))
 
             for t, pa in zip(unique_times, unique_pa):

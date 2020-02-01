@@ -787,7 +787,8 @@ class MasterMachine:
                                  self.make_filename(self.jones_options["load-from"]),
                                  bool(self.jones_options["xfer-from"]),
                                  self.solvable and self.make_filename(self.jones_options["save-to"]),
-                                 self.machine_class.exportable_solutions())
+                                 self.machine_class.exportable_solutions(),
+                                 dd_term=bool(self.jones_options["dd-term"]))
 
         def make_filename(self, filename, jones_label=None):
             """
@@ -810,7 +811,7 @@ class MasterMachine:
             return expand_templated_name(filename,
                                          JONES=jones_label or self.jones_label)
 
-        def _init_solutions(self, label, load_from, interpolate, save_to, exportables):
+        def _init_solutions(self, label, load_from, interpolate, save_to, exportables, dd_term=False):
             """
             Internal helper implementation for init_solutions(): this initializes a pair of solution databases.
             
@@ -826,6 +827,8 @@ class MasterMachine:
                 exportables (dict):
                     Dictionary of {key: (empty_value, axis_list)} describing the solutions that will be saved.
                     As returned by exportable_solutions() of the gain machine.
+                dd_term (bool):
+                    True if paremeter was configured as direction-dependent
                 
             """
             # init solutions from database
@@ -840,11 +843,11 @@ class MasterMachine:
             if save_to:
                 # define parameters in DB
                 for sol_label, (empty_value, axes) in exportables.items():
-                    self.define_param(save_to, "{}:{}".format(label, sol_label), empty_value, axes)
+                    self.define_param(save_to, "{}:{}".format(label, sol_label), empty_value, axes, dd_term=dd_term)
                 print("{} solutions will be saved to {}".format(label, save_to), file=log(0))
 
         def define_param(self, save_to, name, empty_value, axes,
-                          interpolation_axes=("time", "freq")):
+                          interpolation_axes=("time", "freq"), dd_term=False):
             """
             Internal helper method for _init_solutions(). Defines a parameter to be saved.
             
@@ -859,6 +862,8 @@ class MasterMachine:
                     List of axes over which the parameter is defined, e.g. ["time", "freq", "ant1", "ant2"]
                 interpolation_axes (iterable):
                     List of axes over which the parameter can be interpolated. Subset of axes.
+                dd_term (bool):
+                    True if paremeter was configured as direction-dependent
             """
             # init DB, if needed
             db = self._save_sols_byname.get(save_to)
@@ -884,7 +889,8 @@ class MasterMachine:
             grid = {}
             for axis in axes:
                 if axis in self.grid:
-                    grid[axis] = self.grid[axis]
+                    # use saved grid, or else [0] for direction axis of non-DD parameter
+                    grid[axis] = self.grid[axis] if axis != "dir" or dd_term else [0]
                 elif axis[-1].isdigit() and axis[:-1] in self.grid:
                     grid[axis] = self.grid[axis[:-1]]
             return db.define_param(name, dtype, axes, empty=empty_value,

@@ -609,7 +609,8 @@ class JonesChain(MasterMachine):
                                      self.make_filename(opts["load-from"], label),
                                      bool(opts["xfer-from"]),
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
-                                     jones_class.exportable_solutions())
+                                     jones_class.exportable_solutions(),
+                                     dd_term=opts["dd-term"])
 
         def determine_allocators(self):
             return self.machine_class.determine_allocators(self.jones_options)
