@@ -650,7 +650,8 @@ class SolverMachine(object):
                 log(0).print("{}: computing full residuals for final MadMax round".format(self.label))
                 resid_vis1 = self.vdm.corrupt_residual(self.sol_opts["subtract-model"], slice(None))
                 resid_vis = np.zeros_like(resid_vis1)
-                self.gm.apply_inv_gains(resid_vis1, resid_vis, full2x2=True)
+                self.gm.apply_inv_gains(resid_vis1, resid_vis, full2x2=True,
+                                        direction=self.sol_opts["correct-dir"])
                 del resid_vis1
 
             # clear the SKIPSOL flag to also flag data that's been omitted from the solutions
@@ -721,7 +722,7 @@ class SolveAndCorrect(SolveOnly):
         SolveOnly.run(self)
         # for corrected visibilities, take the first data/model pair only
         corr_vis = np.zeros_like(self.vdm.obser_arr)
-        self.gm.apply_inv_gains(self.vdm.obser_arr, corr_vis, full2x2=True)
+        self.gm.apply_inv_gains(self.vdm.obser_arr, corr_vis, full2x2=True, direction=self.sol_opts["correct-dir"])
         return corr_vis
 
 class SolveAndSubtract(SolveOnly):
@@ -740,7 +741,7 @@ class SolveAndSubtract(SolveOnly):
         # correct residual if required
         if self.output_corrected_residuals:
             corr_vis = np.zeros_like(resid_vis)
-            self.gm.apply_inv_gains(resid_vis, corr_vis, full2x2=True)
+            self.gm.apply_inv_gains(resid_vis, corr_vis, full2x2=True, direction=self.sol_opts["correct-dir"])
             return corr_vis
         else:
             return resid_vis
@@ -773,7 +774,7 @@ class CorrectOnly(SolverMachine):
                                    self.vdm.freq_slice, self.soldict)
 
         corr_vis = np.zeros_like(self.vdm.obser_arr)
-        self.gm.apply_inv_gains(self.vdm.obser_arr, corr_vis, full2x2=True)
+        self.gm.apply_inv_gains(self.vdm.obser_arr, corr_vis, full2x2=True, direction=self.sol_opts["correct-dir"])
 
         return corr_vis
 
@@ -798,7 +799,7 @@ class SubtractOnly(SolverMachine):
         # correct residual if required
         if self.output_corrected_residuals:
             corr_vis = np.zeros_like(resid_vis)
-            self.gm.apply_inv_gains(resid_vis, corr_vis, full2x2=True)
+            self.gm.apply_inv_gains(resid_vis, corr_vis, full2x2=True, direction=self.sol_opts["correct-dir"])
             return corr_vis
         else:
             return resid_vis

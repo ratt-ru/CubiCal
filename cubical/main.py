@@ -472,6 +472,7 @@ def main(debugging=False):
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
+        solver_opts["correct-dir"] = GD["out"]["correct-dir"] if GD["out"]["correct-dir"] >= 0 else None
 
         grid = dict(dir=list(range(len(ms.model_directions) or 1)), ant=ms.antnames, corr=list(ms.feeds), time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,

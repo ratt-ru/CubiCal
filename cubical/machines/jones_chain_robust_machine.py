@@ -382,7 +382,7 @@ class JonesChain(MasterMachine):
 
         return resid_arr
 
-    def apply_inv_gains(self, resid_vis, corr_vis=None):
+    def apply_inv_gains(self, resid_vis, corr_vis=None, direction=None):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -393,6 +393,8 @@ class JonesChain(MasterMachine):
             corr_vis (np.ndarray or None, optional): 
                 if specified, shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array 
                 into which the corrected visibilities should be placed.
+            direction (int or None):
+                if None, only DI terms will be applied. Otherwise, also applies DD terms for given direction.
 
         Returns:
             np.ndarray: 
@@ -402,7 +404,7 @@ class JonesChain(MasterMachine):
         if corr_vis is None:
             corr_vis = np.empty_like(resid_vis)
 
-        g, gh, flag_count = self.accumulate_inv_gains()
+        g, gh, flag_count = self.accumulate_inv_gains(direction=direction)
 
         self.kernel.compute_corrected(resid_vis, g, gh, corr_vis, 1, 1)
 

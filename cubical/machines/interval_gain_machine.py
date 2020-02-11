@@ -332,11 +332,19 @@ class PerIntervalGains(MasterMachine):
 
         return model_arr
 
-    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, dd_only=False):
-        g_inv, gh_inv, flag_count = self.get_inverse_gains()
-
+    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, direction=None):
         if corr_vis is None:
             corr_vis = np.empty_like(obser_arr)
+
+        if self.dd_term and direction is None:
+            corr_vis[:] = obser_arr
+            return corr_vis, 0
+
+        g_inv, gh_inv, flag_count = self.get_inverse_gains()
+
+        dirslice = slice(0,1) if direction is None else slice(direction, direction+1)
+        g_inv = g_inv[dirslice]
+        gh_inv = gh_inv[dirslice]
 
         (self.kernel if full2x2 else self.kernel_solve).compute_corrected(obser_arr,
                                                             g_inv, gh_inv, corr_vis, *self.gain_intervals)

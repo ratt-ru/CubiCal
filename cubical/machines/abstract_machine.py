@@ -287,7 +287,7 @@ class MasterMachine:
         return NotImplementedError
 
     @abstractmethod
-    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, di_only=False):
+    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, direction=None):
         """
         This method should be able to apply the inverse of the gains associated with the gain
         machines to an array at full time-frequency resolution. Should populate an input array with
@@ -304,8 +304,9 @@ class MasterMachine:
             full2x2 (bool):
                 If True, gains should be applied to the full 2x2 matrix. If False, only the terms used in the solution
                 (e.g. the diagonals) are required.
-            di_only (bool):
-                If True, only DI terms are applied (leftmost block of DI terms, in a chain machine). Not implemented for now.
+            direction (int or None):
+                If None, only DI terms (in a chain) are applied. If set to a direction number,
+                also applies DD terms for that direction.
 
         Returns:
             2-element tuple
