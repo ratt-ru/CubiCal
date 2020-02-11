@@ -226,7 +226,7 @@ class PhaseSlopeGains(ParameterisedGains):
         """ Returns a dictionary of importable solutions for this machine type. """
         # Note that complex gain (as a derived parameter) is exported, but not imported
         # defines solutions we can import from
-        return { label: dict(dir=grid0['dir'], ant=grid0['ant'], corr=grid0['corr'], **self.interval_grid)
+        return { label: dict(dir=grid0['dir'] if self.dd_term else [0], ant=grid0['ant'], corr=grid0['corr'], **self.interval_grid)
                  for label in self._labels.keys() }
 
     def export_solutions(self):

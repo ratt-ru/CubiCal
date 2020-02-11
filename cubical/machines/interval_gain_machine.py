@@ -360,7 +360,7 @@ class PerIntervalGains(MasterMachine):
 
     def importable_solutions(self, grid0):
         """ Returns a dictionary of importable solutions for this machine type. """
-        return { "gain": dict(dir=grid0['dir'], ant=grid0['ant'], corr1=grid0['corr'], corr2=grid0['corr'],
+        return { "gain": dict(dir=grid0['dir'] if self.dd_term else [0], ant=grid0['ant'], corr1=grid0['corr'], corr2=grid0['corr'],
                               **self.interval_grid) }
 
     def export_solutions(self):

@@ -121,7 +121,7 @@ class PhaseDiagGains(PerIntervalGains):
         solutions = PerIntervalGains.importable_solutions(self, grid0)
 
         # but also phase (with a corr axis)
-        solutions['phase'] = dict(dir=grid0['dir'], ant=grid0['ant'], corr=grid0['corr'], **self.interval_grid)
+        solutions['phase'] = dict(dir=grid0['dir'] if self.dd_term else [0], ant=grid0['ant'], corr=grid0['corr'], **self.interval_grid)
 
         return solutions
 
