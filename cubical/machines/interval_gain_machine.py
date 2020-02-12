@@ -342,7 +342,7 @@ class PerIntervalGains(MasterMachine):
 
         g_inv, gh_inv, flag_count = self.get_inverse_gains()
 
-        dirslice = slice(0,1) if direction is None else slice(direction, direction+1)
+        dirslice = slice(0,1) if not self.dd_term else slice(direction, direction+1)
         g_inv = g_inv[dirslice]
         gh_inv = gh_inv[dirslice]
 

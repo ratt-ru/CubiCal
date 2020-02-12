@@ -315,11 +315,11 @@ class JonesChain(MasterMachine):
                                                   self.dtype)
         init = False
         fc0 = 0
-        # dirslice will select the specified direction from the GF array
-        dirslice = slice(0,1) if direction is None else slice(direction, direction+1)
         # flip order of jones terms for inverse
         for term in self.jones_terms[::-1]:
             if direction is not None or not term.dd_term:
+                # dirslice will select the specified direction from the GF array
+                dirslice = slice(0, 1) if not term.dd_term else slice(direction, direction + 1)
                 g, _, fc = term.get_inverse_gains()
                 # g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
