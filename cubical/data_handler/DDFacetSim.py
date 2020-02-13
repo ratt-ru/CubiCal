@@ -138,6 +138,9 @@ class DDFacetSim(object):
     @classmethod
     def del_sems(cls):
         """ Deinit semaphores """
+        if not cls.__should_init_sems:
+            return
+        cls.__should_init_sems = True
         _pyGridderSmearPolsClassic.pyDeleteSemaphore()
         cls.__degridding_semaphores = None
 
@@ -349,9 +352,9 @@ class DDFacetSim(object):
 
 import atexit
 
-def _cleanup_degridders():
+def cleanup_degridders():
     DDFacetSim.del_sems()
     DDFacetSim.dealloc_degridders()
     DDFacetSim.shutdown_pool()
         
-atexit.register(_cleanup_degridders)
+atexit.register(cleanup_degridders)

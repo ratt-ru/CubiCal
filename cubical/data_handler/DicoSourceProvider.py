@@ -7,7 +7,7 @@ except ImportError:
 
 from regions import DS9Parser
 import numpy as np
-from geometry import BoundingConvexHull, BoundingBox, BoundingBoxFactory
+from .geometry import BoundingConvexHull, BoundingBox, BoundingBoxFactory
 from cubical.tools import logger, ModColor
 log = logger.getLogger("DDFacetSim")
 
