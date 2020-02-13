@@ -11,7 +11,6 @@ try:
         import DDFacet.cbuild.Gridder._pyGridderSmearPolsClassic3x as _pyGridderSmearPolsClassic
     else:
         import DDFacet.cbuild.Gridder._pyGridderSmearPolsClassic27 as _pyGridderSmearPolsClassic
-    from DDFacet.cbuild.Gridder import _pyGridderSmearPolsClassic27
     from DDFacet.ToolsDir.ModToolBox import EstimateNpix
     from DDFacet.Array import shared_dict
     from DDFacet.ToolsDir import ModFFTW
@@ -168,7 +167,7 @@ class DDFacetSim(object):
                     " scale:" + "x".join(map(str, list(np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index)) *
                                                        src.pixel_scale / 3600.0)))
         res = "dir_{0:s}_{1:s}_{2:s}".format(str(self.__model), str(self.__direction), str(reg_props))
-        return hashlib.md5(res).hexdigest()
+        return hashlib.md5(res.encode()).hexdigest()
 
     def __init_grid_machine(self, src, dh, tile, poltype, freqs):
         """ initializes a grid machine for this direction """

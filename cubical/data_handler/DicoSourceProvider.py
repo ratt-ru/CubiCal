@@ -108,7 +108,7 @@ class DicoSourceProvider(object):
             with open(fn) as f:
                 parser = DS9Parser(f.read())
                 for regi, reg in enumerate(parser.shapes):
-                    coords = map(int, [c.value for c in reg.coord])
+                    coords = list(map(int, [c.value for c in reg.coord]))
                     assert len(coords) % 2 == 0, "Number of region coords must be multiple of 2-tuple"
                     coords = np.array(coords).reshape([len(coords) // 2, 2])
                     clusters.append(BoundingConvexHull(coords,
@@ -133,7 +133,7 @@ class DicoSourceProvider(object):
         log(2).print("\tSplitting regions into facetted regions, with maximum unpadded size of {0:.2f} degrees per facet".format(max_size))
         clusters = [aasubreg for aareg in map(lambda reg: __split_regular_region(reg, max_size), clusters) 
                     for aasubreg in aareg]
-        clusters = map(lambda reg: BoundingBoxFactory.AxisAlignedBoundingBox(reg, square=True, check_mask_outofbounds=False), clusters)
+        clusters = list(map(lambda reg: BoundingBoxFactory.AxisAlignedBoundingBox(reg, square=True, check_mask_outofbounds=False), clusters))
         
         def __pad_cluster(c, padding_factor):
             npx,_ = c.box_npx # square facet at this point
@@ -141,11 +141,11 @@ class DicoSourceProvider(object):
             npixunpadded, npixpadded = EstimateNpix(npx, Padding=padding_factor)
             return BoundingBoxFactory.PadBox(c, npixpadded, npixpadded, check_mask_outofbounds=False)
         log(2).print("\tPadding all facets by a minimum factor of {0:.2f}x".format(padding_factor))
-        clusters = map(lambda c: __pad_cluster(c, padding_factor), clusters)
+        clusters = list(map(lambda c: __pad_cluster(c, padding_factor), clusters))
         log.debug("\tNormalizing regional weights")
         BoundingConvexHull.normalize_masks(clusters)
         log(2).print("\tCaching regional weight maps for future predicts")
-        map(lambda x: x.mask, clusters) # cache mask
+        list(map(lambda x: x.mask, clusters)) # cache mask
         dirs = {} 
         for c in clusters:
             dirs[c.name] = dirs.get(c.name, []) + [c]
