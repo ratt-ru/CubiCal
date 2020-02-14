@@ -1363,6 +1363,8 @@ class MSTile(object):
             if subset.label is not None:
                 data = shared_dict.attach(subset.datadict)
                 data.delete()
+        from .DDFacetSim import cleanup_degridders
+        cleanup_degridders()
 
 
 
