@@ -12,7 +12,7 @@ ENV DEB_DEPENDENCIES casacore-dev \
 
 RUN apt-get update
 RUN apt-get install -y $DEB_DEPENDENCIES
-RUN pip install -U pip wheel setuptools
+RUN pip install -U pip wheel setuptools==42.0.1
 
 RUN mkdir /src
 RUN mkdir /src/cubical
