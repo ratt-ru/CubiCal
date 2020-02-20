@@ -1354,7 +1354,7 @@ class MSTile(object):
                 self.dh.finalize()
                 self.dh.unlock()
 
-    def release(self):
+    def release(self, final=False):
         """ Releases the shared memory data dicts. """
 
         data = shared_dict.attach(self._data_dict_name)
@@ -1363,9 +1363,12 @@ class MSTile(object):
             if subset.label is not None:
                 data = shared_dict.attach(subset.datadict)
                 data.delete()
-        from .DDFacetSim import cleanup_degridders
-        cleanup_degridders()
-
+        if final:
+            try:
+                from .DDFacetSim import cleanup_degridders
+            except ImportError as e:
+                def cleanup_degridders(): pass
+            cleanup_degridders()
 
 
 
