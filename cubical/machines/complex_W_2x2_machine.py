@@ -56,7 +56,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.npol = options.get("robust-npol", 2.) #testing if the number of polarizations really have huge effects
 
-        self.v_int = options.get("robust-int", 1)
+        self.v_int = options.get("robust-int", 5)
 
         self.cov_scale = options.get("robust-scale", True) # scale the covariance by n_corr*2
 
@@ -233,7 +233,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             covinv[(1,2), (1,2)] = 0
             
 
-        return covinv
+        self.covinv = covinv
     
 
     def update_weights(self):
@@ -278,31 +278,22 @@ class ComplexW2x2Gains(PerIntervalGains):
             
             return root
 
-        covinv = self.compute_covinv()
-
-        w , v  = self.weights, self.v
+        if self.iters % self.v_int == 0 or self.iters == 1:
+            self.compute_covinv()
 
         # import pdb; pdb.set_trace()
 
-        self.kernel_robust.compute_weights(self.residuals, covinv, w, v, self.npol)
+        self.kernel_robust.compute_weights(self.residuals, self.covinv, self.weights, self.v, self.npol)
 
         # re-set weights for visibillities flagged from start to 0
-        w[:,self.new_flags,:] = 0
-
-        #---------normalising the weights to mean 1 using only half the weights--------------------------#
-        aa, ab = np.tril_indices(self.n_ant, -1)
-        w_real = np.real(w[:,:,:,aa,ab,0].flatten())
-        w_nzero = w_real[np.where(w_real!=0)[0]]  #removing zero weights for the v computation
-
-        # norm = np.average(w_nzero) 
-  
-        self.weights = w #/norm
+        self.weights[:,self.new_flags,:] = 0
         
         #-----------computing the v parameter---------------------#
         # This computation is only done after a certain number of iterations. Default is 5
         if self.iters % self.v_int == 0 or self.iters == 1:
-            wn = w_nzero #/norm 
-            self.v = _brute_solve_v(wn)
+            aa, ab = np.tril_indices(self.n_ant, -1)
+            w_real = np.real(self.weights[:,:,:,aa,ab,0].flatten())
+            self.v = _brute_solve_v(w_real[np.where(w_real!=0)[0]]) # remove zero weights
         
         return 
 
@@ -336,3 +327,5 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.new_flags = flags_arr!=0
 
         self.v = 2.   # t-distribution number of degrees of freedom
+
+        self.covinv = np.eye(4, dtype=self.dtype)
