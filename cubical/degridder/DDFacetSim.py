@@ -18,6 +18,7 @@ try:
 except ImportError:
     raise ImportError("Could not import DDFacet")
 
+from .FITSBeamInterpolator import FITSBeamInterpolator
 from . import DicoSourceProvider
 from cubical.tools import logger, ModColor
 log = logger.getLogger("DDFacetSim")
@@ -78,6 +79,7 @@ class DDFacetSim(object):
     __direction_CFs = shared_dict.SharedDict("facetids.cubidegrid.{}".format(UNIQ_ID))
     __ifacet = 0
     __CF_dict = {}
+    __jones_cache = {}
     __should_init_sems = True
     __detaper_cache = shared_dict.SharedDict("tapers.cubidegrid.{}".format(UNIQ_ID))
     __exec_pool = None
@@ -160,6 +162,118 @@ class DDFacetSim(object):
         freq_mapping = [find_nearest(band_frequencies, v) for v in vis_freqs]
         return band_frequencies, freq_mapping
 
+    def __load_jones(self,
+                     src, 
+                     sub_region_index,
+                     field_centre, 
+                     chunk_ctr_frequencies, 
+                     chunk_channel_widths,
+                     correlation_ids,
+                     station_positions,
+                     utc_times,
+                     provider=None):
+        """
+            src: current dico source provider
+            sub_region_index: source provider facet index
+            field_centre: radian ra dec coordinate of the original field phase centre
+            chunk_ctr_frequencies: center channel frequencies (Hz) of chunk to predict E terms for
+            chunk_channel_widths: channel widths of chunk channels
+            correlation_ids: hand labels per correlation term as defined in casacore Stokes.h
+            station_positions: ECEF coordinates for stations (na, 3) array
+            utc_times: UTC times as specified by measurement set
+            provider: FITS or None available at present
+        """
+        src_name = self.__cachename_compute(src)
+        def __beam_cache_name(field_centre, chunk_ctr_frequencies, correlation_ids, station_positions):
+            res = ":".join([",".join(map(str, field_centre)),
+                            ",".join(map(str, chunk_ctr_freqs)),
+                            ",".join(map(str, correlation_ids)),
+                            ",".join(map(str, station_positions)),
+                            str(src.direction),
+                            str(sub_region_index)
+                           ])
+            return hashlib.md5(res.encode()).hexdigest()
+        
+        def __vis_2_chan_map(freq, FreqDomains):
+            """Builds mapping from tile frequency axis to 
+               frequency axis (FreqDomains) as defined by the FITS interpolator
+            """
+            NChanJones = FreqDomains.shape[0]
+            MeanFreqJonesChan = (FreqDomains[:, 0]+FreqDomains[:, 1])/2.
+            DFreq = np.abs(freq.reshape(
+                (freq.size, 1))-MeanFreqJonesChan.reshape((1, NChanJones)))
+            return np.argmin(DFreq, axis=1)
+
+        def __vis_2_time_map(DicoSols, times):
+            """Builds mapping from MS rows to Jones solutions.
+            Args:
+                DicoSols: dictionary of Jones matrices, which includes t0 and t1 entries
+
+            Returns:
+                Vector of indices, one per each row in DATA, giving the time index of the Jones matrix
+                corresponding to that row.
+            """
+            DicoJonesMatrices = DicoSols
+            ind = np.zeros((times.size,), np.int32)
+            nt, na, nd, _, _, _ = DicoJonesMatrices["Jones"].shape
+            ii = 0
+            for it in range(nt):
+                t0 = DicoJonesMatrices["t0"][it]
+                t1 = DicoJonesMatrices["t1"][it]
+                ## new code: no assumption of sortedness
+                ind[(times >= t0) & (times < t1)] = it
+            return ind
+
+        beam_cache_name = __beam_cache_name(field_centre, chunk_ctr_frequencies, correlation_ids, station_positions)
+        if beam_cache_name not in self.__jones_cache:
+            if provider == None:
+                log.info("Setting E Jones to unity for '{0:s}' direction '{1:s}' facet '{2:d}'. ".format(
+                         str(self.__model), str(self.__direction), subregion_index))
+                jones_matrix = None
+            elif provider == "FITS":
+                log.info("Calculating E Jones for '{0:s}' direction '{1:s}' facet '{2:d}'. ".format(
+                         str(self.__model), str(self.__direction), subregion_index))
+                beam_provider = FITSBeamInterpolator(field_centre,
+                                                     chunk_ctr_frequencies,
+                                                     chunk_channel_widths,  
+                                                     correlation_ids,
+                                                     station_positions,
+                                                     self.degrid_opts)
+                jones_matrix = {"DicoJones_Beam": {
+                        "DicoClusterDirs_Beam": {},
+                        "TimeMapping": {},
+                        "Jones": {},
+                        "TimeMapping": {},
+                        "MapJones": {},
+                        "FITSProvider": beam_provider
+                    }
+                }
+                l, m = src.get_direction_pxoffset(subregion_index=subregion_index)
+                # TODO: maybe change this to SIN projection
+                ra, dec = np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * 
+                                     src.pixel_scale / 3600.0)
+                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["l"] = l
+                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["m"] = m
+                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["ra"] = ra # radians
+                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["dec"] = dec # radians
+                I = np.sum(np.mean(src.get_degrid_model(subregion_index=subregion_index)[:,0,:,:], axis=0))
+                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["I"] = I
+                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["Cluster"] = subregion_index
+                sample_times = beam_provider.getBeamSampleTimes(utc_times)
+                E_jones = np.ascontiguousarray([beam_provider.evaluateBeam(t) for t in sample_times], dtype=np.complex64)
+                jones_matrix["DicoJones_Beam"]["t0"] = np.ascontiguousarray(sample_times[:-1], dtype=np.float64) # lower time boundary of beam solution
+                jones_matrix["DicoJones_Beam"]["t1"] = np.ascontiguousarray(sample_times[1:], dtype=np.float64) # lower time boundary of beam solution
+                jones_matrix["DicoJones_Beam"]["tm"] = np.ascontiguousarray((sample_times[:-1] + sample_times[1:]) / 2., dtype=np.float64) # beam time mid point
+                jones_matrix["DicoJones_Beam"]["Jones"]["Jones"] = E_jones
+                jones_matrix["DicoJones_Beam"]["Jones"]["VisToJonesChanMapping"] = __vis_2_chan_map(beam_provider.getFreqDomains())
+                jones_matrix["DicoJones_Beam"]["TimeMapping"] = __vis_2_time_map(jones_matrix["DicoJones_Beam"], 
+                                                                                 sample_times)
+            else:
+                raise ValueError("E Jones provider '{0:s}' not understood. Only FITS or None available".format(provider))
+
+            self.__jones_cache[beam_cache_name] = jonex_matrix
+        return self.__jones_cache[beam_cache_name]
+
     def __cachename_compute(self, src):
         reg_props = str(src.subregion_count)
         for subregion_index in range(src.subregion_count):
@@ -169,7 +283,7 @@ class DDFacetSim(object):
         res = "dir_{0:s}_{1:s}_{2:s}".format(str(self.__model), str(self.__direction), str(reg_props))
         return hashlib.md5(res.encode()).hexdigest()
 
-    def __init_grid_machine(self, src, dh, tile, poltype, freqs):
+    def __init_grid_machine(self, src, dh, tile, poltype, freqs, chan_widths):
         """ initializes a grid machine for this direction """
         if self.__degridding_semaphores is None:
             raise RuntimeError("Need to initialize degridding semaphores first. Call init_sems")
@@ -183,7 +297,7 @@ class DDFacetSim(object):
         should_init_cf = self.__cachename_compute(src) not in self.__initted_CF_directions
 
         # Kludge up a DDF GD
-        GD = dict(RIME={}, Facets={}, CF={}, Image={}, DDESolutions={}, Comp={})
+        GD = dict(RIME={}, Facets={}, CF={}, Image={}, DDESolutions={}, Comp={}, Beam={})
         GD["RIME"]["Precision"] = "S"
         GD["Facets"]["Padding"] = dh.degrid_opts["Padding"]
         GD["CF"]["OverS"] = dh.degrid_opts["OverS"]
@@ -206,7 +320,7 @@ class DDFacetSim(object):
         GD["DDESolutions"]["ReWeightSNR"] = 0.	  # Deprecated? 
         GD["RIME"]["BackwardMode"] = "BDA"
         GD["RIME"]["ForwardMode"] = "Classic" # Only classic for now... why would you smear unnecessarily in a model predict??
-        
+        self.degrid_opts = dh.degrid_opts
         # INIT degridder machine from DDF
         band_frequencies, freq_mapping = self.bandmapping(freqs, dh.degrid_opts["NDegridBand"])
         src.set_frequency(band_frequencies)
@@ -223,6 +337,14 @@ class DDFacetSim(object):
             for sri in range(src.subregion_count):
                 DDFacetSim.__CF_dict["{}.{}".format(dname, sri)] = \
                     shared_dict.SharedDict("convfilters.cubidegrid.{}.{}.{}".format(UNIQ_ID, dname, sri))
+                self.__load_jones(src = src,
+                                  sub_region_index = sri,
+                                  field_centre = dh.phadir,
+                                  chunk_ctr_frequencies = freqs.ravel(),
+                                  chunk_channel_widths = chan_widths,
+                                  correlation_ids = DataCorrelationFormat,
+                                  station_positions = dh.antpos,
+                                  provider=dh.degrid_opts["BeamModel"])
 
         # init in parallel
         futures = []
@@ -232,6 +354,7 @@ class DDFacetSim(object):
                         DDFacetSim.__CF_dict["{}.{}".format(dname, subregion_index)].readwrite(),
                         freqs,
                         subregion_index,
+                        # TODO: maybe change this to SIN projection
                         np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * 
                                     src.pixel_scale / 3600.0),
                         dname,
@@ -299,7 +422,7 @@ class DDFacetSim(object):
         src = self.__model
         src.set_direction(self.__direction)
         band_frequencies, freq_mapping = self.bandmapping(freqs, dh.degrid_opts["NDegridBand"])
-        gmacs = self.__init_grid_machine(src, dh, tile, poltype, freqs)
+        gmacs = self.__init_grid_machine(src, dh, tile, poltype, freqs, tile._chan_widths.ravel())
         nrow = uvwco.shape[0]
         nfreq = len(freqs)
         if model_type not in ["cplx2x2", "cplxdiag", "cplxscalar"]:
@@ -324,6 +447,22 @@ class DDFacetSim(object):
             # apply normalization factors for FFT
             model_image[...] *= (model_image.shape[3] ** 2) * (gm.WTerm.OverS ** 2) 
 
+            # load cached E Jones (None if unity is to be applied):
+            if poltype == "linear":
+                DataCorrelationFormat = [9, 10, 11, 12] # Defined in casacore Stokes.h
+            elif poltype == "circular":
+                DataCorrelationFormat = [5, 6, 7, 8]
+            else:
+                raise ValueError("Only supports linear or circular for now")
+            E_jones = self.__load_jones(src = src,
+                                        sub_region_index = subregion_index,
+                                        field_centre = dh.phadir,
+                                        chunk_ctr_frequencies = freqs.ravel(),
+                                        chunk_channel_widths = tile._chan_widths.ravel(),
+                                        correlation_ids = DataCorrelationFormat,
+                                        station_positions = dh.antpos,
+                                        provider=dh.degrid_opts["BeamModel"])
+
             region_model += -1 * gm.get( #default of the degridder is to subtract from the previous model
                 times=tile_subset.time_col, 
                 uvw=uvwco.astype(dtype=np.float64).copy(), 
@@ -333,7 +472,7 @@ class DDFacetSim(object):
                 ModelImage=model_image, 
                 PointingID=src.direction,
                 Row0Row1=(0, -1),
-                DicoJonesMatrices=None, 
+                DicoJonesMatrices=E_jones, 
                 freqs=freqs.astype(dtype=np.float64).copy(), 
                 ImToGrid=False,
                 TranformModelInput="FT", 
