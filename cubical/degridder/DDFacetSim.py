@@ -91,7 +91,11 @@ class DDFacetSim(object):
         self.__direction = None
         self.__model = None
         self.init_sems()
-    
+
+    @classmethod
+    def clean_jones_cache(cls):
+        cls.__jones_cache = {}
+
     @classmethod
     def initialize_pool(cls, num_processes=0):
         if num_processes > 1:
@@ -252,13 +256,13 @@ class DDFacetSim(object):
                 log.info("Setting E Jones to unity for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
                          "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
                          str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
-                         np.min(chunk_ctr_frequencies*1e6), np.max(chunk_ctr_frequencies*1e6)))
+                         np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
                 jones_matrix = None
             elif provider == "FITS":
                 log.info("Calculating E Jones for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
                          "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
                          str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
-                         np.min(chunk_ctr_frequencies*1e6), np.max(chunk_ctr_frequencies*1e6)))
+                         np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
                 beam_provider = FITSBeamInterpolator(field_centre,
                                                      chunk_ctr_frequencies,
                                                      chunk_channel_widths,  
@@ -522,6 +526,7 @@ import atexit
 def cleanup_degridders():
     DDFacetSim.del_sems()
     DDFacetSim.dealloc_degridders()
+    DDFacetSim.clean_jones_cache()
     DDFacetSim.shutdown_pool()
         
 atexit.register(cleanup_degridders)
