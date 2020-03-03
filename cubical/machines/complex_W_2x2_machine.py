@@ -11,7 +11,7 @@ import cubical.kernels
 import time
 
 from cubical.tools import logger
-log = logger.getLogger("robust_2x2")  #TODO check this "complex_2x2"
+log = logger.getLogger("solver")  #TODO check this "complex_2x2"
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
