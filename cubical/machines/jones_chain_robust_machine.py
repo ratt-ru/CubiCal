@@ -51,6 +51,7 @@ class JonesChain(MasterMachine):
         # and do the relevant fiddling between parameter updates. When combining DD terms with
         # DI terms, we need to be initialise the DI terms using only one direction - we do this with
         # slicing rather than summation as it is slightly faster.
+        self.save_weights = False
         self.jones_terms = []
         self.num_left_di_terms = 0  # how many DI terms are there at the left of the chain
         seen_dd_term = False
@@ -66,6 +67,8 @@ class JonesChain(MasterMachine):
                 seen_dd_term = True
             elif not seen_dd_term:
                 self.num_left_di_terms = iterm
+            if self.save_weights is False:
+                self.save_weights = term_opts.get("robust-save-weights", False)
 
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,

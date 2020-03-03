@@ -698,6 +698,8 @@ class MSDataHandler:
                                 for key in component._cluster_keys:
                                     dirname = idirtag if key == 'die' or subtract else key
                                     dirmodels.setdefault(dirname, []).append((component, key, subtract))
+                            else:
+                                raise ValueError("{} does not exist".format(component))
                         else:
                             raise ValueError("model component {} is neither a valid LSM nor an MS column".format(component))
                     # else it is a visibility column component

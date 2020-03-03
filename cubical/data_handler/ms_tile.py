@@ -143,7 +143,6 @@ class MSTile(object):
             loaded_models[model_source] = {}
             ddfsim.set_model_provider(model_source)
             for idir, clus in enumerate(model_source._cluster_keys):
-                model_source.set_frequency(self._freqs)
                 ddfsim.set_direction(clus)
                 model = ddfsim.simulate(self.tile.dh, 
                                         self.tile,
