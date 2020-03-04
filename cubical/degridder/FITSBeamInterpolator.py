@@ -93,6 +93,7 @@ class FITSBeamInterpolator (object):
 
         # make direction measure from field centre
         ra, dec = tuple(field_centre)
+        self.field_centre_radec = tuple([ra, dec])
         self.field_centre = dm.direction('J2000',dq.quantity(ra,"rad"),dq.quantity(dec,"rad"))
 
         # get channel frequencies from MS
@@ -177,10 +178,10 @@ class FITSBeamInterpolator (object):
                 for beamset in self.beamsets:
                     filenames = make_beam_filename(beamset, corr1, 're'), make_beam_filename(beamset, corr1, 'im')
                     # get interpolator from cache, or create object
-                    vb = ClassFITSBeam._vb_cache.get(filenames)
+                    vb = FITSBeamInterpolator._vb_cache.get(filenames)
                     if vb is None:
                         print("loading beam patterns %s %s" % filenames, file=log)
-                        ClassFITSBeam._vb_cache[filenames] = vb = InterpolatedBeams.LMVoltageBeam(
+                        FITSBeamInterpolator._vb_cache[filenames] = vb = InterpolatedBeams.LMVoltageBeam(
                             verbose=opts["FITSVerbosity"],
                             l_axis=opts["FITSLAxis"], m_axis=opts["FITSMAxis"]
                         )  # verbose, XY must come from options
@@ -252,7 +253,7 @@ class FITSBeamInterpolator (object):
             AIPS memo series, 27
             Eric Greisen
         """
-        ra0, dec0 = self.field_centre
+        ra0, dec0 = self.field_centre_radec
         l = np.cos(dec) * np.sin(ra - ra0)
         m = np.sin(dec) * np.cos(dec0) - np.cos(dec) * np.sin(dec0) * np.cos(ra - ra0)
         return l,m
@@ -277,7 +278,7 @@ class FITSBeamInterpolator (object):
         l0 = numpy.zeros(ndir,float)
         m0 = numpy.zeros(ndir,float)
         for i,(r1,d1) in enumerate(zip(ra,dec)):
-            l0[i], m0[i] = self.radec2lm_scalar(r1,d1,original=True)
+            l0[i], m0[i] = self.radec2lm_scalar(r1,d1)
         # print(ra*180/np.pi,dec*180/np.pi, file=log)
         # print(l0*180/np.pi,m0*180/np.pi, file=log)
         # rotate each by parallactic angle

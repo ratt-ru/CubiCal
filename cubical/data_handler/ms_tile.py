@@ -151,7 +151,9 @@ class MSTile(object):
                                         self.tile.dh._poltype, 
                                         uvwco,
                                         self._freqs,
-                                        model_type)
+                                        model_type,
+                                        self._chan_widths,
+                                        self.time_col)
                 loaded_models[model_source][clus] = model
 
             # finally return the direction requested in cluster

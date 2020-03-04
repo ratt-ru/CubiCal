@@ -28,6 +28,9 @@ import os
 from concurrent.futures import (ProcessPoolExecutor as PPE,
                                 ThreadPoolExecutor as TPE)
 import hashlib
+import datetime as dt
+import pyrap.quanta as pq
+from numba import jit, prange
 
 def init_degridders(dir_CFs, 
                     dir_DCs,
@@ -183,6 +186,73 @@ class DDFacetSim(object):
         m = np.sin(dec) * np.cos(dec0) - np.cos(dec) * np.sin(dec0) * np.cos(ra - ra0)
         return l,m
 
+    def __apply_jones(self, jones_matrix, vis, a0, a1):
+        """
+            Elementwise apply J1 . V12 . J2^H to degridded model data
+            Parameters: 
+                jones_matrix: Jones Matrix containing one direction to apply for this facet
+                              as returned by __load_jones
+                vis: row x nchan x ncorr matrix with ncorr == 4
+                a0: antenna1 index (not name) per row, as defined in CASA memo 229
+                a1: antenna1 index (not name) per row, as defined in CASA memo 229
+
+                jones_matrix: must have a time and frequency mapping to the space jones matricies
+                              included. This should be computed by __load_jones
+        """
+        @jit(nopython=True, nogil=True, cache=True, parallel=True)
+        def __JpXJqH(vis, out_vis, jones, tmap, numap, a0, a1, idir=0):
+            """ element wise onion multiply for visibilities of shape (row x chan x corr) """
+            nrow, nch, ncorr = vis.shape
+            for r in prange(nrow):
+                jt_indx = tmap[r]
+                j_a1indx = a0[r] 
+                j_a2indx = a1[r]
+                for ch in range(nch):
+                    jnu_indx = numap[ch]
+                    # ntime, ndir, na, nnu, 2x2
+                    jp = jones[jt_indx, idir, j_a1indx, jnu_indx, :, :]
+                    jq = jones[jt_indx, idir, j_a2indx, jnu_indx, :, :]
+                    X = vis[r, ch, :]
+                    # jq^H
+                    a = jq[0, 0].conjugate()
+                    b = jq[1, 0].conjugate()
+                    c = jq[0, 1].conjugate()
+                    d = jq[1, 1].conjugate()
+                    # X
+                    XX = X[0]
+                    XY = X[1]
+                    YX = X[2]
+                    YY = X[3]
+                    # jp
+                    e = jp[0, 0]
+                    f = jp[0, 1]
+                    g = jp[1, 0]
+                    h = jp[1, 1]
+                    # jp.X.jq^H
+                    out_vis[r, ch, 0] = e * (XX*a + XY*b) + f * (YX*a + YY*b)
+                    out_vis[r, ch, 1] = e * (XX*b + XY*d) + f * (YX*b + YY*d)
+                    out_vis[r, ch, 2] = g * (XX*a + XY*b) + h * (YX*a + YY*c)
+                    out_vis[r, ch, 3] = g * (XX*b + XY*d) + h * (YX*b + YY*d)
+        
+        if jones_matrix is None:
+            return vis.copy() # unity case
+        tmap = jones_matrix["DicoJones_Beam"]["TimeMapping"]
+        numap = jones_matrix["DicoJones_Beam"]["Jones"]["VisToJonesChanMapping"]
+        jones = jones_matrix["DicoJones_Beam"]["Jones"]["Jones"]
+        assert jones.ndim == 6
+        jnt, jndir, jnA, jnnu, jnc1, jnc2 = jones.shape
+        nvisrow, nvischan, nviscorr = vis.shape
+        assert nviscorr == 4
+        assert jndir == 1 # one jones stack per facet
+        assert tmap.size == vis.shape[0] # time map per row
+        assert numap.size == vis.shape[1] # chan map per channel
+        assert a0.size == vis.shape[0]
+        assert a1.size == vis.shape[0]
+
+        apparent_scale_vis = np.zeros_like(vis, dtype=vis.dtype)
+        __JpXJqH(vis, apparent_scale_vis, jones, tmap, numap, a0, a1) 
+        return apparent_scale_vis
+
     def __load_jones(self,
                      src, 
                      sub_region_index,
@@ -237,13 +307,12 @@ class DDFacetSim(object):
                 corresponding to that row.
             """
             DicoJonesMatrices = DicoSols
-            ind = np.zeros((times.size,), np.int32)
-            nt, na, nd, _, _, _ = DicoJonesMatrices["Jones"].shape
+            ind = np.zeros((len(times),), np.int32)
             ii = 0
-            for it in range(nt):
+            assert DicoJonesMatrices["t0"].size == DicoJonesMatrices["t1"].size # same number of jones bin start and end times
+            for it in range(DicoJonesMatrices["t0"].size):
                 t0 = DicoJonesMatrices["t0"][it]
                 t1 = DicoJonesMatrices["t1"][it]
-                ## new code: no assumption of sortedness
                 ind[(times >= t0) & (times < t1)] = it
             return ind
 
@@ -252,7 +321,7 @@ class DDFacetSim(object):
         if beam_cache_name not in self.__jones_cache:
             dt_start = self.__mjd2dt([np.min(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
             dt_end = self.__mjd2dt([np.max(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
-            if provider == None:
+            if provider is None:
                 log.info("Setting E Jones to unity for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
                          "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
                          str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
@@ -270,7 +339,7 @@ class DDFacetSim(object):
                                                      station_positions,
                                                      self.degrid_opts)
                 jones_matrix = {"DicoJones_Beam": {
-                        "DicoClusterDirs_Beam": {},
+                        "Dirs": {},
                         "TimeMapping": {},
                         "Jones": {},
                         "TimeMapping": {},
@@ -279,26 +348,31 @@ class DDFacetSim(object):
                     }
                 }
                 ra, dec = np.deg2rad(src.get_direction_pxoffset(subregion_index=sub_region_index) * 
-                                     src.pixel_scale / 3600.0)
+                                     src.pixel_scale / 3600.0) + self.__phasecenter
                 l, m = self.radec2lm_scalar(ra, dec)
                 
-                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["l"] = l
-                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["m"] = m
-                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["ra"] = ra # radians
-                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["dec"] = dec # radians
+                jones_matrix["DicoJones_Beam"]["Dirs"]["l"] = l
+                jones_matrix["DicoJones_Beam"]["Dirs"]["m"] = m
+                jones_matrix["DicoJones_Beam"]["Dirs"]["ra"] = ra # radians
+                jones_matrix["DicoJones_Beam"]["Dirs"]["dec"] = dec # radians
                 I = np.sum(np.mean(src.get_degrid_model(subregion_index=sub_region_index)[:,0,:,:], axis=0))
-                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["I"] = I
-                jones_matrix["DicoJones_Beam"]["DicoClusterDirs_Beam"]["Cluster"] = sub_region_index
-                sample_times = beam_provider.getBeamSampleTimes(utc_times)
+                jones_matrix["DicoJones_Beam"]["Dirs"]["I"] = I
+                jones_matrix["DicoJones_Beam"]["Dirs"]["Cluster"] = 0 # separate matrix stack for each subregion (facet)
+                sample_times = np.array(beam_provider.getBeamSampleTimes(utc_times))
+                dt = (sample_times[1:] - sample_times[:-1]) / 2. if sample_times.size > 1 else \
+                     np.array([1.0e-6]) # half width of beam sample time
+                t0 = sample_times - dt
+                t1 = sample_times + dt
                 E_jones = np.ascontiguousarray([beam_provider.evaluateBeam(t, [ra], [dec]) for t in sample_times], dtype=np.complex64)
-                jones_matrix["DicoJones_Beam"]["t0"] = np.ascontiguousarray(sample_times[:-1], dtype=np.float64) # lower time boundary of beam solution
-                jones_matrix["DicoJones_Beam"]["t1"] = np.ascontiguousarray(sample_times[1:], dtype=np.float64) # lower time boundary of beam solution
-                jones_matrix["DicoJones_Beam"]["tm"] = np.ascontiguousarray((sample_times[:-1] + sample_times[1:]) / 2., dtype=np.float64) # beam time mid point
+                jones_matrix["DicoJones_Beam"]["Jones"]["t0"] = np.ascontiguousarray(t0, dtype=np.float64) # lower time boundary of beam solution
+                jones_matrix["DicoJones_Beam"]["Jones"]["t1"] = np.ascontiguousarray(t1, dtype=np.float64) # upper time boundary of beam solution
+                jones_matrix["DicoJones_Beam"]["Jones"]["tm"] = np.ascontiguousarray((t0 + dt), dtype=np.float64) # beam time mid point
                 jones_matrix["DicoJones_Beam"]["Jones"]["Jones"] = E_jones
                 jones_matrix["DicoJones_Beam"]["Jones"]["VisToJonesChanMapping"] = __vis_2_chan_map(chunk_ctr_frequencies, beam_provider.getFreqDomains())
-                jones_matrix["DicoJones_Beam"]["TimeMapping"] = __vis_2_time_map(jones_matrix["DicoJones_Beam"], 
-                                                                                 sample_times)
+                jones_matrix["DicoJones_Beam"]["TimeMapping"] = __vis_2_time_map(jones_matrix["DicoJones_Beam"]["Jones"], 
+                                                                                 utc_times)
                 jones_matrix["DicoJones_Beam"]["SampleFreqs"] = beam_provider.getFreqDomains()
+                #import ipdb; ipdb.set_trace()
             else:
                 raise ValueError("E Jones provider '{0:s}' not understood. Only FITS or None available".format(provider))
 
@@ -368,20 +442,12 @@ class DDFacetSim(object):
             for sri in range(src.subregion_count):
                 DDFacetSim.__CF_dict["{}.{}".format(dname, sri)] = \
                     shared_dict.SharedDict("convfilters.cubidegrid.{}.{}.{}".format(UNIQ_ID, dname, sri))
-                self.__load_jones(src = src,
-                                  sub_region_index = sri,
-                                  field_centre = dh.phadir,
-                                  chunk_ctr_frequencies = freqs.ravel(),
-                                  chunk_channel_widths = chan_widths,
-                                  correlation_ids = DataCorrelationFormat,
-                                  station_positions = dh.antpos,
-                                  provider=dh.degrid_opts["BeamModel"])
 
         # init in parallel
         futures = []        
         for subregion_index in range(src.subregion_count):
             ra, dec = np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * 
-                                    src.pixel_scale / 3600.0)
+                                    src.pixel_scale / 3600.0) + self.__phasecenter
             l, m = self.radec2lm_scalar(ra, dec)
             init_args = (DDFacetSim.__direction_CFs.readwrite(), 
                         DDFacetSim.__detaper_cache.readwrite(),
@@ -441,7 +507,7 @@ class DDFacetSim(object):
         model_image.real *= wnd_detaper[None, None, :, :]
         return model_image
 
-    def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs, model_type):
+    def simulate(self, dh, tile, tile_subset, poltype, uvwco, freqs, model_type, chan_widths, utc_times):
         """ Predicts model data for the set direction of the dico source provider 
             returns a ndarray model of shape nrow x nchan x 4
         """
@@ -455,7 +521,7 @@ class DDFacetSim(object):
         src = self.__model
         src.set_direction(self.__direction)
         band_frequencies, freq_mapping = self.bandmapping(freqs, dh.degrid_opts["NDegridBand"])
-        gmacs = self.__init_grid_machine(src, dh, tile, poltype, freqs, tile._chan_widths.ravel())
+        gmacs = self.__init_grid_machine(src, dh, tile, poltype, freqs, chan_widths.ravel())
         nrow = uvwco.shape[0]
         nfreq = len(freqs)
         if model_type not in ["cplx2x2", "cplxdiag", "cplxscalar"]:
@@ -489,14 +555,15 @@ class DDFacetSim(object):
                 raise ValueError("Only supports linear or circular for now")
             E_jones = self.__load_jones(src = src,
                                         sub_region_index = subregion_index,
-                                        field_centre = dh.phadir,
+                                        field_centre = self.__phasecenter,
                                         chunk_ctr_frequencies = freqs.ravel(),
-                                        chunk_channel_widths = tile._chan_widths.ravel(),
+                                        chunk_channel_widths = chan_widths.ravel(),
                                         correlation_ids = DataCorrelationFormat,
                                         station_positions = dh.antpos,
+                                        utc_times = utc_times,
                                         provider=dh.degrid_opts["BeamModel"])
 
-            region_model += -1 * gm.get( #default of the degridder is to subtract from the previous model
+            this_region_model = -1 * gm.get( #default of the degridder is to subtract from the previous model
                 times=tile_subset.time_col, 
                 uvw=uvwco.astype(dtype=np.float64).copy(), 
                 visIn=model, 
@@ -505,12 +572,17 @@ class DDFacetSim(object):
                 ModelImage=model_image, 
                 PointingID=src.direction,
                 Row0Row1=(0, -1),
-                DicoJonesMatrices=E_jones, 
+                DicoJonesMatrices=None, 
                 freqs=freqs.astype(dtype=np.float64).copy(), 
                 ImToGrid=False,
                 TranformModelInput="FT", 
                 ChanMapping=np.array(freq_mapping, dtype=np.int32), 
                 sparsification=None)
+            
+            region_model += self.__apply_jones(vis = this_region_model,
+                                               jones_matrix = E_jones,
+                                               a0 = tile_subset.antea,
+                                               a1 = tile_subset.anteb)
 
         model_corr_slice = np.s_[0] if model_type == "cplxscalar" else \
                            np.s_[0::3] if model_type == "cplxdiag" else \
