@@ -19,7 +19,7 @@ try:
 except ImportError:
     TiggerSourceProvider = None
 try:
-    from .DicoSourceProvider import DicoSourceProvider
+    from cubical.degridder.DicoSourceProvider import DicoSourceProvider
 except ImportError:
     DicoSourceProvider = None
 
@@ -135,9 +135,10 @@ class MSTile(object):
             Returns:
                 ndarray of shape nrow x nchan x ncorr for name specified in "cluster"
             """
-            from .DDFacetSim import DDFacetSim
+            from cubical.degridder.DDFacetSim import DDFacetSim
             ddid_index, uniq_ddids, _ = data_handler.uniquify(self.ddid_col)
             self._freqs = np.array([self.tile.dh.chanfreqs[ddid] for ddid in uniq_ddids])
+            self._chan_widths = np.array([self.tile.dh.chanwidth[ddid] for ddid in uniq_ddids])
             ddfsim = DDFacetSim()
             ndirs = model_source._nclus
             loaded_models[model_source] = {}
@@ -150,7 +151,9 @@ class MSTile(object):
                                         self.tile.dh._poltype, 
                                         uvwco,
                                         self._freqs,
-                                        model_type)
+                                        model_type,
+                                        self._chan_widths,
+                                        self.time_col)
                 loaded_models[model_source][clus] = model
 
             # finally return the direction requested in cluster
@@ -1365,7 +1368,7 @@ class MSTile(object):
                 data.delete()
         if final:
             try:
-                from .DDFacetSim import cleanup_degridders
+                from cubical.degridder.DDFacetSim import cleanup_degridders
             except ImportError as e:
                 def cleanup_degridders(): pass
             cleanup_degridders()
