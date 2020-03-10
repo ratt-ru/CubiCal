@@ -4,4 +4,4 @@
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 
 # update this for each release
-VERSION = "1.4.5"
+VERSION = "1.4.6"
