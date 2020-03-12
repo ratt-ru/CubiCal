@@ -305,10 +305,11 @@ class ComplexW2x2Gains(PerIntervalGains):
         def  _brute_solve_v(wn):
             """Finds a root for the function f constraint between low (2) and high (50)
             Args:
-                wn : the weights flaten in to a 1D array
+                wn : the weights flatenncc-a-b in to a 1D array
             Returns:
                 root (float) : The root of f or minimum point    
             """
+            # import pdb; pdb.set_trace()
 
             m = len(wn)
 
@@ -332,7 +333,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         if self.iters % self.v_int == 0 or self.iters == 1:
             self.compute_covinv()
 
-        # import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         self.kernel_robust.compute_weights(self.residuals, self.covinv, self.weights, self.v, self.npol)
 
@@ -428,8 +429,9 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
         
         self.weights = np.ones(self.weights_shape, dtype=self.dtype)
-        self.weights[:,flags_arr!=0] = 0
         self.new_flags = flags_arr!=0
+        self.weights[:,self.new_flags,:] = 0
+        
 
         self.Nvis = np.sum(self.new_flags==False)
 
