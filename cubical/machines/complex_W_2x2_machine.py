@@ -60,9 +60,52 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.cov_scale = options.get("robust-scale", True) # scale the covariance by n_corr*2
 
+        # self.jhjinv_m = np.empty_like(self.gains)
+
+        self._estimate_pzd = options["estimate-pzd"]
+
+        # this will be set to PZD and exp(-i*PZD) once the PZD estimate is done
+        self._pzd = 0
+        self._exp_pzd = 1
+
     @classmethod
     def determine_diagonality(cls, options):
-        return False
+        return False #TODO you need diag gains for the robust solver
+
+    @staticmethod
+    def exportable_solutions():
+        """ Returns a dictionary of exportable solutions for this machine type. """
+        sols = PerIntervalGains.exportable_solutions()
+        sols["pzd"] = (0.0, ("time", "freq"))
+        return sols
+
+    def importable_solutions(self, grid0):
+        """ Returns a dictionary of importable solutions for this machine type. """
+        sols = super(ComplexW2x2Gains, self).importable_solutions(grid0)
+        if "pzd" in self.update_type:
+            sols["pzd"] = dict(**self.interval_grid)
+        return sols
+
+    def export_solutions(self):
+        """ Saves the solutions to a dict of {label: solutions,grids} items. """
+        sols = super(ComplexW2x2Gains, self).export_solutions()
+        if "pzd" in self.update_type and self._pzd is not None:
+            sols["pzd"] = (masked_array(self._pzd), self.interval_grid)
+        return sols
+
+    def import_solutions(self, soldict):
+        """
+        Loads solutions from a dict.
+
+        Args:
+            soldict (dict):
+                Contains gains solutions which must be loaded.
+        """
+        if "pzd" in self.update_type and "pzd" in soldict:
+            self._pzd = soldict["pzd"]
+            self._exp_pzd = np.exp(-1j * self._pzd)
+
+        super(ComplexW2x2Gains, self).import_solutions(soldict)
 
     def compute_js(self, obser_arr, model_arr):
         """
@@ -106,6 +149,10 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         flag_count = self.kernel_robust.compute_jhjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
 
+        # jmj, self.jhjinv_m = self.get_new_jhj()
+        # self.kernel_robust.compute_jhwj(jh, np.ones_like(w), jmj, self.t_int, self.f_int)
+        # self.kernel_robust.compute_jhjinv(jmj, self.jhjinv_m, self.gflags, self.eps, FL.ILLCOND)
+
         return jhwr, jhwjinv, flag_count
 
     
@@ -120,8 +167,9 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         #----normalising to reduce the effects of the weights on jhj---#
         #----not sure if this is the best way to do this---------------#
-        
-        norm = ((1/2.)*np.average(self.weights[:,self.new_flags==0,:].real))**2
+
+        self.Nvis = np.sum(self.new_flags==False)
+        norm = np.real((1/2.)*np.sum(self.weights)/self.Nvis)
         diag = norm*jhjinv[..., (0, 1), (0, 1)].real
         self.posterior_gain_error[...,(0,1),(0,1)] = np.sqrt(diag)
         self.posterior_gain_error[...,(1,0),(0,1)] = np.sqrt(diag.sum(axis=-1)/2)[...,np.newaxis]
@@ -193,9 +241,7 @@ class ComplexW2x2Gains(PerIntervalGains):
           
         else:
 
-            unflagged = self.new_flags==False 
-
-            Nvis = np.sum(unflagged)/2. #only half of the visibilties are used for covariance computation
+            Nvis = self.Nvis/2. #only half of the visibilties are used for covariance computation
 
             ompstd = np.zeros((4,4), dtype=self.dtype)
 
@@ -204,19 +250,20 @@ class ComplexW2x2Gains(PerIntervalGains):
             #---scaling the variance in this case improves the robust solver performance----------#
             #---if the covariance and variance are close the residuals are dominated by sources---#
             if self.cov_scale:
-                if 0.6 <= np.abs(ompstd[0,0])/np.abs(ompstd[0,3]) <= 1.5:
+                if 0.6 <= np.abs(ompstd[0,3])/np.abs(ompstd[0,0]) <= 1.5:
                     norm = 2*self.npol*Nvis
                 else:
                     norm = Nvis
             else:
                 norm = Nvis
 
-            if self.iters % 5 == 0 or self.iters == 1:
-                print("{} : {} iters: covariance is  {}".format(self.label, self.iters, ompstd/Nvis), file=log(2))
-
             # removing the offdiagonal correlations
 
             std = np.diagonal(ompstd/norm) + self.eps**2 # To avoid division by zero
+
+            if self.iters % 5 == 0 or self.iters == 1:
+                print("rb-2x2 {} : {} iters: covariance is  {}".format(self.label, self.iters, std), file=log(2))
+
 
             covinv = np.eye(4, dtype=self.dtype)
 
@@ -235,7 +282,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             
 
         self.covinv = covinv
-    
+
 
     def update_weights(self):
         
@@ -275,7 +322,10 @@ class ComplexW2x2Gains(PerIntervalGains):
             root = vvals[np.argmin(np.abs(fvals))]
 
             if self.iters % 5 == 0 or self.iters == 1:
-                print("{} : {} iters: v-parameter is  {}".format(self.label, self.iters, root), file=log(2))
+                print("rb-2x2 {} : {} iters: v-parameter is  {}".format(self.label, self.iters, root), file=log(2))
+                nless, nmore = len(wn[wn<0.5])/len(wn), len(wn[wn>0.5])/len(wn)
+                print("rb-2x2 {} : {} iters: weights stats are min {:.4}, max: {:.4}, mean: {:.4}, less than 0.5: {:.4%}, higher than 0.5: {:.4%}".format(self.label, self.iters, np.min(wn), 
+                                                                            np.max(wn), np.mean(wn), nless, nmore, file=log(2)))
             
             return root
 
@@ -300,12 +350,40 @@ class ComplexW2x2Gains(PerIntervalGains):
 
     def restrict_solution(self, gains):
         
-        PerIntervalGains.restrict_solution(self, gains)
+        
+        if "pzd" in self.update_type:
+            # re-estimate pzd
+            mask = self.gflags!=0
+            with np.errstate(divide='ignore', invalid='ignore'):
+                pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
+            pzd = np.angle(pzd.sum(axis=(0,3)))
+            with np.printoptions(precision=4, suppress=True, linewidth=1000):
+                print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(2))
+            # import ipdb; ipdb.set_trace()
+            self._pzd = pzd
+            self._exp_pzd = np.exp(-1j * pzd)
+
+            gains[:, :, :, :, 0, 0] = 1
+            gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
+            
+        if "leakage" in self.update_type:
+            if "pzd" not in self.update_type:
+                gains[:, :, :, :, 0, 0] = 1
+                gains[:, :, :, :, 1, 1] = 1
+                
+            if "rel" in self.update_type and self.ref_ant is not None:
+                offset =  gains[:, :, :, self.ref_ant, 0, 1].copy()
+                gains[..., 0, 1] -= offset[..., np.newaxis]
+                gains[..., 1, 0] += np.conj(offset)[..., np.newaxis]
+                with np.printoptions(precision=4, suppress=True, linewidth=1000):
+                    print("{0}: subtracting relative leakage offset {1}".format(self.chunk_label, offset), file=log(2))
+
 
         if self.ref_ant is not None:
-            phase = np.angle(gains[...,self.ref_ant,0,0])
+            phase = np.angle(self.gains[...,self.ref_ant,0,0])
             gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
 
+        super(ComplexW2x2Gains, self).restrict_solution(gains)
 
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
@@ -319,7 +397,33 @@ class ComplexW2x2Gains(PerIntervalGains):
             flags_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing  flags
         """
-        PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
+        
+        super(ComplexW2x2Gains, self).precompute_attributes(data_arr, model_arr, flags_arr, noise)
+
+        if self._estimate_pzd and self._pzd is 0:
+            marr = model_arr[..., (0, 1), (1, 0)][:, 0].sum(0)
+            darr = data_arr[..., (0, 1), (1, 0)][0]
+            mask = (flags_arr[..., np.newaxis] != 0) | (marr == 0)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                dm = darr * (np.conj(marr) / abs(marr))
+            dabs = np.abs(darr)
+            dm[mask] = 0
+            dabs[mask] = 0
+            # collapse time/freq axis into intervals and sum antenna axes
+            dm_sum = self.interval_sum(dm).sum(axis=(2, 3))
+            dabs_sum = self.interval_sum(dabs).sum(axis=(2, 3))
+            # sum off-diagonal terms
+            dm_sum = dm_sum[..., 0] + np.conj(dm_sum[..., 1])
+            dabs_sum = dabs_sum[..., 0] + np.conj(dabs_sum[..., 1])
+            pzd = np.angle(dm_sum / dabs_sum)
+            pzd[dabs_sum == 0] = 0
+            with np.printoptions(precision=4, suppress=True, linewidth=1000):
+                print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd * 180 / np.pi), file=log(2))
+            self._pzd = pzd
+            self._exp_pzd = np.exp(-1j * pzd)
+
+            self.gains[:, :, :, :, 0, 0] = 1
+            self.gains[:, :, :, :, 1, 1] = self._exp_pzd[np.newaxis, :, :, np.newaxis]
 
         self.weights_shape = [self.n_mod, self.n_tim, self.n_fre, self.n_ant, self.n_ant, 1]
         
@@ -327,6 +431,20 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.weights[:,flags_arr!=0] = 0
         self.new_flags = flags_arr!=0
 
+        self.Nvis = np.sum(self.new_flags==False)
+
         self.v = 2.   # t-distribution number of degrees of freedom
 
         self.covinv = np.eye(4, dtype=self.dtype)
+
+
+    @property
+    def dof_per_antenna(self):
+        if "leakage" in self.update_type and "pzd" in self.update_type:
+            return 4 + 1./self.n_ant
+        elif "leakage" in self.update_type:
+            return 4
+        elif "pzd" in self.update_type:
+            return 1./self.n_ant
+        else:
+            return super(ComplexW2x2Gains, self).dof_per_antenna

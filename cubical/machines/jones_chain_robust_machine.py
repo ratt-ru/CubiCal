@@ -325,11 +325,12 @@ class JonesChain(MasterMachine):
         np.conj(gains.transpose(0, 1, 2, 3, 5, 4), gh)
 
         return gains, gh
+        
 
-    def accumulate_inv_gains(self):
+    def accumulate_inv_gains(self, direction=None):
         """
-        This function returns the inverse of the product of all the non-DD gains in the chain, at full TF resolution,
-        for direction 0
+        This function returns the inverse of the product of all the gains in the chain, at full TF resolution.
+        If direction=None, only DI gains are included. Otherwise, also includes DD gains for the given direction.
 
         Returns:
             A tuple of gains,conjugate gains,flag_count (if flags raised in inversion)
@@ -340,15 +341,17 @@ class JonesChain(MasterMachine):
         fc0 = 0
         # flip order of jones terms for inverse
         for term in self.jones_terms[::-1]:
-            if not term.dd_term:
+            if direction is not None or not term.dd_term:
+                # dirslice will select the specified direction from the GF array
+                dirslice = slice(0, 1) if not term.dd_term else slice(direction, direction + 1)
                 g, _, fc = term.get_inverse_gains()
                 # g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
-                    term.kernel.right_multiply_gains(gains, g[:1,...], *term.gain_intervals)
+                    term.kernel.right_multiply_gains(gains, g[dirslice,...], *term.gain_intervals)
                 else:
                     init = True
-                    gains[:] = term._gainres_to_fullres(g[:1,...], tdim_ind=1)
+                    gains[:] = term._gainres_to_fullres(g[dirslice,...], tdim_ind=1)
 
         # compute conjugate gains
         gh = np.empty_like(gains)
@@ -357,9 +360,10 @@ class JonesChain(MasterMachine):
         return gains, gh, fc
 
 
+
     
     #@profile
-    def compute_residual(self, obser_arr, model_arr, resid_arr):
+    def compute_residual(self, obser_arr, model_arr, resid_arr, require_full=True):
         """
         This function computes the residual. This is the difference between the
         observed data, and the model data with the gains applied to it.
@@ -385,7 +389,8 @@ class JonesChain(MasterMachine):
 
         return resid_arr
 
-    def apply_inv_gains(self, resid_vis, corr_vis=None, direction=None):
+
+    def apply_inv_gains(self, resid_vis, corr_vis=None, full2x2=True, direction=None):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -504,12 +509,12 @@ class JonesChain(MasterMachine):
 
         return MasterMachine.next_iteration(self)[0], major_step
 
-    def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
-        """Computes chi-square using the active chain term"""
-        if require_full:
-            return self.compute_chisq(resid_arr, inv_var_chan)
-        else:
-            return self.active_term.compute_chisq(resid_arr, inv_var_chan)
+    # def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
+    #     """Computes chi-square using the active chain term"""
+    #     if require_full:
+    #         return self.compute_chisq(resid_arr, inv_var_chan)
+    #     else:
+    #         return self.active_term.compute_chisq(resid_arr, inv_var_chan)
 
     @property
     def has_valid_solutions(self):
@@ -608,12 +613,16 @@ class JonesChain(MasterMachine):
         def init_solutions(self):
             for opts in self.chain_options:
                 label = opts["label"]
+                jones_class = machine_types.get_machine_class(opts['type'])
                 self._init_solutions(label,
                                      self.make_filename(opts["xfer-from"], label) or
                                      self.make_filename(opts["load-from"], label),
                                      bool(opts["xfer-from"]),
                                      self.solvable and opts["solvable"] and self.make_filename(opts["save-to"], label),
-                                     ComplexW2x2Gains.exportable_solutions())
+                                     jones_class.exportable_solutions(),
+                                     dd_term=opts["dd-term"])
 
         def determine_allocators(self):
             return self.machine_class.determine_allocators(self.jones_options)
+
+

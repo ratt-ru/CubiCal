@@ -544,6 +544,8 @@ class PerIntervalGains(MasterMachine):
             percflagged = whats_flagged.sum(axis=(1, 2, 3)) * 100.0 / whats_flagged[0].size
             bad_dirs = np.argwhere(percflagged > threshold)
 
+            #import pdb; pdb.set_trace()
+
             if len(bad_dirs):
                 if log.verbosity() > 1:
                     msg = "{} directions ({}) flagged {}".format(

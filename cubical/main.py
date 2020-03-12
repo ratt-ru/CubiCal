@@ -60,11 +60,13 @@ def expand_templated_name(name, **keys):
         as well as the _runtime_templates dict above.
         This allows for name templates that reference both the parset, as well as runtime conditions:
         e.g. "{data[ms]}-ddid{sel[ddid]}-{DATE}-{TIME}".
+
         Args:
             name (str):
                 the templated name
             keys (optional):
                 any optional substitution keys.
+
         Returns:
             str:
                 Expanded filename
@@ -118,9 +120,11 @@ def debug():
 def main(debugging=False):
     """
     Main cubical driver function. Reads options, sets up MS and solvers, calls the solver, etc.
+
     Args:
         debugging (bool, optional):
             If True, run in debugging mode.
+
     Raises:
         UserInputError:
             If neither --model-lsm nor --model-column were specified.
@@ -635,3 +639,6 @@ def main(debugging=False):
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)
         sys.exit(2 if type(exc) is UserInputError else 1)
+
+        
+
