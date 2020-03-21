@@ -3,9 +3,9 @@ import scipy.stats as sstats
 import scipy.signal as ssig
 import scipy.spatial as spat
 import copy
-from cubical.data_handler.geometry import (BoundingConvexHull,
-                                           BoundingBox,
-                                           BoundingBoxFactory)
+from cubical.degridder.geometry import (BoundingConvexHull,
+                                        BoundingBox,
+                                        BoundingBoxFactory)
 DEBUG=False
 def test_hull_construction():
     # test case 1

@@ -88,7 +88,8 @@ setup(name='cubical',
                 'cubical.kernels', 
                 'cubical.plots',
                 'cubical.database',
-                'cubical.madmax'],
+                'cubical.madmax',
+                'cubical.degridder'],
       python_requires='<3.0' if six.PY2 else ">=3.0", #build a py2 or py3 specific wheel depending on environment (due to cython backend)
       install_requires=requirements,
       include_package_data=True,
@@ -97,7 +98,9 @@ setup(name='cubical',
       entry_points={'console_scripts': ['gocubical = cubical.main:main']},
       extras_require={
           'lsm-support': ['montblanc @git+https://github.com/ska-sa/montblanc.git@0.6.1'],
-          'degridder-support': ['ddfacet >= 0.5.0','regions>=0.4']
+          'degridder-support': ['ddfacet >= 0.5.0', 
+                                'regions >= 0.4',
+                                'meqtrees-cattery >= 1.7.0']
       }
 )
 

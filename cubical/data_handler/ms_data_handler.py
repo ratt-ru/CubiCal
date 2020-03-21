@@ -658,7 +658,7 @@ class MSDataHandler:
                                         print("  " + ModColor.Str(line), file=log)
                                     print(ModColor.Str("Without DDFacet, DicoModel functionality is not available."), file=log)
                                     raise RuntimeError("Error importing DDFacet")
-                                from .DicoSourceProvider import DicoSourceProvider
+                                from cubical.degridder.DicoSourceProvider import DicoSourceProvider
                                 component = DicoSourceProvider(component,
                                                                self.phadir,
                                                                degrid_opts["Padding"],
