@@ -266,7 +266,10 @@ def main(debugging=False):
             warnings.simplefilter('error', UserWarning)
             np.seterr(all='raise')
             if GD["debug"]["escalate-warnings"] > 1:
-                warnings.filterwarnings("error")
+                warnings.simplefilter('error', Warning)
+                log(0).print("all warnings will be escalated to exceptions")
+            else:
+                log(0).print("UserWarnings will be escalated to exceptions")
 
         # clean up shared memory from any previous runs
         shm_utils.cleanupStaleShm()
@@ -324,6 +327,7 @@ def main(debugging=False):
         print(ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green"), file=log)
 
         have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
+        have_solvables = any([jo['solvable'] for jo in jones_opts])
 
         solver.GD = GD
 
@@ -339,6 +343,9 @@ def main(debugging=False):
         print("solver is apply-only type: {}".format(apply_only), file=log(0))
         load_model = solver.SOLVERS[solver_type].is_model_required
         print("solver requires model: {}".format(load_model), file=log(0))
+        
+        if not apply_only and not have_solvables:
+            raise UserInputError("No Jones terms have been marked as solvable")
 
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
@@ -622,6 +629,10 @@ def main(debugging=False):
         ms.close()
 
         print(ModColor.Str("completed successfully", col="green"), file=log)
+
+    except RuntimeWarning:
+        from cubical.tools import pdb
+        pdb.set_trace()
 
     except Exception as exc:
         for level, message in prelog_messages:

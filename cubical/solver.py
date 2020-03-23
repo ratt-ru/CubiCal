@@ -271,14 +271,14 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             # do mad max flagging, if requested
             thr1, thr2 = madmax.get_mad_thresholds()
             if thr1 or thr2:
-                num_mad_flagged_prior = stats.chunk.num_mad_flagged
+                num_mad_flagged_prior = int(stats.chunk.num_mad_flagged)
                 if madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2,
                                              "{} iter {} ({})".format(label, num_iter, gm.jones_label)):
                     gm.update_equation_counts(flags_arr != 0)
                     stats.chunk.num_mad_flagged = ((flags_arr&FL.MAD) != 0).sum()
                     if stats.chunk.num_mad_flagged != num_mad_flagged_prior:
                         log(2).print("{}: {} new MadMax flags".format(label,
-                                        stats.chunk.num_mad_flagged - stats.chunk.num_mad_flagged))
+                                        stats.chunk.num_mad_flagged - num_mad_flagged_prior))
 
             chi, stats.chunk.chi2u = compute_chisq(full=False)
 
@@ -634,11 +634,13 @@ class SolverMachine(object):
         """
         Finalizes the output visibilities, running a pass of the flagger on them, if configured
         """
+#        import ipdb; ipdb.set_trace()
+        
         # clear out MAD flags if madmax was in trial mode
         if self.stats.chunk.num_mad_flagged and self.madmax.trial_mode:
             self.vdm.flags_arr &= ~FL.MAD
             self.stats.chunk.num_mad_flagged = 0
-        num_mad_flagged_prior = self.stats.chunk.num_mad_flagged
+        num_mad_flagged_prior = int(self.stats.chunk.num_mad_flagged)
 
         # apply final round of madmax on residuals, if asked to
         if GD['madmax']['residuals']:
@@ -701,6 +703,8 @@ class SolveOnly(SolverMachine):
     """Runs the solver, but does not apply solutions"""
 
     def run(self):
+#        import ipdb; ipdb.set_trace()
+
         _solve_gains(self.gm, self.stats, self.madmax,
                      self.vdm.weighted_obser, self.vdm.weighted_model, self.vdm.flags_arr,
                      self.sol_opts, label=self.label)

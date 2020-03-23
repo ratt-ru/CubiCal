@@ -91,11 +91,10 @@ class JonesChain(MasterMachine):
         else:
             raise UserInputError("invalid term-iters={} setting".format(term_iters))
 
-        self.solvable = bool(self.term_iters)
+        self.solvable = bool(self.term_iters) and any([term.solvable for term in self.jones_terms])
 
         # setup first solvable term in chain
-        self.active_index = -1
-        self._next_chain_term()
+        self.active_index = None
 
         # this list accumulates the per-term convergence status strings
         self._convergence_states = []
@@ -509,6 +508,10 @@ class JonesChain(MasterMachine):
 
     @property
     def active_term(self):
+        if self.active_index is None:
+            # setup first solvable term in chain
+            self.active_index = -1
+            self._next_chain_term()
         return self.jones_terms[self.active_index]
 
     @property
