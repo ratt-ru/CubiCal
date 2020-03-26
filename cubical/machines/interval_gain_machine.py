@@ -154,7 +154,10 @@ class PerIntervalGains(MasterMachine):
 
     @classmethod
     def get_full_kernel(cls, options, diag_gains):
-        # select which kernels to use
+        """
+        Class method. Given a machine class and a set of options, returns numerical kernel
+        for "full 2x2" operations on visibilities.
+        """
         # (a) data is diagonal: this forces the use of diagonal gains and diag-diag kernels
         if options.get('diag-data'):
             return cubical.kernels.import_kernel('diagdiag_complex')
@@ -165,7 +168,6 @@ class PerIntervalGains(MasterMachine):
             # (c) data and gains both 2x2: use full kernel
             else:
                 return cubical.kernels.import_kernel('full_complex')
-
 
     def get_conj_gains(self):
         if self._gh is None:
@@ -284,7 +286,6 @@ class PerIntervalGains(MasterMachine):
                                                                                self.gains, gains_h, resid_arr, *self.gain_intervals)
 
         return resid_arr
-
 
     def apply_gains(self, model_arr, full2x2=True):
         gains_h = self.get_conj_gains()
