@@ -442,13 +442,13 @@ class JonesChain(MasterMachine):
         """
         return self.active_term.restrict_solution()
 
-    def flag_solutions(self, flags_arr, final=False):
+    def flag_solutions(self, flags_arr, final=0):
         """ Flags gain solutions."""
         # Per-iteration flagging done on the active term, final flagging is done on all terms.
         if final:
-            return any([ term.flag_solutions(flags_arr, True) for term in self.jones_terms if term.solvable ])
+            return any([ term.flag_solutions(flags_arr, final) for term in self.jones_terms if term.solvable ])
         else:
-            return self.active_term.flag_solutions(flags_arr, False)
+            return self.active_term.flag_solutions(flags_arr, 0)
 
     def num_gain_flags(self, mask=None):
         return self.active_term.num_gain_flags(mask)

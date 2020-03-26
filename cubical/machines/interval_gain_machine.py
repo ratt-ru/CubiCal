@@ -344,7 +344,7 @@ class PerIntervalGains(MasterMachine):
         if sol is not None:
             self.gains[:] = sol.data
             # collapse the corr1/2 axes
-            self.gflags[sol.mask.any(axis=(-1,-2))] |= FL.MISSING
+            self.gflags[sol.mask.any(axis=(-1,-2))] |= FL.NOSOL
             self._gains_loaded = True
             self.restrict_solution()
 
@@ -530,7 +530,7 @@ class PerIntervalGains(MasterMachine):
         np.copyto(self.old_gains, self.gains)
         return MasterMachine.next_iteration(self)
 
-    def flag_solutions(self, flags_arr, final):
+    def flag_solutions(self, flags_arr, final=0):
         """ Flags gain solutions based on certain criteria, e.g. out-of-bounds, null, etc. """
 
         # Anything previously flagged for another reason will not be reflagged.
@@ -565,7 +565,7 @@ class PerIntervalGains(MasterMachine):
             flagged |= goob
 
         # in final (post-solution) flagging, check the posterior error estimate
-        if final:
+        if final>0:
             if self.posterior_gain_error is not None and self.max_post_error:
                 # reset to 0 for fixed directions
                 if self.dd_term:
@@ -651,7 +651,9 @@ class PerIntervalGains(MasterMachine):
         # keep flagged gains at their previous values
         self.gains[self.flagged] = self.old_gains[self.flagged]
 
-        if self.n_flagged > nfl0 and self.propagates_flags:
+        # propagate flags out to data if something new has been flagged, or if final<0 (which means
+        # we're applying solutions, so better propagate everything)
+        if (self.n_flagged > nfl0 or final<0) and self.propagates_flags:
             # convert gain flags to full time/freq resolution, and add directions together
             nodir_flags = self._gainres_to_fullres(np.bitwise_or.reduce(self.gflags, axis=0))
 
