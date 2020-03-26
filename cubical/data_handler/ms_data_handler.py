@@ -667,7 +667,7 @@ class MSDataHandler:
                                         print("  " + ModColor.Str(line), file=log)
                                     print(ModColor.Str("Without DDFacet, DicoModel functionality is not available."), file=log)
                                     raise RuntimeError("Error importing DDFacet")
-                                from .DicoSourceProvider import DicoSourceProvider
+                                from cubical.degridder.DicoSourceProvider import DicoSourceProvider
                                 component = DicoSourceProvider(component,
                                                                self.phadir,
                                                                degrid_opts["Padding"],
@@ -807,8 +807,14 @@ class MSDataHandler:
             np.ndarray:
                 Result of getcol(\*args, \*\*kwargs).
         """
-
-        return (subset or self.data).getcol(str(colname), first_row, nrows)
+        # ugly hack because getcell returns a different dtype to getcol
+        cell = (subset or self.data).getcol(str(colname), first_row, nrow=1)[0, ...]
+        dtype = getattr(cell, "dtype", type(cell))
+        nrows = (subset or self.data).nrows() if nrows < 0 else nrows
+        shape = tuple([nrows] + [s for s in cell.shape]) if hasattr(cell, "shape") else nrows
+        prealloc = np.empty(shape, dtype=dtype)
+        (subset or self.data).getcolnp(str(colname), prealloc, first_row, nrows)
+        return prealloc
 
     def fetchslice(self, column, startrow=0, nrows=-1, subset=None):
         """
@@ -827,10 +833,28 @@ class MSDataHandler:
                 Result of getcolslice()
         """
         subset = subset or self.data
+        nrows = subset.nrows() if nrows < 0 else nrows
+
         print("reading {}".format(column), file=log(0))
         if self._ms_blc == None:
-            return subset.getcol(column, startrow, nrows)
-        return subset.getcolslice(column, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
+            # ugly hack because getcell returns a different dtype to getcol
+            cell = subset.getcol(str(column), startrow, nrow=1)[0, ...]
+            dtype = getattr(cell, "dtype", type(cell))
+
+            shape = tuple([nrows] + [s for s in cell.shape]) if hasattr(cell, "shape") else nrows
+
+            prealloc = np.empty(shape, dtype=dtype)
+            subset.getcolnp(str(column), prealloc, startrow, nrows)
+            return prealloc
+        # ugly hack because getcell returns a different dtype to getcol
+        cell = (subset or self.data).getcol(str(column), startrow, nrow=1)[0, ...]
+        dtype = getattr(cell, "dtype", type(cell))
+
+        shape = tuple([len(list(range(l, r + 1, i))) #inclusive in cc
+                       for l, r, i in zip(self._ms_blc, self._ms_trc, self._ms_incr)])
+        prealloc = np.empty(shape, dtype=dtype)
+        subset.getcolslicenp(str(column), prealloc, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
+        return prealloc
 
     def fetchslicenp(self, column, data, startrow=0, nrows=-1, subset=None):
         """
@@ -1413,10 +1437,12 @@ class MSDataHandler:
             # new column needs to be inserted -- get column description from column 'like_col'
             print("  inserting new column %s" % (col_name), file=log)
             desc = self.ms.getcoldesc(like_col)
+
             desc[str('name')] = str(col_name)
             desc[str('comment')] = str(desc['comment'].replace(" ", "_"))  # got this from Cyril, not sure why
             dminfo = self.ms.getdminfo(like_col)
             dminfo[str("NAME")] =  "{}-{}".format(dminfo["NAME"], col_name)
+
             # if a different type is specified, insert that
             if like_type:
                 desc[str('valueType')] = like_type

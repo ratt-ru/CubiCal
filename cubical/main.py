@@ -49,6 +49,7 @@ logger.init("cc")
 # manually set the log levels to something less annoying.
 
 import logging
+import warnings
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 GD = None
@@ -269,6 +270,15 @@ def main(debugging=False):
             parser.write_to_parset(out_parset)
 
         enable_pdb = GD["debug"]["pdb"]
+
+        if GD["debug"]["escalate-warnings"]:
+            warnings.simplefilter('error', UserWarning)
+            np.seterr(all='raise')
+            if GD["debug"]["escalate-warnings"] > 1:
+                warnings.filterwarnings("error")
+
+        # clean up shared memory from any previous runs
+        shm_utils.cleanupStaleShm()
 
         # now setup logging
         logger.logToFile(basename + ".log", append=GD["log"]["append"])
@@ -500,9 +510,15 @@ def main(debugging=False):
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
-        chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
-        if GD["dist"]["max-chunks"]:
-            chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
+        if single_chunk:
+            chunks_per_tile = 1
+            max_chunks_per_tile = 1
+        else:
+            chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
+            max_chunks_per_tile = 0
+            if GD["dist"]["max-chunks"]:
+                chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
+                max_chunks_per_tile = GD["dist"]["max-chunks"]
 
         print("defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else ""), file=log)
@@ -510,7 +526,7 @@ def main(debugging=False):
         chunks_per_tile, tile_list = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["rebin-time"],
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
-                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
+                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
 
         # now that we have tiles, define the flagging situation (since this may involve a one-off iteration through the
         # MS to populate the column)
@@ -629,7 +645,8 @@ def main(debugging=False):
             import traceback
             print(ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__,
                                                                     exc, traceback.format_exc())), file=log)
-            if enable_pdb and not type(exc) is UserInputError:
+            if enable_pdb and type(exc) is not UserInputError:
+                warnings.filterwarnings("default")  # in case pdb itself throws a warning
                 from cubical.tools import pdb
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)

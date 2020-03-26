@@ -374,7 +374,7 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
                 solver.ifrgain_machine.accumulate(sd)
         else:
             print("  single-chunk {} not in this tile, skipping it.".format(single_chunk), file=log(0))
-        tile.release()
+        tile.release(final=(itile == len(tile_list) - 1))
         # break out after single chunk is processed
         if processed and single_chunk:
             print("single-chunk {} was processed in this tile. Will now finish".format(single_chunk), file=log(0, "red"))
@@ -467,7 +467,7 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False, out_opts=
 
                 solver.gm_factory.close()
                 result['flagcounts'] = tile.dh.flagcounts
-            tile.release()
+            tile.release(final=(itile == len(tile_list) - 1))
         if load is not None:
             tile = tile_list[load]
             print("loading {}".format(tile.label), file=log(0, "blue"))

@@ -13,4 +13,4 @@
 #   limitations under the License.
 
 # update this for each release
-VERSION = "1.3.0"
+VERSION = "1.4.7"
