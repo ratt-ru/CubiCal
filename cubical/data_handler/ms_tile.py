@@ -1306,7 +1306,16 @@ class MSTile(object):
                 else:
                     print("  {:.2%} visibilities flagged by solver, but we're not saving flags".format(ratio), file=log)
             else:
-                print("  no new flags were generated", file=log)
+                 print("  no solver flags were generated", file=log)
+                 # bitflag still needs to be cleared though, if we're writing to it
+                 if self.dh._save_bitflag:
+                     self.bflagcol &= ~self.dh._save_bitflag
+                     bflag_col = True
+                     if self.dh._save_flags:
+                         print("  no visibilities flagged by solver: saving to BITFLAG and FLAG columns", file=log)
+                         flag_col = self.bflagcol != 0
+                     else:
+                         print("  no visibilities flagged by solver: saving to BITFLAG column only", file=log)
 
             if self.dh._save_flags_apply:
                 prior_flags = subset.upsample((data['flags'] & FL.PRIOR) != 0)
