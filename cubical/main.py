@@ -31,6 +31,8 @@ from time import time
 # even if one is only trying to save figures to .png.
 import matplotlib
 
+from cubical.data_handler.wisdom import estimate_mem
+
 from cubical.tools import logger
 # set the base name of the logger. This must happen before any other loggers are instantiated
 # (Thus before anything else that uses the logger is imported!)
@@ -518,6 +520,8 @@ def main(debugging=False):
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
+
+        estimate_mem(ms, tile_list)
 
         # now that we have tiles, define the flagging situation (since this may involve a one-off iteration through the
         # MS to populate the column)
