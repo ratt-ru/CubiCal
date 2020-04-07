@@ -11,7 +11,7 @@ def estimate_mem(data_handler, tile_list, data_opts, dist_opts):
 
     mem = virtual_memory()
 
-    tot_sys_mem = mem.total/1e9  # Convert to value in GB.
+    tot_sys_mem = mem.total/(1024**3)  # Convert to value in GiB.
 
     # Grab an example tile - for now we assume that it is a representative
     # example. In principle we could loop over all tiles and look for the
@@ -66,19 +66,19 @@ def estimate_mem(data_handler, tile_list, data_opts, dist_opts):
 
     # Make a guess at the total memory use.
 
-    tot_mem_est = w_mem_est*workers.num_workers + io_mem_est
+    tot_mem_est = w_mem_est*(workers.num_workers or 1) + io_mem_est
 
     # Log all of this to terminal.
 
-    print("Detected a total of {:.2f}GB of system memory.".format(tot_sys_mem),
-          file=log)
-    print("Per-solver (worker) memory use estimated at {:.2f}GB: {:.2f}% of "
+    print("Detected a total of {:.2f}GiB of system memory.".format(
+          tot_sys_mem), file=log)
+    print("Per-solver (worker) memory use estimated at {:.2f}GiB: {:.2f}% of "
           "total system memory.".format(w_mem_est, 100*w_mem_est/tot_sys_mem),
           file=log)
-    print("Peak I/O memory use estimated at {:.2f}GB: {:.2f}% of total "
+    print("Peak I/O memory use estimated at {:.2f}GiB: {:.2f}% of total "
           "system memory.".format(io_mem_est, 100*io_mem_est/tot_sys_mem),
           file=log)
-    print("Total peak memory usage estimated at {:.2f}GB: {:.2f}% of total "
+    print("Total peak memory usage estimated at {:.2f}GiB: {:.2f}% of total "
           "system memory.".format(tot_mem_est, 100*tot_mem_est/tot_sys_mem),
           file=log)
 
