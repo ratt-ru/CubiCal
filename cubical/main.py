@@ -521,7 +521,7 @@ def main(debugging=False):
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
 
-        # Estimate memory usage. This is still experimental. 
+        # Estimate memory usage. This is still experimental.
         estimate_mem(ms, tile_list, GD["data"], GD["dist"])
 
         # now that we have tiles, define the flagging situation (since this may involve a one-off iteration through the

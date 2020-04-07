@@ -26,10 +26,8 @@ def estimate_mem(data_handler, tile_list, data_opts, dist_opts):
     # Figure out the chunk dimensions. The ors handle the 0 case. TODO: The
     # time behaviour might not be safe.
 
-    t_per_chunk = \
-        data_opts["time-chunk"] or example_tile.rowchunks[0].timeslice.stop
-    f_per_chunk = \
-        data_opts["freq-chunk"] or data_handler.all_freqs.size
+    t_per_chunk = example_tile.rowchunks[0].timeslice.stop
+    f_per_chunk = data_opts["freq-chunk"] or data_handler.all_freqs.size
 
     # Grab some necessary dimensions.
 
