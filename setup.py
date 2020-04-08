@@ -63,6 +63,7 @@ else:
                     'futures; python_version <= "2.7"',
                     'astropy<3.0; python_version <= "2.7"',
                     'astropy>=3.0; python_version > "2.7"',
+                    'psutil'
                     ]
 
 setup(name='cubical',
