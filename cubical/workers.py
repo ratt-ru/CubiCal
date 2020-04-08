@@ -35,7 +35,7 @@ def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc
     if force_serial:
         cubical.kernels.num_omp_threads = nthreads
         if nthreads:
-            nthreads = max(nthreads, montblanc_threads)
+            nthreads = max(nthreads, montblanc_threads or 1)
             print("forcing single-process mode, {} OMP and/or Montblanc threads".format(nthreads), file=log(0, "blue"))
         elif montblanc_threads:
             nthreads = montblanc_threads

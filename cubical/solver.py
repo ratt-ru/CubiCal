@@ -8,6 +8,7 @@ Implements the solver loop.
 from __future__ import print_function
 import numpy as np
 import os, os.path
+import gc
 import traceback
 from cubical.tools import logger, ModColor
 from cubical.flagging import FL
@@ -876,6 +877,10 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
         # Ask the gain machine to store its solutions in the shared dict.
         gm_factory.export_solutions(gm, soldict)
+
+        # Trigger garbage collection because it seems very unreliable. This 
+        # flattens the memory profile substantially. 
+        gc.collect()
 
         return solver_machine.stats
 
