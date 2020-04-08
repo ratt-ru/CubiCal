@@ -8,6 +8,7 @@ Implements the solver loop.
 from __future__ import print_function
 import numpy as np
 import os, os.path
+import gc
 import traceback
 from cubical.tools import logger, ModColor
 from cubical.flagging import FL
@@ -225,7 +226,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         gm.compute_update(model_arr, obser_arr)
 
         # flag solutions. This returns True if any flags have been propagated out to the data.
-        if gm.flag_solutions(flags_arr, False):
+        if gm.flag_solutions(flags_arr, 0):
 
             update_stats(flags_arr, ('chi2',))
 
@@ -346,7 +347,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     if gm.has_valid_solutions:
         # Final round of flagging
-        flagged = gm.flag_solutions(flags_arr, True)
+        flagged = gm.flag_solutions(flags_arr, 1)
         stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
     else:
         flagged = None
@@ -594,7 +595,7 @@ class SolverMachine(object):
         # for apply-only machines, precompute machine attributes and apply initial gain flags
         if self.is_apply_only:
             gm.precompute_attributes(vdm.obser_arr, vdm.model_arr, vdm.flags_arr, None)
-            gm.flag_solutions(vdm.flags_arr, False)
+            gm.flag_solutions(vdm.flags_arr, -1)
             self.stats.chunk.num_solutions = vdm.gm.num_solutions
             self.stats.chunk.num_sol_flagged = vdm.gm.num_gain_flags()[0]
 
@@ -922,6 +923,10 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
         # Ask the gain machine to store its solutions in the shared dict.
         gm_factory.export_solutions(gm, soldict)
+
+        # Trigger garbage collection because it seems very unreliable. This 
+        # flattens the memory profile substantially. 
+        gc.collect()
 
         return solver_machine.stats
 

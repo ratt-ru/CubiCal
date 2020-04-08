@@ -487,19 +487,20 @@ class MasterMachine:
         return NotImplementedError
 
     @abstractmethod
-    def flag_solutions(self, flag_arr, final=False):
+    def flag_solutions(self, flag_arr, final=0):
         """
-        This method allows the machine to flag gains solutions. It iis called after each itration (final=False),
-        and then once again after convergence (final=True). 
+        This method allows the machine to flag gains solutions.
+        When solving, it is called after each iteration (final=0), and then once again after convergence (final=1).
+        When applying, it is called once after loading the solutions with final=-1
         
         This method can propagate the flags raised by the gain machine back into the data flags.
         
         Args:
             flag_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing data flags. 
-            final (bool): 
-                False while iterating, True after convergence.
-            
+            final (int):
+                -1 when loading (in apply-only mode), 0 while iterating, 1 after convergence.
+
         Returns:
             True if any new flags have been propagated to the data
         

@@ -36,7 +36,7 @@ from cubical.tools import logger
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
 
-# Some modules cause issues with logging - grab their loggers and 
+# Some modules cause issues with logging - grab their loggers and
 # manually set the log levels to something less annoying.
 
 import logging
@@ -486,6 +486,7 @@ def main(debugging=False):
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
+
         solver.gm_factory.set_metadata(ms)
                                                        
         # create IFR-based gain machine. Only compute gains if we're loading a model
@@ -511,9 +512,15 @@ def main(debugging=False):
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
-        chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers-1, 1)
-        if GD["dist"]["max-chunks"]:
-            chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
+        if single_chunk:
+            chunks_per_tile = 1
+            max_chunks_per_tile = 1
+        else:
+            chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
+            max_chunks_per_tile = 0
+            if GD["dist"]["max-chunks"]:
+                chunks_per_tile = max(max(GD["dist"]["max-chunks"], chunks_per_tile), 1)
+                max_chunks_per_tile = GD["dist"]["max-chunks"]
 
         print("defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else ""), file=log)
@@ -521,7 +528,7 @@ def main(debugging=False):
         chunks_per_tile, tile_list = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["rebin-time"],
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
-                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
+                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
 
         # now that we have tiles, define the flagging situation (since this may involve a one-off iteration through the
         # MS to populate the column)

@@ -26,7 +26,7 @@ class FL(object):
     dtype = np.uint16   # dtype used for flag arrays
 
     PRIOR    = dtype(1<<0)    # prior flags (i.e. from MS)
-    MISSING  = dtype(1<<1)    # missing data or solution
+    MISSING  = dtype(1<<1)    # missing data
     INVALID  = dtype(1<<2)    # invalid data (zero, inf, nan)
     ILLCOND  = dtype(1<<3)    # solution ill conditioned - bad inverse
     DIVERGE  = dtype(1<<4)    # divergence
@@ -39,6 +39,7 @@ class FL(object):
     INVMODEL = dtype(1<<11)   # invalid model (zero, inf, nan)
     INVWGHT  = dtype(1<<12)   # invalid weight (inf or nan)
     NULLWGHT = dtype(1<<13)   # null weight
+    NOSOL    = GNULL          # missing solution (i.e. in load-from or xfer-from)
 
     MAD      = dtype(1<<14)   # residual exceeds MAD-based threshold
     SKIPSOL  = dtype(1<<15)   # omit this data point from the solver
