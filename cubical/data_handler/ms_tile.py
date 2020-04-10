@@ -641,8 +641,11 @@ class MSTile(object):
             flagcol = table_subset.getcol("FLAG")
             flagrow = table_subset.getcol("FLAG_ROW")
             # flag all four corrs
-            flagcol0 = flagcol.copy()
+            num_fl0 = flagcol.sum()
             flagcol[:] = np.logical_or.reduce(flagcol, axis=-1)[:,:,np.newaxis]
+            if flagcol.sum() != num_fl0:
+                table_subset.putcol("FLAG", flagcol)
+                print("    {}: some flags were expanded to all correlations".format(self.label), file=log(1))
 
             bflagcol = np.zeros(flagcol.shape, np.int32)
             bflagrow = np.zeros(flagrow.shape, np.int32)
@@ -651,9 +654,6 @@ class MSTile(object):
 
             table_subset.putcol("BITFLAG", bflagcol)
             table_subset.putcol("BITFLAG_ROW", bflagrow)
-            if (flagcol0 != flagcol).any():
-                table_subset.putcol("FLAG", flagcol)
-                print("    {}: some flags were expanded to all correlations".format(self.label), file=log(1))
 
     def load(self, load_model=True):
         """
