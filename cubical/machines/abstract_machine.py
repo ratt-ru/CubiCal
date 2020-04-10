@@ -89,6 +89,9 @@ class MasterMachine:
         self._dd_term = options.get('dd-term')
         self._maxiter = options.get('max-iter', 0)
 
+        self._diag_only = options.get('diag-only')
+        self._offdiag_only = options.get('offdiag-only')
+
         self._prop_flags = options.get('prop-flags', 'default')
 
         self._epsilon = options.get('epsilon')
@@ -154,6 +157,16 @@ class MasterMachine:
         return self._dd_term
 
     @property
+    def diag_only(self):
+        """This property is true if the machine solves using diagonal visibilities only"""
+        return self._diag_only
+
+    @property
+    def offdiag_only(self):
+        """This property is true if the machine solves using off-diagonal visibilities only"""
+        return self._offdiag_only
+
+    @property
     def epsilon(self):
         return self._epsilon
 
@@ -163,8 +176,12 @@ class MasterMachine:
 
     @property
     def propagates_flags(self):
-        return self._prop_flags == "always" or \
+        return self._prop_flags == "always" or self._prop_flags == "any" or \
                (self._prop_flags == "default" and not self.dd_term)
+
+    @property
+    def propagates_anydir_flags(self):
+        return self._prop_flags == "any"
 
     @property
     def maxiter (self):
@@ -246,7 +263,7 @@ class MasterMachine:
         return flag_count
 
     @abstractmethod
-    def compute_residual(self, obser_arr, model_arr, resid_arr, full2x2=True):
+    def compute_residual(self, obser_arr, model_arr, resid_arr, require_full=True):
         """
         This method should compute the residual at the the full time-frequency resolution of the
         data. Must populate resid_arr with the values of the residual. Function signature must be 
@@ -262,15 +279,15 @@ class MasterMachine:
             resid_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array in which to place the 
                 residual values.
-            full2x2 (bool):
+            require_full (bool):
                 If True, a full 2x2 residual is required. If False, only the terms used in the solution
-                (e.g. the diagonals) are required.
+                (e.g. if a solution is diagonal, only the diagonals) are required.
         """
 
         return NotImplementedError
 
     @abstractmethod
-    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, di_only=False):
+    def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, direction=None):
         """
         This method should be able to apply the inverse of the gains associated with the gain
         machines to an array at full time-frequency resolution. Should populate an input array with
@@ -287,8 +304,9 @@ class MasterMachine:
             full2x2 (bool):
                 If True, gains should be applied to the full 2x2 matrix. If False, only the terms used in the solution
                 (e.g. the diagonals) are required.
-            di_only (bool):
-                If True, only DI terms are applied (leftmost block of DI terms, in a chain machine). Not implemented for now.
+            direction (int or None):
+                If None, only DI terms (in a chain) are applied. If set to a direction number,
+                also applies DD terms for that direction.
 
         Returns:
             2-element tuple
@@ -343,7 +361,9 @@ class MasterMachine:
     def update_equation_counts(self, unflagged):
         """
         Sets up equation counters and normalization factors. Sets up the following attributes:
-        
+            - eqs_per_record
+                integer: gives the nominal number of equations per a visibility record, so e.g.
+                would be 8 for a full 2x2 complex correlation matrix
             - eqs_per_tf_slot (np.ndarray):
                 Shape (n_tim, n_fre) array containing a count of equations per time-frequency slot.
             - eqs_per_antenna (np.ndarray)
@@ -358,14 +378,22 @@ class MasterMachine:
             unflagged (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) bool array indicating valid (not flagged) slots
         """
-        # (n_ant) vector containing the number of valid equations per antenna.
-        # Factor of two is necessary as we have the conjugate of each equation too.
 
-        self.eqs_per_antenna = 2 * np.sum(unflagged, axis=(0, 1, 2)) * self.n_mod
+        # equations per visibility slot. We have two (real/imag, or normal and conjugate) per model
+        # and per correlation product. This is just a normalization factor used in the bookkeeping.
+        self.eqs_per_record = 2 * self.n_mod * self.n_cor
+        # full 2x2 as opposed to diag-only or off-diag-only? Multiply by 2
+        if not self.diag_only or self.offdiag_only:
+            self.eqs_per_record *= self.n_cor
 
-        # (n_tim, n_fre) array containing number of valid equations for each time/freq slot.
+        # (n_ant) vector containing the number of valid equations per antenna (for any direction)
 
-        self.eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2)) * self.n_mod * self.n_cor * self.n_cor * 2
+        self.eqs_per_antenna = np.sum(unflagged, axis=(0, 1, 2)) * self.eqs_per_record
+
+        # (n_tim, n_fre) array containing number of valid equations for each time/freq slot
+
+        self.eqs_per_tf_slot = np.sum(unflagged, axis=(-1, -2)) * self.eqs_per_record
+
 
         with np.errstate(invalid='ignore', divide='ignore'):
             self._chisq_tf_norm_factor = 1./self.eqs_per_tf_slot
@@ -374,7 +402,11 @@ class MasterMachine:
         toteq = np.sum(self.eqs_per_tf_slot)
         self._chisq_norm_factor = 1./toteq if toteq else 0
 
-    def compute_chisq(self, resid_arr, inv_var_chan):
+        self._chisq_tf_norm_factor_0 = self._chisq_tf_norm_factor
+        self._chisq_norm_factor_0 = self._chisq_norm_factor
+
+
+    def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
         """
         Computes chi-squared statistics based on given residuals.
         Args:
@@ -399,7 +431,12 @@ class MasterMachine:
         # finally sum over frequency intervals.
 
         chisq = np.zeros(resid_arr.shape[1:4], np.float64)
-        self.generics.compute_chisq(resid_arr, chisq)
+        if self.diag_only:
+            self.generics.compute_chisq_diag(resid_arr, chisq)
+        elif self.offdiag_only:
+            self.generics.compute_chisq_offdiag(resid_arr, chisq)
+        else:
+            self.generics.compute_chisq(resid_arr, chisq)
 
         # Normalize this by the per-channel variance.
 
@@ -450,19 +487,20 @@ class MasterMachine:
         return NotImplementedError
 
     @abstractmethod
-    def flag_solutions(self, flag_arr, final=False):
+    def flag_solutions(self, flag_arr, final=0):
         """
-        This method allows the machine to flag gains solutions. It iis called after each itration (final=False),
-        and then once again after convergence (final=True). 
+        This method allows the machine to flag gains solutions.
+        When solving, it is called after each iteration (final=0), and then once again after convergence (final=1).
+        When applying, it is called once after loading the solutions with final=-1
         
         This method can propagate the flags raised by the gain machine back into the data flags.
         
         Args:
             flag_arr (np.ndarray):
                 Shape (n_tim, n_fre, n_ant, n_ant) array containing data flags. 
-            final (bool): 
-                False while iterating, True after convergence.
-            
+            final (int):
+                -1 when loading (in apply-only mode), 0 while iterating, 1 after convergence.
+
         Returns:
             True if any new flags have been propagated to the data
         
@@ -500,7 +538,7 @@ class MasterMachine:
         return self.iters, False
 
     @abstractmethod
-    def restrict_solution(self):
+    def restrict_solution(self, gains):
         """
         This method should perform any necessary restrictions on the solution, eg. selecting a 
         reference antenna or taking only the amplitude. Function signature must be consistent with 
@@ -563,7 +601,7 @@ class MasterMachine:
 
         return {}
 
-    def importable_solutions(self):
+    def importable_solutions(self, grid0):
         """
         Returns dict of parameters that this machine can import, as {label: grid_dict}. Grid_dict 
         knows which grid the parameters must be interpolated onto for this machine. Called when a 
@@ -608,7 +646,7 @@ class MasterMachine:
 
         return machine_cls.Factory(machine_cls, *args, **kw)
 
-    def _load_solutions(self, init_sols):
+    def _load_solutions(self, init_sols, full_grid):
         """
         Helper method invoked by Factory.create_machine() to import existing solutions into machine.
         Looks for solutions corresponding to this machine's jones_label in init_sols, and
@@ -619,16 +657,37 @@ class MasterMachine:
         """
         sols = {}
         # collect importable solutions from DB, interpolate
-        for label, grids in self.importable_solutions().items():
+        for label, grids in self.importable_solutions(full_grid).items():
             db, prefix, interpolate = init_sols.get(self.jones_label, (None, None, False))
             name = "{}:{}".format(prefix, label)
             if db is not None:
                 if name in db:
+                    # check for matching grids
+                    mismatches = db[name].find_mismatched_grids(**grids)
+                    if mismatches:
+                        # are non-interpolatable axes also missing?
+                        missing_solutions = not all([interpolatable for _,_,interpolatable in mismatches])
+                        # info if only interpolatable entries missing, else warning
+                        if interpolate and not missing_solutions:
+                            report_func = log(0).print
+                        else:
+                            report_func = log.warn
+                        report_func("{}: {} grid not exactly matched in {}, interpolation may be required".format(
+                                self.chunk_label, name, db.filename))
+                        # report on axes one by one
+                        for axis, values, interpolatable in mismatches:
+                            report_func = log(0).print if interpolate and interpolatable else log.warn
+                            report_func("    {}: {} not matched{}".format(axis,
+                                                     "{} entries".format(len(values)) if len(values) > 5 else
+                                                     ", ".join(map(str, values)),
+                                                    (", will interpolate" if interpolate and interpolatable else "")))
+                    # if interpolating, this is allowed -- otherwise crash out
                     if interpolate:
                         print("{}: interpolating {} from {}".format(self.chunk_label, name, db.filename), file=log)
                         sols[label] = sol = db[name].reinterpolate(**grids)
+#                        import ipdb; ipdb.set_trace()
                     else:
-                        if not db[name].match_grids(**grids):
+                        if mismatches:
                             raise ValueError("{} does not define {} on the correct grid. Consider using "
                                              "-xfer-from rather than -load-from".format(name, db.filename))
                         print("{}: loading {} from {}".format(self.chunk_label, name, db.filename), file=log)
@@ -730,7 +789,8 @@ class MasterMachine:
                                  self.make_filename(self.jones_options["load-from"]),
                                  bool(self.jones_options["xfer-from"]),
                                  self.solvable and self.make_filename(self.jones_options["save-to"]),
-                                 self.machine_class.exportable_solutions())
+                                 self.machine_class.exportable_solutions(),
+                                 dd_term=bool(self.jones_options["dd-term"]))
 
         def make_filename(self, filename, jones_label=None):
             """
@@ -753,7 +813,7 @@ class MasterMachine:
             return expand_templated_name(filename,
                                          JONES=jones_label or self.jones_label)
 
-        def _init_solutions(self, label, load_from, interpolate, save_to, exportables):
+        def _init_solutions(self, label, load_from, interpolate, save_to, exportables, dd_term=False):
             """
             Internal helper implementation for init_solutions(): this initializes a pair of solution databases.
             
@@ -769,6 +829,8 @@ class MasterMachine:
                 exportables (dict):
                     Dictionary of {key: (empty_value, axis_list)} describing the solutions that will be saved.
                     As returned by exportable_solutions() of the gain machine.
+                dd_term (bool):
+                    True if paremeter was configured as direction-dependent
                 
             """
             # init solutions from database
@@ -783,11 +845,11 @@ class MasterMachine:
             if save_to:
                 # define parameters in DB
                 for sol_label, (empty_value, axes) in exportables.items():
-                    self.define_param(save_to, "{}:{}".format(label, sol_label), empty_value, axes)
+                    self.define_param(save_to, "{}:{}".format(label, sol_label), empty_value, axes, dd_term=dd_term)
                 print("{} solutions will be saved to {}".format(label, save_to), file=log(0))
 
         def define_param(self, save_to, name, empty_value, axes,
-                          interpolation_axes=("time", "freq")):
+                          interpolation_axes=("time", "freq"), dd_term=False):
             """
             Internal helper method for _init_solutions(). Defines a parameter to be saved.
             
@@ -802,6 +864,8 @@ class MasterMachine:
                     List of axes over which the parameter is defined, e.g. ["time", "freq", "ant1", "ant2"]
                 interpolation_axes (iterable):
                     List of axes over which the parameter can be interpolated. Subset of axes.
+                dd_term (bool):
+                    True if paremeter was configured as direction-dependent
             """
             # init DB, if needed
             db = self._save_sols_byname.get(save_to)
@@ -827,7 +891,8 @@ class MasterMachine:
             grid = {}
             for axis in axes:
                 if axis in self.grid:
-                    grid[axis] = self.grid[axis]
+                    # use saved grid, or else [0] for direction axis of non-DD parameter
+                    grid[axis] = self.grid[axis] if axis != "dir" or dd_term else [0]
                 elif axis[-1].isdigit() and axis[:-1] in self.grid:
                     grid[axis] = self.grid[axis[:-1]]
             return db.define_param(name, dtype, axes, empty=empty_value,
@@ -880,6 +945,7 @@ class MasterMachine:
                 if not name.endswith("__") and name in self._save_sols:
                     sd = subdict["{}:grid__".format(name)]
                     grids = {key: sd[key] for key in sd.keys()}
+                    log(1).print("saving solutions for {}".format(name))
                     self.get_solution_db(name).add_chunk(name, masked_array(subdict[name],
                                                                        subdict[name+":flags__"]), grids)
         def close(self):
@@ -908,16 +974,17 @@ class MasterMachine:
             """
             gm = self.machine_class(self.jones_label, data_arr, n_dir, n_mod, times, freqs,
                                     chunk_label, self.jones_options)
-            gm._load_solutions(self._init_sols)
+            gm._load_solutions(self._init_sols, self.grid)
             return gm
         
-        def set_metas(self, src):
+        def set_metadata(self, src):
             """
-            Sets database meta information source
+            Sets database metadata source
             
             Args:
                 src: instance of cubical.data_handler
             """
+            self.metadata = src.metadata
             for db in list(self._save_sols_byname.values()):
                 db.export_CASA_gaintable = self.global_options["out"].get("casa-gaintables", True)
                 db.set_metadata(src)

@@ -640,6 +640,12 @@ class MSTile(object):
             table_subset = self.dh.data.selectrows(subset.rows0)
             flagcol = table_subset.getcol("FLAG")
             flagrow = table_subset.getcol("FLAG_ROW")
+            # flag all four corrs
+            num_fl0 = flagcol.sum()
+            flagcol[:] = np.logical_or.reduce(flagcol, axis=-1)[:,:,np.newaxis]
+            if flagcol.sum() != num_fl0:
+                table_subset.putcol("FLAG", flagcol)
+                print("    {}: some flags were expanded to all correlations".format(self.label), file=log(1))
 
             bflagcol = np.zeros(flagcol.shape, np.int32)
             bflagrow = np.zeros(flagrow.shape, np.int32)
@@ -765,6 +771,7 @@ class MSTile(object):
 
             if self.dh._apply_flags:
                 flagcol = self.dh.fetchslice("FLAG", subset=table_subset)
+                flagcol[:] = np.logical_or.reduce(axis=-2)[:,:,np.newaxis]
                 flagrow = table_subset.getcol("FLAG_ROW")
                 flagcol[flagrow, :, :] = True
                 print("  read FLAG/FLAG_ROW", file=log(2))
@@ -897,14 +904,27 @@ class MSTile(object):
                 # still need to adjust conjugate rows
                 obvis0[subset.rebin_row_map<0] = obvis0[subset.rebin_row_map<0].conjugate()
                 nrows = nrows0
-                obvis = data['obvis'] = obvis0
+                data['obvis'] = obvis0
+                obvis = data['obvis']   # can't string assigmnent together: x = dict['key'] = y does not guarantee that x is dict['key']!!!
                 data['flags'] = flag_arr0
                 flag_arr = data['flags']
-                uvwco = data['uvwco'] = uvw0
+                data['uvwco'] = uvw0
+                uvwco = data['uvwco']
                 if num_weights:
                     data['weigh'] = weights0
                 del obvis0, uvw0, weights0
-
+                
+            # normalize by amplitude, if needed
+#            if self.dh.do_normalize_data:
+#                dataabs = np.abs(obvis)
+#                with np.errstate(divide='ignore'):
+#                    obvis /= dataabs
+#                    obvis[dataabs==0] = 0
+#                if 'weigh' in data:
+#                    data['weigh'] *= dataabs[np.newaxis, ...]
+#                else:
+#                    data['weigh'] = dataabs.reshape([1]+list(dataabs.shape))
+                    
             # compute PA rotation angles, if needed
             if self.dh.parallactic_machine is not None:
                 angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
@@ -1150,8 +1170,8 @@ class MSTile(object):
 
             ### APPLY DEROTATION HERE
             if self.dh.derotate_output:
-                vis = data[column][rows, freq_slice]
-                vis[:] = self.dh.parallactic_machine.derotate(subset.time_col[rows], vis,
+                data[column][rows, freq_slice] = self.dh.parallactic_machine.derotate(subset.time_col[rows],
+                                                               data[column][rows, freq_slice],
                                                                subset.antea[rows], subset.anteb[rows],
                                                                angles=data['pa'][rows])
         if flag_cube is not None:
@@ -1306,7 +1326,16 @@ class MSTile(object):
                 else:
                     print("  {:.2%} visibilities flagged by solver, but we're not saving flags".format(ratio), file=log)
             else:
-                print("  no new flags were generated", file=log)
+                 print("  no solver flags were generated", file=log)
+                 # bitflag still needs to be cleared though, if we're writing to it
+                 if self.dh._save_bitflag:
+                     self.bflagcol &= ~self.dh._save_bitflag
+                     bflag_col = True
+                     if self.dh._save_flags:
+                         print("  no visibilities flagged by solver: saving to BITFLAG and FLAG columns", file=log)
+                         flag_col = self.bflagcol != 0
+                     else:
+                         print("  no visibilities flagged by solver: saving to BITFLAG column only", file=log)
 
             if self.dh._save_flags_apply:
                 prior_flags = subset.upsample((data['flags'] & FL.PRIOR) != 0)
@@ -1316,11 +1345,13 @@ class MSTile(object):
                     flag_col |= prior_flags
                 ratio = prior_flags.sum() / float(prior_flags.size)
                 print("  also transferring {:.2%} input flags (--flags-save-legacy apply)".format(ratio), file=log)
+                flag_col[:] = np.logical_or.reduce(axis=-2)[:,:,np.newaxis]
 
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
             if bflag_col is not None:
                 if ("bitflag" in only_save):
+                    self.bflagcol[:] = np.bitwise_or.reduce(self.bflagcol, axis=2)[:,:,np.newaxis]
                     self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
                     totflags = (self.bflagcol != 0).sum()
                     self.dh.flagcounts['OUT'] += totflags

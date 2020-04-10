@@ -124,7 +124,8 @@ class PickledDatabase(iface_database):
         for key in list(self._parameters.keys()):
             if not self._parameters[key]._populated:
                 del self._parameters[key]
-        pickle.dump(self._parameters, open(self.filename + ".skel", 'wb'), 2)
+        with open(self.filename + ".skel", 'wb') as pf:
+            pickle.dump(self._parameters, pf, 2)
         print("saved updated parameter skeletons to {}".format(self.filename + ".skel"), file=log(0))
 
     def _backup_and_rename(self, backup):
@@ -181,6 +182,9 @@ class PickledDatabase(iface_database):
             if type(self.metadata) is not OrderedDict or not "mode" in self.metadata:
                 raise IOError("{}: invalid metadata entry".format(filename))
             self.mode = self.metadata['mode']
+        
+        def __del__(self):
+            self.fobj.close()
 
         def __next__(self):
             try:
@@ -235,7 +239,8 @@ class PickledDatabase(iface_database):
             print(ModColor.Str("{} older than this code: will try to rebuild".format(descfile)), file=log(0))
         else:
             try:
-                self._parameters = pickle.load(open(descfile, 'rb'))
+                with open(descfile, 'rb') as pf:
+                    self._parameters = pickle.load(pf)
             except:
                 traceback.print_exc()
                 print(ModColor.Str("error loading {}, will try to rebuild".format(descfile)), file=log(0))

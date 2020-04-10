@@ -11,9 +11,10 @@ import numpy as np
 from numpy.ma import masked_array
 from cubical.tools import logger
 
-log = logger.getLogger("param_db",2)
+log = logger.getLogger("param_db", 0)
 import scipy.interpolate, scipy.spatial
 import itertools
+from collections import OrderedDict
 
 
 class _Record(object):
@@ -37,7 +38,9 @@ class Parameter(object):
     a set of masked arrays (e.g. 2D time/frequency arrays), one such "slice" per each discrete 
     point (e.g. per each antenna, direction, correlation, etc.)
 
-    Each such slice may be accessed directly with get_slice() (e.g. get_slice(ant=N,corr1=0,corr2=1)) 
+    Discrete grids may use sets of string labels (e.g. antenna names) instead of indices.
+
+    Each such slice may be accessed directly with get_slice() (e.g. get_slice(ant='antX',corr1=0,corr2=1))
     The returned array is a reference to the underlying slice, and may be modified. Note that each
     slice can (in principle) be defined on a different subset of the overall continuous grid.
 
@@ -80,10 +83,16 @@ class Parameter(object):
         self.interpolation_axes = [self.axis_index[axis] for axis in interpolation_axes]
         # list of grid values for each axis, or None if not yet defined
         self.grid = [grid.get(axis) for axis in axes]
+        # index of grid values to ordinal numbers (for sparse or labelled axes)
+        self.grid_index = {axis: OrderedDict([(x, i) for i, x in enumerate(values)])
+                           for axis, values in grid.items() if axis not in interpolation_axes}
         # shape
         self.shape = [0 if g is None else len(g) for g in self.grid]
         # list of sets of grid values actually defined, maintained during prototype->skeleton state
-        self._grid_set = [set() for axis in axes]
+        self._grid_set = [set() for _ in axes]
+        # default set of grid values or labels, applicable to sparse axes
+        self._default_grid_set = [set(grid.get(axis, [])) for axis in axes]
+
         # becomes true if parameter is populated
         # A prototype is initially unpopulated; once _update_shape has been called
         # at least once, it becomes populated
@@ -167,11 +176,14 @@ class Parameter(object):
                     if set(grid[axis]) - self._grid_set[i]:
                         raise ValueError("grid of axis {} does not match previous definition".format(axis))
             # else it's a full axis -- check that shape conforms.
-            elif not self.shape[i]:
-                self.shape[i] = shape[i]
-            elif self.shape[i] != shape[i]:
-                raise ValueError("axis {} of length {} does not match previously defined length {}".format(
-                    axis, shape[i], self.shape[i]))
+            else:
+                if not self.shape[i]:
+                    self.shape[i] = shape[i]
+                elif self.shape[i] != shape[i]:
+                    raise ValueError("axis {} of length {} does not match previously defined length {}".format(
+                        axis, shape[i], self.shape[i]))
+                # init grid if not already set
+                self._grid_set[i] = self._default_grid_set[i]
 
     def _finalize_shape(self):
         """
@@ -186,7 +198,7 @@ class Parameter(object):
         if not self._populated:
             return False
 
-        self.grid_index = []
+        self.grid_index = {}
         for iaxis, (axis, grid) in enumerate(zip(self.axis_labels, self.grid)):
             # if an actual grid was accumulated via update_shape, and either (a) axis
             # is interpolatable, or (b) no grid was predefined, then we use the accumulated grid
@@ -197,7 +209,7 @@ class Parameter(object):
             elif grid is None:
                 self.grid[iaxis] = grid = np.arange(self.shape[iaxis])
             # build grid index
-            self.grid_index.append({x: i for i, x in enumerate(grid)})
+            self.grid_index[axis] = OrderedDict([(x, i) for i, x in enumerate(grid)])
         # build interpolation grids normalized to [0,1]
         self._norm_grid = {}
         self._norm_grid_map = {}
@@ -210,6 +222,12 @@ class Parameter(object):
             self._norm_grid[iaxis] = g1 = g1 / gmax
             self._gminmax[iaxis] = gmin, gmax
         print("dimensions of {} are {}".format(self.name, ','.join(map(str, self.shape))), file=log(0))
+        if log.verbosity() > 0:
+            for iaxis, axis in enumerate(self.axis_labels):
+                if iaxis in self.interpolation_axes:
+                    print("  axis {}: {} to {}".format(axis, *self._gminmax[iaxis]), file=log(1))
+                else:
+                    print("  axis {}: {}".format(axis, " ".join(map(str, self.grid_index[axis].keys()))), file=log(1))
         return True
 
     def _to_norm(self, iaxis, g):
@@ -272,7 +290,7 @@ class Parameter(object):
         array_slice = []
         for iaxis, axis in enumerate(self.axis_labels):
             if axis in item.grid:
-                grid_index = self.grid_index[iaxis]
+                grid_index = self.grid_index[axis]
                 array_slice.append(np.array([grid_index[g] for g in item.grid[axis]]))
             else:
                 array_slice.append(np.arange(self.shape[iaxis]))
@@ -343,7 +361,8 @@ class Parameter(object):
             #   grid:       [N-vector, M-vector] grid points
             #   norm_grid:  [N-vector, M-vector] normalized grid points
             #   subset:     [N-vector bool or slice(None), M-vector bool or slice(None)]
-            #   gridmap:    [{x: i}, {y: j}] two dicts giving reverse mapping from grid values to rows/columns of array
+            #   gridmap:    [{x: i}, {y: j}] two dicts giving reverse mapping from grid values (of interpolatable axes)
+            #               to rows/columns of array
             self._array_slices[tuple(slicer)] = _Record(array=array,
                         grid=grids[0], norm_grid=grids[1], subset=subset,
                         gridmap=[{x: i for i, x in enumerate(grid)} for grid in grids[0]])
@@ -355,9 +374,14 @@ class Parameter(object):
         slicer = []
         for iaxis, (axis, n) in enumerate(zip(self.axis_labels, self.shape)):
             if axis in axes:
-                if not isinstance(axes[axis], int):
-                    raise TypeError("invalid axis {}={}".format(axis, axes[axis]))
-                slicer.append(axes[axis])
+                value = value0 = axes[axis]
+                # if value of axis is in the grid index, look it up
+                if axis in self.grid_index and value in self.grid_index[axis]:
+                    value = self.grid_index[axis][value]
+                # better be an int now
+                if not isinstance(value, int):
+                    raise ValueError("invalid axis {}={}".format(axis, value0))
+                slicer.append(value)
             elif iaxis in self.interpolation_axes:
                 slicer.append(None)
             elif n == 1:
@@ -406,7 +430,7 @@ class Parameter(object):
             grid (dict): 
                 Axes to be returned. For interpolatable axes, grid should be a vector of coordinates
                 (the superset of all slice coordinates will be used if an axis is not supplied). 
-                Discrete axes may be specified as a single index, or a vector of indices, or a 
+                Discrete axes may be specified as a single value, or a list of values, or a
                 slice object. If any axis is missing, the full axis is returned.
 
         Returns:
@@ -417,8 +441,6 @@ class Parameter(object):
                        itertools.product(*input_slicers) iterates over all relevant slices
                 - output_slicers: corresponding list of iterables giving the index in the output array to which
                        the resampled input slice is to be assigned
-                - input_slice_reduction:  applied to each input slice to reduce size=1 axes
-                - input_slice_broadcast: applied to each interpolation result to broadcast back size=1 axes
                 - output_slice_grid: per each interpolatable axis with size>1, grid onto which interpolation is done,
                                      or None if size==1
                 - output_reduction:  index applied to output array, to eliminate axes for which only a single element
@@ -447,12 +469,25 @@ class Parameter(object):
             else:
                 sl = np.arange(size)
                 if axis in grid:
-                    sl = sl[grid[axis]]
+                    value = grid[axis]
+                    # list of values: looked up in grid index
+                    if isinstance(value,(list, tuple, np.ndarray)):
+                        sl = [self.grid_index[axis][x] for x in value]
+                    # slice: direct index
+                    elif type(value) is slice:
+                        sl = sl[grid[axis]]
+                    # other: look up in grid index
+                    else:
+                        sl = self.grid_index[axis].get(value, None)
+                        if sl is None:
+                            raise ValueError("invalid axis value {}={}".format(axis, value))
+
                 if np.isscalar(sl):
                     output_shape.append(1)
                     input_slicers.append([sl])
                     output_slicers.append([0])
                 else:
+                    sl = np.array(sl)
                     output_shape.append(len(sl))
                     input_slicers.append(sl)
                     output_slicers.append(sl - sl[0])
@@ -553,31 +588,16 @@ class Parameter(object):
                                  for (ia, i0, i1), (ja, j0, j1) in zip(input_grid_segment0, input_grid_segment)]):
                     print("  slice {} preparing {}D interpolator for {}".format(slicer,
                         len(segment_grid), ",".join(["{}:{}".format(*seg[1:]) for seg in input_grid_segment])), file=log(2))
+                    # arseg: relevant segment of array slice
+                    arseg = arse.array[tuple(array_segment_slice)]
                     # arav: linear array of all values, adata: all unflagged values
-                    arav = arse.array[tuple(array_segment_slice)].ravel()
+                    arav = arseg.ravel()
                     adata = arav.data[~arav.mask] if arav.mask is not np.ma.nomask else arav.data
-                    # edge case: no valid data. Make fake interpolator
-                    if not len(adata):
-                        interpolator = lambda coords: np.full(coords.shape[:-1], np.nan, adata.dtype)
-                    # for ndim=0, just return the 0,0 element of array
-                    elif not len(segment_grid):
-                        interpolator = lambda coords: arse.array[tuple(input_slice_reduction)]
-                    # for ndim=1, use 1D interpolator
-                    elif len(segment_grid) == 1:
-                        agrid = segment_grid[0]
-                        if arav.mask is not np.ma.nomask:
-                            agrid = agrid[~arav.mask]
-                        # handle edge case of 1 valid point, since interp1d() falls over on this
-                        if len(adata) == 1:
-                            adata = np.array([adata[0], adata[0]])
-                            agrid = np.array([agrid[0] - 1e-6, agrid[0] + 1e-6])
-                        # make normal interpolator
-                        interpolator = scipy.interpolate.interp1d(agrid, adata, bounds_error=False, fill_value=np.nan)
-                    # ...because LinearNDInterpolator works for ndim>1 only
-                    else:
-                        meshgrids = np.array([g.ravel() for g in np.meshgrid(*segment_grid, indexing='ij')]).T
-                        if arav.mask is not np.ma.nomask:
-                            meshgrids = meshgrids[~arav.mask, :]
+
+                    # this is used by the 2D and >2D cases, so make a function
+                    def makeLinearNDInterpolator(segment_grid, arav, adata):
+                        meshgrids_full = np.array([g.ravel() for g in np.meshgrid(*segment_grid, indexing='ij')]).T
+                        meshgrids = meshgrids_full[~arav.mask, :] if arav.mask is not np.ma.nomask else meshgrids_full
                         qhull_options = "Qbb Qc Qz Q12"
                         # edge case of <4 valid points. Delaunay falls over, so artificially duplicate points,
                         # and allow Qhull juggling with the QJ option
@@ -590,14 +610,61 @@ class Parameter(object):
                         elif len(set(meshgrids[:, 0])) < 2 or len(set(meshgrids[:, 1])) < 2:
                             qhull_options += " QJ"
                         triang = scipy.spatial.Delaunay(meshgrids, qhull_options=qhull_options)
-                        interpolator = scipy.interpolate.LinearNDInterpolator(triang, adata, fill_value=np.nan)
+                        return scipy.interpolate.LinearNDInterpolator(triang, adata, fill_value=np.nan), meshgrids_full
+
+                    # edge case: no valid data. Make fake interpolator
+                    if not len(adata):
+                        interpolator = lambda coords: np.full(coords.shape[:-1], np.nan, adata.dtype)
+                    # for ndim=0, just return the 0,0 element of array
+                    elif not len(segment_grid):
+                        interpolator = lambda coords: arse.array
+                    # for ndim=1, use 1D interpolator
+                    elif len(segment_grid) == 1:
+                        agrid = segment_grid[0]
+                        if arav.mask is not np.ma.nomask:
+                            agrid = agrid[~arav.mask]
+                        # handle edge case of 1 valid point, since interp1d() falls over on this
+                        if len(adata) == 1:
+                            adata = np.array([adata[0], adata[0]])
+                            agrid = np.array([agrid[0] - 1e-6, agrid[0] + 1e-6])
+                        # make normal interpolator
+                        interpolator = scipy.interpolate.interp1d(agrid, adata, bounds_error=False,
+                                                                  fill_value="extrapolate")
+                    # for 2D, use fill, then interp2d (which extrapolates)
+                    elif len(segment_grid) == 2:
+                        # if any points inside the slice are masked, inpaint them with LinearNDInterpolator first,
+                        # so that we have a complete 2D filled_array
+                        if arseg.mask is not np.ma.nomask and arseg.mask.any():
+                            ndinp, meshgrids = makeLinearNDInterpolator(segment_grid, arav, adata)
+                            # list of coordinates where we're missing values
+                            missing_grids = meshgrids[arav.mask, :]
+                            # fill missing values using interpolator
+                            filled_array = arav.copy()
+                            filled_array[arav.mask] = ndinp(missing_grids)
+                            filled_array = filled_array.reshape(arseg.shape)
+                        else:
+                            filled_array = arseg.data
+                        # make 2D interpolator
+                        interpolator1 = scipy.interpolate.interp2d(segment_grid[0], segment_grid[1],
+                                                                  filled_array.T, bounds_error=False)
+                        interpolator = lambda *output_coord: interpolator1(*output_coord).T
+
+                    # for >2 dims, use LinearNDInterpolator. Note that this does not extrapolate.
+                    elif len(segment_grid) > 2:
+                        interpolator1, _ = makeLinearNDInterpolator(segment_grid, arav, adata)
+                        interpolator = lambda *output_coord: \
+                            interpolator1(np.array([x.ravel() for x in np.meshgrid(*output_coord, indexing='ij')]).T).\
+                                reshape(interp_shape)
+
                     # cache the interpolator
                     self._interpolators[slicer] = interpolator, input_grid_segment
 
-                # make a meshgrid of output coordinates, and massage into correct shape for interpolator
-                coords = np.array([x.ravel() for x in np.meshgrid(*output_coord, indexing='ij')])
-                # call interpolator. Reshape into output slice shape
-                result = interpolator(coords.T).reshape(interp_shape)
+                result = interpolator(*output_coord)
+
+                # # make a meshgrid of output coordinates, and massage into correct shape for interpolator
+                # coords = np.array([x.ravel() for x in np.meshgrid(*output_coord, indexing='ij')])
+                # # call interpolator. Reshape into output slice shape
+                # result = interpolator(coords.T).reshape(interp_shape)
                 print("  interpolated onto {} grid".format("x".join(map(str, interp_shape))), file=log(2))
                 output_array[out_slicer] = result[tuple(interp_broadcast)]
         # return array, throwing out unneeded axes
@@ -678,30 +745,33 @@ class Parameter(object):
         output_mask  = output_mask[tuple(output_reduction)]
         output_array[output_mask] = self.empty
 
-        print("{} solutions: interpolation results in {}/{} missing values".format(self.name,
+        print("{} solutions: no interpolation done on {}/{} missing values".format(self.name,
                             output_mask.sum(), output_mask.size), file=log(1))
 
         return masked_array(output_array, output_mask, fill_value=self.empty)
 
-    def match_grids(self, **grid):
+    def find_mismatched_grids(self, **grid):
         """
-        Looks up the specified grid values and returns True if they all match.
-        This indicates that lookup() can be done on the grids
-        (if not, then reinterpolate() should be used).
+        Looks up the specified grid values and returns list of mismatches.
+        Empty list indicates that lookup() can be done on the grids
+        (if not empty, then reinterpolate() should be used).
 
         Args:
             grid (dict): 
                 Grid coordinates to look up
 
         Returns:
-            True if all coordinate values match the parameter grid.
-            False if at least one doesn't.
+            list of (axis, list_of_mismatching_values) tuples
         """
+        mismatches = []
         for axis, gridvalues in grid.items():
             iaxis = self.axis_index[axis]
-            if not set(gridvalues).issubset(self._grid_set[iaxis]):
-                return False
-        return True
+            grid0values = self._grid_set[iaxis] or set(range(self.shape[iaxis]))
+            mismatch = set(gridvalues) - grid0values
+            if mismatch:
+                mismatches.append((axis, sorted(mismatch), iaxis in self.interpolation_axes))
+
+        return mismatches
 
     def release_cache(self):
         """ 

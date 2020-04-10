@@ -131,14 +131,15 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         # if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
         update += self.gains
+        self.restrict_solution(update)
 
         if self.iters % 2 == 0 or self.n_dir > 1:
             self.gains += update
             self.gains *= 0.5
+            self.restrict_solution(self.gains)
         else:
             np.copyto(self.gains, update)
 
-        self.restrict_solution()
 
     def compute_update(self, model_arr, obser_arr):
         """
@@ -306,13 +307,13 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         return 
 
-    def restrict_solution(self):
+    def restrict_solution(self, gains):
         
-        PerIntervalGains.restrict_solution(self)
+        PerIntervalGains.restrict_solution(self, gains)
 
         if self.ref_ant is not None:
-            phase = np.angle(self.gains[...,self.ref_ant,0,0])
-            self.gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
+            phase = np.angle(gains[...,self.ref_ant,0,0])
+            gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
 
 
 

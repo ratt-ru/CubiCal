@@ -155,3 +155,51 @@ def compute_chisq(r, chisq):
                         for c1 in range(2):
                             for c2 in range(2):
                                 chisq[t,f,aa] += r[i,t,f,aa,ab,c1,c2].real**2 + r[i,t,f,aa,ab,c1,c2].imag**2
+
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
+def compute_chisq_diag(r, chisq):
+    """
+    Compute chi-square over diagonal correlations, models, and one antenna axis.
+
+    Args:
+        r (np.complex64 or np.complex128):
+            Array with dimensions (i, t, f , a, a, c, c)
+        chisq (np.float64):
+            Array with dimensions (t, f, a)
+    """
+    n_mod = r.shape[0]
+    n_tim = r.shape[1]
+    n_fre = r.shape[2]
+    n_ant = r.shape[3]
+
+    for aa in prange(n_ant):
+        for ab in range(n_ant):
+            for i in range(n_mod):
+                for t in range(n_tim):
+                    for f in range(n_fre):
+                        for c in range(2):
+                            chisq[t,f,aa] += r[i,t,f,aa,ab,c,c].real**2 + r[i,t,f,aa,ab,c,c].imag**2
+
+@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
+def compute_chisq_offdiag(r, chisq):
+    """
+    Compute chi-square over off-diagonal correlations, models, and one antenna axis.
+
+    Args:
+        r (np.complex64 or np.complex128):
+            Array with dimensions (i, t, f , a, a, c, c)
+        chisq (np.float64):
+            Array with dimensions (t, f, a)
+    """
+    n_mod = r.shape[0]
+    n_tim = r.shape[1]
+    n_fre = r.shape[2]
+    n_ant = r.shape[3]
+
+    for aa in prange(n_ant):
+        for ab in range(n_ant):
+            for i in range(n_mod):
+                for t in range(n_tim):
+                    for f in range(n_fre):
+                        for c in range(2):
+                            chisq[t,f,aa] += r[i,t,f,aa,ab,c,1-c].real**2 + r[i,t,f,aa,ab,c,1-c].imag**2

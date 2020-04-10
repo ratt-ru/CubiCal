@@ -60,7 +60,8 @@ class _DefaultWriter(object):
             message = ModColor.Str(message, col=self.color, Bold=self.bold)
         self.logger.log(self.level if level_override is None else level_override, message)
 
-    print = write
+    def print(self, *args):
+        return self.write(" ".join(map(str, args)))
 
 class LoggerWrapper(object):
     def __init__(self, logger, verbose=None, log_verbose=None):
@@ -150,11 +151,14 @@ class LoggerWrapper(object):
         """
         _DefaultWriter(self.logger, logging.EXCEPTION, color=color).write(msg, print_once=print_once)
 
-
-    print = info
+    def print(self, *args):
+        return self.info(" ".join(map(str, args)))
 
     def write(self, message, level=logging.INFO, verbosity=0, print_once=None, color=None):
-        _DefaultWriter(self.logger, level - int(verbosity), color=color).write(message,
+        # apply verbosity only to INFO levels
+        if level == logging.INFO:
+            level -= int(verbosity)
+        _DefaultWriter(self.logger, level, color=color).write(message,
                                                                                print_once=print_once)
 
 _proc_status = '/proc/%d/status' % os.getpid()
@@ -273,19 +277,27 @@ class ColorStrippingFormatter(logging.Formatter):
         logging.Formatter.__init__(self, fmt, datefmt)
         self.strip = strip
 
+    def label(self, record):
+        if record.levelno < logging.WARNING:
+            return "INFO", "37;42"
+        elif record.levelno < logging.ERROR:
+            return "WARNING", "37;43"
+        elif record.levelno < logging.CRITICAL:
+            return "ERROR", "5;41"
+        else:
+            return "CRITICAL", "5;41"
+
+
     def format(self, record):
         """Uses parent class to format record, then strips off colors"""
         msg = logging.Formatter.format(self, record)
+        label, color = self.label(record)
         if self.strip:
-            return re.sub("\033\\[[0-9]+m", "", msg, 0)
+            return "{:10s}{}".format(label, re.sub("\033\\[[0-9]+m", "", msg, 0))
         else:
-            msg = re.sub("^INFO      ", "\033[1;37;42mINFO      \033[0m", msg)
-            msg = re.sub("^WARNING   ", "\033[1;37;43mWARNING   \033[0m", msg)
-            msg = re.sub("^CRITICAL  ", "\033[1;5;41mCRITICAL  \033[0m", msg)
-            msg = re.sub("^ERROR     ", "\033[1;5;41mERROR     \033[0m", msg)
-            return msg
+            return "\033[1;{}m{:10s}\033[0m{}".format(color, label, msg)\
 
-_fmt = "%(levelname)-10s%(separator)s - %(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
+_fmt = "%(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
 #        _fmt = "%(asctime)s %(name)-25.25s | %(message)s"
 _datefmt = '%H:%M:%S'#'%H:%M:%S.%f'
 _logfile_formatter = ColorStrippingFormatter(_fmt, _datefmt, strip=True)

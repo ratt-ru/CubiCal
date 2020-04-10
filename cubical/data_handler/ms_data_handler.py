@@ -163,7 +163,8 @@ class MSDataHandler:
                  feed_rotate_model="auto",
                  pa_rotate_model=True,
                  pa_rotate_montblanc=True,
-                 derotate_output=True):
+                 derotate_output=True,
+                 do_normalize_data=False):
         """
         Initialises a DataHandler object.
 
@@ -229,6 +230,7 @@ class MSDataHandler:
         self.beam_pattern = beam_pattern
         self.beam_l_axis = beam_l_axis
         self.beam_m_axis = beam_m_axis
+        self.do_normalize_data = do_normalize_data
 
         self.fid = fid if fid is not None else 0
 
@@ -279,6 +281,8 @@ class MSDataHandler:
         self.metadata.antenna_name = antnames
         self.metadata.antenna_name_short = antnames_short = [name[prefix_length:] for name in antnames]
         self.metadata.antenna_name_prefix = antnames[0][:prefix_length]
+        self.metadata.antenna_index = {name: i for i, name in enumerate(self.metadata.antenna_name_prefix)}
+        self.metadata.antenna_index.update({name: i for i, name in enumerate(antnames)})
 
         self.metadata.baseline_name = { (p,q): "{}-{}".format(antnames[p], antnames_short[q])
                                         for p in range(self.nants) for q in range(p+1, self.nants)}
@@ -596,7 +600,7 @@ class MSDataHandler:
                                                            feed_basis=self._poltype,
                                                            feed_angles=feed_angles,
                                                            enable_rotation=self.rotate_model,
-                                                           enable_pa=pa_rotate_model,
+                                                           enable_pa=pa_rotate_model or derotate_output,
                                                            enable_derotation=self.derotate_output,
                                                            field_centre=tuple(np.rad2deg(self.phadir)))
         else:
@@ -911,6 +915,8 @@ class MSDataHandler:
         ## So if we do have a slice, we should really read the column in and write it back out. This seems a waste
         ## for visibility columns (since presumably we're only interested in the slice), so we'll initialize the
         ## out-of-slice values with zeroes, and flag them out
+        if column == "BITFLAG" or column == "FLAG":
+            value[:] = np.bitwise_or.reduce(value, axis=2)[:,:,np.newaxis]
 
         if self._channel_slice == slice(None) and self._corr_slice == slice(None):
             return subset.putcol(column, value, startrow, nrows)

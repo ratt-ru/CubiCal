@@ -115,12 +115,15 @@ class PhaseDiagGains(PerIntervalGains):
 
         return exportables
 
-    def importable_solutions(self):
+    def importable_solutions(self, grid0):
         """ Returns a dictionary of importable solutions for this machine type. """
+        # can import 2x2 complex gain, with a corr1/corr2 axis
+        solutions = PerIntervalGains.importable_solutions(self, grid0)
 
-        # defines solutions we can import from
-        # can import phase, or also a 2x2 complex gain
-        return { 'gain': self.interval_grid, 'phase': self.interval_grid }
+        # but also phase (with a corr axis)
+        solutions['phase'] = dict(dir=grid0['dir'] if self.dd_term else [0], ant=grid0['ant'], corr=grid0['corr'], **self.interval_grid)
+
+        return solutions
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
@@ -160,7 +163,7 @@ class PhaseDiagGains(PerIntervalGains):
 
         # loaded -- do the housekeeping
 
-        self.restrict_solution()
+        self.restrict_solution(self.phases)
         np.multiply(self.phases, 1j, out=self.gains)
         np.exp(self.gains, out=self.gains)
         self._gains_loaded = True
@@ -182,25 +185,25 @@ class PhaseDiagGains(PerIntervalGains):
             update *= 0.5
         self.phases += update
 
-        self.restrict_solution()
+        self.restrict_solution(self.phases)
 
         np.multiply(self.phases, 1j, out=self.gains)
         np.exp(self.gains, out=self.gains)
         self.gains[...,0,1].fill(0)
         self.gains[...,1,0].fill(0)
 
-    def restrict_solution(self):
+    def restrict_solution(self, phases):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying
         any machine specific restrictions.
         """
 
-        PerIntervalGains.restrict_solution(self)
+        # PerIntervalGains.restrict_solution(self)
 
         if self.ref_ant is not None:
-            self.phases -= self.phases[:,:,:,self.ref_ant,:,:][:,:,:,np.newaxis,0,0]
+            phases -= phases[:,:,:,self.ref_ant,0,0][:,:,:,np.newaxis,np.newaxis,np.newaxis]
         for idir in self.fix_directions:
-            self.phases[idir, ...] = 0
+            phases[idir, ...] = 0
 
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, noise):
