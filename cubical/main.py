@@ -31,8 +31,6 @@ from time import time
 # even if one is only trying to save figures to .png.
 import matplotlib
 
-from cubical.data_handler.wisdom import estimate_mem
-
 from cubical.tools import logger
 # set the base name of the logger. This must happen before any other loggers are instantiated
 # (Thus before anything else that uses the logger is imported!)
@@ -54,6 +52,7 @@ _runtime_templates = dict(DATE=_start_datetime.strftime("%Y%m%d"),
                           USER=getpass.getuser(),
                           HOST=os.uname()[1],
                           ENV=os.environ)
+
 
 def expand_templated_name(name, **keys):
     """
@@ -94,6 +93,7 @@ def expand_templated_name(name, **keys):
         raise ValueError(name)
 
 from cubical.data_handler.ms_data_handler import MSDataHandler
+from cubical.data_handler.wisdom import estimate_mem
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine, jones_chain_robust_machine
