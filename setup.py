@@ -52,7 +52,8 @@ if on_rtd:
 else:
     requirements = ['future',
                     'numpy',
-                    'numba<=0.48.0; python_version <= "2.7"',
+                    'llvmlite==v0.31.0; python_version <= "2.7"',
+                    'numba==0.48.0; python_version <= "2.7"',
                     'numba; python_version >= "3.0"',
                     'python-casacore<=3.0.0; python_version <= "2.7"',
                     'python-casacore<=3.0.0; python_version >= "3.0"', 
