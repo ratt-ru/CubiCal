@@ -31,8 +31,6 @@ from time import time
 # even if one is only trying to save figures to .png.
 import matplotlib
 
-from cubical.data_handler.wisdom import estimate_mem
-
 from cubical.tools import logger
 # set the base name of the logger. This must happen before any other loggers are instantiated
 # (Thus before anything else that uses the logger is imported!)
