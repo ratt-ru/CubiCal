@@ -87,7 +87,9 @@ setup(name='cubical',
       install_requires=requirements,
       include_package_data=True,
       zip_safe=False,
-      scripts=['cubical/bin/print-cubical-stats'],
+      scripts=['cubical/bin/print-cubical-stats',
+               'cubical/bin/plot-leakage-solutions',
+               'cubical/bin/plot-gain-solutions'],
       entry_points={'console_scripts': ['gocubical = cubical.main:main']},
       extras_require={
           'lsm-support': ['montblanc @git+https://github.com/ska-sa/montblanc.git@0.6.1'],
@@ -96,5 +98,3 @@ setup(name='cubical',
                                 'meqtrees-cattery >= 1.7.0']
       }
 )
-
-

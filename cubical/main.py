@@ -268,7 +268,10 @@ def main(debugging=False):
             warnings.simplefilter('error', UserWarning)
             np.seterr(all='raise')
             if GD["debug"]["escalate-warnings"] > 1:
-                warnings.filterwarnings("error")
+                warnings.simplefilter('error', Warning)
+                log(0).print("all warnings will be escalated to exceptions")
+            else:
+                log(0).print("UserWarnings will be escalated to exceptions")
 
         # clean up shared memory from any previous runs
         shm_utils.cleanupStaleShm()
@@ -326,6 +329,7 @@ def main(debugging=False):
         print(ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green"), file=log)
 
         have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
+        have_solvables = any([jo['solvable'] for jo in jones_opts])
 
         solver.GD = GD
 
@@ -341,6 +345,9 @@ def main(debugging=False):
         print("solver is apply-only type: {}".format(apply_only), file=log(0))
         load_model = solver.SOLVERS[solver_type].is_model_required
         print("solver requires model: {}".format(load_model), file=log(0))
+        
+        if not apply_only and not have_solvables:
+            raise UserInputError("No Jones terms have been marked as solvable")
 
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
@@ -369,6 +376,7 @@ def main(debugging=False):
                            pa_rotate_model=GD["model"]["pa-rotate"],
                            pa_rotate_montblanc=GD["montblanc"]["pa-rotate"],
                            derotate_output=GD["out"]["derotate"],
+                           do_normalize_data=GD["data"]["normalize"]
                            )
 
         solver.metadata = ms.metadata
@@ -473,13 +481,16 @@ def main(debugging=False):
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
+        solver_opts["correct-dir"] = GD["out"]["correct-dir"] if GD["out"]["correct-dir"] >= 0 else None
 
-        grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
+        grid = dict(dir=list(range(len(ms.model_directions) or 1)), ant=ms.antnames, corr=list(ms.feeds), time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
 
+        solver.gm_factory.set_metadata(ms)
+                                                       
         # create IFR-based gain machine. Only compute gains if we're loading a model
         # (i.e. not in load-apply mode)
         solver.ifrgain_machine = ifr_gain_machine.IfrGainMachine(solver.gm_factory, GD["bbc"], compute=load_model)
@@ -510,7 +521,7 @@ def main(debugging=False):
             chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
             max_chunks_per_tile = 0
             if GD["dist"]["max-chunks"]:
-                chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
+                chunks_per_tile = max(max(GD["dist"]["max-chunks"], chunks_per_tile), 1)
                 max_chunks_per_tile = GD["dist"]["max-chunks"]
 
         print("defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
@@ -630,6 +641,10 @@ def main(debugging=False):
         ms.close()
 
         print(ModColor.Str("completed successfully", col="green"), file=log)
+
+    except RuntimeWarning:
+        from cubical.tools import pdb
+        pdb.set_trace()
 
     except Exception as exc:
         for level, message in prelog_messages:

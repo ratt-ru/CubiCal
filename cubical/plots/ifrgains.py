@@ -39,7 +39,8 @@ def _normifrgain(rr):
         offset = _abs(rr)
         offset[rr==1] = ma.masked
         if offset.count():
-            return float(offset.mean()), float(offset.std())
+            with np.errstate(under='ignore'): # work around https://github.com/numpy/numpy/issues/4895
+                return float(offset.mean()), float(offset.std())
         else:
             return 1, 0
 
@@ -54,7 +55,8 @@ def _complexifrgain(rr):
             offset = float(_abs(vals).mean())
             mean = vals.mean().ravel()[0]
             mean = cmath.rect(offset, cmath.phase(mean))
-            return mean, _abs(vals - mean).std()
+            with np.errstate(under='ignore'): # work around https://github.com/numpy/numpy/issues/4895
+                return mean, _abs(vals - mean).std()
         else:
             return 1,0
 

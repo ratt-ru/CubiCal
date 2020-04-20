@@ -17,8 +17,9 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
     resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
     resmask[:] = fl_prior[..., np.newaxis, np.newaxis] #| absres[0, :, :, p, q]==0
     res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
-    vmin = float(max(res.min(), 1e-9))
-    vmax = float(res.max())
+    resmin, resmax = res.min(), res.max()
+    vmin = float(max(resmin if resmin is not np.ma.masked else 0, 1e-9))
+    vmax = float(resmax if resmax is not np.ma.masked else 1)
     if vmin != vmax:
         from matplotlib.colors import LogNorm
         norm = LogNorm(vmin, vmax)
