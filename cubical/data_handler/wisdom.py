@@ -1,3 +1,4 @@
+from __future__ import print_function
 from psutil import virtual_memory
 from cubical import workers
 
