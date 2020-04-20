@@ -53,6 +53,7 @@ _runtime_templates = dict(DATE=_start_datetime.strftime("%Y%m%d"),
                           HOST=os.uname()[1],
                           ENV=os.environ)
 
+
 def expand_templated_name(name, **keys):
     """
         Helper method: expands name from templated name. This uses the standard
@@ -92,6 +93,7 @@ def expand_templated_name(name, **keys):
         raise ValueError(name)
 
 from cubical.data_handler.ms_data_handler import MSDataHandler
+from cubical.data_handler.wisdom import estimate_mem
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine, jones_chain_robust_machine
@@ -529,6 +531,9 @@ def main(debugging=False):
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
+
+        # Estimate memory usage. This is still experimental.
+        estimate_mem(ms, tile_list, GD["data"], GD["dist"])
 
         # now that we have tiles, define the flagging situation (since this may involve a one-off iteration through the
         # MS to populate the column)
