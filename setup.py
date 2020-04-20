@@ -53,7 +53,7 @@ else:
     requirements = ['future',
                     'numpy',
                     'llvmlite==v0.31.0; python_version <= "2.7"',
-                    'numba==0.48.0; python_version <= "2.7"',
+                    'numba==0.47.0; python_version <= "2.7"',
                     'numba; python_version >= "3.0"',
                     'python-casacore<=3.0.0; python_version <= "2.7"',
                     'python-casacore<=3.0.0; python_version >= "3.0"', 
