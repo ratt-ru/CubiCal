@@ -771,7 +771,7 @@ class MSTile(object):
 
             if self.dh._apply_flags:
                 flagcol = self.dh.fetchslice("FLAG", subset=table_subset)
-                flagcol[:] = np.logical_or.reduce(axis=-2)[:,:,np.newaxis]
+                flagcol[:] = np.logical_or.reduce(flagcol, axis=-1)[:,:,np.newaxis]
                 flagrow = table_subset.getcol("FLAG_ROW")
                 flagcol[flagrow, :, :] = True
                 print("  read FLAG/FLAG_ROW", file=log(2))

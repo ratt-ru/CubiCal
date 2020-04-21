@@ -76,7 +76,7 @@ def compute_mad(absres, flags, diag=1, offdiag=1):
 
     return np.ma.masked_array(mad_arr, mad_arr_fl, fill_value=0), valid_arr
 
-@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
+@jit(nopython=True, fastmath=True, parallel=False, cache=use_cache, nogil=True)
 def compute_mad_internals(absres, flags, diag=1, offdiag=1):
     """
     Given the absolute values of the residuals and a flag array, computes the per-antenna mad estimates. 
@@ -156,7 +156,7 @@ def compute_mad_per_corr(absres, flags, diag=1, offdiag=1):
 
     return np.ma.masked_array(mad_arr, mad_arr_fl, fill_value=0), valid_arr
 
-@jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
+@jit(nopython=True, fastmath=True, parallel=False, cache=use_cache, nogil=True)
 def compute_mad_per_corr_internals(absres, flags, diag=1, offdiag=1):
     """
     Given the absolute values of the residuals and a flag array, computes the per-antenna, per-correlation 
