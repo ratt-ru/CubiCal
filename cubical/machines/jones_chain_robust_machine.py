@@ -51,7 +51,7 @@ class JonesChain(MasterMachine):
         # and do the relevant fiddling between parameter updates. When combining DD terms with
         # DI terms, we need to be initialise the DI terms using only one direction - we do this with
         # slicing rather than summation as it is slightly faster.
-        self.save_weights = False
+        
         self.jones_terms = []
         self.num_left_di_terms = 0  # how many DI terms are there at the left of the chain
         seen_dd_term = False
@@ -67,9 +67,7 @@ class JonesChain(MasterMachine):
                 seen_dd_term = True
             elif not seen_dd_term:
                 self.num_left_di_terms = iterm
-            if self.save_weights is False:
-                self.save_weights = term_opts.get("robust-save-weights", False)
-
+            
 
         MasterMachine.__init__(self, label, data_arr, ndir, nmod, times, frequencies,
                                chunk_label, jones_options)
@@ -108,6 +106,9 @@ class JonesChain(MasterMachine):
         self._convergence_states_finalized = False
 
         self.cached_model_arr = self._r = self._m = None
+
+        self.is_robust = True # to identify this machine as the robust solver
+
 
     @classmethod
     def determine_diagonality(cls, options):
@@ -174,7 +175,7 @@ class JonesChain(MasterMachine):
 
 
 
-	#@profile
+    #@profile
     def compute_js(self, obser_arr, model_arr):
         """
         This function computes the (J\ :sup:`H`\J)\ :sup:`-1` and J\ :sup:`H`\R terms of the GN/LM 
@@ -198,6 +199,7 @@ class JonesChain(MasterMachine):
                 - (J\ :sup:`H`\J)\ :sup:`-1` (np.ndarray)
                 - Count of flags raised (int)     
         """     
+
 
         n_dir, n_tint, n_fint, n_ant, n_cor, n_cor = self.active_term.gains.shape
 
@@ -231,12 +233,27 @@ class JonesChain(MasterMachine):
         for ind in range(self.active_index, -1, -1):
             term = self.jones_terms[ind]
             self.chain.compute_jh(self.jh, term.gains, *term.gain_intervals)
-            
+        
         # for the robust solver you just have to compute the residuals
         if self.iters == 1:
-            self.residuals = np.empty_like(obser_arr) 
-            self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
-            self.weights = self.active_term.weights 
+            self.active_term.residuals = np.empty_like(obser_arr) 
+            self.active_term.residuals = self.compute_residual(obser_arr, model_arr, self.active_term.residuals, require_full=False)
+
+            if self.last_active_index!=self.active_index:
+                self.active_term.v = self.jones_terms[self.last_active_index].v
+                self.active_term.not_all_flagged = self.jones_terms[self.last_active_index].not_all_flagged
+
+            if self.not_all_flagged:
+                self.active_term.update_weights()
+            
+            self.residuals = self.active_term.residuals
+            
+            
+        if self.active_term.offdiag_only:
+            self.residuals[..., (0, 1), (0, 1)] = 0
+
+        if self.active_term.diag_only:
+            self.residuals[..., (0, 1), (1, 0)] = 0 
         
         self._jhr.fill(0)
 
@@ -279,20 +296,71 @@ class JonesChain(MasterMachine):
                 Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
                 visibilities. 
         """
+
+        # import pdb; pdb.set_trace()
         
         jhwr, jhwjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
         self.implement_update(jhwr, jhwjinv)
 
-        # Computing the weights
+        if self.not_all_flagged:
+
+            # Computing the weights
+            
+            self.active_term.residuals = self.compute_residual(obser_arr, model_arr, self.active_term.residuals, require_full=False)
+
+            self.active_term.update_weights()
+
+            self.residuals = self.active_term.residuals
+
+        return flag_count
+
+
+    def update_weight_flags(self, flags_arr):
+        self.active_term.update_weight_flags(flags_arr)
+
+    def robust_flag(self, flags_arr, model_arr, obser_arr):
+        """run an iteration and use the weights to flag high level RFIs"""
+
+        self.active_term.flaground = True
+        self.last_active_index = self.active_index
+        self.iters = 1
         
-        self.residuals = self.compute_residual(obser_arr, model_arr, self.residuals)
+        self.compute_update(model_arr, obser_arr)
+        np.copyto(self.active_term.gains, self.active_term.old_gains)
 
-        self.active_term.residuals = self.residuals
+        if self.any_new:
+            flags_arr[self.weight_flags[1:-1]] |= FL.MAD
+            self.update_equation_counts(flags_arr != 0)
+            
+            # stats.chunk.num_mad_flagged = ((flags_arr & FL.MAD) != 0).sum()
 
-        self.active_term.update_weights()
+            # # update_stats(flags_arr, ('initchi2', 'chi2'))
 
-        return flag_count   
+            # stats.save_chunk_stats(step=0)
+
+            new_flags = flags_arr & ~(FL.MISSING | FL.PRIOR) != 0
+                
+            model_arr[:, :, new_flags!=0, :, :] = 0
+            obser_arr[   :, new_flags!=0, :, :] = 0
+
+            self.weights[:, self.new_flags==False,:] = 1
+
+            # # resid_arr[:,flags_arr!=0] = 0
+
+            # chi, stats.chunk.chi2u = compute_chisq(statfield='initchi2', full=True)
+            # stats.chunk.chi2_0 = stats.chunk.chi2u_0 = stats.chunk.chi2u
+
+            # # The following provides conditioning information when verbose is set to > 0.
+            # if log.verbosity() > 0:
+            #     log(1).print("{} chi^2_0 {:.4}; {}; noise {:.3}, flags: {}".format(
+            #                 label, stats.chunk.chi2_0, gm.conditioning_status_string,
+            #                 float(stats.chunk.noise_0), get_flagging_stats()))
+
+        self.active_term.flaground = False
+        self.iters = 0
+
+
     
 
     def accumulate_gains(self, dd=True):
@@ -383,9 +451,11 @@ class JonesChain(MasterMachine):
             np.ndarray: 
                 Array containing the result of computing D - GMG\ :sup:`H`.
         """
+
         g, gh = self.accumulate_gains()
         np.copyto(resid_arr, obser_arr)
-        self.kernel.compute_residual(model_arr, g, gh, resid_arr, 1, 1)
+        kernel = self.kernel if require_full else self.active_term.kernel_robust
+        kernel.compute_residual(model_arr, g, gh, resid_arr, 1, 1)
 
         return resid_arr
 
@@ -516,6 +586,13 @@ class JonesChain(MasterMachine):
     #     else:
     #         return self.active_term.compute_chisq(resid_arr, inv_var_chan)
 
+    def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
+        """Computes chi-square using the active chain term"""
+        if require_full:
+            return super(JonesChain, self).compute_chisq(resid_arr, inv_var_chan)
+        else:
+            return self.active_term.compute_chisq(resid_arr, inv_var_chan)
+
     @property
     def has_valid_solutions(self):
         """Gives corresponding property of the active chain term"""
@@ -538,6 +615,16 @@ class JonesChain(MasterMachine):
     def dd_term(self):
         """Gives corresponding property of the active chain term"""
         return any([ term.dd_term for term in self.jones_terms ])
+
+    @property
+    def diag_only(self):
+        """This property is true if the machine solves using diagonal visibilities only"""
+        return all([ term.diag_only for term in self.jones_terms ])
+
+    @property
+    def offdiag_only(self):
+        """This property is true if the machine solves using off-diagonal visibilities only"""
+        return all([ term.offdiag_only for term in self.jones_terms ])
 
     @property
     def iters(self):
@@ -599,6 +686,38 @@ class JonesChain(MasterMachine):
     def delta_chi(self):
         return self.active_term.delta_chi
 
+    @property
+    def weights(self):
+        return self.active_term.weights
+
+    @property
+    def new_flags(self):
+        return self.active_term.new_flags
+    
+    @property
+    def weight_flags(self):
+        return self.active_term.weight_flags
+
+    @property
+    def any_new(self):
+        return self.active_term.any_new
+
+    @property
+    def not_all_flagged(self):
+        return self.active_term.not_all_flagged
+
+    @property
+    def save_weights(self):
+        """Gives corresponding property of the active chain term"""
+        return any([ term.save_weights for term in self.jones_terms ])
+
+    @property
+    def robust_flag_weights(self):
+        """Gives corresponding property of the active chain term"""
+        return any([ term.robust_flag_weights for term in self.jones_terms ])
+    
+    
+    
     class Factory(MasterMachine.Factory):
         """
         Note that a ChainMachine Factory expects a list of jones options (one dict per Jones term), not a single dict.

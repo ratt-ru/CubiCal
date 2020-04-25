@@ -487,7 +487,7 @@ class JonesChain(MasterMachine):
         return MasterMachine.next_iteration(self)[0], major_step
 
     def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
-        """Computes chi-square using the active chain term"""
+        """Computes chi-square using the active chain term"""    
         if require_full:
             return super(JonesChain, self).compute_chisq(resid_arr, inv_var_chan)
         else:

@@ -84,6 +84,9 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     diverging = ""
 
+    # for cases the are no valid solutions
+    gm.output_weights = None 
+
     # Estimates the overall noise level and the inverse variance per channel and per antenna as
     # noise varies across the band. This is used to normalize chi^2.
 
@@ -143,6 +146,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     gm.compute_residual(obser_arr, model_arr, resid_arr, require_full=True)
     resid_arr[:,flags_arr!=0] = 0
 
+
     # apply MAD flagging
     madmax.set_mode(GD['madmax']['enable'])
 
@@ -151,6 +155,13 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     if thr1 or thr2:
         if madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2, "{} initial".format(label)):
             gm.update_equation_counts(flags_arr != 0)
+            stats.chunk.num_mad_flagged = ((flags_arr & FL.MAD) != 0).sum()
+
+
+    # apply robust flag if robust machine (this uses the madmax flag)
+    if hasattr(gm, 'is_robust'):
+        if gm.robust_flag_weights:
+            gm.robust_flag(flags_arr, model_arr, obser_arr)
             stats.chunk.num_mad_flagged = ((flags_arr & FL.MAD) != 0).sum()
 
     # In the event that there are no solutions with valid data, this will log some of the
@@ -201,6 +212,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     # Main loop of the NNLS method. Terminates after quorum is reached in either converged or
     # stalled solutions or when the maximum number of iterations is exceeded.
 
+    
     major_step = 0  # keeps track of "major" solution steps, for purposes of collecting stats
 
 
@@ -236,14 +248,12 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             # propagated out to the data, then that slot is gone gone gone and should be zeroe'd everywhere.
 
             new_flags = flags_arr&~(FL.MISSING|FL.PRIOR) !=0
+           
             model_arr[:, :, new_flags, :, :] = 0
             obser_arr[   :, new_flags, :, :] = 0
 
             stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
 
-            # Adding the below lines for the robust solver so that flags should be apply to the weights
-            if hasattr(gm, 'new_flags'):
-                gm.new_flags = new_flags
 
         # Compute values used in convergence tests. This check implicitly marks flagged gains as
         # converged.
@@ -308,9 +318,6 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
                     log.warn("{}: {:.2%} slots diverging, {} new data flags".format(label,
                                     diverged_tf_slots.sum()/float(diverged_tf_slots.size), num_nf))
 
-                    # Adding the below lines for the robust solver so that flags should be apply to the weights
-                    if hasattr(gm, 'new_flags'):
-                        gm.new_flags |= new_flags
 
             stats.chunk.frac_stalled = stats.chunk.num_stalled / float(chi.size)
             stats.chunk.frac_diverged = stats.chunk.num_diverged / float(chi.size)
@@ -339,6 +346,9 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
                                     stats.chunk.chi2u, delta_chi_mean, delta_chi_max,
                                     float(1-stats.chunk.frac_stalled), diverging))
 
+        # Adding the below lines for the robust solver so that flags should be apply to the weights
+        if hasattr(gm, 'is_robust'):
+            gm.update_weight_flags(flags_arr)
 
 
     # num_valid_solutions will go to 0 if all solution intervals were flagged. If this is not the
@@ -399,11 +409,12 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         resid_arr = obser_arr
 
     robust_weights = None
-    if hasattr(gm, 'save_weights'):
+    if hasattr(gm, 'is_robust'):
         if gm.save_weights:
             newshape = gm.weights.shape[1:-1] + (2,2)
             robust_weights = np.repeat(gm.weights.real, 4, axis=-1)
             robust_weights = np.reshape(robust_weights, newshape)
+            gm.output_weights = robust_weights
 
     # After the solver loop check for warnings from the solvers
     for d in gm.collect_warnings():
@@ -704,6 +715,8 @@ class SolveOnly(SolverMachine):
         _solve_gains(self.gm, self.stats, self.madmax,
                      self.vdm.weighted_obser, self.vdm.weighted_model, self.vdm.flags_arr,
                      self.sol_opts, label=self.label)
+
+        self.output_weights = self.gm.output_weights
 
         if ifrgain_machine.is_computing():
             ifrgain_machine.update(self.vdm.weighted_obser, self.vdm.corrupt_weighted_model, self.vdm.flags_arr,

@@ -553,7 +553,7 @@ class PerIntervalGains(MasterMachine):
                         ", ".join(["dir {0:s}: {1:.3f}% gains affected".format(
                             str(d), percflagged[d]) for d in bad_dirs]),
                         why_flagged
-                    )
+                    ) 
                 else:
                     msg = "{} directions flagged {}".format(len(bad_dirs), why_flagged)
                 issue_warning(msg, 50)
@@ -646,7 +646,7 @@ class PerIntervalGains(MasterMachine):
 
         # flag on OOB and such
         gain_mags = np.abs(self.gains)
-
+        
         # Check for inf/nan solutions. One bad correlation will trigger flagging for all correlations.
 
         boom = (~np.isfinite(self.gains)).any(axis=(-1,-2))
