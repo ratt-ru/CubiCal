@@ -957,7 +957,8 @@ class MSTile(object):
                                     model = loaded_models[model_source][cluster]
                                 # cluster of None signifies that this is a visibility column
                                 elif cluster is None:
-                                    if model_source is 1:
+
+                                    if model_source == 1:
                                         print("  using 1.+0j for model {} direction {}{}".format(model_source,
                                                                                                          imod, idir, subtract_str), file=log(2))
                                         model = np.ones_like(obvis)
