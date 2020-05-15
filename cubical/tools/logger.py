@@ -165,6 +165,9 @@ class LoggerWrapper(object):
 _parent_process = psutil.Process(os.getpid())
 _log_memory = False
 _log_memory_totals = True
+_log_memory_types = "rss pss uss".split()
+GB = float(1024 ** 3)
+
 
 def enableMemoryLogging(enable=True):
     global _log_memory
@@ -218,8 +221,7 @@ class LogFilter(logging.Filter):
             t = time.time()
             if t - self._mem_ts > self._mem_update:
                 self._mem_ts = t
-                GB = float(1024**3)
-                KEYS = 'rss', 'pss', 'uss'
+                KEYS = _log_memory_types
                 # get memory for this process
                 mi0 = psutil.Process(os.getpid()).memory_full_info()
                 mem = {key: getattr(mi0, key) / GB for key in KEYS}
