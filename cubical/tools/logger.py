@@ -8,7 +8,8 @@
 
 from __future__ import print_function
 from six import string_types
-import logging, logging.handlers, os, re, sys, multiprocessing
+import logging, logging.handlers, os, re, sys, multiprocessing, time
+import psutil
 from . import ModColor
 
 # dict of logger wrappers created by the application
@@ -161,55 +162,10 @@ class LoggerWrapper(object):
         _DefaultWriter(self.logger, level, color=color).write(message,
                                                                                print_once=print_once)
 
-_proc_status = '/proc/%d/status' % os.getpid()
-
-_scale = {'kB': 1024.0, 'mB': 1024.0*1024.0,
-          'KB': 1024.0, 'MB': 1024.0*1024.0}
-
-def _VmB(VmKey,statusfile=None):
-    global _scale
-    _proc_status = '/proc/%d/status' % os.getpid()
-    # get pseudo file  /proc/<pid>/status
-    try:
-        t = open(statusfile or _proc_status)
-        v = t.read()
-        t.close()
-    except:
-        return 0.0  # non-Linux?
-     # get VmKey line e.g. 'VmRSS:  9999  kB\n ...'
-    i = v.index(VmKey)
-    v = v[i:].split(None, 3)  # whitespace
-    if len(v) < 3:
-        return 0.0  # invalid format?
-     # convert Vm value to bytes
-    return float(v[1]) * _scale[v[2]]
-
-
-def _shmem_size (since=0.0):
-    '''Return shared memory usage in bytes.'''
-    return _VmB('Shmem:','/proc/meminfo') - since
-
-def _memory(since=0.0):
-    '''Return memory usage in bytes.'''
-    return _VmB('VmSize:') - since
-
-def _memory_peak(since=0.0):
-    '''Return memory usage in bytes.'''
-    return _VmB('VmPeak:') - since
-
-def _resident(since=0.0):
-    '''Return resident memory usage in bytes.'''
-    return _VmB('VmRSS:') - since
-
-def _resident_peak(since=0.0):
-    '''Return resident memory usage in bytes.'''
-    return _VmB('VmHWM:') - since
-
-def _stacksize(since=0.0):
-    '''Return stack size in bytes.'''
-    return _VmB('VmStk:') - since
-
+_parent_process = psutil.Process(os.getpid())
 _log_memory = False
+_log_memory_totals = True
+
 def enableMemoryLogging(enable=True):
     global _log_memory
     _log_memory = enable
@@ -240,6 +196,16 @@ def get_subprocess_label():
 
 
 class LogFilter(logging.Filter):
+    _mem = None
+    _mem_totals = None
+    _children = None
+    _mem_ts = 0
+    _mem_totals_ts = 0
+    _children_ts = 0
+    _mem_update = .5     # full memory updates are a little costly, so do them only after this many seconds has elapsed
+    _mem_totals_update = 1
+    _children_update = 3 # children updates even more so, so do it even less frequently
+
     """LogFilter augments the event by a few new attributes used by our formatter"""
     def filter(self, event):
         if not event.getMessage().strip():
@@ -247,17 +213,35 @@ class LogFilter(logging.Filter):
         # short logger name (without app_name in front of it)
         setattr(event, 'shortname', event.name.split('.',1)[1] if '.' in event.name else event.name)
         setattr(event, 'separator', '| ')
-        # memory usage info
-        vss = float(_memory()/(1024**3))
-        vss_peak = float(_memory_peak()/(1024**3))
-        rss = float(_resident()/(1024**3))
-        rss_peak = float(_resident_peak()/(1024**3))
-        shm = float(_shmem_size()/(1024**3))
-        setattr(event,"virtual_memory_gb",vss)
-        setattr(event,"resident_memory_gb",rss)
-        setattr(event,"shared_memory_gb",shm)
         if _log_memory:
-            setattr(event, "memory", "[%.1f/%.1f %.1f/%.1f %.1fGb] "%(rss,rss_peak,vss,vss_peak,shm))
+            # memory usage info
+            t = time.time()
+            if t - self._mem_ts > self._mem_update:
+                self._mem_ts = t
+                GB = float(1024**3)
+                KEYS = 'rss', 'pss', 'uss'
+                # get memory for this process
+                mi0 = psutil.Process(os.getpid()).memory_full_info()
+                mem = {key: getattr(mi0, key) / GB for key in KEYS}
+                shm = psutil.virtual_memory().shared / GB
+                # get total memory
+                if _log_memory_totals:
+                    if t - self._mem_totals_ts > self._mem_totals_update:
+                        self._mem_totals_ts = t
+                        if t - self._children_ts > self._children_update:
+                            self._children_ts = t
+                            self._children = [_parent_process] + list(_parent_process.children(recursive=True))
+                        if len(self._children) > 1:
+                            mis = [p.memory_full_info() for p in self._children]
+                            self._mem_totals = {key: sum([getattr(mi,key) for mi in mis]) / GB for key in KEYS}
+                # form up string
+                if self._mem_totals is None:
+                    smem = ["{:.1f}".format(mem[key]) for key in KEYS]
+                else:
+                    smem = ["{:.1f}/{:.1f}".format(mem[key], self._mem_totals[key]) for key in KEYS]
+                smem.append("{:.1f}Gb".format(shm))
+                self._mem = " ".join(smem)
+            setattr(event, "memory", "[{}] ".format(self._mem))
             setattr(event, 'separator', '')
         else:
             setattr(event, "memory", "")
