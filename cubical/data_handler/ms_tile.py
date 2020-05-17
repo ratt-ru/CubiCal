@@ -1402,7 +1402,7 @@ class MSTile(object):
                 data = shared_dict.attach(subset.datadict)
                 data.delete()
         # clean up DDF degridder stuff, but only if it was already imported
-        if final: # and 'cubical.degridder.DDFacetSim' in sys.modules:
+        if final and 'cubical.degridder.DDFacetSim' in sys.modules:
             try:
                 from cubical.degridder.DDFacetSim import cleanup_degridders
             except ImportError:

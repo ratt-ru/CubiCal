@@ -165,7 +165,7 @@ class LoggerWrapper(object):
 _parent_process = psutil.Process(os.getpid())
 _log_memory = False
 _log_memory_totals = True
-_log_memory_types = "rss pss uss".split()
+_log_memory_types = "rss pss".split()
 GB = float(1024 ** 3)
 
 
@@ -234,8 +234,13 @@ class LogFilter(logging.Filter):
                             self._children_ts = t
                             self._children = [_parent_process] + list(_parent_process.children(recursive=True))
                         if len(self._children) > 1:
-                            # psutil.NoSuchProcess
-                            mis = [p.memory_full_info() for p in self._children]
+                            mis = []
+                            # scan over children, ignoring ones that may have disappeared
+                            for p in self._children:
+                                try:
+                                    mis.append(p.memory_full_info())
+                                except psutil.NoSuchProcess:
+                                    pass
                             self._mem_totals = {key: sum([getattr(mi,key) for mi in mis]) / GB for key in KEYS}
                 # form up string
                 if self._mem_totals is None:
