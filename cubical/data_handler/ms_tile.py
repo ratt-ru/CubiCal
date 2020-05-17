@@ -5,12 +5,15 @@
 from __future__ import print_function
 from builtins import range
 import numpy as np
+import sys
+import traceback
 from collections import OrderedDict
 
 from cubical.tools import shared_dict
 from cubical.flagging import FL
 from cubical import data_handler
 from cubical.tools import dtype_checks as dtc
+
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("ms_tile")
@@ -1398,10 +1401,14 @@ class MSTile(object):
             if subset.label is not None:
                 data = shared_dict.attach(subset.datadict)
                 data.delete()
-        if final:
+        # clean up DDF degridder stuff, but only if it was already imported
+        if final: # and 'cubical.degridder.DDFacetSim' in sys.modules:
             try:
                 from cubical.degridder.DDFacetSim import cleanup_degridders
-            except ImportError as e:
+            except ImportError:
+                for line in traceback.format_exc().splitlines(keepends=False):
+                    log.info(line)
+                log.warn("Error importing cubical.degridder.DDFacetSim.cleanup_degridders, see above")
                 def cleanup_degridders(): pass
             cleanup_degridders()
 

@@ -234,6 +234,7 @@ class LogFilter(logging.Filter):
                             self._children_ts = t
                             self._children = [_parent_process] + list(_parent_process.children(recursive=True))
                         if len(self._children) > 1:
+                            # psutil.NoSuchProcess
                             mis = [p.memory_full_info() for p in self._children]
                             self._mem_totals = {key: sum([getattr(mi,key) for mi in mis]) / GB for key in KEYS}
                 # form up string
