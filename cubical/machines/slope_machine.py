@@ -387,6 +387,9 @@ class PhaseSlopeGains(ParameterisedGains):
 
         self.slope.construct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
 
+        # raise flag so updates of G^H and G^-1 are computed
+        self._gh_update = self._ghinv_update = True
+
 
     def restrict_solution(self, slope_params):
         """
