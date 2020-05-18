@@ -134,7 +134,8 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
         core = corestep = affinity = None
 
     # first, the I/O process
-    props = worker_process_properties["Process-1"] = dict(label="io", environ={})
+    props = worker_process_properties["Process-1"] = worker_process_properties["ForkProcess-1"] = \
+        dict(label="io", environ={})
 
     # allocate cores to I/O process, if asked to pin it
     
@@ -171,7 +172,9 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     # create entries for subprocesses, and allocate cores
     for icpu in range(1, num_workers + 1):
         name = "Process-{}".format(icpu + 1)
-        props = worker_process_properties[name] = dict(label="x%02d" % icpu, num_omp_threads=nthread, environ={})
+        name2 = "ForkProcess-{}".format(icpu + 1)
+        props = worker_process_properties[name] = worker_process_properties[name2] = \
+            dict(label="x%02d" % icpu, num_omp_threads=nthread, environ={})
         if affinity is not None:
             props["taskset"] = str(core)
             # if OMP is in use, set affinities via gomp
