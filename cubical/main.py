@@ -53,6 +53,7 @@ _runtime_templates = dict(DATE=_start_datetime.strftime("%Y%m%d"),
                           HOST=os.uname()[1],
                           ENV=os.environ)
 
+
 def expand_templated_name(name, **keys):
     """
         Helper method: expands name from templated name. This uses the standard
@@ -92,6 +93,7 @@ def expand_templated_name(name, **keys):
         raise ValueError(name)
 
 from cubical.data_handler.ms_data_handler import MSDataHandler
+from cubical.data_handler.wisdom import estimate_mem
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine, jones_chain_robust_machine
@@ -266,7 +268,10 @@ def main(debugging=False):
             warnings.simplefilter('error', UserWarning)
             np.seterr(all='raise')
             if GD["debug"]["escalate-warnings"] > 1:
-                warnings.filterwarnings("error")
+                warnings.simplefilter('error', Warning)
+                log(0).print("all warnings will be escalated to exceptions")
+            else:
+                log(0).print("UserWarnings will be escalated to exceptions")
 
         # clean up shared memory from any previous runs
         shm_utils.cleanupStaleShm()
@@ -324,6 +329,7 @@ def main(debugging=False):
         print(ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green"), file=log)
 
         have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
+        have_solvables = any([jo['solvable'] for jo in jones_opts])
 
         solver.GD = GD
 
@@ -339,6 +345,9 @@ def main(debugging=False):
         print("solver is apply-only type: {}".format(apply_only), file=log(0))
         load_model = solver.SOLVERS[solver_type].is_model_required
         print("solver requires model: {}".format(load_model), file=log(0))
+        
+        if not apply_only and not have_solvables:
+            raise UserInputError("No Jones terms have been marked as solvable")
 
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
@@ -479,6 +488,7 @@ def main(debugging=False):
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
+
         solver.gm_factory.set_metadata(ms)
                                                        
         # create IFR-based gain machine. Only compute gains if we're loading a model
@@ -504,9 +514,15 @@ def main(debugging=False):
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
-        chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers-1, 1)
-        if GD["dist"]["max-chunks"]:
-            chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
+        if single_chunk:
+            chunks_per_tile = 1
+            max_chunks_per_tile = 1
+        else:
+            chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
+            max_chunks_per_tile = 0
+            if GD["dist"]["max-chunks"]:
+                chunks_per_tile = max(max(GD["dist"]["max-chunks"], chunks_per_tile), 1)
+                max_chunks_per_tile = GD["dist"]["max-chunks"]
 
         print("defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else ""), file=log)
@@ -515,6 +531,9 @@ def main(debugging=False):
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
+
+        # Estimate memory usage. This is still experimental.
+        estimate_mem(ms, tile_list, GD["data"], GD["dist"])
 
         # now that we have tiles, define the flagging situation (since this may involve a one-off iteration through the
         # MS to populate the column)
@@ -622,6 +641,10 @@ def main(debugging=False):
         ms.close()
 
         print(ModColor.Str("completed successfully", col="green"), file=log)
+
+    except RuntimeWarning:
+        from cubical.tools import pdb
+        pdb.set_trace()
 
     except Exception as exc:
         for level, message in prelog_messages:

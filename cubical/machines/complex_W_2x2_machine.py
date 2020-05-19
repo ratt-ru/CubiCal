@@ -519,7 +519,6 @@ class ComplexW2x2Gains(PerIntervalGains):
 
     def restrict_solution(self, gains):
         
-        
         if "pzd" in self.update_type:
             # re-estimate pzd
             mask = self.gflags!=0
@@ -550,6 +549,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
+            
             gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
 
         super(ComplexW2x2Gains, self).restrict_solution(gains)

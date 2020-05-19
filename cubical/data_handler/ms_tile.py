@@ -19,7 +19,7 @@ try:
 except ImportError:
     TiggerSourceProvider = None
 try:
-    from .DicoSourceProvider import DicoSourceProvider
+    from cubical.degridder.DicoSourceProvider import DicoSourceProvider
 except ImportError:
     DicoSourceProvider = None
 
@@ -135,9 +135,10 @@ class MSTile(object):
             Returns:
                 ndarray of shape nrow x nchan x ncorr for name specified in "cluster"
             """
-            from .DDFacetSim import DDFacetSim
+            from cubical.degridder.DDFacetSim import DDFacetSim
             ddid_index, uniq_ddids, _ = data_handler.uniquify(self.ddid_col)
             self._freqs = np.array([self.tile.dh.chanfreqs[ddid] for ddid in uniq_ddids])
+            self._chan_widths = np.array([self.tile.dh.chanwidth[ddid] for ddid in uniq_ddids])
             ddfsim = DDFacetSim()
             ndirs = model_source._nclus
             loaded_models[model_source] = {}
@@ -150,7 +151,9 @@ class MSTile(object):
                                         self.tile.dh._poltype, 
                                         uvwco,
                                         self._freqs,
-                                        model_type)
+                                        model_type,
+                                        self._chan_widths,
+                                        self.time_col)
                 loaded_models[model_source][clus] = model
 
             # finally return the direction requested in cluster
@@ -638,8 +641,13 @@ class MSTile(object):
             flagcol = table_subset.getcol("FLAG")
             flagrow = table_subset.getcol("FLAG_ROW")
             # flag all four corrs
-            flagcol0 = flagcol.copy()
+
+            num_fl0 = flagcol.sum()
             flagcol[:] = np.logical_or.reduce(flagcol, axis=-1)[:,:,np.newaxis]
+            if flagcol.sum() != num_fl0:
+                table_subset.putcol("FLAG", flagcol)
+                print("    {}: some flags were expanded to all correlations".format(self.label), file=log(1))
+
 
             bflagcol = np.zeros(flagcol.shape, np.int32)
             bflagrow = np.zeros(flagrow.shape, np.int32)
@@ -1323,7 +1331,16 @@ class MSTile(object):
                 else:
                     print("  {:.2%} visibilities flagged by solver, but we're not saving flags".format(ratio), file=log)
             else:
-                print("  no new flags were generated", file=log)
+                 print("  no solver flags were generated", file=log)
+                 # bitflag still needs to be cleared though, if we're writing to it
+                 if self.dh._save_bitflag:
+                     self.bflagcol &= ~self.dh._save_bitflag
+                     bflag_col = True
+                     if self.dh._save_flags:
+                         print("  no visibilities flagged by solver: saving to BITFLAG and FLAG columns", file=log)
+                         flag_col = self.bflagcol != 0
+                     else:
+                         print("  no visibilities flagged by solver: saving to BITFLAG column only", file=log)
 
             if self.dh._save_flags_apply:
                 prior_flags = subset.upsample((data['flags'] & FL.PRIOR) != 0)
@@ -1376,7 +1393,7 @@ class MSTile(object):
                 self.dh.finalize()
                 self.dh.unlock()
 
-    def release(self):
+    def release(self, final=False):
         """ Releases the shared memory data dicts. """
 
         data = shared_dict.attach(self._data_dict_name)
@@ -1385,7 +1402,12 @@ class MSTile(object):
             if subset.label is not None:
                 data = shared_dict.attach(subset.datadict)
                 data.delete()
-
+        if final:
+            try:
+                from cubical.degridder.DDFacetSim import cleanup_degridders
+            except ImportError as e:
+                def cleanup_degridders(): pass
+            cleanup_degridders()
 
 
 

@@ -449,8 +449,8 @@ class JonesChain(MasterMachine):
 
         return resid_arr
 
+    def apply_inv_gains(self, resid_vis, corr_vis=None, direction=None):
 
-    def apply_inv_gains(self, resid_vis, corr_vis=None, full2x2=True, direction=None):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -512,13 +512,13 @@ class JonesChain(MasterMachine):
         """
         return self.active_term.restrict_solution(gains)
 
-    def flag_solutions(self, flags_arr, final=False):
+    def flag_solutions(self, flags_arr, final=0):
         """ Flags gain solutions."""
         # Per-iteration flagging done on the active term, final flagging is done on all terms.
         if final:
-            return any([ term.flag_solutions(flags_arr, True) for term in self.jones_terms if term.solvable ])
+            return any([ term.flag_solutions(flags_arr, final) for term in self.jones_terms if term.solvable ])
         else:
-            return self.active_term.flag_solutions(flags_arr, False)
+            return self.active_term.flag_solutions(flags_arr, 0)
 
     def num_gain_flags(self, mask=None):
         return self.active_term.num_gain_flags(mask)
@@ -569,17 +569,10 @@ class JonesChain(MasterMachine):
 
         return MasterMachine.next_iteration(self)[0], major_step
 
-    # def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
-    #     """Computes chi-square using the active chain term"""
-    #     if require_full:
-    #         return self.compute_chisq(resid_arr, inv_var_chan)
-    #     else:
-    #         return self.active_term.compute_chisq(resid_arr, inv_var_chan)
-
     def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
         """Computes chi-square using the active chain term"""
         if require_full:
-            return super(JonesChain, self).compute_chisq(resid_arr, inv_var_chan)
+            return self.compute_chisq(resid_arr, inv_var_chan)
         else:
             return self.active_term.compute_chisq(resid_arr, inv_var_chan)
 

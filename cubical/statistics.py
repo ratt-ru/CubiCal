@@ -97,9 +97,8 @@ class SolverStats (object):
             filename (str):
                 Name for pickled file.
         """
-
-        pickle.dump(
-            (self.chanant, self.timeant, self.timechan, self.chunk), open(filename, 'wb'), 2)
+        with open(filename, 'wb') as pf:
+            pickle.dump((self.chanant, self.timeant, self.timechan, self.chunk), pf, 2)
 
     def load(self, fileobj):
         """
@@ -300,11 +299,12 @@ class SolverStats (object):
                 statrec = self.chunk[itime, ifreq]
                 statrec_dict = {field:statrec[field] for field in self.chunk.dtype.fields}
                 # new line: prepend chunk label
+                label = statrec.label.decode() if hasattr(statrec.label, 'decode') else statrec.label
                 if not output_rows[-1]:
-                    output_rows[-1].append((statrec.label, False))
+                    output_rows[-1].append((label, False))
                 # put it in header as well
                 if len(output_rows) == 2:
-                    output_rows[0].append((statrec.label, False))
+                    output_rows[0].append((label, False))
                 # check for threshold
                 warn = False
                 if threshold is not None:

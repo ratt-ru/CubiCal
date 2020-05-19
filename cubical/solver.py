@@ -8,6 +8,7 @@ Implements the solver loop.
 from __future__ import print_function
 import numpy as np
 import os, os.path
+import gc
 import traceback
 from cubical.tools import logger, ModColor
 from cubical.flagging import FL
@@ -146,7 +147,6 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     gm.compute_residual(obser_arr, model_arr, resid_arr, require_full=True)
     resid_arr[:,flags_arr!=0] = 0
 
-
     # apply MAD flagging
     madmax.set_mode(GD['madmax']['enable'])
 
@@ -237,7 +237,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         gm.compute_update(model_arr, obser_arr)
 
         # flag solutions. This returns True if any flags have been propagated out to the data.
-        if gm.flag_solutions(flags_arr, False):
+        if gm.flag_solutions(flags_arr, 0):
 
             update_stats(flags_arr, ('chi2',))
 
@@ -253,6 +253,10 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             obser_arr[   :, new_flags, :, :] = 0
 
             stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
+
+            # Adding the below lines for the robust solver so that flags should be apply to the weights
+            if hasattr(gm, 'new_flags'):
+                gm.new_flags = new_flags
 
 
         # Compute values used in convergence tests. This check implicitly marks flagged gains as
@@ -281,14 +285,15 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             # do mad max flagging, if requested
             thr1, thr2 = madmax.get_mad_thresholds()
             if thr1 or thr2:
-                num_mad_flagged_prior = stats.chunk.num_mad_flagged
+                num_mad_flagged_prior = int(stats.chunk.num_mad_flagged)
+
                 if madmax.beyond_thunderdome(resid_arr, obser_arr, model_arr, flags_arr, thr1, thr2,
                                              "{} iter {} ({})".format(label, num_iter, gm.jones_label)):
                     gm.update_equation_counts(flags_arr != 0)
                     stats.chunk.num_mad_flagged = ((flags_arr&FL.MAD) != 0).sum()
                     if stats.chunk.num_mad_flagged != num_mad_flagged_prior:
                         log(2).print("{}: {} new MadMax flags".format(label,
-                                        stats.chunk.num_mad_flagged - stats.chunk.num_mad_flagged))
+                                        stats.chunk.num_mad_flagged - num_mad_flagged_prior))
 
             chi, stats.chunk.chi2u = compute_chisq(full=False)
 
@@ -317,7 +322,6 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
                     num_nf = new_flags.sum()
                     log.warn("{}: {:.2%} slots diverging, {} new data flags".format(label,
                                     diverged_tf_slots.sum()/float(diverged_tf_slots.size), num_nf))
-
 
             stats.chunk.frac_stalled = stats.chunk.num_stalled / float(chi.size)
             stats.chunk.frac_diverged = stats.chunk.num_diverged / float(chi.size)
@@ -356,7 +360,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     if gm.has_valid_solutions:
         # Final round of flagging
-        flagged = gm.flag_solutions(flags_arr, True)
+        flagged = gm.flag_solutions(flags_arr, 1)
         stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
     else:
         flagged = None
@@ -613,7 +617,7 @@ class SolverMachine(object):
         # for apply-only machines, precompute machine attributes and apply initial gain flags
         if self.is_apply_only:
             gm.precompute_attributes(vdm.obser_arr, vdm.model_arr, vdm.flags_arr, None)
-            gm.flag_solutions(vdm.flags_arr, False)
+            gm.flag_solutions(vdm.flags_arr, -1)
             self.stats.chunk.num_solutions = vdm.gm.num_solutions
             self.stats.chunk.num_sol_flagged = vdm.gm.num_gain_flags()[0]
 
@@ -653,7 +657,7 @@ class SolverMachine(object):
         """
         Finalizes the output visibilities, running a pass of the flagger on them, if configured
         """
-
+        
         # clear out MAD flags if madmax was in trial mode
         if self.stats.chunk.num_mad_flagged and self.madmax.trial_mode:
             self.vdm.flags_arr &= ~FL.MAD
@@ -721,6 +725,8 @@ class SolveOnly(SolverMachine):
     """Runs the solver, but does not apply solutions"""
 
     def run(self):
+#        import ipdb; ipdb.set_trace()
+
         _solve_gains(self.gm, self.stats, self.madmax,
                      self.vdm.weighted_obser, self.vdm.weighted_model, self.vdm.flags_arr,
                      self.sol_opts, label=self.label)
@@ -940,6 +946,10 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
         # Ask the gain machine to store its solutions in the shared dict.
         gm_factory.export_solutions(gm, soldict)
+
+        # Trigger garbage collection because it seems very unreliable. This 
+        # flattens the memory profile substantially. 
+        gc.collect()
 
         return solver_machine.stats
 

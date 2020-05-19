@@ -91,11 +91,10 @@ class JonesChain(MasterMachine):
         else:
             raise UserInputError("invalid term-iters={} setting".format(term_iters))
 
-        self.solvable = bool(self.term_iters)
+        self.solvable = bool(self.term_iters) and any([term.solvable for term in self.jones_terms])
 
         # setup first solvable term in chain
-        self.active_index = -1
-        self._next_chain_term()
+        self.active_index = None
 
         # this list accumulates the per-term convergence status strings
         self._convergence_states = []
@@ -429,13 +428,13 @@ class JonesChain(MasterMachine):
         """
         return self.active_term.restrict_solution(gains)
 
-    def flag_solutions(self, flags_arr, final=False):
+    def flag_solutions(self, flags_arr, final=0):
         """ Flags gain solutions."""
-        # Per-iteration flagging done on the active term, final flagging is done on all terms.
+        # Per-iteration flagging done on the active term, final (or pre-apply) flagging is done on all terms.
         if final:
-            return any([ term.flag_solutions(flags_arr, True) for term in self.jones_terms if term.solvable ])
+            return any([ term.flag_solutions(flags_arr, final) for term in self.jones_terms if term.solvable ])
         else:
-            return self.active_term.flag_solutions(flags_arr, False)
+            return self.active_term.flag_solutions(flags_arr, 0)
 
     def num_gain_flags(self, mask=None):
         return self.active_term.num_gain_flags(mask)
@@ -487,7 +486,8 @@ class JonesChain(MasterMachine):
         return MasterMachine.next_iteration(self)[0], major_step
 
     def compute_chisq(self, resid_arr, inv_var_chan, require_full=True):
-        """Computes chi-square using the active chain term"""    
+        """Computes chi-square using the active chain term"""
+
         if require_full:
             return super(JonesChain, self).compute_chisq(resid_arr, inv_var_chan)
         else:
@@ -509,6 +509,10 @@ class JonesChain(MasterMachine):
 
     @property
     def active_term(self):
+        if self.active_index is None:
+            # setup first solvable term in chain
+            self.active_index = -1
+            self._next_chain_term()
         return self.jones_terms[self.active_index]
 
     @property

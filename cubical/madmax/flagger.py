@@ -186,11 +186,13 @@ class Flagger(object):
                             del figure
                             made_plots = True
                         except Exception as exc:
+                            if self.GD['debug']['escalate-warnings']:
+                                raise
                             traceback.print_exc()
                             print("WARNING: {}: exception {} raised while generating Mad Max waterfall plot for baseline {} ({})".format(
-                                            self.chunk_label, exc, blname, baseline_label), file=log(1, "red"))
-                            print("Although harmless, this may indicate a problem with the data, or a bug in CubiCal.", file=log(1))
-                            print("Please see stack trace above, and report if you think this is a bug.", file=log(1))
+                                            self.chunk_label, exc, blname, baseline_label), file=log(0, "red"))
+                            print("Although harmless, this may indicate a problem with the data, or a bug in CubiCal.", file=log(0))
+                            print("Please see stack trace above, and report if you think this is a bug.", file=log(0))
         else:
             print("{} {} abides".format(max_label, method), file=log(2))
 
@@ -326,15 +328,18 @@ class Flagger(object):
                     figure.savefig(filename, dpi=300)
                     from future.moves import pickle
                     pickle_file = filename+".cp"
-                    pickle.dump((mad, medmad, med_thr, self.metadata, max_label), open(pickle_file, "wb"), 2)
-                    print("{}: pickling MAD distribution to {}".format(self.chunk_label, pickle_file), file=log(1))
+                    with open(pickle_file, "wb") as pf:
+                        pickle.dump((mad, medmad, med_thr, self.metadata, max_label), pf, 2)
+                    print("{}: pickled MAD distribution to {}".format(self.chunk_label, pickle_file), file=log(1))
                 pylab.close(figure)
                 del figure
             except Exception as exc:
+                if self.GD['debug']['escalate-warnings']:
+                    raise
                 traceback.print_exc()
                 print("WARNING: {}: exception {} raised while rendering Mad Max summary plot".format(
-                                        self.chunk_label, exc), file=log(1,"red"))
-                print("Although harmless, this may indicate a problem with the data, or a bug in CubiCal.", file=log(1))
-                print("Please see stack trace above, and report if you think this is a bug.", file=log(1))
+                                        self.chunk_label, exc), file=log(0,"red"))
+                print("Although harmless, this may indicate a problem with the data, or a bug in CubiCal.", file=log(0))
+                print("Please see stack trace above, and report if you think this is a bug.", file=log(0))
 
         return flagged_something and not self._pretend

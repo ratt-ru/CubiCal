@@ -441,8 +441,6 @@ class Parameter(object):
                        itertools.product(*input_slicers) iterates over all relevant slices
                 - output_slicers: corresponding list of iterables giving the index in the output array to which
                        the resampled input slice is to be assigned
-                - input_slice_reduction:  applied to each input slice to reduce size=1 axes
-                - input_slice_broadcast: applied to each interpolation result to broadcast back size=1 axes
                 - output_slice_grid: per each interpolatable axis with size>1, grid onto which interpolation is done,
                                      or None if size==1
                 - output_reduction:  index applied to output array, to eliminate axes for which only a single element
@@ -590,31 +588,16 @@ class Parameter(object):
                                  for (ia, i0, i1), (ja, j0, j1) in zip(input_grid_segment0, input_grid_segment)]):
                     print("  slice {} preparing {}D interpolator for {}".format(slicer,
                         len(segment_grid), ",".join(["{}:{}".format(*seg[1:]) for seg in input_grid_segment])), file=log(2))
+                    # arseg: relevant segment of array slice
+                    arseg = arse.array[tuple(array_segment_slice)]
                     # arav: linear array of all values, adata: all unflagged values
-                    arav = arse.array[tuple(array_segment_slice)].ravel()
+                    arav = arseg.ravel()
                     adata = arav.data[~arav.mask] if arav.mask is not np.ma.nomask else arav.data
-                    # edge case: no valid data. Make fake interpolator
-                    if not len(adata):
-                        interpolator = lambda coords: np.full(coords.shape[:-1], np.nan, adata.dtype)
-                    # for ndim=0, just return the 0,0 element of array
-                    elif not len(segment_grid):
-                        interpolator = lambda coords: arse.array[tuple(input_slice_reduction)]
-                    # for ndim=1, use 1D interpolator
-                    elif len(segment_grid) == 1:
-                        agrid = segment_grid[0]
-                        if arav.mask is not np.ma.nomask:
-                            agrid = agrid[~arav.mask]
-                        # handle edge case of 1 valid point, since interp1d() falls over on this
-                        if len(adata) == 1:
-                            adata = np.array([adata[0], adata[0]])
-                            agrid = np.array([agrid[0] - 1e-6, agrid[0] + 1e-6])
-                        # make normal interpolator
-                        interpolator = scipy.interpolate.interp1d(agrid, adata, bounds_error=False, fill_value=np.nan)
-                    # ...because LinearNDInterpolator works for ndim>1 only
-                    else:
-                        meshgrids = np.array([g.ravel() for g in np.meshgrid(*segment_grid, indexing='ij')]).T
-                        if arav.mask is not np.ma.nomask:
-                            meshgrids = meshgrids[~arav.mask, :]
+
+                    # this is used by the 2D and >2D cases, so make a function
+                    def makeLinearNDInterpolator(segment_grid, arav, adata):
+                        meshgrids_full = np.array([g.ravel() for g in np.meshgrid(*segment_grid, indexing='ij')]).T
+                        meshgrids = meshgrids_full[~arav.mask, :] if arav.mask is not np.ma.nomask else meshgrids_full
                         qhull_options = "Qbb Qc Qz Q12"
                         # edge case of <4 valid points. Delaunay falls over, so artificially duplicate points,
                         # and allow Qhull juggling with the QJ option
@@ -627,14 +610,61 @@ class Parameter(object):
                         elif len(set(meshgrids[:, 0])) < 2 or len(set(meshgrids[:, 1])) < 2:
                             qhull_options += " QJ"
                         triang = scipy.spatial.Delaunay(meshgrids, qhull_options=qhull_options)
-                        interpolator = scipy.interpolate.LinearNDInterpolator(triang, adata, fill_value=np.nan)
+                        return scipy.interpolate.LinearNDInterpolator(triang, adata, fill_value=np.nan), meshgrids_full
+
+                    # edge case: no valid data. Make fake interpolator
+                    if not len(adata):
+                        interpolator = lambda coords: np.full(coords.shape[:-1], np.nan, adata.dtype)
+                    # for ndim=0, just return the 0,0 element of array
+                    elif not len(segment_grid):
+                        interpolator = lambda coords: arse.array
+                    # for ndim=1, use 1D interpolator
+                    elif len(segment_grid) == 1:
+                        agrid = segment_grid[0]
+                        if arav.mask is not np.ma.nomask:
+                            agrid = agrid[~arav.mask]
+                        # handle edge case of 1 valid point, since interp1d() falls over on this
+                        if len(adata) == 1:
+                            adata = np.array([adata[0], adata[0]])
+                            agrid = np.array([agrid[0] - 1e-6, agrid[0] + 1e-6])
+                        # make normal interpolator
+                        interpolator = scipy.interpolate.interp1d(agrid, adata, bounds_error=False,
+                                                                  fill_value="extrapolate")
+                    # for 2D, use fill, then interp2d (which extrapolates)
+                    elif len(segment_grid) == 2:
+                        # if any points inside the slice are masked, inpaint them with LinearNDInterpolator first,
+                        # so that we have a complete 2D filled_array
+                        if arseg.mask is not np.ma.nomask and arseg.mask.any():
+                            ndinp, meshgrids = makeLinearNDInterpolator(segment_grid, arav, adata)
+                            # list of coordinates where we're missing values
+                            missing_grids = meshgrids[arav.mask, :]
+                            # fill missing values using interpolator
+                            filled_array = arav.copy()
+                            filled_array[arav.mask] = ndinp(missing_grids)
+                            filled_array = filled_array.reshape(arseg.shape)
+                        else:
+                            filled_array = arseg.data
+                        # make 2D interpolator
+                        interpolator1 = scipy.interpolate.interp2d(segment_grid[0], segment_grid[1],
+                                                                  filled_array.T, bounds_error=False)
+                        interpolator = lambda *output_coord: interpolator1(*output_coord).T
+
+                    # for >2 dims, use LinearNDInterpolator. Note that this does not extrapolate.
+                    elif len(segment_grid) > 2:
+                        interpolator1, _ = makeLinearNDInterpolator(segment_grid, arav, adata)
+                        interpolator = lambda *output_coord: \
+                            interpolator1(np.array([x.ravel() for x in np.meshgrid(*output_coord, indexing='ij')]).T).\
+                                reshape(interp_shape)
+
                     # cache the interpolator
                     self._interpolators[slicer] = interpolator, input_grid_segment
 
-                # make a meshgrid of output coordinates, and massage into correct shape for interpolator
-                coords = np.array([x.ravel() for x in np.meshgrid(*output_coord, indexing='ij')])
-                # call interpolator. Reshape into output slice shape
-                result = interpolator(coords.T).reshape(interp_shape)
+                result = interpolator(*output_coord)
+
+                # # make a meshgrid of output coordinates, and massage into correct shape for interpolator
+                # coords = np.array([x.ravel() for x in np.meshgrid(*output_coord, indexing='ij')])
+                # # call interpolator. Reshape into output slice shape
+                # result = interpolator(coords.T).reshape(interp_shape)
                 print("  interpolated onto {} grid".format("x".join(map(str, interp_shape))), file=log(2))
                 output_array[out_slicer] = result[tuple(interp_broadcast)]
         # return array, throwing out unneeded axes
