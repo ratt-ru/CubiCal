@@ -410,11 +410,19 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     robust_weights = None
     if hasattr(gm, 'is_robust'):
+        
+        # do a last round of robust flag robust flag and save the weights
+        
+        if gm.robust_flag_weights:
+            gm.robust_flag(flags_arr, model_arr, obser_arr, final=True)
+            stats.chunk.num_mad_flagged = ((flags_arr & FL.MAD) != 0).sum()
+        
         if gm.save_weights:
             newshape = gm.weights.shape[1:-1] + (2,2)
             robust_weights = np.repeat(gm.weights.real, 4, axis=-1)
             robust_weights = np.reshape(robust_weights, newshape)
             gm.output_weights = robust_weights
+        
 
     # After the solver loop check for warnings from the solvers
     for d in gm.collect_warnings():
@@ -645,11 +653,12 @@ class SolverMachine(object):
         """
         Finalizes the output visibilities, running a pass of the flagger on them, if configured
         """
+
         # clear out MAD flags if madmax was in trial mode
         if self.stats.chunk.num_mad_flagged and self.madmax.trial_mode:
             self.vdm.flags_arr &= ~FL.MAD
             self.stats.chunk.num_mad_flagged = 0
-        num_mad_flagged_prior = self.stats.chunk.num_mad_flagged
+        num_mad_flagged_prior = int(self.stats.chunk.num_mad_flagged)
 
         # apply final round of madmax on residuals, if asked to
         if GD['madmax']['residuals']:

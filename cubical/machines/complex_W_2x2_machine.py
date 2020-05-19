@@ -65,7 +65,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.cov_thresh = options.get("robust-cov-thresh",  1)
 
-        # self.clip_low = options.get("robust-clip-weights", 0.1)
+        self.sigma_thresh = options.get("robust-sigma-thresh", 3)
 
         self.robust_flag_weights = options.get("robust-flag-weights", True)
 
@@ -268,8 +268,6 @@ class ComplexW2x2Gains(PerIntervalGains):
         if self.cov_type == "identity":
 
             covinv = np.eye(4, dtype=self.dtype)
-
-            self.apply_threshold = self.w_threshold
           
         else:
 
@@ -290,8 +288,8 @@ class ComplexW2x2Gains(PerIntervalGains):
                 norm = Nvis
 
             # removing the offdiagonal correlations
-
             std = np.diagonal(ompstd/norm) + self.eps**2 # To avoid division by zero
+            # std2 = np.array([ompstd[0,0], ompstd[0,3], ompstd[3,0], ompstd[3,3]])/norm
 
             if np.any(std>self.cov_thresh):
                 self.fixed_v = True
@@ -307,12 +305,16 @@ class ComplexW2x2Gains(PerIntervalGains):
             if self.iters % 5 == 0 or self.iters == 1:
                 if self.flaground:
                     print("rb-2x2 {} : flag round {}: covariance diagonal : [{}]".format(self.label, self._count+1, ", ".join('{:.2g}'.format(x) for x in std)), file=log(2))
+                    # print("rb-2x2 {} : flag round {}: covariance diagonal : [{}]".format(self.label, self._count+1, ", ".join('{:.2g}'.format(x) for x in std2)), file=log(2))
                 else:
                     print("rb-2x2 {} : {} iters: covariance diagonal : [{}]".format(self.label, self.iters, ", ".join('{:.2g}'.format(x) for x in std)), file=log(2))
+                    # print("rb-2x2 {} : {} iters: covariance diagonal : [{}]".format(self.label, self.iters, ", ".join('{:.2g}'.format(x) for x in std2)), file=log(2))
 
             covinv = np.eye(4, dtype=self.dtype)
 
-            if self.fixed_v is False:
+            if self.fixed_v:
+                covinv *= 1/self.cov_thresh
+            else:
                 if self.cov_type == "hybrid":
                     if np.max(np.abs(std)) < 1:
                         covinv[np.diag_indices(4)]= 1/std
@@ -380,14 +382,17 @@ class ComplexW2x2Gains(PerIntervalGains):
                     #nless, nmore = len(wn[wn<1])/len(wn), len(wn[wn>1])/len(wn)
                     print("rb-2x2 {} : {} iters: weights stats are min {:.4}, max: {:.4}, mean: {:.4}, std: {:.4}, median: {:.4}, mad: {:.4}".format(self.label, self.iters, np.min(wn), 
                                                     np.max(wn), np.mean(wn), np.std(wn), np.median(wn), stats.median_absolute_deviation(wn), file=log(2))) #, np.sum(wn), m, nless, nmore, 
-                
+            
             if self.fixed_v:
                 return 2
-            else:
+            else:    
                 return root
 
         if self.iters % self.v_int == 0 or self.iters == 1:
             self.compute_covinv()
+
+        if self.fixed_v:
+            self.v = 2
 
         self.kernel_robust.compute_weights(self.residuals, self.covinv, self.weights, self.v, self.npol)
 
@@ -427,9 +432,15 @@ class ComplexW2x2Gains(PerIntervalGains):
             nflag0 = np.sum(self.new_flags!=0)
             wfrac0 = nflag0/_nvis
 
-            
-            wlow = 1/self.v #max(wmean - self.apply_threshold*wstd, 0)
-            self.weight_flags = np.where((self.weights<wlow) & (self.weights!=0)) #self.apply_clip_low
+            # This correction factor is two ensure that we only flag when v is low.
+            # The 1.26 factor is just makes it work somehow 
+            _v_corr = 1.26/self.v #2*self.npol/self.v if self.v < 5 else self.npol/self.v
+
+            wlow =  _v_corr*(self.v + self.npol)/(self.v + self.sigma_thresh)
+
+            print("rb-2x2 {} : {} iters: wlow is  {:.3} while 1/v is {:.3}".format(self.label, self.iters, wlow, 1/self.v), file=log(2))
+
+            self.weight_flags = np.where((self.weights< wlow) & (self.weights!=0)) # wlow
 
             # import pdb; pdb.set_trace()
 
@@ -475,14 +486,20 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.not_all_flagged = False if self.Nvis==0 else True
 
-    def robust_flag(self, flags_arr, model_arr, obser_arr):
+    def robust_flag(self, flags_arr, model_arr, obser_arr, final=False):
         """run an iteration and use the weights to flag high level RFIs"""
 
         self.flaground = True
-        self.iters = 1
-        
-        self.compute_update(model_arr, obser_arr)
-        np.copyto(self.gains, self.old_gains)
+
+        if final is False:
+            self.v = 5  # Don't start with a low degree of freedom to prevent overflagging
+            self.iters = 1
+
+        if final and self.not_all_flagged:
+            self.flag_weights()
+        else:
+            self.compute_update(model_arr, obser_arr)
+            np.copyto(self.gains, self.old_gains)
 
         if self.any_new:
             flags_arr[self.weight_flags[1:-1]] |= FL.MAD
@@ -493,10 +510,12 @@ class ComplexW2x2Gains(PerIntervalGains):
             model_arr[:, :, new_flags!=0, :, :] = 0
             obser_arr[   :, new_flags!=0, :, :] = 0
 
-            self.weights[:, self.new_flags==False,:] = 1
+        if final is False:
+            self.weights[:, self.new_flags==False, :] = 1
+            self.iters = 0
+            self.v = 2
 
         self.flaground = False
-        self.iters = 0
 
     def restrict_solution(self, gains):
         
@@ -579,7 +598,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.weights = np.ones(self.weights_shape, dtype=self.dtype)
 
-        self.v = 2. # t-distribution number of degrees of freedom
+        self.v = 2 # t-distribution number of degrees of freedom
 
         self.covinv = np.eye(4, dtype=self.dtype)
 

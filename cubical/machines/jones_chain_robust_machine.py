@@ -242,6 +242,7 @@ class JonesChain(MasterMachine):
             if self.last_active_index!=self.active_index:
                 self.active_term.v = self.jones_terms[self.last_active_index].v
                 self.active_term.not_all_flagged = self.jones_terms[self.last_active_index].not_all_flagged
+                self.active_term.new_flags = self.jones_terms[self.last_active_index].new_flags.copy()
 
             if self.not_all_flagged:
                 self.active_term.update_weights()
@@ -319,49 +320,38 @@ class JonesChain(MasterMachine):
     def update_weight_flags(self, flags_arr):
         self.active_term.update_weight_flags(flags_arr)
 
-    def robust_flag(self, flags_arr, model_arr, obser_arr):
+    def robust_flag(self, flags_arr, model_arr, obser_arr, final=False):
         """run an iteration and use the weights to flag high level RFIs"""
 
         self.active_term.flaground = True
         self.last_active_index = self.active_index
-        self.iters = 1
         
-        self.compute_update(model_arr, obser_arr)
-        np.copyto(self.active_term.gains, self.active_term.old_gains)
+        if final is False:
+            self.active_term.v = 5  # Don't start with a low degree of freedom to prevent overflagging
+            self.iters = 1
+
+        if final and self.not_all_flagged:
+            self.active_term.flag_weights()
+        else:
+            self.compute_update(model_arr, obser_arr)
+            np.copyto(self.active_term.gains, self.active_term.old_gains)
 
         if self.any_new:
             flags_arr[self.weight_flags[1:-1]] |= FL.MAD
             self.update_equation_counts(flags_arr != 0)
-            
-            # stats.chunk.num_mad_flagged = ((flags_arr & FL.MAD) != 0).sum()
-
-            # # update_stats(flags_arr, ('initchi2', 'chi2'))
-
-            # stats.save_chunk_stats(step=0)
 
             new_flags = flags_arr & ~(FL.MISSING | FL.PRIOR) != 0
                 
             model_arr[:, :, new_flags!=0, :, :] = 0
             obser_arr[   :, new_flags!=0, :, :] = 0
 
-            self.weights[:, self.new_flags==False,:] = 1
-
-            # # resid_arr[:,flags_arr!=0] = 0
-
-            # chi, stats.chunk.chi2u = compute_chisq(statfield='initchi2', full=True)
-            # stats.chunk.chi2_0 = stats.chunk.chi2u_0 = stats.chunk.chi2u
-
-            # # The following provides conditioning information when verbose is set to > 0.
-            # if log.verbosity() > 0:
-            #     log(1).print("{} chi^2_0 {:.4}; {}; noise {:.3}, flags: {}".format(
-            #                 label, stats.chunk.chi2_0, gm.conditioning_status_string,
-            #                 float(stats.chunk.noise_0), get_flagging_stats()))
+        if final is False:
+            self.weights[:, self.new_flags==False, :] = 1
+            self.iters = 0
+            self.active_term.v = 2
 
         self.active_term.flaground = False
-        self.iters = 0
-
-
-    
+       
 
     def accumulate_gains(self, dd=True):
         """
