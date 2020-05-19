@@ -45,11 +45,17 @@ logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 GD = None
 
+# the getuser() call fails under singularity --contain, so fall back to $USER
+try:
+    _user = getpass.getuser()
+except:
+    _user = os.environ.get("USER", "unknown")
+
 _start_datetime = datetime.datetime.now()
 
 _runtime_templates = dict(DATE=_start_datetime.strftime("%Y%m%d"),
                           TIME=_start_datetime.strftime("%H%M%S"),
-                          USER=getpass.getuser(),
+                          USER=_user,
                           HOST=os.uname()[1],
                           ENV=os.environ)
 

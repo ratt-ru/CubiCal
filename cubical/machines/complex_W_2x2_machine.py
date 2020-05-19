@@ -210,6 +210,8 @@ class ComplexW2x2Gains(PerIntervalGains):
         # if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
         update += self.gains
         self.restrict_solution(update)
+        # raise flag so updates of G^H and G^-1 are computed
+        self._gh_update = self._ghinv_update = True
 
         if self.iters % 2 == 0 or self.n_dir > 1:
             self.gains += update

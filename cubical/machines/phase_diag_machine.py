@@ -192,6 +192,9 @@ class PhaseDiagGains(PerIntervalGains):
         self.gains[...,0,1].fill(0)
         self.gains[...,1,0].fill(0)
 
+        # raise flag so updates of G^H and G^-1 are computed
+        self._gh_update = self._ghinv_update = True
+
     def restrict_solution(self, phases):
         """
         Restricts the solution by invoking the inherited restrict_soultion method and applying

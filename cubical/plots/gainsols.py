@@ -5,6 +5,7 @@ from collections import OrderedDict
 import matplotlib.patches as mpatches
 from pylab import *
 import re, fnmatch
+import warnings
 
 log = logger.getLogger("gain_plots")
 
@@ -76,21 +77,23 @@ def get_plot_limits(options, sols, time0=0):
     if auto_limits.max_freq == auto_limits.min_freq:
         auto_limits.max_freq += 1
 
-    max_ampls_diag = { ant: max(abs(g00).max(), abs(g11).max()) for ant, (_, _, g00, g01, g10, g11) in sols.items() }
-    log.print("max diag amplitude per antenna:", ", ".join([ "{}: {}".format(ant, val) for ant, val in sorted(max_ampls_diag.items())]))
-    auto_limits.max_ampl = max(max_ampls_diag.values())
+    with warnings.catch_warnings():  # abs tends to raise complex warnings on masked arrays.
+        warnings.simplefilter("ignore", ComplexWarning)
+        max_ampls_diag = { ant: max(abs(g00).max(), abs(g11).max()) for ant, (_, _, g00, g01, g10, g11) in sols.items() }
+        log.print("max diag amplitude per antenna:", ", ".join([ "{}: {}".format(ant, val) for ant, val in sorted(max_ampls_diag.items())]))
+        auto_limits.max_ampl = max(max_ampls_diag.values())
 
-    max_ampls_offdiag = { ant: max(abs(g01).max(), abs(g10).max()) for ant, (_, _, g00, g01, g10, g11) in sols.items() }
-    log.print("max off-diag amplitude per antenna:", ", ".join([ "{}: {}".format(ant, val) for ant, val in sorted(max_ampls_offdiag.items())]))
-    auto_limits.max_ampl_1 = max(max_ampls_offdiag.values())
+        max_ampls_offdiag = { ant: max(abs(g01).max(), abs(g10).max()) for ant, (_, _, g00, g01, g10, g11) in sols.items() }
+        log.print("max off-diag amplitude per antenna:", ", ".join([ "{}: {}".format(ant, val) for ant, val in sorted(max_ampls_offdiag.items())]))
+        auto_limits.max_ampl_1 = max(max_ampls_offdiag.values())
 
-    auto_limits.min_ampl = min([ min(abs(g00).min(), abs(g11).min()) for _, _, g00, g01, g10, g11 in sols.values()])
-    auto_limits.min_ampl_1 = min([ min(abs(g01).min(), abs(g10).min()) for _, _, g00, g01, g10, g11 in sols.values()])
-    auto_limits.max_phase = max([ max([abs(np.angle(g)).max() for g in ggs[2:]]) for ggs in sols.values()])*180/np.pi
-    auto_limits.max_reim = max([ max(abs(g00.real).max(), abs(g00.imag).max(), abs(g11.real).max(), abs(g11.imag).max())
-                                 for _, _, g00, g01, g10, g11 in sols.values()])
-    auto_limits.max_reim_1 = max([ max(abs(g01.real).max(), abs(g01.imag).max(), abs(g10.real).max(), abs(g10.imag).max())
-                                   for _, _, g00, g01, g10, g11 in sols.values()])
+        auto_limits.min_ampl = min([ min(abs(g00).min(), abs(g11).min()) for _, _, g00, g01, g10, g11 in sols.values()])
+        auto_limits.min_ampl_1 = min([ min(abs(g01).min(), abs(g10).min()) for _, _, g00, g01, g10, g11 in sols.values()])
+        auto_limits.max_phase = max([ max([abs(np.angle(g)).max() for g in ggs[2:]]) for ggs in sols.values()])*180/np.pi
+        auto_limits.max_reim = max([ max(abs(g00.real).max(), abs(g00.imag).max(), abs(g11.real).max(), abs(g11.imag).max())
+                                    for _, _, g00, g01, g10, g11 in sols.values()])
+        auto_limits.max_reim_1 = max([ max(abs(g01.real).max(), abs(g01.imag).max(), abs(g10.real).max(), abs(g10.imag).max())
+                                    for _, _, g00, g01, g10, g11 in sols.values()])
     # override with options
     for attr in dir(auto_limits):
         if attr.startswith("min") or attr.startswith("max"):
@@ -176,8 +179,8 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
             ax.plot(freq, x2[ts].imag, '+y', ms=2, label=im2 if not ts else None)
         if legend:
             ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
-                                   ("r", re1), ("b", im1),
-                                   ("c", re2), ("y", im2)
+                                   (("r", re1), ("b", im1),
+                                    ("c", re2), ("y", im2))
                                ], loc="upper center", ncol=2, fontsize=options.font_size)
 
     def _make_ap_plot(ax, ax2, freq, x1, x2, corrs, legend):
@@ -187,12 +190,14 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
                      label=ph1 if not ts else None)
             ax2.plot(freq, np.angle(x2[ts]) * 180 / math.pi, '.y', ms=0.5,
                      label=ph2 if not ts else None)
-            ax.plot(freq, abs(x1[ts]), '+r', ms=2, label=amp1 if not ts else None)
-            ax.plot(freq, abs(x2[ts]), '+b', ms=2, label=amp2 if not ts else None)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", ComplexWarning)
+                ax.plot(freq, abs(x1[ts]), '+r', ms=2, label=amp1 if not ts else None)
+                ax.plot(freq, abs(x2[ts]), '+b', ms=2, label=amp2 if not ts else None)
         if legend:
             ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
-                                   ("r", amp1), ("b", amp2),
-                                   ("c", ph1),  ("y", ph2)
+                                   (("r", amp1), ("b", amp2),
+                                    ("c", ph1),  ("y", ph2))
                                ], loc="upper center", ncol=2, fontsize=options.font_size)
 
     for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(sols.items()[:max_sols]):
@@ -255,7 +260,7 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
 
     lim = get_plot_limits(options, sols, time0=time0)
 
-    x1 = sols.values()[0][2]
+    x1 = list(sols.values())[0][2]
     if x1.shape[1] > 100:
         log.warn("making gain plot for {} frequency slices, this better be intentional!".format(x1.shape[1]))
 
@@ -300,7 +305,7 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
             ax.plot(time, x2[:, fs], '+b', ms=2, label=corrs[1] if not fs else None)
         if legend:
             ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
-                                   ("r", corrs[0]), ("b", corrs[1]),
+                                   (("r", corrs[0]), ("b", corrs[1]))
                                ], loc="upper center", ncol=2, fontsize=options.font_size)
 
     def _make_reim_plot(ax, time, x1, x2, corrs, legend):
@@ -313,8 +318,8 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
             ax.plot(time, x2[:, fs].imag, '+y', ms=2, label=im2 if not fs else None)
         if legend:
             ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
-                                   ("r", re1), ("b", im1),
-                                   ("c", re2), ("y", im2)
+                                   (("r", re1), ("b", im1),
+                                    ("c", re2), ("y", im2))
                                ], loc="upper center", ncol=2, fontsize=options.font_size)
 
     def _make_ap_plot(ax, AX2, time, x1, x2, corrs, legend):
@@ -324,12 +329,14 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
                      label=ph1 if not fs else None)
             ax2.plot(time, np.angle(x2[:, fs]) * 180 / math.pi, '.y', ms=0.5,
                      label=ph2 if not fs else None)
-            ax.plot(time, abs(x1[:, fs]), '+r', ms=2, label=amp1 if not fs else None)
-            ax.plot(time, abs(x2[:, fs]), '+b', ms=2, label=amp2 if not fs else None)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", ComplexWarning)
+                ax.plot(time, abs(x1[:, fs]), '+r', ms=2, label=amp1 if not fs else None)
+                ax.plot(time, abs(x2[:, fs]), '+b', ms=2, label=amp2 if not fs else None)
         if legend:
             ax.legend(handles=[mpatches.Patch(color=col, label=label) for col, label in
-                                   ("r", amp1), ("b", amp2),
-                                   ("c", ph1),  ("y", ph2)
+                                   (("r", amp1), ("b", amp2),
+                                    ("c", ph1),  ("y", ph2))
                                ], loc="upper center", ncol=2, fontsize=options.font_size)
 
     for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(sols.items()):

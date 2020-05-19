@@ -4,7 +4,7 @@ from __future__ import print_function
 from collections import OrderedDict
 import matplotlib.patches as mpatches
 from pylab import *
-import gainsols
+from cubical.plots import gainsols
 
 def plot_leakages_cc(D, FS=None, TS=None, ANTS=slice(None), refant=None,
                      plot_diag='ap', plot_offdiag='ri', figtitle=None):

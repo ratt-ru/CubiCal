@@ -170,6 +170,8 @@ class Complex2x2Gains(PerIntervalGains):
             update += self.gains
 
         self.restrict_solution(update)
+        # raise flag so updates of G^H and G^-1 are computed
+        self._gh_update = self._ghinv_update = True
 
         #if self._offdiag_only:
         #    update[...,0,0] = 1
