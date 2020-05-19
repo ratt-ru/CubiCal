@@ -196,13 +196,12 @@ class PerIntervalGains(MasterMachine):
 
     @classmethod
     def get_full_kernel(cls, options, diag_gains):
-<<<<<<< HEAD
-=======
+
         """
         Class method. Given a machine class and a set of options, returns numerical kernel
         for "full 2x2" operations on visibilities.
         """
->>>>>>> master
+
         # return cubical.kernels.import_kernel('full_complex')
         # select which kernels to use for full correction/residuals -- see selection matrix above
         if diag_gains:
@@ -479,9 +478,6 @@ class PerIntervalGains(MasterMachine):
             if self.dd_term:
                 self.prior_gain_error[self.fix_directions, ...] = 0
 
-            # import ipdb; ipdb.set_trace()
-<<<<<<< HEAD
-
             # if we did everything right above (ignoring flagged data etc.), PGE can't be inf/nan,
             # so this is just a sanity check
             pge_flag_invalid = np.isnan(self.prior_gain_error) | np.isinf(self.prior_gain_error)
@@ -503,30 +499,6 @@ class PerIntervalGains(MasterMachine):
                 self.gflags[self._interval_to_gainres(low_snr, 1)] |= FL.LOWSNR
                 self._report_gain_flags(low_snr, "on low SNR", "your max-prior-error settings", self.low_snr_warn)
 
-=======
-
-            # if we did everything right above (ignoring flagged data etc.), PGE can't be inf/nan,
-            # so this is just a sanity check
-            pge_flag_invalid = np.isnan(self.prior_gain_error) | np.isinf(self.prior_gain_error)
-            if pge_flag_invalid.any():
-                self.raise_userwarning(
-                    logging.CRITICAL,
-                    "{0:s} {1:s}: prior gain error estimate invalid for {2:d}/{3:d} directions/intervals. " +
-                    "This can be caused by bad data, but should have been handled gracefully, so please report this issue!".format(
-                        self.chunk_label, self.jones_label, pge_flag_invalid.sum(), pge_flag_invalid.size
-                    ),
-                    90, raise_once="invalid_models", verbosity=2, color="red")
-                # flag these as invalid
-                self.gflags[self._interval_to_gainres(pge_flag_invalid, 1)] |= FL.INVALID
-
-            # log(0).print("{}: max gain error {}, invalid PGEs {}".format(self.chunk_label, self.max_gain_error, bad_gain_intervals.sum()))
-
-            if self.max_gain_error:
-                low_snr = self.prior_gain_error > self.max_gain_error  # shape DTFA
-                self.gflags[self._interval_to_gainres(low_snr, 1)] |= FL.LOWSNR
-                self._report_gain_flags(low_snr, "on low SNR", "your max-prior-error settings", self.low_snr_warn)
-
->>>>>>> master
         # if INVALID or LOWSNR raised above, recompute equation counts
         if self._update_gain_flags("INVALID", flags_arr) + self._update_gain_flags("LOWSNR", flags_arr):
             unflagged = flags_arr == 0
@@ -576,26 +548,15 @@ class PerIntervalGains(MasterMachine):
             percflagged = whats_flagged.sum(axis=(1, 2, 3)) * 100.0 / whats_flagged[0].size
             bad_dirs = np.argwhere(percflagged > threshold)
 
-<<<<<<< HEAD
-            #import pdb; pdb.set_trace()
-
-=======
->>>>>>> master
             if len(bad_dirs):
                 if log.verbosity() > 1:
                     msg = "{} directions ({}) flagged {}".format(
                         len(bad_dirs),
-<<<<<<< HEAD
-                        ", ".join(["dir {}: {}% gains affected".format(
-                            str(d), percflagged[d]) for d in bad_dirs]),
-                        why_flagged
-                    ) #{0:s} {1:3f}
-=======
                         ", ".join(["dir {0:s}: {1:.3f}% gains affected".format(
                             str(d), percflagged[d]) for d in bad_dirs]),
                         why_flagged
-                    )
->>>>>>> master
+                    ) #{0:s} {1:3f}
+
                 else:
                     msg = "{} directions flagged {}".format(len(bad_dirs), why_flagged)
                 issue_warning(msg, 50)
