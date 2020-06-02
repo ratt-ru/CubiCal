@@ -381,7 +381,7 @@ class casa_db_adaptor(PickledDatabase):
         """
         PickledDatabase.__init__(self)
         self.meta_avail = False
-        self.export_enabled = True
+        self.export_enabled = False
     
     @property
     def export_CASA_gaintable(self):
@@ -398,9 +398,10 @@ class casa_db_adaptor(PickledDatabase):
             Args:
                 src: a cubical.data_handler instance
         """
-        if six.PY3:
+        if six.PY3 and self.export_enabled:
             log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-            return
+            self.export_enabled = False
+
         if not isinstance(src, MSDataHandler):
             raise TypeError("src must be of type Cubical DataHandler")
 
@@ -484,6 +485,6 @@ class casa_db_adaptor(PickledDatabase):
         # move to closed state before exporting and loading back and sorting data
         do_export = (self.mode is "create")
         PickledDatabase.close(self) 
-        if do_export:
+        if do_export and self.export_enabled:
             self.__export()
     

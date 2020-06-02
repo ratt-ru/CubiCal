@@ -56,6 +56,7 @@ class Metadata(object):
         self.num_antennas = 0
         self.num_baselines = 0
         self.antenna_name = []              # p -> antenna name
+        self.antenna_index = {}             # antenna name -> p
         self.baseline_name = {}             # p,q -> baseline name
         self.baseline_length = {}           # p,q -> baseline length
         self.feeds = "xy"                   # "xy" or "rl"

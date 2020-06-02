@@ -5,12 +5,15 @@
 from __future__ import print_function
 from builtins import range
 import numpy as np
+import sys
+import traceback
 from collections import OrderedDict
 
 from cubical.tools import shared_dict
 from cubical.flagging import FL
 from cubical import data_handler
 from cubical.tools import dtype_checks as dtc
+
 
 from cubical.tools import logger, ModColor
 log = logger.getLogger("ms_tile")
@@ -19,7 +22,7 @@ try:
 except ImportError:
     TiggerSourceProvider = None
 try:
-    from .DicoSourceProvider import DicoSourceProvider
+    from cubical.degridder.DicoSourceProvider import DicoSourceProvider
 except ImportError:
     DicoSourceProvider = None
 
@@ -135,15 +138,15 @@ class MSTile(object):
             Returns:
                 ndarray of shape nrow x nchan x ncorr for name specified in "cluster"
             """
-            from .DDFacetSim import DDFacetSim
+            from cubical.degridder.DDFacetSim import DDFacetSim
             ddid_index, uniq_ddids, _ = data_handler.uniquify(self.ddid_col)
             self._freqs = np.array([self.tile.dh.chanfreqs[ddid] for ddid in uniq_ddids])
+            self._chan_widths = np.array([self.tile.dh.chanwidth[ddid] for ddid in uniq_ddids])
             ddfsim = DDFacetSim()
             ndirs = model_source._nclus
             loaded_models[model_source] = {}
             ddfsim.set_model_provider(model_source)
             for idir, clus in enumerate(model_source._cluster_keys):
-                model_source.set_frequency(self._freqs)
                 ddfsim.set_direction(clus)
                 model = ddfsim.simulate(self.tile.dh, 
                                         self.tile,
@@ -151,7 +154,9 @@ class MSTile(object):
                                         self.tile.dh._poltype, 
                                         uvwco,
                                         self._freqs,
-                                        model_type)
+                                        model_type,
+                                        self._chan_widths,
+                                        self.time_col)
                 loaded_models[model_source][clus] = model
 
             # finally return the direction requested in cluster
@@ -638,6 +643,12 @@ class MSTile(object):
             table_subset = self.dh.data.selectrows(subset.rows0)
             flagcol = table_subset.getcol("FLAG")
             flagrow = table_subset.getcol("FLAG_ROW")
+            # flag all four corrs
+            num_fl0 = flagcol.sum()
+            flagcol[:] = np.logical_or.reduce(flagcol, axis=-1)[:,:,np.newaxis]
+            if flagcol.sum() != num_fl0:
+                table_subset.putcol("FLAG", flagcol)
+                print("    {}: some flags were expanded to all correlations".format(self.label), file=log(1))
 
             bflagcol = np.zeros(flagcol.shape, np.int32)
             bflagrow = np.zeros(flagrow.shape, np.int32)
@@ -763,6 +774,7 @@ class MSTile(object):
 
             if self.dh._apply_flags:
                 flagcol = self.dh.fetchslice("FLAG", subset=table_subset)
+                flagcol[:] = np.logical_or.reduce(flagcol, axis=-1)[:,:,np.newaxis]
                 flagrow = table_subset.getcol("FLAG_ROW")
                 flagcol[flagrow, :, :] = True
                 print("  read FLAG/FLAG_ROW", file=log(2))
@@ -895,14 +907,27 @@ class MSTile(object):
                 # still need to adjust conjugate rows
                 obvis0[subset.rebin_row_map<0] = obvis0[subset.rebin_row_map<0].conjugate()
                 nrows = nrows0
-                obvis = data['obvis'] = obvis0
+                data['obvis'] = obvis0
+                obvis = data['obvis']   # can't string assigmnent together: x = dict['key'] = y does not guarantee that x is dict['key']!!!
                 data['flags'] = flag_arr0
                 flag_arr = data['flags']
-                uvwco = data['uvwco'] = uvw0
+                data['uvwco'] = uvw0
+                uvwco = data['uvwco']
                 if num_weights:
                     data['weigh'] = weights0
                 del obvis0, uvw0, weights0
-
+                
+            # normalize by amplitude, if needed
+#            if self.dh.do_normalize_data:
+#                dataabs = np.abs(obvis)
+#                with np.errstate(divide='ignore'):
+#                    obvis /= dataabs
+#                    obvis[dataabs==0] = 0
+#                if 'weigh' in data:
+#                    data['weigh'] *= dataabs[np.newaxis, ...]
+#                else:
+#                    data['weigh'] = dataabs.reshape([1]+list(dataabs.shape))
+                    
             # compute PA rotation angles, if needed
             if self.dh.parallactic_machine is not None:
                 angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
@@ -935,7 +960,8 @@ class MSTile(object):
                                     model = loaded_models[model_source][cluster]
                                 # cluster of None signifies that this is a visibility column
                                 elif cluster is None:
-                                    if model_source is 1:
+
+                                    if model_source == 1:
                                         print("  using 1.+0j for model {} direction {}{}".format(model_source,
                                                                                                          imod, idir, subtract_str), file=log(2))
                                         model = np.ones_like(obvis)
@@ -1148,8 +1174,8 @@ class MSTile(object):
 
             ### APPLY DEROTATION HERE
             if self.dh.derotate_output:
-                vis = data[column][rows, freq_slice]
-                vis[:] = self.dh.parallactic_machine.derotate(subset.time_col[rows], vis,
+                data[column][rows, freq_slice] = self.dh.parallactic_machine.derotate(subset.time_col[rows],
+                                                               data[column][rows, freq_slice],
                                                                subset.antea[rows], subset.anteb[rows],
                                                                angles=data['pa'][rows])
         if flag_cube is not None:
@@ -1304,7 +1330,16 @@ class MSTile(object):
                 else:
                     print("  {:.2%} visibilities flagged by solver, but we're not saving flags".format(ratio), file=log)
             else:
-                print("  no new flags were generated", file=log)
+                 print("  no solver flags were generated", file=log)
+                 # bitflag still needs to be cleared though, if we're writing to it
+                 if self.dh._save_bitflag:
+                     self.bflagcol &= ~self.dh._save_bitflag
+                     bflag_col = True
+                     if self.dh._save_flags:
+                         print("  no visibilities flagged by solver: saving to BITFLAG and FLAG columns", file=log)
+                         flag_col = self.bflagcol != 0
+                     else:
+                         print("  no visibilities flagged by solver: saving to BITFLAG column only", file=log)
 
             if self.dh._save_flags_apply:
                 prior_flags = subset.upsample((data['flags'] & FL.PRIOR) != 0)
@@ -1314,11 +1349,13 @@ class MSTile(object):
                     flag_col |= prior_flags
                 ratio = prior_flags.sum() / float(prior_flags.size)
                 print("  also transferring {:.2%} input flags (--flags-save-legacy apply)".format(ratio), file=log)
+                flag_col[:] = np.logical_or.reduce(axis=-2)[:,:,np.newaxis]
 
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
             if bflag_col is not None:
                 if ("bitflag" in only_save):
+                    self.bflagcol[:] = np.bitwise_or.reduce(self.bflagcol, axis=2)[:,:,np.newaxis]
                     self.dh.putslice("BITFLAG", self.bflagcol, subset=table_subset)
                     totflags = (self.bflagcol != 0).sum()
                     self.dh.flagcounts['OUT'] += totflags
@@ -1355,7 +1392,7 @@ class MSTile(object):
                 self.dh.finalize()
                 self.dh.unlock()
 
-    def release(self):
+    def release(self, final=False):
         """ Releases the shared memory data dicts. """
 
         data = shared_dict.attach(self._data_dict_name)
@@ -1364,7 +1401,16 @@ class MSTile(object):
             if subset.label is not None:
                 data = shared_dict.attach(subset.datadict)
                 data.delete()
-
+        # clean up DDF degridder stuff, but only if it was already imported
+        if final and 'cubical.degridder.DDFacetSim' in sys.modules:
+            try:
+                from cubical.degridder.DDFacetSim import cleanup_degridders
+            except ImportError:
+                for line in traceback.format_exc().splitlines(keepends=False):
+                    log.info(line)
+                log.warn("Error importing cubical.degridder.DDFacetSim.cleanup_degridders, see above")
+                def cleanup_degridders(): pass
+            cleanup_degridders()
 
 
 

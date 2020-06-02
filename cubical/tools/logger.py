@@ -8,7 +8,8 @@
 
 from __future__ import print_function
 from six import string_types
-import logging, logging.handlers, os, re, sys, multiprocessing
+import logging, logging.handlers, os, re, sys, multiprocessing, time
+import psutil
 from . import ModColor
 
 # dict of logger wrappers created by the application
@@ -60,7 +61,8 @@ class _DefaultWriter(object):
             message = ModColor.Str(message, col=self.color, Bold=self.bold)
         self.logger.log(self.level if level_override is None else level_override, message)
 
-    print = write
+    def print(self, *args):
+        return self.write(" ".join(map(str, args)))
 
 class LoggerWrapper(object):
     def __init__(self, logger, verbose=None, log_verbose=None):
@@ -150,62 +152,23 @@ class LoggerWrapper(object):
         """
         _DefaultWriter(self.logger, logging.EXCEPTION, color=color).write(msg, print_once=print_once)
 
-
-    print = info
+    def print(self, *args):
+        return self.info(" ".join(map(str, args)))
 
     def write(self, message, level=logging.INFO, verbosity=0, print_once=None, color=None):
-        _DefaultWriter(self.logger, level - int(verbosity), color=color).write(message,
+        # apply verbosity only to INFO levels
+        if level == logging.INFO:
+            level -= int(verbosity)
+        _DefaultWriter(self.logger, level, color=color).write(message,
                                                                                print_once=print_once)
 
-_proc_status = '/proc/%d/status' % os.getpid()
-
-_scale = {'kB': 1024.0, 'mB': 1024.0*1024.0,
-          'KB': 1024.0, 'MB': 1024.0*1024.0}
-
-def _VmB(VmKey,statusfile=None):
-    global _scale
-    _proc_status = '/proc/%d/status' % os.getpid()
-    # get pseudo file  /proc/<pid>/status
-    try:
-        t = open(statusfile or _proc_status)
-        v = t.read()
-        t.close()
-    except:
-        return 0.0  # non-Linux?
-     # get VmKey line e.g. 'VmRSS:  9999  kB\n ...'
-    i = v.index(VmKey)
-    v = v[i:].split(None, 3)  # whitespace
-    if len(v) < 3:
-        return 0.0  # invalid format?
-     # convert Vm value to bytes
-    return float(v[1]) * _scale[v[2]]
-
-
-def _shmem_size (since=0.0):
-    '''Return shared memory usage in bytes.'''
-    return _VmB('Shmem:','/proc/meminfo') - since
-
-def _memory(since=0.0):
-    '''Return memory usage in bytes.'''
-    return _VmB('VmSize:') - since
-
-def _memory_peak(since=0.0):
-    '''Return memory usage in bytes.'''
-    return _VmB('VmPeak:') - since
-
-def _resident(since=0.0):
-    '''Return resident memory usage in bytes.'''
-    return _VmB('VmRSS:') - since
-
-def _resident_peak(since=0.0):
-    '''Return resident memory usage in bytes.'''
-    return _VmB('VmHWM:') - since
-
-def _stacksize(since=0.0):
-    '''Return stack size in bytes.'''
-    return _VmB('VmStk:') - since
-
+_parent_process = psutil.Process(os.getpid())
 _log_memory = False
+_log_memory_totals = True
+_log_memory_types = "rss pss".split()
+GB = float(1024 ** 3)
+
+
 def enableMemoryLogging(enable=True):
     global _log_memory
     _log_memory = enable
@@ -236,6 +199,16 @@ def get_subprocess_label():
 
 
 class LogFilter(logging.Filter):
+    _mem = None
+    _mem_totals = None
+    _children = None
+    _mem_ts = 0
+    _mem_totals_ts = 0
+    _children_ts = 0
+    _mem_update = .5     # full memory updates are a little costly, so do them only after this many seconds has elapsed
+    _mem_totals_update = 1
+    _children_update = 3 # children updates even more so, so do it even less frequently
+
     """LogFilter augments the event by a few new attributes used by our formatter"""
     def filter(self, event):
         if not event.getMessage().strip():
@@ -243,17 +216,40 @@ class LogFilter(logging.Filter):
         # short logger name (without app_name in front of it)
         setattr(event, 'shortname', event.name.split('.',1)[1] if '.' in event.name else event.name)
         setattr(event, 'separator', '| ')
-        # memory usage info
-        vss = float(_memory()/(1024**3))
-        vss_peak = float(_memory_peak()/(1024**3))
-        rss = float(_resident()/(1024**3))
-        rss_peak = float(_resident_peak()/(1024**3))
-        shm = float(_shmem_size()/(1024**3))
-        setattr(event,"virtual_memory_gb",vss)
-        setattr(event,"resident_memory_gb",rss)
-        setattr(event,"shared_memory_gb",shm)
         if _log_memory:
-            setattr(event, "memory", "[%.1f/%.1f %.1f/%.1f %.1fGb] "%(rss,rss_peak,vss,vss_peak,shm))
+            # memory usage info
+            t = time.time()
+            if t - self._mem_ts > self._mem_update:
+                self._mem_ts = t
+                KEYS = _log_memory_types
+                # get memory for this process
+                mi0 = psutil.Process(os.getpid()).memory_full_info()
+                mem = {key: getattr(mi0, key) / GB for key in KEYS}
+                shm = psutil.virtual_memory().shared / GB
+                # get total memory
+                if _log_memory_totals:
+                    if t - self._mem_totals_ts > self._mem_totals_update:
+                        self._mem_totals_ts = t
+                        if t - self._children_ts > self._children_update:
+                            self._children_ts = t
+                            self._children = [_parent_process] + list(_parent_process.children(recursive=True))
+                        if len(self._children) > 1:
+                            mis = []
+                            # scan over children, ignoring ones that may have disappeared
+                            for p in self._children:
+                                try:
+                                    mis.append(p.memory_full_info())
+                                except psutil.NoSuchProcess:
+                                    pass
+                            self._mem_totals = {key: sum([getattr(mi,key) for mi in mis]) / GB for key in KEYS}
+                # form up string
+                if self._mem_totals is None:
+                    smem = ["{:.1f}".format(mem[key]) for key in KEYS]
+                else:
+                    smem = ["{:.1f}/{:.1f}".format(mem[key], self._mem_totals[key]) for key in KEYS]
+                smem.append("{:.1f}Gb".format(shm))
+                self._mem = " ".join(smem)
+            setattr(event, "memory", "[{}] ".format(self._mem))
             setattr(event, 'separator', '')
         else:
             setattr(event, "memory", "")
@@ -273,19 +269,27 @@ class ColorStrippingFormatter(logging.Formatter):
         logging.Formatter.__init__(self, fmt, datefmt)
         self.strip = strip
 
+    def label(self, record):
+        if record.levelno < logging.WARNING:
+            return "INFO", "37;42"
+        elif record.levelno < logging.ERROR:
+            return "WARNING", "37;43"
+        elif record.levelno < logging.CRITICAL:
+            return "ERROR", "5;41"
+        else:
+            return "CRITICAL", "5;41"
+
+
     def format(self, record):
         """Uses parent class to format record, then strips off colors"""
         msg = logging.Formatter.format(self, record)
+        label, color = self.label(record)
         if self.strip:
-            return re.sub("\033\\[[0-9]+m", "", msg, 0)
+            return "{:10s}{}".format(label, re.sub("\033\\[[0-9]+m", "", msg, 0))
         else:
-            msg = re.sub("^INFO      ", "\033[1;37;42mINFO      \033[0m", msg)
-            msg = re.sub("^WARNING   ", "\033[1;37;43mWARNING   \033[0m", msg)
-            msg = re.sub("^CRITICAL  ", "\033[1;5;41mCRITICAL  \033[0m", msg)
-            msg = re.sub("^ERROR     ", "\033[1;5;41mERROR     \033[0m", msg)
-            return msg
+            return "\033[1;{}m{:10s}\033[0m{}".format(color, label, msg)\
 
-_fmt = "%(levelname)-10s%(separator)s - %(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
+_fmt = "%(asctime)s - %(shortname)-18.18s %(subprocess)s%(memory)s%(separator)s%(message)s"
 #        _fmt = "%(asctime)s %(name)-25.25s | %(message)s"
 _datefmt = '%H:%M:%S'#'%H:%M:%S.%f'
 _logfile_formatter = ColorStrippingFormatter(_fmt, _datefmt, strip=True)
@@ -298,6 +302,8 @@ def init(app_name):
     global _app_name
     global _root_logger
     if _root_logger is None:
+        # logging.basicConfig(level=logging.DEBUG, datefmt=_datefmt)
+        logging.basicConfig(datefmt=_datefmt)
         _app_name = app_name
         _root_logger = logging.getLogger(app_name)
         _root_logger.setLevel(logging.DEBUG)

@@ -52,9 +52,11 @@ if on_rtd:
 else:
     requirements = ['future',
                     'numpy',
-                    'numba',
-                    'python-casacore<=3.0.0; python_version <= "2.7"',
-                    'python-casacore<=3.0.0; python_version >= "3.0"', 
+                    'llvmlite==v0.31.0; python_version <= "2.7"',
+                    'numba==0.47.0; python_version <= "2.7"',
+                    'numba; python_version >= "3.0"',
+#                    'python-casacore<=3.0.0; python_version <= "2.7"',
+                    'python-casacore',
                     'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
                     'matplotlib<3.0',
                     'scipy',
@@ -63,6 +65,7 @@ else:
                     'futures; python_version <= "2.7"',
                     'astropy<3.0; python_version <= "2.7"',
                     'astropy>=3.0; python_version > "2.7"',
+                    'psutil'
                     ]
 
 setup(name='cubical',
@@ -81,24 +84,19 @@ setup(name='cubical',
       license='GNU GPL v3',
       long_description=long_description,
       long_description_content_type='text/markdown',
-      packages=['cubical', 
-                'cubical.data_handler',
-                'cubical.machines',
-                'cubical.tools', 
-                'cubical.kernels', 
-                'cubical.plots',
-                'cubical.database',
-                'cubical.madmax'],
+      packages=find_packages(),
       python_requires='<3.0' if six.PY2 else ">=3.0", #build a py2 or py3 specific wheel depending on environment (due to cython backend)
       install_requires=requirements,
       include_package_data=True,
       zip_safe=False,
-      scripts = ['cubical/bin/print-cubical-stats'],
+      scripts=['cubical/bin/print-cubical-stats',
+               'cubical/bin/plot-leakage-solutions',
+               'cubical/bin/plot-gain-solutions'],
       entry_points={'console_scripts': ['gocubical = cubical.main:main']},
       extras_require={
           'lsm-support': ['montblanc @git+https://github.com/ska-sa/montblanc.git@0.6.1'],
-          'degridder-support': ['ddfacet >= 0.4.0','regions>=0.4']
+          'degridder-support': ['ddfacet >= 0.5.0', 
+                                'regions >= 0.4',
+                                'meqtrees-cattery >= 1.7.0']
       }
 )
-
-

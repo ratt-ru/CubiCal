@@ -36,21 +36,29 @@ from cubical.tools import logger
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
 
-# Some modules cause issues with logging - grab their loggers and 
+# Some modules cause issues with logging - grab their loggers and
 # manually set the log levels to something less annoying.
 
 import logging
+import warnings
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 GD = None
+
+# the getuser() call fails under singularity --contain, so fall back to $USER
+try:
+    _user = getpass.getuser()
+except:
+    _user = os.environ.get("USER", "unknown")
 
 _start_datetime = datetime.datetime.now()
 
 _runtime_templates = dict(DATE=_start_datetime.strftime("%Y%m%d"),
                           TIME=_start_datetime.strftime("%H%M%S"),
-                          USER=getpass.getuser(),
+                          USER=_user,
                           HOST=os.uname()[1],
                           ENV=os.environ)
+
 
 def expand_templated_name(name, **keys):
     """
@@ -91,6 +99,7 @@ def expand_templated_name(name, **keys):
         raise ValueError(name)
 
 from cubical.data_handler.ms_data_handler import MSDataHandler
+from cubical.data_handler.wisdom import estimate_mem
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine, jones_chain_robust_machine
@@ -261,6 +270,18 @@ def main(debugging=False):
 
         enable_pdb = GD["debug"]["pdb"]
 
+        if GD["debug"]["escalate-warnings"]:
+            warnings.simplefilter('error', UserWarning)
+            np.seterr(all='raise')
+            if GD["debug"]["escalate-warnings"] > 1:
+                warnings.simplefilter('error', Warning)
+                log(0).print("all warnings will be escalated to exceptions")
+            else:
+                log(0).print("UserWarnings will be escalated to exceptions")
+
+        # clean up shared memory from any previous runs
+        shm_utils.cleanupStaleShm()
+
         # now setup logging
         logger.logToFile(basename + ".log", append=GD["log"]["append"])
         logger.enableMemoryLogging(GD["log"]["memory"])
@@ -314,6 +335,7 @@ def main(debugging=False):
         print(ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green"), file=log)
 
         have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
+        have_solvables = any([jo['solvable'] for jo in jones_opts])
 
         solver.GD = GD
 
@@ -329,6 +351,9 @@ def main(debugging=False):
         print("solver is apply-only type: {}".format(apply_only), file=log(0))
         load_model = solver.SOLVERS[solver_type].is_model_required
         print("solver requires model: {}".format(load_model), file=log(0))
+        
+        if not apply_only and not have_solvables:
+            raise UserInputError("No Jones terms have been marked as solvable")
 
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
@@ -357,6 +382,7 @@ def main(debugging=False):
                            pa_rotate_model=GD["model"]["pa-rotate"],
                            pa_rotate_montblanc=GD["montblanc"]["pa-rotate"],
                            derotate_output=GD["out"]["derotate"],
+                           do_normalize_data=GD["data"]["normalize"]
                            )
 
         solver.metadata = ms.metadata
@@ -461,12 +487,15 @@ def main(debugging=False):
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
+        solver_opts["correct-dir"] = GD["out"]["correct-dir"] if GD["out"]["correct-dir"] >= 0 else None
 
-        grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
+        grid = dict(dir=list(range(len(ms.model_directions) or 1)), ant=ms.antnames, corr=list(ms.feeds), time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
+
+        solver.gm_factory.set_metadata(ms)
                                                        
         # create IFR-based gain machine. Only compute gains if we're loading a model
         # (i.e. not in load-apply mode)
@@ -491,9 +520,15 @@ def main(debugging=False):
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
-        chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
-        if GD["dist"]["max-chunks"]:
-            chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
+        if single_chunk:
+            chunks_per_tile = 1
+            max_chunks_per_tile = 1
+        else:
+            chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
+            max_chunks_per_tile = 0
+            if GD["dist"]["max-chunks"]:
+                chunks_per_tile = max(max(GD["dist"]["max-chunks"], chunks_per_tile), 1)
+                max_chunks_per_tile = GD["dist"]["max-chunks"]
 
         print("defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else ""), file=log)
@@ -501,7 +536,10 @@ def main(debugging=False):
         chunks_per_tile, tile_list = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["rebin-time"],
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
-                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
+                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
+
+        # Estimate memory usage. This is still experimental.
+        estimate_mem(ms, tile_list, GD["data"], GD["dist"])
 
         # now that we have tiles, define the flagging situation (since this may involve a one-off iteration through the
         # MS to populate the column)
@@ -610,6 +648,10 @@ def main(debugging=False):
 
         print(ModColor.Str("completed successfully", col="green"), file=log)
 
+    except RuntimeWarning:
+        from cubical.tools import pdb
+        pdb.set_trace()
+
     except Exception as exc:
         for level, message in prelog_messages:
             print(message, file=log(level))
@@ -620,7 +662,8 @@ def main(debugging=False):
             import traceback
             print(ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__,
                                                                     exc, traceback.format_exc())), file=log)
-            if enable_pdb and not type(exc) is UserInputError:
+            if enable_pdb and type(exc) is not UserInputError:
+                warnings.filterwarnings("default")  # in case pdb itself throws a warning
                 from cubical.tools import pdb
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)
