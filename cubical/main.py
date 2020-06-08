@@ -668,6 +668,3 @@ def main(debugging=False):
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)
         sys.exit(2 if type(exc) is UserInputError else 1)
-
-        
-
