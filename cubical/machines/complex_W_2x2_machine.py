@@ -11,7 +11,7 @@ import cubical.kernels
 import time
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("solver")  #TODO check this "complex_2x2"
+log = logger.getLogger("robust_2x2")  #TODO check this "complex_2x2"
 
 class ComplexW2x2Gains(PerIntervalGains):
     """
@@ -55,13 +55,13 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         self.label = label
 
-        self.cov_type = options.get("robust-cov", "compute") #adding an option to compute residuals covariance or just assume 1 as in Robust-t paper
+        self.cov_type = options.get("robust-cov", "compute") # adding an option to compute residuals covariance or just assume 1 as in Robust-t paper
 
-        self.npol = options.get("robust-npol", 2.) #testing if the number of polarizations really have huge effects
+        self.npol = options.get("robust-npol", 2.) # testing if the number of polarizations really have huge effects
 
         self.v_int = options.get("robust-int", 5)
 
-        self.cov_scale = options.get("robust-scale", True) # scale the covariance by n_corr*2
+        self.cov_scale = options.get("robust-scale", 0) # scale down the covariance by this factor
 
         self.cov_thresh = options.get("robust-cov-thresh",  1)
 
@@ -149,7 +149,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             
             flag_count:     Number of flagged (ill-conditioned) elements
         """
-        w = self.weights
+        # w = self.weights
         
         n_dir, n_tim, n_fre, n_ant, n_cor, n_cor = self.gains.shape
 
@@ -163,22 +163,26 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         jh = self.get_new_jh(model_arr)
 
+        if self.offdiag_only:
+            jh[...,(0,1),(0,1)] = 0
+            self.residuals[...,(0,1),(0,1)] = 0
+            
+        if self.diag_only:
+            jh[...,(0,1),(1,0)] = 0
+            self.residuals[...,(0,1),(1,0)] = 0
+
         self.kernel_robust.compute_jh(model_arr, self.gains, jh, self.t_int, self.f_int)
 
         jhwr = self.get_new_jhr()
 
-        self.kernel_robust.compute_jhwr(jh, self.residuals, w, jhwr, self.t_int, self.f_int) #TODO 
+        self.kernel_robust.compute_jhwr(jh, self.residuals, self.weights, jhwr, self.t_int, self.f_int) #TODO 
 
         jhwj, jhwjinv = self.get_new_jhj()
 
-        self.kernel_robust.compute_jhwj(jh, w, jhwj, self.t_int, self.f_int)
+        self.kernel_robust.compute_jhwj(jh, self.weights, jhwj, self.t_int, self.f_int)
 
         flag_count = self.kernel_robust.compute_jhjinv(jhwj, jhwjinv, self.gflags, self.eps, FL.ILLCOND)
-
-        # jmj, self.jhjinv_m = self.get_new_jhj()
-        # self.kernel_robust.compute_jhwj(jh, np.ones_like(w), jmj, self.t_int, self.f_int)
-        # self.kernel_robust.compute_jhjinv(jmj, self.jhjinv_m, self.gflags, self.eps, FL.ILLCOND)
-
+        
         return jhwr, jhwjinv, flag_count
 
     
@@ -196,7 +200,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self.Nvis = np.sum(self.new_flags==False)
         try:
-            norm = np.min(self.weights[np.where(self.weights>0)]) #np.real((1/2.)*np.sum(self.weights)) #/self.Nvis
+            norm = np.min(self.weights[np.where(self.weights>0)]).real #np.real((1/2.)*np.sum(self.weights)) #/self.Nvis
         except:
             norm = 0
         diag = norm*jhjinv[..., (0, 1), (0, 1)].real #/np.max(self.weights)
@@ -210,8 +214,6 @@ class ComplexW2x2Gains(PerIntervalGains):
         # if self.dd_term and self.n_dir > 1: computing residuals for both DD and DID calibration
         update += self.gains
         self.restrict_solution(update)
-        # raise flag so updates of G^H and G^-1 are computed
-        self._gh_update = self._ghinv_update = True
 
         if self.iters % 2 == 0 or self.n_dir > 1:
             self.gains += update
@@ -279,19 +281,8 @@ class ComplexW2x2Gains(PerIntervalGains):
 
             self.kernel_robust.compute_cov(self.residuals, ompstd, self.weights)
 
-            #---scaling the variance in this case improves the robust solver performance----------#
-            #---if the covariance and variance are close the residuals are dominated by sources---#
-            if self.cov_scale:
-                #if 0.6 <= np.abs(ompstd[0,3])/np.abs(ompstd[0,0]) <= 1.5:
-                norm = 2*self.npol*Nvis
-                #else:
-                #    norm = Nvis
-            else:
-                norm = Nvis
-
             # removing the offdiagonal correlations
-            std = np.diagonal(ompstd/norm) + self.eps**2 # To avoid division by zero
-            # std2 = np.array([ompstd[0,0], ompstd[0,3], ompstd[3,0], ompstd[3,3]])/norm
+            std = np.diagonal(ompstd/Nvis) + self.eps**2 # To avoid division by zero
 
             if np.any(std>self.cov_thresh):
                 self.fixed_v = True
@@ -302,7 +293,10 @@ class ComplexW2x2Gains(PerIntervalGains):
                     print(ModColor.Str("rb-2x2 {} : {} iters: Warning Covariance too high probably because of RFI will fixed v to 2 and cov to 1".format(self.label, self.iters), "red"), file=log(2))
 
             else:
+                #---scaling the variance in this case improves the robust solver performance----------#
                 self.fixed_v = False
+                if self.cov_scale and not self.flaground:
+                    std /= self.cov_scale 
 
             if self.iters % 5 == 0 or self.iters == 1:
                 if self.flaground:
@@ -311,6 +305,18 @@ class ComplexW2x2Gains(PerIntervalGains):
                 else:
                     print("rb-2x2 {} : {} iters: covariance diagonal : [{}]".format(self.label, self.iters, ", ".join('{:.2g}'.format(x) for x in std)), file=log(2))
                     # print("rb-2x2 {} : {} iters: covariance diagonal : [{}]".format(self.label, self.iters, ", ".join('{:.2g}'.format(x) for x in std2)), file=log(2))
+
+
+            # can we disable the flagging the solver to avoid flagging unmodelled sources
+            # UMS: my thought here is that if data is unmodelled sources rather than RFI xx and yy covariance should be very close
+            # so the solver should disable the flagging in this case
+            xx_close_to_yy = 0.8 <= np.abs(std[0])/np.abs(std[0]) <= 1.2
+            cov_low = np.average([std[0], std[3]]).real < 2e-2
+
+            if xx_close_to_yy and cov_low and self.flaground and self._count==0:
+                self.flag_disable_by_sover = True
+                print(ModColor.Str("rb-2x2 {} : flag round {}: Warning: the covariance is low and the xx and yy variances are very close. Flagging will be disable".format(self.label, self._count+1), "red"), file=log(2))
+
 
             covinv = np.eye(4, dtype=self.dtype)
 
@@ -328,7 +334,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         
         if self.npol == 2:
             covinv[(1,2), (1,2)] = 0
-            
+
 
         self.covinv = covinv
 
@@ -374,16 +380,16 @@ class ComplexW2x2Gains(PerIntervalGains):
             root = vvals[np.argmin(np.abs(fvals))]
 
             if self.flaground:
-                print("rb-2x2 {} : round {}: v-parameter is  {:.3}".format(self.label, self.iters, root), file=log(2))
-                print("rb-2x2 {} : round {} : weights stats are min {:.4}, max: {:.4}, mean: {:.4}, std: {:.4}, median: {:.4}, mad: {:.4}".format(self.label, self._count+1, np.min(wn), 
-                                                    np.max(wn), np.mean(wn), np.std(wn), np.median(wn), stats.median_absolute_deviation(wn), file=log(2))) 
+                print("rb-2x2 {} : flag round {}: v-parameter is  {:.3}".format(self.label, self.iters, root), file=log(2))
+                print("rb-2x2 {} : flag round {} : weights stats are min {:.4}, max: {:.4}, mean: {:.4}, std: {:.4}, median: {:.4}, mad: {:.4}".format(self.label, self._count+1, np.min(wn), 
+                                                    np.max(wn), np.mean(wn), np.std(wn), np.median(wn), stats.median_absolute_deviation(wn)), file=log(2)) 
             else:
                 
                 if self.iters % 5 == 0 or self.iters == 1:
                     print("rb-2x2 {} : {} iters: v-parameter is  {:.3}".format(self.label, self.iters, root), file=log(2))
                     #nless, nmore = len(wn[wn<1])/len(wn), len(wn[wn>1])/len(wn)
                     print("rb-2x2 {} : {} iters: weights stats are min {:.4}, max: {:.4}, mean: {:.4}, std: {:.4}, median: {:.4}, mad: {:.4}".format(self.label, self.iters, np.min(wn), 
-                                                    np.max(wn), np.mean(wn), np.std(wn), np.median(wn), stats.median_absolute_deviation(wn), file=log(2))) #, np.sum(wn), m, nless, nmore, 
+                                                    np.max(wn), np.mean(wn), np.std(wn), np.median(wn), stats.median_absolute_deviation(wn)), file=log(2)) #, np.sum(wn), m, nless, nmore, 
             
             if self.fixed_v:
                 return 2
@@ -406,7 +412,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         w_nzero = w_real[np.where(w_real!=0)[0]]
         norm = np.average(w_nzero)
 
-        self.weights /= norm
+        self.weights/= norm
         w_nzero/=norm
         
         # wstd = np.std(w_nzero) #stats.median_absolute_deviation(w_nzero)
@@ -428,7 +434,12 @@ class ComplexW2x2Gains(PerIntervalGains):
         wstd: the weights standard deviation
         """
 
-        if self.flaground:
+        if self.flaground and not self.flag_disable_by_sover:
+
+            if self._final_flaground:
+                _pre_or_post = "after-solving"   
+            else:
+                _pre_or_post = "before solving"
 
             _nvis = self.new_flags.size
             nflag0 = np.sum(self.new_flags!=0)
@@ -440,7 +451,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
             wlow =  _v_corr*(self.v + self.npol)/(self.v + self.sigma_thresh)
 
-            print("rb-2x2 {} : {} iters: wlow is  {:.3} while 1/v is {:.3}".format(self.label, self.iters, wlow, 1/self.v), file=log(2))
+            # print("rb-2x2 {} : {} iters: wlow is  {:.3} while 1/v is {:.3}".format(self.label, self.iters, wlow, 1/self.v), file=log(2))
 
             self.weight_flags = np.where((self.weights< wlow) & (self.weights!=0)) # wlow
 
@@ -459,7 +470,7 @@ class ComplexW2x2Gains(PerIntervalGains):
                 if any_new:
                     wfrac = any_new/_nvis
                     
-                    print(ModColor.Str("rb-2x2 {} : flag round {} : number of weight flags {} ({:.4%}), prior flags {} ({:.4%})".format(self.label, self._count+1, any_new, wfrac, nflag0, wfrac0), "blue"), file=log(2))
+                    print(ModColor.Str("rb-2x2 {} : {} flag round {} : number of weight flags {} ({:.4%}), prior flags {} ({:.4%})".format(self.label, _pre_or_post, self._count+1, any_new, wfrac, nflag0, wfrac0), "blue"), file=log(2))
                 
                 self.any_new = True
 
@@ -497,6 +508,8 @@ class ComplexW2x2Gains(PerIntervalGains):
             self.v = 5  # Don't start with a low degree of freedom to prevent overflagging
             self.iters = 1
 
+        self._final_flaground = True if final else False
+
         if final and self.not_all_flagged:
             self.flag_weights()
         else:
@@ -513,13 +526,15 @@ class ComplexW2x2Gains(PerIntervalGains):
             obser_arr[   :, new_flags!=0, :, :] = 0
 
         if final is False:
-            self.weights[:, self.new_flags==False, :] = 1
+            self.weights[:, self.new_flags==0, :] = 1
             self.iters = 0
             self.v = 2
+            self._gh_update = self._ghinv_update = True
 
         self.flaground = False
 
     def restrict_solution(self, gains):
+        
         
         if "pzd" in self.update_type:
             # re-estimate pzd
@@ -551,7 +566,6 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
-            
             gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
 
         super(ComplexW2x2Gains, self).restrict_solution(gains)
@@ -609,6 +623,10 @@ class ComplexW2x2Gains(PerIntervalGains):
         self.update_weight_flags(flags_arr)
 
         self.flaground = False
+
+        self._final_flaground = False
+
+        self.flag_disable_by_sover = False
 
         self._count = 0
 

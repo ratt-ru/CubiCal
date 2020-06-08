@@ -659,10 +659,7 @@ class MSTile(object):
 
             table_subset.putcol("BITFLAG", bflagcol)
             table_subset.putcol("BITFLAG_ROW", bflagrow)
-            if (flagcol0 != flagcol).any():
-                table_subset.putcol("FLAG", flagcol)
-                print("    {}: some flags were expanded to all correlations".format(self.label), file=log(1))
-
+            
     def load(self, load_model=True):
         """
         Fetches data from MS into tile data shared dict. This is meant to be called in the main

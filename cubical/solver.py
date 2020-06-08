@@ -237,7 +237,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         gm.compute_update(model_arr, obser_arr)
 
         # flag solutions. This returns True if any flags have been propagated out to the data.
-        if gm.flag_solutions(flags_arr, 0):
+        if gm.flag_solutions(flags_arr, False):
 
             update_stats(flags_arr, ('chi2',))
 
@@ -253,10 +253,6 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             obser_arr[   :, new_flags, :, :] = 0
 
             stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
-
-            # Adding the below lines for the robust solver so that flags should be apply to the weights
-            if hasattr(gm, 'new_flags'):
-                gm.new_flags = new_flags
 
 
         # Compute values used in convergence tests. This check implicitly marks flagged gains as
@@ -360,7 +356,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     if gm.has_valid_solutions:
         # Final round of flagging
-        flagged = gm.flag_solutions(flags_arr, 1)
+        flagged = gm.flag_solutions(flags_arr, True)
         stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
     else:
         flagged = None
@@ -416,8 +412,8 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     if hasattr(gm, 'is_robust'):
         
         # do a last round of robust flag robust flag and save the weights
-        
-        if gm.robust_flag_weights:
+         
+        if gm.robust_flag_weights and not gm.flag_disable_by_sover:
             gm.robust_flag(flags_arr, model_arr, obser_arr, final=True)
             stats.chunk.num_mad_flagged = ((flags_arr & FL.MAD) != 0).sum()
         

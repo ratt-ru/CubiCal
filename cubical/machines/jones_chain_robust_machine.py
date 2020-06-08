@@ -243,6 +243,7 @@ class JonesChain(MasterMachine):
                 self.active_term.v = self.jones_terms[self.last_active_index].v
                 self.active_term.not_all_flagged = self.jones_terms[self.last_active_index].not_all_flagged
                 self.active_term.new_flags = self.jones_terms[self.last_active_index].new_flags.copy()
+                self.active_term.flag_disable_by_sover = self.jones_terms[self.last_active_index].flag_disable_by_sover
 
             if self.not_all_flagged:
                 self.active_term.update_weights()
@@ -325,6 +326,7 @@ class JonesChain(MasterMachine):
 
         self.active_term.flaground = True
         self.last_active_index = self.active_index
+        self.active_term._final_flaground = True if final else False
         
         if final is False:
             self.active_term.v = 5  # Don't start with a low degree of freedom to prevent overflagging
@@ -346,7 +348,7 @@ class JonesChain(MasterMachine):
             obser_arr[   :, new_flags!=0, :, :] = 0
 
         if final is False:
-            self.weights[:, self.new_flags==False, :] = 1
+            self.weights[:, self.new_flags==0, :] = 1
             self.iters = 0
             self.active_term.v = 2
 
@@ -449,8 +451,8 @@ class JonesChain(MasterMachine):
 
         return resid_arr
 
-    def apply_inv_gains(self, resid_vis, corr_vis=None, direction=None):
 
+    def apply_inv_gains(self, resid_vis, corr_vis=None, full2x2=True, direction=None):
         """
         Applies the inverse of the gain estimates to the observed data matrix.
 
@@ -512,13 +514,13 @@ class JonesChain(MasterMachine):
         """
         return self.active_term.restrict_solution(gains)
 
-    def flag_solutions(self, flags_arr, final=0):
+    def flag_solutions(self, flags_arr, final=False):
         """ Flags gain solutions."""
         # Per-iteration flagging done on the active term, final flagging is done on all terms.
         if final:
-            return any([ term.flag_solutions(flags_arr, final) for term in self.jones_terms if term.solvable ])
+            return any([ term.flag_solutions(flags_arr, True) for term in self.jones_terms if term.solvable ])
         else:
-            return self.active_term.flag_solutions(flags_arr, 0)
+            return self.active_term.flag_solutions(flags_arr, False)
 
     def num_gain_flags(self, mask=None):
         return self.active_term.num_gain_flags(mask)
@@ -688,6 +690,10 @@ class JonesChain(MasterMachine):
     @property
     def not_all_flagged(self):
         return self.active_term.not_all_flagged
+
+    @property
+    def flag_disable_by_sover(self):
+        return self.active_term.flag_disable_by_sover
 
     @property
     def save_weights(self):
