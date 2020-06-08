@@ -314,7 +314,7 @@ class ComplexW2x2Gains(PerIntervalGains):
             cov_low = np.average([std[0], std[3]]).real < 2e-2
 
             if xx_close_to_yy and cov_low and self.flaground and self._count==0:
-                self.flag_disable_by_sover = True
+                self.robust_flag_disable = True
                 print(ModColor.Str("rb-2x2 {} : flag round {}: Warning: the covariance is low and the xx and yy variances are very close. Flagging will be disable".format(self.label, self._count+1), "red"), file=log(2))
 
 
@@ -434,7 +434,7 @@ class ComplexW2x2Gains(PerIntervalGains):
         wstd: the weights standard deviation
         """
 
-        if self.flaground and not self.flag_disable_by_sover:
+        if self.flaground and not self.robust_flag_disable:
 
             if self._final_flaground:
                 _pre_or_post = "after-solving"   
@@ -626,7 +626,7 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self._final_flaground = False
 
-        self.flag_disable_by_sover = False
+        self.robust_flag_disable = False
 
         self._count = 0
 
