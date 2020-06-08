@@ -196,12 +196,10 @@ class PerIntervalGains(MasterMachine):
 
     @classmethod
     def get_full_kernel(cls, options, diag_gains):
-
         """
         Class method. Given a machine class and a set of options, returns numerical kernel
         for "full 2x2" operations on visibilities.
         """
-
         # return cubical.kernels.import_kernel('full_complex')
         # select which kernels to use for full correction/residuals -- see selection matrix above
         if diag_gains:
@@ -775,7 +773,6 @@ class PerIntervalGains(MasterMachine):
 
             flags_arr |= nodir_flags[:,:,:,np.newaxis]&~FL.MISSING
             flags_arr |= nodir_flags[:,:,np.newaxis,:]&~FL.MISSING
-
 
         if self.n_flagged != nfl0:
             self.update_equation_counts(flags_arr == 0)
