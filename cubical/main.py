@@ -536,7 +536,7 @@ def main(debugging=False):
         chunks_per_tile, tile_list = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["rebin-time"],
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
-                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
+                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
 
         # Estimate memory usage. This is still experimental.
         estimate_mem(ms, tile_list, GD["data"], GD["dist"])
