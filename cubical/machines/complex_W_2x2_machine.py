@@ -630,8 +630,6 @@ class ComplexW2x2Gains(PerIntervalGains):
 
         self._count = 0
 
-       
-
     @property
     def dof_per_antenna(self):
         if "leakage" in self.update_type and "pzd" in self.update_type:
@@ -642,4 +640,3 @@ class ComplexW2x2Gains(PerIntervalGains):
             return 1./self.n_ant
         else:
             return super(ComplexW2x2Gains, self).dof_per_antenna
-
