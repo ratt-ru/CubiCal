@@ -89,7 +89,6 @@ setup(name='cubical',
       install_requires=requirements,
       include_package_data=True,
       zip_safe=False,
-
       scripts=['cubical/bin/print-cubical-stats',
                'cubical/bin/plot-leakage-solutions',
                'cubical/bin/plot-gain-solutions'],
