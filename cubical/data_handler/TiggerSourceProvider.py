@@ -150,10 +150,8 @@ class TiggerSourceProvider(SourceProvider):
 
             # Multiply flux into the spectrum,
             # broadcasting into the time dimension
-            stokes[ind, :, :, 0] = source.flux.I*spectrum
-            stokes[ind, :, :, 1] = source.flux.Q*spectrum
-            stokes[ind, :, :, 2] = source.flux.U*spectrum
-            stokes[ind, :, :, 3] = source.flux.V*spectrum
+            for iS, S in enumerate('IQUV'):
+                stokes[ind, :, :, iS] = getattr(source.flux, S, 0.)*spectrum
 
         return stokes
 

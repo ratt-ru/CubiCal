@@ -1,0 +1,81 @@
+#!/usr/bin/env python
+from __future__ import print_function
+import pylab
+
+from cubical.plots import gainsols, leakages
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="""Makes plots of CubiCal gain solutions""",
+                                     formatter_class=argparse.RawTextHelpFormatter)
+
+    parser.add_argument("-d", "--display", action="store_true", help="Display plots rather than saving them")
+
+    parser.add_argument("-o", "--output-name", type=str, metavar="FILENAME", help="Output filename")
+
+    parser.add_argument("--label", type=str, metavar="LABEL", help="Force jones label, default auto-detects")
+
+    parser.add_argument("-p", "--parameter", type=str, metavar="NAME", default="gain",
+                        help="Parameter name when plotting parameterized gains. Default is 'gain'.")
+
+    parser.add_argument("-G", "--gain", action="store_true", help="Force plotting as time-variable gains")
+
+    parser.add_argument("-B", "--bandpass", action="store_true", help="Force plotting as bandpasses")
+
+    parser.add_argument("-D", "--leakage", action="store_true", help="Force plotting as leakages")
+
+    parser.add_argument("--diag", type=str, choices=("ri", "ap", "none"), help="Plot diagonal elements as real/imag or amp/phase")
+
+    parser.add_argument("--off-diag", type=str, choices=("ri", "ap", "none"), help="Also plot off-diagonal elements as real/imag or amp/phase")
+
+    # populate remaining parser options from standard object
+    gainsols.options.populate_argparse(parser)
+
+    parser.add_argument("files", nargs="+",
+                         help="""One or more CubiCal solution databases""")
+
+    options = gainsols.options = parser.parse_args()
+
+    manytypes = (int(options.gain) + int(options.bandpass) + int(options.leakage)) > 1
+
+    for filename in options.files:
+        print("Trying to read from CubiCal database {} (label is {})".format(filename, options.label or "auto"))
+        bb = gainsols.read_cubical_gains(filename, options.label, options.parameter)
+        if not bb:
+            continue
+
+        figtitle = "{} {}".format(filename, bb.name)
+
+        # force gain-style plots if default can't be established
+        if not options.gain and not options.bandpass and bb.name[0] not in "GBD":
+            options.gain = True
+
+        if options.gain or bb.name[0] == "G":
+            fig = gainsols.plot_gain_cc(bb, figtitle=figtitle,
+                                        component = options.parameter,
+                                        plot_diag=options.diag or "ap", plot_offdiag=options.off_diag)
+            output_name = options.output_name or filename + (".gain.png" if manytypes else ".png")
+            if not options.display:
+                fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
+
+        if options.bandpass or bb.name[0] == "B":
+            fig = gainsols.plot_bandpass_cc(bb, figtitle=figtitle,
+                                            component=options.parameter,
+                                            plot_diag=options.diag or "ap", plot_offdiag=options.off_diag)
+            output_name = options.output_name or filename + (".bandpass.png" if manytypes else ".png")
+            if not options.display:
+                fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
+
+        if bb.name[0] == "D":
+            fig = leakages.plot_leakages_cc(bb, plot_diag=options.diag, plot_offdiag=options.off_diag or "ri",
+                                            figtitle=figtitle)
+            output_name = options.output_name or filename + (".leakage.png" if manytypes else ".png")
+            if not options.display:
+                fig.savefig(output_name, dpi=options.dpi, bbox_inches='tight')
+
+    if options.display:
+        pylab.show()
+
+if __name__ == "__main__":
+    main()

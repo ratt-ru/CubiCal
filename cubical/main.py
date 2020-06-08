@@ -36,21 +36,29 @@ from cubical.tools import logger
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
 
-# Some modules cause issues with logging - grab their loggers and 
+# Some modules cause issues with logging - grab their loggers and
 # manually set the log levels to something less annoying.
 
 import logging
+import warnings
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 GD = None
+
+# the getuser() call fails under singularity --contain, so fall back to $USER
+try:
+    _user = getpass.getuser()
+except:
+    _user = os.environ.get("USER", "unknown")
 
 _start_datetime = datetime.datetime.now()
 
 _runtime_templates = dict(DATE=_start_datetime.strftime("%Y%m%d"),
                           TIME=_start_datetime.strftime("%H%M%S"),
-                          USER=getpass.getuser(),
+                          USER=_user,
                           HOST=os.uname()[1],
                           ENV=os.environ)
+
 
 def expand_templated_name(name, **keys):
     """
@@ -91,6 +99,7 @@ def expand_templated_name(name, **keys):
         raise ValueError(name)
 
 from cubical.data_handler.ms_data_handler import MSDataHandler
+from cubical.data_handler.wisdom import estimate_mem
 from cubical.tools import parsets, dynoptparse, shm_utils, ModColor
 from cubical.machines import machine_types
 from cubical.machines import jones_chain_machine, jones_chain_robust_machine
@@ -142,6 +151,12 @@ def main(debugging=False):
     # "GD" is a global defaults dict, containing options set up from parset + command line
     global GD, enable_pdb
 
+    # keep a list of messages here, until we have a logfile open
+    prelog_messages = []
+
+    def prelog_print(level, message):
+        prelog_messages.append((level, message))
+
     try:
         if debugging:
             print("initializing from cubical.last", file=log)
@@ -183,60 +198,87 @@ def main(debugging=False):
                 raise UserInputError("Unexpected number of arguments. Use -h for help.")
 
             # get dirname and basename for all output files
-            basename = expand_templated_name(GD["out"]["name"])
+            outdir = expand_templated_name(GD["out"]["dir"]).strip()
+            basename = expand_templated_name(GD["out"]["name"]).strip()
+            can_overwrite = GD["out"]["overwrite"]
+            can_backup = GD["out"]["backup"]
 
-            if not basename:
-                dirname, basename = "cubical-out", "cubical"
-            elif basename.endswith("/"):
-                dirname, basename = basename[:-1], "cubical"
-            elif "/" in basename:
-                dirname, basename = os.path.split(basename)
-                dirname = dirname.rstrip("/")
+            explicit_basename_path = "/" in basename
+            folder_is_ccout  = False
+
+            if explicit_basename_path:
+                prelog_print(0, "output basename explicitly set to {}, --out-dir setting ignored".format(basename))
+                outdir = os.path.dirname(basename)
+            elif outdir == "." or not outdir:
+                outdir = None
+                prelog_print(0, "using output basename {} in current directory".format(basename))
             else:
-                dirname, basename = ".", basename
+                # append implicit .cc-out suffix, unless already there (or ends with .cc-out)
+                if not outdir.endswith("/"):
+                    if outdir.endswith(".cc-out"):
+                        outdir += "/"
+                    else:
+                        outdir += ".cc-out/"
+                folder_is_ccout = outdir.endswith(".cc-out/")
+                basename = outdir + basename
+                if outdir != "/":
+                    outdir = outdir.rstrip("/")
+                prelog_print(0, "using output basename {}".format(basename))
 
             # create directory for output files, if specified, and it doesn't exist
-            if not os.path.exists(dirname):
-                os.mkdir(dirname)
+            if outdir and not os.path.exists(outdir):
+                prelog_print(0, "creating new output directory {}".format(outdir))
+                os.mkdir(outdir)
 
-            # find unique output name, if needed
-            if os.path.exists("{}/{}.log".format(dirname, basename)) and not GD["out"]["overwrite"]:
-                print("{}/{}.log already exists, won't overwrite".format(dirname, basename), file=log(0, "blue"))
-                dirname0, basename0 = dirname, basename
-                N = -1
-                while os.path.exists("{}/{}.log".format(dirname, basename)):
-                    N += 1
-                    if dirname == ".":
-                        basename = "{}.{}".format(basename0, N)
+            # are we going to be overwriting a previous run?
+            out_parset = "{}.parset".format(basename)
+            if os.path.exists(out_parset):
+                prelog_print(0, "{} already exists, possibly from a previous run".format(out_parset))
+
+                if can_backup:
+                    if folder_is_ccout:
+                        # find non-existing directory name for backup
+                        backup_dir = outdir + ".0"
+                        N = 0
+                        while os.path.exists(backup_dir):
+                            N += 1
+                            backup_dir = "{}.{}".format(outdir, N)
+                        # rename old directory, if we ended up manipulating the directory name
+                        os.rename(outdir, backup_dir)
+                        os.mkdir(outdir)
+                        prelog_print(0, ModColor.Str("backed up existing {} to {}".format(outdir, backup_dir), "blue"))
                     else:
-                        dirname = "{}.{}".format(dirname0, N)
-                # rename old directory, if we ended up manipulating the directory name
-                if dirname != dirname0:
-                    os.rename(dirname0, dirname)
-                    print("saved previous {} to {}".format(dirname0, dirname), file=log(0, "blue"))
-                    dirname = dirname0
-                    os.mkdir(dirname)
+                        prelog_print(0, "refusing to auto-backup output directory, since it is not a .cc-out dir")
 
-            if dirname != ".":
-                basename = "{}/{}".format(dirname, basename)
-            print("using {} as base for output files".format(basename), file=log(0, "blue"))
+                if os.path.exists(out_parset):
+                    if can_overwrite:
+                        prelog_print(0, "proceeding anyway since --out-overwrite is set")
+                    else:
+                        if folder_is_ccout:
+                            prelog_print(0, "won't proceed without --out-overwrite and/or --out-backup")
+                        else:
+                            prelog_print(0, "won't proceed without --out-overwrite")
+                        raise UserInputError("{} already exists: won't overwrite previous run".format(out_parset))
 
             GD["out"]["name"] = basename
 
             # "GD" is a global defaults dict, containing options set up from parset + command line
             pickle.dump(GD, open("cubical.last", "wb"))
 
-            # save parset with all settings. We refuse to clobber a parset with itself
-            # (so e.g. "gocubical test.parset --Section-Option foo" does not overwrite test.parset)
-            save_parset = basename + ".parset"
-            if custom_parset_file and os.path.exists(custom_parset_file) and os.path.exists(save_parset) and \
-                    os.path.samefile(save_parset, custom_parset_file):
-                basename = "~" + basename
-                save_parset = basename + ".parset"
-                print(ModColor.Str("your --out-name would overwrite its own parset. Using {} instead.".format(basename)), file=log)
-            parser.write_to_parset(save_parset)
+            # save parset with all settings
+            parser.write_to_parset(out_parset)
 
         enable_pdb = GD["debug"]["pdb"]
+
+        if GD["debug"]["escalate-warnings"]:
+            warnings.simplefilter('error', UserWarning)
+            np.seterr(all='raise')
+            if GD["debug"]["escalate-warnings"] > 1:
+                warnings.simplefilter('error', Warning)
+                log(0).print("all warnings will be escalated to exceptions")
+            else:
+                log(0).print("UserWarnings will be escalated to exceptions")
+
         # clean up shared memory from any previous runs
         shm_utils.cleanupStaleShm()
 
@@ -249,6 +291,14 @@ def main(debugging=False):
 
         if not debugging:
             print("started " + " ".join(sys.argv), file=log)
+
+        # dump accumulated messages from before log was open
+        for level, message in prelog_messages:
+            print(message, file=log(level))
+        prelog_messages = []
+
+        # clean up shared memory from any previous runs
+        shm_utils.cleanupStaleShm()
 
         # disable matplotlib's tk backend if we're not going to be showing plots
         if GD['out']['plots'] =='show' or GD['madmax']['plot'] == 'show':
@@ -285,6 +335,7 @@ def main(debugging=False):
         print(ModColor.Str("Enabling {}-Jones".format(",".join(sol_jones)), col="green"), file=log)
 
         have_dd_jones = any([jo['dd-term'] for jo in jones_opts])
+        have_solvables = any([jo['solvable'] for jo in jones_opts])
 
         solver.GD = GD
 
@@ -300,6 +351,9 @@ def main(debugging=False):
         print("solver is apply-only type: {}".format(apply_only), file=log(0))
         load_model = solver.SOLVERS[solver_type].is_model_required
         print("solver requires model: {}".format(load_model), file=log(0))
+        
+        if not apply_only and not have_solvables:
+            raise UserInputError("No Jones terms have been marked as solvable")
 
         if load_model and not GD["model"]["list"]:
             raise UserInputError("--model-list must be specified")
@@ -328,6 +382,7 @@ def main(debugging=False):
                            pa_rotate_model=GD["model"]["pa-rotate"],
                            pa_rotate_montblanc=GD["montblanc"]["pa-rotate"],
                            derotate_output=GD["out"]["derotate"],
+                           do_normalize_data=GD["data"]["normalize"]
                            )
 
         solver.metadata = ms.metadata
@@ -432,12 +487,15 @@ def main(debugging=False):
 
         # create gain machine factory
         # TODO: pass in proper antenna and correlation names, rather than number
+        solver_opts["correct-dir"] = GD["out"]["correct-dir"] if GD["out"]["correct-dir"] >= 0 else None
 
-        grid = dict(ant=ms.antnames, corr=ms.feeds, time=ms.uniq_times, freq=ms.all_freqs)
+        grid = dict(dir=list(range(len(ms.model_directions) or 1)), ant=ms.antnames, corr=list(ms.feeds), time=ms.uniq_times, freq=ms.all_freqs)
         solver.gm_factory = jones_class.create_factory(grid=grid,
                                                        apply_only=apply_only,
                                                        double_precision=double_precision,
                                                        global_options=GD, jones_options=jones_opts)
+
+        solver.gm_factory.set_metadata(ms)
                                                        
         # create IFR-based gain machine. Only compute gains if we're loading a model
         # (i.e. not in load-apply mode)
@@ -462,9 +520,15 @@ def main(debugging=False):
             chunk_by = chunk_by.split(",")
         jump = float(GD["data"]["chunk-by-jump"])
 
-        chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
-        if GD["dist"]["max-chunks"]:
-            chunks_per_tile = max(GD["dist"]["max-chunks"], chunks_per_tile)
+        if single_chunk:
+            chunks_per_tile = 1
+            max_chunks_per_tile = 1
+        else:
+            chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
+            max_chunks_per_tile = 0
+            if GD["dist"]["max-chunks"]:
+                chunks_per_tile = max(max(GD["dist"]["max-chunks"], chunks_per_tile), 1)
+                max_chunks_per_tile = GD["dist"]["max-chunks"]
 
         print("defining chunks (time {}, freq {}{})".format(GD["data"]["time-chunk"], GD["data"]["freq-chunk"],
             ", also when {} jumps > {}".format(", ".join(chunk_by), jump) if chunk_by else ""), file=log)
@@ -472,7 +536,10 @@ def main(debugging=False):
         chunks_per_tile, tile_list = ms.define_chunk(GD["data"]["time-chunk"], GD["data"]["rebin-time"],
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
-                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=GD["dist"]["max-chunks"])
+                                            chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
+
+        # Estimate memory usage. This is still experimental.
+        estimate_mem(ms, tile_list, GD["data"], GD["dist"])
 
         # now that we have tiles, define the flagging situation (since this may involve a one-off iteration through the
         # MS to populate the column)
@@ -581,14 +648,22 @@ def main(debugging=False):
 
         print(ModColor.Str("completed successfully", col="green"), file=log)
 
+    except RuntimeWarning:
+        from cubical.tools import pdb
+        pdb.set_trace()
+
     except Exception as exc:
+        for level, message in prelog_messages:
+            print(message, file=log(level))
+
         if type(exc) is UserInputError:
             print(ModColor.Str(exc), file=log)
         else:
             import traceback
             print(ModColor.Str("Exiting with exception: {}({})\n {}".format(type(exc).__name__,
                                                                     exc, traceback.format_exc())), file=log)
-            if enable_pdb and not type(exc) is UserInputError:
+            if enable_pdb and type(exc) is not UserInputError:
+                warnings.filterwarnings("default")  # in case pdb itself throws a warning
                 from cubical.tools import pdb
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)

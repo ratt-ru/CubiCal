@@ -166,7 +166,8 @@ class IfrGainMachine(object):
 
         # mask out null values
         self._ddh_sum.mask |= (self._ddh_sum==0)
-        ifrgain = self._mdh_sum/self._ddh_sum
+        with np.errstate(under='ignore'): # work around https://github.com/numpy/numpy/issues/4895
+            ifrgain = self._mdh_sum/self._ddh_sum
         ifrgain.data[self._ddh_sum.mask] = 1
         ifrgain.fill_value = 1
 

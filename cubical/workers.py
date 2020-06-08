@@ -35,7 +35,7 @@ def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc
     if force_serial:
         cubical.kernels.num_omp_threads = nthreads
         if nthreads:
-            nthreads = max(nthreads, montblanc_threads)
+            nthreads = max(nthreads, montblanc_threads or 1)
             print("forcing single-process mode, {} OMP and/or Montblanc threads".format(nthreads), file=log(0, "blue"))
         elif montblanc_threads:
             nthreads = montblanc_threads
@@ -134,7 +134,8 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
         core = corestep = affinity = None
 
     # first, the I/O process
-    props = worker_process_properties["Process-1"] = dict(label="io", environ={})
+    props = worker_process_properties["Process-1"] = worker_process_properties["ForkProcess-1"] = \
+        dict(label="io", environ={})
 
     # allocate cores to I/O process, if asked to pin it
     
@@ -171,7 +172,9 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     # create entries for subprocesses, and allocate cores
     for icpu in range(1, num_workers + 1):
         name = "Process-{}".format(icpu + 1)
-        props = worker_process_properties[name] = dict(label="x%02d" % icpu, num_omp_threads=nthread, environ={})
+        name2 = "ForkProcess-{}".format(icpu + 1)
+        props = worker_process_properties[name] = worker_process_properties[name2] = \
+            dict(label="x%02d" % icpu, num_omp_threads=nthread, environ={})
         if affinity is not None:
             props["taskset"] = str(core)
             # if OMP is in use, set affinities via gomp
@@ -361,13 +364,12 @@ def _run_single_process_loop(ms, load_model, single_chunk, solver_type, solver_o
                 solver.ifrgain_machine.accumulate(sd)
         else:
             print("  single-chunk {} not in this tile, skipping it.".format(single_chunk), file=log(0))
-        tile.release()
+        tile.release(final=(itile == len(tile_list) - 1))
         # break out after single chunk is processed
         if processed and single_chunk:
             print("single-chunk {} was processed in this tile. Will now finish".format(single_chunk), file=log(0, "red"))
             break
     solver.ifrgain_machine.save()
-    solver.gm_factory.set_metas(ms)
     solver.gm_factory.close()
 
     return stats_dict
@@ -449,12 +451,9 @@ def _io_handler(save=None, load=None, load_model=True, finalize=False, out_opts=
                 solver.ifrgain_machine.accumulate(sd)
             if finalize:
                 solver.ifrgain_machine.save()
-
-                solver.gm_factory.set_metas(tile.dh)
-
                 solver.gm_factory.close()
                 result['flagcounts'] = tile.dh.flagcounts
-            tile.release()
+            tile.release(final=(itile == len(tile_list) - 1))
         if load is not None:
             tile = tile_list[load]
             print("loading {}".format(tile.label), file=log(0, "blue"))
