@@ -17,7 +17,6 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
     resmask = np.zeros_like(absres[0, :, :, p, q], dtype=bool)
     resmask[:] = fl_prior[..., np.newaxis, np.newaxis] #| absres[0, :, :, p, q]==0
     res = np.ma.masked_array(absres[0, :, :, p, q], resmask)
-
     resmin, resmax = res.min(), res.max()
     vmin = float(max(resmin if resmin is not np.ma.masked else 0, 1e-9))
     vmax = float(resmax if resmax is not np.ma.masked else 1)
@@ -49,7 +48,6 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
                     pass
             pylab.title("{}{} flagged".format(x1, x2))
     return figure
-
 
 
 def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_label="", antenna_mad_threshold=0):
@@ -259,4 +257,3 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
     print("make_baseline_mad_plot: done", file=log(3))
 
     return outflags, figure
-
