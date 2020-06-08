@@ -692,8 +692,8 @@ class JonesChain(MasterMachine):
         return self.active_term.not_all_flagged
 
     @property
-    def flag_disable_by_sover(self):
-        return self.active_term.flag_disable_by_sover
+    def robust_flag_disable(self):
+        return self.active_term.robust_flag_disable
 
     @property
     def save_weights(self):
