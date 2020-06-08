@@ -85,7 +85,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     diverging = ""
 
-    # for cases the are no valid solutions
+    # for all the solvers that do not output any weights and for the robust solver when they are no valid solutions
     gm.output_weights = None 
 
     # Estimates the overall noise level and the inverse variance per channel and per antenna as
@@ -413,7 +413,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
         
         # do a last round of robust flag robust flag and save the weights
          
-        if gm.robust_flag_weights and not gm.flag_disable_by_sover:
+        if gm.robust_flag_weights and not gm.robust_flag_disable:
             gm.robust_flag(flags_arr, model_arr, obser_arr, final=True)
             stats.chunk.num_mad_flagged = ((flags_arr & FL.MAD) != 0).sum()
         
