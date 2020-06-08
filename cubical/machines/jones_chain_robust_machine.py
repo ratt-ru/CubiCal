@@ -243,7 +243,7 @@ class JonesChain(MasterMachine):
                 self.active_term.v = self.jones_terms[self.last_active_index].v
                 self.active_term.not_all_flagged = self.jones_terms[self.last_active_index].not_all_flagged
                 self.active_term.new_flags = self.jones_terms[self.last_active_index].new_flags.copy()
-                self.active_term.flag_disable_by_sover = self.jones_terms[self.last_active_index].flag_disable_by_sover
+                self.active_term.robust_flag_disable = self.jones_terms[self.last_active_index].robust_flag_disable
 
             if self.not_all_flagged:
                 self.active_term.update_weights()
