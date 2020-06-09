@@ -476,8 +476,6 @@ class PerIntervalGains(MasterMachine):
             if self.dd_term:
                 self.prior_gain_error[self.fix_directions, ...] = 0
 
-            # import ipdb; ipdb.set_trace()
-
             # if we did everything right above (ignoring flagged data etc.), PGE can't be inf/nan,
             # so this is just a sanity check
             pge_flag_invalid = np.isnan(self.prior_gain_error) | np.isinf(self.prior_gain_error)
