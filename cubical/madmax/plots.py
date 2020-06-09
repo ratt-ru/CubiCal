@@ -49,6 +49,7 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
     return figure
 
 
+
 def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_label="", antenna_mad_threshold=0):
     import pylab
     colors = [["black", "red"], ["green", "blue"]]
@@ -256,3 +257,4 @@ def make_baseline_mad_plot(mad, medmad, med_thr, metadata, max_label="", chunk_l
     print("make_baseline_mad_plot: done", file=log(3))
 
     return outflags, figure
+
