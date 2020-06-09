@@ -646,7 +646,7 @@ class PerIntervalGains(MasterMachine):
 
         # flag on OOB and such
         gain_mags = np.abs(self.gains)
-        
+
         # Check for inf/nan solutions. One bad correlation will trigger flagging for all correlations.
 
         boom = (~np.isfinite(self.gains)).any(axis=(-1,-2))
@@ -674,7 +674,6 @@ class PerIntervalGains(MasterMachine):
             self._update_gain_flags("GOOB", flags_arr)
 
         # in final (post-solution) flagging, check the posterior error estimate
-
         if final>0:
             if self.posterior_gain_error is not None and self.max_post_error:
                 # reset to 0 for fixed directions
