@@ -554,7 +554,6 @@ class PerIntervalGains(MasterMachine):
                             str(d), percflagged[d]) for d in bad_dirs]),
                         why_flagged
                     )
-
                 else:
                     msg = "{} directions flagged {}".format(len(bad_dirs), why_flagged)
                 issue_warning(msg, 50)
