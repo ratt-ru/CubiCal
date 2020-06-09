@@ -92,7 +92,6 @@ setup(name='cubical',
       scripts=['cubical/bin/print-cubical-stats',
                'cubical/bin/plot-leakage-solutions',
                'cubical/bin/plot-gain-solutions'],
-
       entry_points={'console_scripts': ['gocubical = cubical.main:main']},
       extras_require={
           'lsm-support': ['montblanc @git+https://github.com/ska-sa/montblanc.git@0.6.1'],
