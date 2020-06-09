@@ -298,8 +298,6 @@ class JonesChain(MasterMachine):
                 Shape (n_mod, n_tim, n_fre, n_ant, n_ant, n_cor, n_cor) array containing observed 
                 visibilities. 
         """
-
-        # import pdb; pdb.set_trace()
         
         jhwr, jhwjinv, flag_count = self.compute_js(obser_arr, model_arr)
 
