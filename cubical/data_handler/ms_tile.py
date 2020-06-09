@@ -657,7 +657,7 @@ class MSTile(object):
 
             table_subset.putcol("BITFLAG", bflagcol)
             table_subset.putcol("BITFLAG_ROW", bflagrow)
-    
+
     def load(self, load_model=True):
         """
         Fetches data from MS into tile data shared dict. This is meant to be called in the main
