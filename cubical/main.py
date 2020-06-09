@@ -36,7 +36,7 @@ from cubical.tools import logger
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
 
-# Some modules cause issues with logging - grab their loggers and
+# Some modules cause issues with logging - grab their loggers and 
 # manually set the log levels to something less annoying.
 
 import logging
@@ -427,7 +427,7 @@ def main(debugging=False):
             jones_class = machine_types.get_machine_class(jones_opts['type'])
             if jones_class is None:
                 raise UserInputError("unknown Jones type '{}'".format(jones_opts['type']))
-        elif jones_opts[0]['type'] == "robust-2x2":
+        elif jones_opts[0]['type'].startswith("robust"):
             jones_class = jones_chain_robust_machine.JonesChain
         else:
             jones_class = jones_chain_machine.JonesChain
@@ -668,4 +668,3 @@ def main(debugging=False):
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)
         sys.exit(2 if type(exc) is UserInputError else 1)
-
