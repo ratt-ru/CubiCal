@@ -621,3 +621,4 @@ class JonesChain(MasterMachine):
 
         def determine_allocators(self):
             return self.machine_class.determine_allocators(self.jones_options)
+
