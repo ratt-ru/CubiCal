@@ -20,7 +20,6 @@ def make_dual_absres_plot(absres, fl_prior, fl_new, p, q, metadata, subplot_titl
     resmin, resmax = res.min(), res.max()
     vmin = float(max(resmin if resmin is not np.ma.masked else 0, 1e-9))
     vmax = float(resmax if resmax is not np.ma.masked else 1)
-
     if vmin != vmax:
         from matplotlib.colors import LogNorm
         norm = LogNorm(vmin, vmax)
