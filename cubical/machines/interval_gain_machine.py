@@ -341,7 +341,7 @@ class PerIntervalGains(MasterMachine):
             corr_vis = np.empty_like(obser_arr)
     
         # parset uses -1 for None, so may as well support it here        
-        if direction < 0:
+        if direction is not None and direction < 0:
             direction = None
 
         if self.dd_term and direction is None:
