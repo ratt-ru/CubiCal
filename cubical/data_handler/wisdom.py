@@ -30,9 +30,10 @@ def estimate_mem(data_handler, tile_list, data_opts, dist_opts):
     t_per_chunk = example_tile.rowchunks[0].timeslice.stop
     f_per_chunk = data_opts["freq-chunk"] or data_handler.all_freqs.size
 
-    # Grab some necessary dimensions.
+    # Grab some necessary dimensions. n_dir may be zero when transferring.
+    # The or catches this case.
 
-    n_dir = len(data_handler.model_directions)
+    n_dir = len(data_handler.model_directions) or 1
     n_ant = data_handler.nants
     n_bl = (n_ant*(n_ant - 1))/2
     n_corr = example_tile.ncorr
