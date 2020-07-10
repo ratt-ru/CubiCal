@@ -339,6 +339,10 @@ class PerIntervalGains(MasterMachine):
     def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, direction=None):
         if corr_vis is None:
             corr_vis = np.empty_like(obser_arr)
+    
+        # parset uses -1 for None, so may as well support it here        
+        if direction is not None and direction < 0:
+            direction = None
 
         if self.dd_term and direction is None:
             corr_vis[:] = obser_arr
