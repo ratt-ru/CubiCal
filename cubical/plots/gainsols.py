@@ -38,6 +38,8 @@ class PlotOptions(PlotLimits):
     def populate_argparse(parser):
         parser.add_argument("--ant", type=str, default='*', metavar="ANT",
                                 help="Antenna subset. You may specify multiple comma-separated names or globs")
+        parser.add_argument("--dir", type=int, default=0, metavar="DIR",
+                                help="Direction number, for direction-dependent tables")
         parser.add_argument("--nrow", type=int, default=7, help="Plot rows")
         parser.add_argument("--ncol", type=int, default=4, help="Plot columns")
         parser.add_argument("--width", type=float, metavar="INCHES", default=4, help="Plot width")
@@ -404,27 +406,24 @@ def get_time_slice(TS, all_times):
     return TS
 
 
-def _get_jones_element_index(G, ant, corr1=0, corr2=0):
+def _get_jones_element_index(G, ant, corr1=0, corr2=0, dir=0):
+    index = dict(ant=ant)
+    if 'dir' in G.axis_index:
+        index.update(dir=dir)
     if 'corr1' in G.axis_index and 'corr2' in G.axis_index:
-        return dict(ant=ant, corr1=corr1, corr2=corr2)
+        index.update(corr1=corr1, corr2=corr2)
+    elif corr1 != corr2:
+        return None
     elif 'corr' in G.axis_index:
-        if corr1 == corr2:
-            return dict(ant=ant, corr=corr1)
-        else:
-            return None
-    else:
-        if corr1 == corr2:
-            return dict(ant=ant)
-        else:
-            return None
+        index.update(corr=corr1)
+    return index
 
-def _get_jones_element_slice(G, ant, corr1=0, corr2=0):
-    index = _get_jones_element_index(G, ant, corr1, corr2)
+
+def _get_jones_element_slice(G, ant, corr1=0, corr2=0, dir=0):
+    index = _get_jones_element_index(G, ant, corr1, corr2, dir=dir)
     if index is None:
         return None, (None, None)
     return G.get_slice(**index)
-
-
 
 
 def prepare_sols_dict(G, FS=None, TS=None):
@@ -446,12 +445,12 @@ def prepare_sols_dict(G, FS=None, TS=None):
 
         # this gets the "raw" solutions for a given slice (antenna, correlation, etc.), and also the grid they're defined on,
         # which could be a subset of the full grid given by the description
-        g00, (time, freq) = _get_jones_element_slice(G, ant=iant, corr1=0, corr2=0)
+        g00, (time, freq) = _get_jones_element_slice(G, ant=iant, corr1=0, corr2=0, dir=options.dir)
         if g00 is None:
             continue
-        g11, _ = _get_jones_element_slice(G, ant=iant, corr1=1, corr2=1)
-        g01, _ = _get_jones_element_slice(G, ant=iant, corr1=0, corr2=1)
-        g10, _ = _get_jones_element_slice(G, ant=iant, corr1=1, corr2=0)
+        g11, _ = _get_jones_element_slice(G, ant=iant, corr1=1, corr2=1, dir=options.dir)
+        g01, _ = _get_jones_element_slice(G, ant=iant, corr1=0, corr2=1, dir=options.dir)
+        g10, _ = _get_jones_element_slice(G, ant=iant, corr1=1, corr2=0, dir=options.dir)
         sols[ant] = time[TS], freq[FS], \
                         g00[TS, FS], \
                         (g01[TS, FS] if g01 is not None else np.array([0.])), \
@@ -497,7 +496,7 @@ def plot_gain_cc(G, FS=None, TS=None,
 
 def read_cubical_gains(filename, label=None, component="gain"):
     """
-    Reads cCubiCal leakage solutions from a CubiCal DB
+    Reads CubiCal leakage solutions from a CubiCal DB
     """
     from cubical.database import pickled_db
     db = pickled_db.PickledDatabase()
@@ -528,7 +527,7 @@ def read_cubical_gains(filename, label=None, component="gain"):
             corr00[axis] = 0
 
     valid_ants = set([ant for iant, ant in enumerate(gg.grid[gg.ax.ant])
-                      if gg.is_slice_valid(**_get_jones_element_index(gg, iant, 0, 0))])
+                      if gg.is_slice_valid(**_get_jones_element_index(gg, iant, 0, 0, dir=options.dir))])
 
     log.print("  valid antennas:", " ".join([ant for ant in gg.grid[gg.ax.ant] if ant in valid_ants]))
     log.print("  missing antennas:", " ".join([ant for ant in gg.grid[gg.ax.ant] if ant not in valid_ants] or ["none"]))
