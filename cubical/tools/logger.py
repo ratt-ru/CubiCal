@@ -265,9 +265,9 @@ class LogFilter(logging.Filter):
                         self._mem_totals_ts = time.time()
                 # form up string
                 if self._mem_totals is None:
-                    smem = ["{:.1f}".format(mem[key]) for key in KEYS]
+                    smem = ["{:.1f}".format(mem.get(key, 0)) for key in KEYS]
                 else:
-                    smem = ["{:.1f}/{:.1f}".format(mem[key], self._mem_totals[key]) for key in KEYS]
+                    smem = ["{:.1f}/{:.1f}".format(mem.get(key, 0), self._mem_totals.get(key, 0)) for key in KEYS]
                 smem.append("{:.1f}Gb".format(shm))
                 self._mem = " ".join(smem)
                 self._mem_ts = time.time()
