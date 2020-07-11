@@ -231,18 +231,20 @@ class LogFilter(logging.Filter):
         # short logger name (without app_name in front of it)
         setattr(event, 'shortname', event.name.split('.',1)[1] if '.' in event.name else event.name)
         setattr(event, 'separator', '| ')
+        memlevel = _log_memory  # signal handler can change that midway through, so use this value
         if _log_memory:
             # memory usage info
             t = time.time()
-            if t - self._mem_ts > self._mem_update[_log_memory]:
-                KEYS = _log_memory_types[_log_memory]
+            if t - self._mem_ts > self._mem_update[memlevel]:
+                KEYS = _log_memory_types[memlevel]
                 # get memory for this process
-                mi0 = psutil.Process(os.getpid()).memory_full_info()
+                mi0 = psutil.Process(os.getpid()).memory_full_info() if memlevel == 2 else \
+                    psutil.Process(os.getpid()).memory_info()
                 mem = {key: getattr(mi0, key) / GB for key in KEYS}
                 shm = psutil.virtual_memory().shared / GB
                 # get total memory
                 if _log_memory_totals:
-                    if t - self._mem_totals_ts > self._mem_totals_update[_log_memory]:
+                    if t - self._mem_totals_ts > self._mem_totals_update[memlevel]:
                         if t - self._children_ts > self._children_update:
                             self._children = [_parent_process] + list(_parent_process.children(recursive=True))
                             self._children_ts = time.time()
@@ -251,7 +253,7 @@ class LogFilter(logging.Filter):
                             # scan over children, ignoring ones that may have disappeared
                             for p in self._children:
                                 try:
-                                    mis.append(p.memory_full_info())
+                                    mis.append(p.memory_full_info()) if memlevel == 2 else mis.append(p.memory_info())
                                 except psutil.NoSuchProcess:
                                     pass
                             self._mem_totals = {key: sum([getattr(mi,key) for mi in mis]) / GB for key in KEYS}
@@ -264,7 +266,7 @@ class LogFilter(logging.Filter):
                 smem.append("{:.1f}Gb".format(shm))
                 self._mem = " ".join(smem)
                 self._mem_ts = time.time()
-            setattr(event, "memory", "[{}] ".format(self._mem))
+            setattr(event, "memory", "[{}{}] ".format("*" if memlevel == 2 else "", self._mem))
             setattr(event, 'separator', '')
         else:
             setattr(event, "memory", "")
