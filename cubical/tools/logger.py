@@ -169,8 +169,7 @@ GB = float(1024 ** 3)
 
 
 def enableMemoryLogging(level=1):
-    global _log_memory
-    _log_memory = (level or 0)%3   # level is 0/1/2
+    LogFilter.setMemoryLogging((level or 0)%3)   # level is 0/1/2
 
 _subprocess_label = None
 
