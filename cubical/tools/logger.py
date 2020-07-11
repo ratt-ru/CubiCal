@@ -163,7 +163,6 @@ class LoggerWrapper(object):
                                                                                print_once=print_once)
 
 _parent_process = psutil.Process(os.getpid())
-_log_memory = 0
 _log_memory_totals = True
 _log_memory_types = None, "rss vms".split(), "rss pss".split()
 GB = float(1024 ** 3)
@@ -199,21 +198,28 @@ def get_subprocess_label():
 
 
 def _sigusr1_handler(signum, frame):
-    global _log_memory
-    _log_memory = 2 if _log_memory == 1 else 1
+    level = 2 if LogFilter._log_memory == 1 else 1
     print("pid {} received USR1: memory logging level {}".format(os.getpid(), _log_memory))
-    LogFilter._mem_ts = 0
+    LogFilter.setMemoryLogging(level)
+
 
 def _sigusr2_handler(signum, frame):
-    global _log_memory
     print("pid {} received USR2: disabling memory logging".format(os.getpid()))
-    _log_memory = 0
-    LogFilter._mem_ts = 0
+    LogFilter.setMemoryLogging(0)
+
 
 signal.signal(signal.SIGUSR1, _sigusr1_handler)
 signal.signal(signal.SIGUSR2, _sigusr2_handler)
 
 class LogFilter(logging.Filter):
+    _log_memory = 0
+
+
+    @staticmethod
+    def setMemoryLogging(level):
+        LogFilter._log_memory = level
+        LogFilter._mem_ts = LogFilter._mem_totals_ts = LogFilter._children_ts = 0
+
     _mem = None
     _mem_totals = None
     _children = None
@@ -231,8 +237,8 @@ class LogFilter(logging.Filter):
         # short logger name (without app_name in front of it)
         setattr(event, 'shortname', event.name.split('.',1)[1] if '.' in event.name else event.name)
         setattr(event, 'separator', '| ')
-        memlevel = _log_memory  # signal handler can change that midway through, so use this value
-        if _log_memory:
+        memlevel = LogFilter._log_memory  # signal handler can change that midway through, so use this value
+        if memlevel:
             # memory usage info
             t = time.time()
             if t - self._mem_ts > self._mem_update[memlevel]:
