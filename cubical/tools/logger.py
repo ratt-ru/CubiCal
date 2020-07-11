@@ -8,7 +8,7 @@
 
 from __future__ import print_function
 from six import string_types
-import logging, logging.handlers, os, re, sys, multiprocessing, time
+import logging, logging.handlers, os, re, sys, multiprocessing, time, signal
 import psutil
 from . import ModColor
 
@@ -163,15 +163,15 @@ class LoggerWrapper(object):
                                                                                print_once=print_once)
 
 _parent_process = psutil.Process(os.getpid())
-_log_memory = False
+_log_memory = 0
 _log_memory_totals = True
-_log_memory_types = "rss pss".split()
+_log_memory_types = None, "rss vms".split(), "rss pss".split()
 GB = float(1024 ** 3)
 
 
-def enableMemoryLogging(enable=True):
+def enableMemoryLogging(level=1):
     global _log_memory
-    _log_memory = enable
+    _log_memory = (level or 0)%3   # level is 0/1/2
 
 _subprocess_label = None
 
@@ -198,6 +198,21 @@ def get_subprocess_label():
     return _subprocess_label
 
 
+def _sigusr1_handler(signum, frame):
+    global _log_memory
+    _log_memory = 2 if _log_memory == 1 else 1
+    print("pid {} received USR1: memory logging level {}".format(os.getpid(), _log_memory))
+    LogFilter._mem_ts = 0
+
+def _sigusr2_handler(signum, frame):
+    global _log_memory
+    print("pid {} received USR2: disabling memory logging".format(os.getpid()))
+    _log_memory = 0
+    LogFilter._mem_ts = 0
+
+signal.signal(signal.SIGUSR1, _sigusr1_handler)
+signal.signal(signal.SIGUSR2, _sigusr2_handler)
+
 class LogFilter(logging.Filter):
     _mem = None
     _mem_totals = None
@@ -205,8 +220,8 @@ class LogFilter(logging.Filter):
     _mem_ts = 0
     _mem_totals_ts = 0
     _children_ts = 0
-    _mem_update = .5     # full memory updates are a little costly, so do them only after this many seconds has elapsed
-    _mem_totals_update = 1
+    _mem_update = (0, .5, 2)     # full memory updates are a little costly, so do them only after this many seconds has elapsed
+    _mem_totals_update = (0, 1, 5)
     _children_update = 3 # children updates even more so, so do it even less frequently
 
     """LogFilter augments the event by a few new attributes used by our formatter"""
@@ -219,20 +234,18 @@ class LogFilter(logging.Filter):
         if _log_memory:
             # memory usage info
             t = time.time()
-            if t - self._mem_ts > self._mem_update:
-                self._mem_ts = t
-                KEYS = _log_memory_types
+            if t - self._mem_ts > self._mem_update[_log_memory]:
+                KEYS = _log_memory_types[_log_memory]
                 # get memory for this process
                 mi0 = psutil.Process(os.getpid()).memory_full_info()
                 mem = {key: getattr(mi0, key) / GB for key in KEYS}
                 shm = psutil.virtual_memory().shared / GB
                 # get total memory
                 if _log_memory_totals:
-                    if t - self._mem_totals_ts > self._mem_totals_update:
-                        self._mem_totals_ts = t
+                    if t - self._mem_totals_ts > self._mem_totals_update[_log_memory]:
                         if t - self._children_ts > self._children_update:
-                            self._children_ts = t
                             self._children = [_parent_process] + list(_parent_process.children(recursive=True))
+                            self._children_ts = time.time()
                         if len(self._children) > 1:
                             mis = []
                             # scan over children, ignoring ones that may have disappeared
@@ -242,6 +255,7 @@ class LogFilter(logging.Filter):
                                 except psutil.NoSuchProcess:
                                     pass
                             self._mem_totals = {key: sum([getattr(mi,key) for mi in mis]) / GB for key in KEYS}
+                        self._mem_totals_ts = time.time()
                 # form up string
                 if self._mem_totals is None:
                     smem = ["{:.1f}".format(mem[key]) for key in KEYS]
@@ -249,6 +263,7 @@ class LogFilter(logging.Filter):
                     smem = ["{:.1f}/{:.1f}".format(mem[key], self._mem_totals[key]) for key in KEYS]
                 smem.append("{:.1f}Gb".format(shm))
                 self._mem = " ".join(smem)
+                self._mem_ts = time.time()
             setattr(event, "memory", "[{}] ".format(self._mem))
             setattr(event, 'separator', '')
         else:
