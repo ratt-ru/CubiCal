@@ -198,7 +198,7 @@ def get_subprocess_label():
 
 def _sigusr1_handler(signum, frame):
     level = 2 if LogFilter._log_memory == 1 else 1
-    print("pid {} received USR1: memory logging level {}".format(os.getpid(), _log_memory))
+    print("pid {} received USR1: memory logging level {}".format(os.getpid(), level))
     LogFilter.setMemoryLogging(level)
 
 
