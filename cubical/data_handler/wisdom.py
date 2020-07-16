@@ -84,12 +84,13 @@ def estimate_mem(data_handler, tile_list, data_opts, dist_opts):
           "system memory.".format(tot_mem_est, 100*tot_mem_est/tot_sys_mem),
           file=log)
 
-    if tot_mem_est > tot_sys_mem and dist_opts["safe"]:
+    if tot_mem_est > tot_sys_mem*dist_opts["safe"] and dist_opts["safe"]:
 
         raise MemoryError(
-            "Estimated memory usage exceeds total system memory. Memory usage "
-            "can be reduced by lowering the number of chunks, the dimensions "
-            "of each chunk or the number of worker processes. This error can "
-            "suppressed by unsetting --dist-safe.")
+            "Estimated memory usage exceeds allowed pecentage of system "
+            "memory. Memory usage can be reduced by lowering the number of "
+            "chunks, the dimensions of each chunk or the number of worker "
+            "processes. This error can suppressed by setting --dist-safe to "
+            "zero.")
 
     return
