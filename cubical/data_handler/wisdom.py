@@ -88,7 +88,7 @@ def estimate_mem(data_handler, tile_list, data_opts, dist_opts):
 
         raise MemoryError(
             "Estimated memory usage exceeds allowed pecentage of system "
-            "memory.Memory usage can be reduced by lowering the number of "
+            "memory. Memory usage can be reduced by lowering the number of "
             "chunks, the dimensions of each chunk or the number of worker "
             "processes. This error can suppressed by setting --dist-safe to "
             "zero.")
