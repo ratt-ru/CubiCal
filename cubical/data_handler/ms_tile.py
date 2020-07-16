@@ -26,6 +26,7 @@ try:
 except ImportError:
     DicoSourceProvider = None
 
+
 ## TERMINOLOGY:
 ## A "chunk" is data for one DDID, a range of timeslots (thus, a subset of the MS rows), and a
 ## slice of channels. Chunks are the basic parallelization unit. Solver deals with a chunk of data.
@@ -275,8 +276,8 @@ class MSTile(object):
                                                  clear_start=False, clear_stop=False)
                 if self.tile.dh.beam_pattern:
                     self._mb_arbeam_src = FitsBeamSourceProvider(self.tile.dh.beam_pattern,
-                                                        self.tile.dh.beam_l_axis,
-                                                        self.tile.dh.beam_m_axis)
+                                                                 self.tile.dh.beam_l_axis,
+                                                                 self.tile.dh.beam_m_axis)
                 else:
                     self._mb_arbeam_src = None
 
@@ -1388,6 +1389,11 @@ class MSTile(object):
                     flag_row = flag_col.all(axis=(-1, -2))
                     print("  skipping FLAG column per user request ({:.2%} visibilities would have been flagged otherwise)".format(totflags / float(flag_col.size)), file=log)
                     print("  skipping FLAG_ROW column per user request ({:.2%} rows would have been flagged otherwise)".format(flag_row.sum() / float(flag_row.size)), file=log)
+
+            # Close the FitsBeamSourceProvider.
+            if hasattr(subset, "_mb_arbeam_src"):
+                subset._mb_arbeam_src.close()
+
             if final:
                 self.dh.finalize()
                 self.dh.unlock()
