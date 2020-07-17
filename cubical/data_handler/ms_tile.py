@@ -1392,7 +1392,7 @@ class MSTile(object):
                     print("  skipping FLAG_ROW column per user request ({:.2%} rows would have been flagged otherwise)".format(flag_row.sum() / float(flag_row.size)), file=log)
 
             # Close the Montblanc providers, if any
-            for provider in subset._mb_measet_src, subset._mb_cached_ms_src:
+            for provider in (subset._mb_measet_src, subset._mb_cached_ms_src):
                 if provider is not None:
                     provider.close()
 
