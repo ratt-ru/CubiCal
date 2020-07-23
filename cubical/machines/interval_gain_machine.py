@@ -866,7 +866,9 @@ class PerIntervalGains(MasterMachine):
         # explicitly roll back gains to previously known good values for fixed directions
         for idir in self.fix_directions:
             gains[idir, ...] = self.old_gains[idir, ...]
-            self.posterior_gain_error[idir, ...] = 0
+            # This might not be initialized in the load_from case.
+            if self.posterior_gain_error is not None:
+                self.posterior_gain_error[idir, ...] = 0
 
     @staticmethod
     def copy_or_identity(array, time_ind=0, out=None):
