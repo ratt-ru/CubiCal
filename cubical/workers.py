@@ -3,6 +3,7 @@ from builtins import range
 import multiprocessing, os, sys, traceback
 import concurrent.futures as cf
 import re
+import numba
 
 
 import cubical.kernels
@@ -117,7 +118,7 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     if not parallel:
         if nthread:
             cubical.kernels.num_omp_threads = nthread
-            os.environ["NUMBA_NUM_THREADS"] = str(nthread)
+            numba.set_num_threads(int(nthread))
             os.environ["OMP_NUM_THREADS"] = os.environ["OMP_THREAD_LIMIT"] = str(nthread)
         return False
 
@@ -127,7 +128,7 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     # child processes will inherit this
     cubical.kernels.num_omp_threads = nthread
 
-    os.environ["NUMBA_NUM_THREADS"] = str(nthread)
+    numba.set_num_threads(int(nthread))
 
     # parse affinity argument
     if affinity != "" and affinity is not None:
