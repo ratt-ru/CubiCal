@@ -495,6 +495,7 @@ class _VisDataManager(object):
         if self._wobs_arr is None:
             if self.weight_arr is not None:
                 self._wobs_arr = self.obser_arr[np.newaxis,...] * self.weight_arr
+                self._wobs_arr[:, self.flags_arr!=0, :, :] = 0
             else:
                 self._wobs_arr = self.obser_arr.copy().reshape([1]+list(self.obser_arr.shape))
                 # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
@@ -519,6 +520,7 @@ class _VisDataManager(object):
         if self._wmod_arr is None:
             if self.weight_arr is not None:
                 self._wmod_arr = self.model_arr * self.weight_arr[np.newaxis, ...]
+                self._wmod_arr[:, :, self.flags_arr!=0, :, :] = 0
             else:
                 self._wmod_arr = self.model_arr.copy()
                 # zero the flagged visibilities. Note that if we have a weight, this is not necessary,
