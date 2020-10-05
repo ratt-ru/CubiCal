@@ -318,7 +318,7 @@ Note that using sky models requires CubiCal to be installed with lsm-support.
 
     [sol]
     _Help = Solution options which apply at the solver level
-    jones = G, dE                           # Term/s to solve for.
+    jones = G,dE                           # Term/s to solve for.
                                             # Corresponding section/s below.
     delta-g = 1e-06                         # Stopping criteria on gains.
     delta-chi = 1e-06                       # Stopping criteria on chi-squared.
@@ -358,7 +358,7 @@ Note that using sky models requires CubiCal to be installed with lsm-support.
                                             # Must match [sol] section's jones option.
     type = complex-2x2                      # Solve for a full 2x2 complex gain. 
                                             # This can be restircted using update type.
-    dd_term = 1                             # This term is diretion dependent.
+    dd-term = 1                             # This term is diretion dependent.
     time-int = 20                           # Time interval for solution.
     freq-int = 32                           # Frequency interval for solution.
                                             # 0 is the entire chunk axis.
