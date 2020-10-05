@@ -16,7 +16,7 @@ Phase-only selfcal
 The following performs diagonal, phase-only selfcal using a measurement set 
 column and produces corrected residuals.
 
-.. code-block:: shell
+.. code-block:: text
 
     [data]
     _Help = Visibility data options
@@ -94,7 +94,7 @@ The following performs diagonal, phase and amplitude selfcal using a Tigger
 .lsm sky model and produces corrected data. Note that using sky models requires 
 CubiCal to be installed with lsm-support.
 
-.. code-block::
+.. code-block:: text
 
     [data]
     _Help = Visibility data options
@@ -171,7 +171,7 @@ Gain and bandpass selfcal
 The following performs gain and bandpass calibration simultaneously,
 using a measurement set column as input and produces uncorrected residuals.
 
-.. code-block::
+.. code-block:: text
 
     [data]
     _Help = Visibility data options
@@ -268,7 +268,7 @@ The following performs DI and DD gain calibration simultaneously,
 using a tagged sky model as input and produces corrected residuals.
 Note that using sky models requires CubiCal to be installed with lsm-support.
 
-.. code-block::
+.. code-block:: text
 
     [data]
     _Help = Visibility data options
