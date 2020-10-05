@@ -1,9 +1,9 @@
 Example Parsets 
 ---------------
 
-This page details available parset options. However, invoking ``gocubical -h``
-should be preferred as it will always be up-to-date. The following is broken up
-into the various sections of the parset.
+This page provides some example parsets for common calibration tasks. To use
+one of the following parsets, simply copy the text into an empty file and save 
+with as a .parset.
 
 .. note::
 
@@ -237,7 +237,7 @@ using a measurement set column as input and produces uncorrected residuals.
     label = G                               # This term's name.
                                             # Must match [sol] section's jones option.
     type = complex-2x2                      # Solve for a full 2x2 complex gain. 
-                                            # This can be restircted using update type.
+                                            # This can be restricted using update type.
     time-int = 0                            # Time interval for solution.
                                             # 0 is the entire chunk axis.
     freq-int = 1                            # Frequency interval for solution.
@@ -251,7 +251,7 @@ using a measurement set column as input and produces uncorrected residuals.
     label = b                               # This term's name.
                                             # Must match [sol] section's jones option.
     type = complex-2x2                      # Solve for a full 2x2 complex gain. 
-                                            # This can be restircted using update type.
+                                            # This can be restricted using update type.
     time-int = 1                            # Time interval for solution.
     freq-int = 0                            # Frequency interval for solution.
                                             # 0 is the entire chunk axis.
@@ -343,7 +343,7 @@ Note that using sky models requires CubiCal to be installed with lsm-support.
     label = G                               # This term's name.
                                             # Must match [sol] section's jones option.
     type = complex-2x2                      # Solve for a full 2x2 complex gain. 
-                                            # This can be restircted using update type.
+                                            # This can be restricted using update type.
     time-int = 1                            # Time interval for solution.
                                             # 0 is the entire chunk axis.
     freq-int = 1                            # Frequency interval for solution.
@@ -357,7 +357,7 @@ Note that using sky models requires CubiCal to be installed with lsm-support.
     label = dE                              # This term's name.
                                             # Must match [sol] section's jones option.
     type = complex-2x2                      # Solve for a full 2x2 complex gain. 
-                                            # This can be restircted using update type.
+                                            # This can be restricted using update type.
     dd-term = 1                             # This term is diretion dependent.
     time-int = 20                           # Time interval for solution.
     freq-int = 32                           # Frequency interval for solution.
