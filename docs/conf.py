@@ -42,7 +42,8 @@ inspect.isfunction = isfunction
 extensions = ['sphinx.ext.autodoc',
     'sphinx.ext.todo',
     'sphinx.ext.viewcode',
-    'sphinxcontrib.napoleon']
+    'sphinxcontrib.napoleon',
+    'sphinx.ext.intersphinx']
 
 
 
