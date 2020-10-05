@@ -16,7 +16,7 @@ Phase-only selfcal
 The following performs diagonal, phase-only selfcal using a measurement set 
 column and produces corrected residuals.
 
-.. code-block::
+.. code-block:: shell
 
     [data]
     _Help = Visibility data options
