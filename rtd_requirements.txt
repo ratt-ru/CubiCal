@@ -1,4 +1,4 @@
 numpy >= 1.11.3
 futures >= 3.0.5
 sphinxcontrib-napoleon >= 0.7
-Sphinx>=3.2.1
+sphinx>=3.2.1
