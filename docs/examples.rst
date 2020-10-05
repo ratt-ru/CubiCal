@@ -165,8 +165,8 @@ CubiCal to be installed with lsm-support.
     _Templated = True                       # Other parameters polulated from defaults.
                                             # Can be safely ignored.
 
-Gain and Bandpass Chain
-#######################
+Gain and bandpass selfcal
+#########################
 
 The following performs gain and bandpass calibration simultaneously,
 using a measurement set column as input and produces uncorrected residuals.

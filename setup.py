@@ -45,7 +45,7 @@ on_rtd = os.environ.get('READTHEDOCS') == 'True'
 
 if on_rtd:
     requirements = ['numpy',
-                    'numba', 
+                    #'numba', 
                     'futures; python_version <= "2.7"', 
                     'matplotlib',
                     'scipy']
