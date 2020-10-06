@@ -212,7 +212,7 @@ using a measurement set column as input and produces uncorrected residuals.
 
     [sol]
     _Help = Solution options which apply at the solver level
-    jones = B,G                              # Term/s to solve for.
+    jones = B,G                             # Term/s to solve for.
                                             # Corresponding section/s below.
     delta-g = 1e-06                         # Stopping criteria on gains.
     delta-chi = 1e-06                       # Stopping criteria on chi-squared.
@@ -344,7 +344,7 @@ Note that using sky models requires CubiCal to be installed with lsm-support.
 
     [sol]
     _Help = Solution options which apply at the solver level
-    jones = G,dE                           # Term/s to solve for.
+    jones = G,dE                            # Term/s to solve for.
                                             # Corresponding section/s below.
     delta-g = 1e-06                         # Stopping criteria on gains.
     delta-chi = 1e-06                       # Stopping criteria on chi-squared.
