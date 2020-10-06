@@ -24,7 +24,7 @@ column and produces corrected residuals.
     column = DATA                           # Column in which the data lives.
     time-chunk = 100                        # Number of time slots in a chunk. 
                                             # Implicitly controls memory footprint.
-    freq-chunk = 64                         # Number of frequencies in a chunk. 
+    freq-chunk = 64                         # Number of frequency channels in a chunk. 
                                             # Implicitly controls memory footprint.
 
     [sel]
@@ -80,8 +80,8 @@ column and produces corrected residuals.
     label = G                               # This term's name.
                                             # Must match [sol] section's jones option.
     type = phase-diag                       # Solve for a diagonal phase-only gain. 
-    time-int = 1                            # Time interval for solution.
-    freq-int = 1                            # Frequency interval for solution.
+    time-int = 1                            # Number of timeslots per solution.
+    freq-int = 1                            # Number of channels per solution.
     max-iter = 20                           # Maximum number of iterations.
                                             # May be ignored if [sol] term-iters is set.
     _Templated = True                       # Other parameters polulated from defaults.
@@ -102,7 +102,7 @@ CubiCal to be installed with lsm-support.
     column = DATA                           # Column in which the data lives.
     time-chunk = 100                        # Number of time slots in a chunk. 
                                             # Implicitly controls memory footprint.
-    freq-chunk = 64                         # Number of frequencies in a chunk. 
+    freq-chunk = 64                         # Number of frequency channels in a chunk. 
                                             # Implicitly controls memory footprint.
 
     [sel]
@@ -158,8 +158,8 @@ CubiCal to be installed with lsm-support.
     label = G                               # This term's name.
                                             # Must match [sol] section's jones option.
     type = complex-diag                     # Solve for a diagonal complex gain. 
-    time-int = 1                            # Time interval for solution.
-    freq-int = 1                            # Frequency interval for solution.
+    time-int = 1                            # Number of timeslots per solution.
+    freq-int = 1                            # Number of channels per solution.
     max-iter = 20                           # Maximum number of iterations.
                                             # May be ignored if [sol] term-iters is set.
     _Templated = True                       # Other parameters polulated from defaults.
@@ -179,7 +179,7 @@ using a measurement set column as input and produces uncorrected residuals.
     column = DATA                           # Column in which the data lives.
     time-chunk = 100                        # Number of time slots in a chunk. 
                                             # Implicitly controls memory footprint.
-    freq-chunk = 64                         # Number of frequencies in a chunk. 
+    freq-chunk = 64                         # Number of frequency channels in a chunk. 
                                             # Implicitly controls memory footprint.
 
     [sel]
@@ -238,9 +238,12 @@ using a measurement set column as input and produces uncorrected residuals.
                                             # Must match [sol] section's jones option.
     type = complex-2x2                      # Solve for a full 2x2 complex gain. 
                                             # This can be restricted using update type.
-    time-int = 0                            # Time interval for solution.
+    update-type = phase-diag                # Discard amplitude and off diagonal 
+                                            # components of the solution.
+                                            # This makes the term phase-only.
+    time-int = 0                            # Number of timeslots per solution.
                                             # 0 is the entire chunk axis.
-    freq-int = 1                            # Frequency interval for solution.
+    freq-int = 1                            # Number of channels per solution.
     max-iter = 20                           # Maximum number of iterations.
                                             # May be ignored if [sol] term-iters is set.
     _Templated = True                       # Other parameters polulated from defaults.
@@ -252,8 +255,8 @@ using a measurement set column as input and produces uncorrected residuals.
                                             # Must match [sol] section's jones option.
     type = complex-2x2                      # Solve for a full 2x2 complex gain. 
                                             # This can be restricted using update type.
-    time-int = 1                            # Time interval for solution.
-    freq-int = 0                            # Frequency interval for solution.
+    time-int = 1                            # Number of timeslots per solution.
+    freq-int = 0                            # Number of channels per solution.
                                             # 0 is the entire chunk axis.
     max-iter = 20                           # Maximum number of iterations.
                                             # May be ignored if [sol] term-iters is set.
@@ -302,7 +305,7 @@ Note that using sky models requires CubiCal to be installed with lsm-support.
     column = DATA                           # Column in which the data lives.
     time-chunk = 100                        # Number of time slots in a chunk. 
                                             # Implicitly controls memory footprint.
-    freq-chunk = 64                         # Number of frequencies in a chunk. 
+    freq-chunk = 64                         # Number of frequency channels in a chunk. 
                                             # Implicitly controls memory footprint.
 
     [sel]
@@ -370,9 +373,9 @@ Note that using sky models requires CubiCal to be installed with lsm-support.
                                             # Must match [sol] section's jones option.
     type = complex-2x2                      # Solve for a full 2x2 complex gain. 
                                             # This can be restricted using update type.
-    time-int = 1                            # Time interval for solution.
+    time-int = 1                            # Number of timeslots per solution.
                                             # 0 is the entire chunk axis.
-    freq-int = 1                            # Frequency interval for solution.
+    freq-int = 1                            # Number of channels per solution.
     max-iter = 20                           # Maximum number of iterations.
                                             # May be ignored if [sol] term-iters is set.
     _Templated = True                       # Other parameters polulated from defaults.
@@ -385,8 +388,8 @@ Note that using sky models requires CubiCal to be installed with lsm-support.
     type = complex-2x2                      # Solve for a full 2x2 complex gain. 
                                             # This can be restricted using update type.
     dd-term = 1                             # This term is diretion dependent.
-    time-int = 20                           # Time interval for solution.
-    freq-int = 32                           # Frequency interval for solution.
+    time-int = 20                           # Number of timeslots per solution.
+    freq-int = 32                           # Number of channels per solution.
                                             # 0 is the entire chunk axis.
     max-iter = 20                           # Maximum number of iterations.
                                             # May be ignored if [sol] term-iters is set.
