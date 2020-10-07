@@ -555,7 +555,7 @@ class PerIntervalGains(MasterMachine):
                     msg = "{} directions ({}) flagged {}".format(
                         len(bad_dirs),
                         ", ".join(["dir {0:s}: {1:.3f}% gains affected".format(
-                            str(d), percflagged[d]) for d in bad_dirs]),
+                            str(d), float(percflagged[d])) for d in bad_dirs]),
                         why_flagged
                     )
                 else:
