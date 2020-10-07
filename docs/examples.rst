@@ -3,7 +3,7 @@ Example Parsets
 
 This page provides some example parsets for common calibration tasks. To use
 one of the following parsets, simply copy the text into an empty file and save 
-with as a .parset.
+as a .parset.
 
 .. note::
 
