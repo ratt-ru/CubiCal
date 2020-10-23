@@ -7,8 +7,10 @@ import numpy as np
 
 from cubical.plots import gainsols, leakages
 
-# import ipdb
-ipdb = None
+try:
+    import ipdb
+except:
+    ipdb = None
 
 def main():
     import argparse

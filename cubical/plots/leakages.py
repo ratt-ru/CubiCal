@@ -9,7 +9,12 @@ from cubical.plots import gainsols
 def plot_leakages_cc(D, FS=None, TS=None, ANTS=slice(None), refant=None,
                      plot_diag='ap', plot_offdiag='ri', figtitle=None):
     """Plots leakages from a CubiCal database"""
-    sols = gainsols.prepare_sols_dict(D, FS, TS)
+    sols, have_offdiag, is_complex = gainsols.prepare_sols_dict(D, FS, TS)
+    if not have_offdiag:
+        plot_offdiag = ''
+    if not is_complex:
+        plot_diag = plot_diag and 'r'
+        plot_offdiag = plot_offdiag and 'r'
 
     # renormalize
     sols = OrderedDict([(ant, (t, f, d00, d01/d00, d10/d11, d11))
@@ -113,7 +118,7 @@ def read_aips_leakages(filename):
 def apply_ref_ant(leak, refant, ant_index):
     iref = ant_index.get(refant)
     if iref is None:
-        print("{}: unknown reference antenna '{}'".format(filename, refant))
+        print("unknown reference antenna '{}'".format(refant))
     else:
         refleak = leak[:, :, iref, 0, 1].copy()
         leak[:, :, :, 0, 1] -= refleak[..., np.newaxis]
@@ -124,7 +129,7 @@ def subtract_leakages(leak, antennas, leak0, ant0_index):
     for iant, ant in enumerate(antennas):
         iant0 = ant0_index.get(ant)
         if iant0 is None:
-            "{}: antenna {} not in {}, difference will be zero'ed".format(filename, ant, filename0)
+            print("antenna {} not in second file, difference will be zero'ed".format(ant))
             diffleak[:, :, iant, :, :] = 0
         else:
             diffleak[:, :, iant, :, :] -= leak0[:, :, iant0, :, :]
