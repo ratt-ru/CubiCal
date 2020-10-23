@@ -7,8 +7,8 @@ import numpy as np
 
 from cubical.plots import gainsols, leakages
 
-
-import ipdb
+# import ipdb
+ipdb = None
 
 def main():
     import argparse
@@ -46,7 +46,7 @@ def main():
         refant = None
 
         # check file type
-        line0 = open(filename).readline().strip()
+        line0 = open(filename, encoding='latin-1').readline().strip()
         if line0.startswith("PD TABLE"):
             print("{} seems to be an AIPS PD table printout".format(filename))
 
@@ -126,6 +126,10 @@ def main():
        pylab.show()
         
 if __name__ == "__main__":
-    with ipdb.launch_ipdb_on_exception():
+    if ipdb:
+        with ipdb.launch_ipdb_on_exception():
+            main()
+    else:
         main()
+        
   

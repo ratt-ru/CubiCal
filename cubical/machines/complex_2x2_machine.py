@@ -204,7 +204,8 @@ class Complex2x2Gains(PerIntervalGains):
             # sum off-diagonal terms
             dm_sum = dm_sum[..., 0] + np.conj(dm_sum[..., 1])
             dabs_sum = dabs_sum[..., 0] + np.conj(dabs_sum[..., 1])
-            pzd = np.angle(dm_sum / dabs_sum)
+            with np.errstate(divide='ignore',invalid='ignore'):
+                pzd = np.angle(dm_sum / dabs_sum)
             pzd[dabs_sum == 0] = 0
             with np.printoptions(precision=4, suppress=True, linewidth=1000):
                 print("{0}: PZD estimate {1} deg".format(self.chunk_label, pzd * 180 / np.pi), file=log(2))

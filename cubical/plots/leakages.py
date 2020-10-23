@@ -9,7 +9,7 @@ from cubical.plots import gainsols
 def plot_leakages_cc(D, FS=None, TS=None, ANTS=slice(None), refant=None,
                      plot_diag='ap', plot_offdiag='ri', figtitle=None):
     """Plots leakages from a CubiCal database"""
-    sols = gainsols.prepare_sols_dict(D, FS, TS, ANTS)
+    sols = gainsols.prepare_sols_dict(D, FS, TS)
 
     # renormalize
     sols = OrderedDict([(ant, (t, f, d00, d01/d00, d10/d11, d11))
