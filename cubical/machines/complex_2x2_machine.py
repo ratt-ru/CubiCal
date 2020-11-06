@@ -189,7 +189,7 @@ class Complex2x2Gains(PerIntervalGains):
         """
         super(Complex2x2Gains, self).precompute_attributes(data_arr, model_arr, flags_arr, noise)
 
-        if self._estimate_pzd and self._pzd is 0:
+        if self._estimate_pzd and self._pzd is 0 and model_arr is not None:
             marr = model_arr[..., (0, 1), (1, 0)][:, 0].sum(0)
             darr = data_arr[..., (0, 1), (1, 0)][0]
             mask = (flags_arr[..., np.newaxis] != 0) | (marr == 0)
