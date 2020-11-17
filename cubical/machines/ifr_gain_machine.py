@@ -9,7 +9,6 @@ from numpy.ma import masked_array
 from cubical import param_db
 
 from cubical.tools import logger, ModColor
-from cubical.main import expand_templated_name
 log = logger.getLogger("gain_machine")
 
 
@@ -31,6 +30,7 @@ class IfrGainMachine(object):
             ifrgain_opts:   dict of options
             compute:        if False, gains are not computed even if options ask them to
         """
+        from cubical.main import expand_templated_name
         self.gmfactory = gmfactory
         load_from = expand_templated_name(ifrgain_opts['load-from'])
         save_to = expand_templated_name(ifrgain_opts['save-to'])
