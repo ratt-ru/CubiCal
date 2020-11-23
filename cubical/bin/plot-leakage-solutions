@@ -2,6 +2,10 @@
 from __future__ import print_function
 
 from collections import OrderedDict
+import sys
+import matplotlib
+if "-d" not in sys.argv:
+    matplotlib.use("agg")
 import pylab
 import numpy as np
 

@@ -506,12 +506,6 @@ def main(debugging=False):
         single_chunk = GD["data"]["single-chunk"]
         single_tile = GD["data"]["single-tile"]
 
-        # setup worker process properties
-
-        workers.setup_parallelism(GD["dist"]["ncpu"], GD["dist"]["nworker"], GD["dist"]["nthread"],
-                                  debugging or single_chunk,
-                                  GD["dist"]["pin"], GD["dist"]["pin-io"], GD["dist"]["pin-main"],
-                                  ms.use_montblanc, GD["montblanc"]["threads"])
 
         # set up chunking
 
@@ -538,6 +532,14 @@ def main(debugging=False):
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
+
+        # setup worker process properties
+        workers.setup_parallelism(GD["dist"]["ncpu"], GD["dist"]["nworker"], GD["dist"]["nthread"],
+                                  debugging or single_chunk,
+                                  GD["dist"]["pin"], GD["dist"]["pin-io"], GD["dist"]["pin-main"],
+                                  ms.use_montblanc, GD["montblanc"]["threads"],
+                                  max_workers=chunks_per_tile)
+
 
         # Estimate memory usage. This is still experimental.
         estimate_mem(ms, tile_list, GD["data"], GD["dist"])

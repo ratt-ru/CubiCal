@@ -3,6 +3,7 @@ from builtins import range
 import multiprocessing, os, sys, traceback
 import concurrent.futures as cf
 import re
+import numba
 
 
 import cubical.kernels
@@ -17,7 +18,7 @@ worker_process_properties = dict(MainProcess={})
 # number of worker processes that will be run
 num_workers = 0
 
-def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc_threads):
+def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc_threads, max_workers):
     """
     Internal helper -- determines how many workers and threads to allocate, based on defaults specified. See discussion in
     https://github.com/ratt-ru/CubiCal/pull/171#issuecomment-388334586
@@ -47,18 +48,26 @@ def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc
     if ncpu:
         cores = ncpu - (montblanc_threads or 1)
         if not nworkers and not nthreads:
+            if max_workers:
+                cores = min(cores, max_workers)
             print("multi-process mode: {}+1 workers, single thread{}".format(cores, montblanc), file=log(0, "blue"))
             return True, cores, 1
         if nworkers:
+            if max_workers:
+                nworkers = min(nworkers, max_workers)
             nthreads = max(1, cores // nworkers)
             print("multi-process mode: --dist-nworker {} (+1), {} OMP threads{}".format(nworkers, nthreads, montblanc), file=log(0, "blue"))
             return True, nworkers, nthreads
         if nthreads:
             nworkers = max(1, cores // nthreads)
+            if max_workers:
+                nworkers = min(nworkers, max_workers)
             print("multi-process mode: {}+1 workers, --dist-nthread {}{}".format(nworkers, nthreads, montblanc), file=log(0, "blue"))
             return True, nworkers, nthreads
     else:  # ncpu not set, and nworkers/nthreads not both set
         if nworkers:
+            if max_workers:
+                nworkers = min(nworkers, max_workers)
             print("multi-process mode: --dist-nworker {} (+1), single thread{}".format(nworkers, montblanc), file=log(0, "blue"))
             return True, nworkers, 1
         if nthreads:
@@ -69,7 +78,7 @@ def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc
     raise RuntimeError("can't be here -- this is a bug!")
 
 
-def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinity, main_affinity, use_montblanc, montblanc_threads):
+def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinity, main_affinity, use_montblanc, montblanc_threads, max_workers):
     """
     Sets up parallelism, affinities and other properties of worker processes.
     
@@ -103,13 +112,13 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     """
     global num_workers
     parallel, num_workers, nthread = _setup_workers_and_threads(force_serial, ncpu, nworker, nthread,
-                                                                montblanc_threads if use_montblanc else None)
+                                                                montblanc_threads if use_montblanc else None, max_workers)
 
     # in serial mode, simply set the Montblanc and/or worker thread count, and return
     if not parallel:
         if nthread:
             cubical.kernels.num_omp_threads = nthread
-            os.environ["NUMBA_NUM_THREADS"] = str(nthread)
+            numba.set_num_threads(int(nthread))
             os.environ["OMP_NUM_THREADS"] = os.environ["OMP_THREAD_LIMIT"] = str(nthread)
         return False
 
@@ -119,7 +128,7 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     # child processes will inherit this
     cubical.kernels.num_omp_threads = nthread
 
-    os.environ["NUMBA_NUM_THREADS"] = str(nthread)
+    numba.set_num_threads(int(nthread))
 
     # parse affinity argument
     if affinity != "" and affinity is not None:

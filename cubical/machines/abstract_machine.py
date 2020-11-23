@@ -13,7 +13,6 @@ from cubical import param_db
 from cubical.database.casa_db_adaptor import casa_db_adaptor
 
 from cubical.tools import logger, ModColor
-from cubical.main import expand_templated_name
 
 log = logger.getLogger("gain_machine")
 
@@ -812,6 +811,7 @@ class MasterMachine:
                     Expanded filename
                 
             """
+            from cubical.main import expand_templated_name
             return expand_templated_name(filename,
                                          JONES=jones_label or self.jones_label)
 
