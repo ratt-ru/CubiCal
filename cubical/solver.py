@@ -795,7 +795,7 @@ class CorrectOnly(SolverMachine):
 
     def run(self):
         if self.vdm.model_arr is not None and ifrgain_machine.is_computing():
-            ifrgain_machine.update(self.vdmcorr.weighted_obser, self.vdm.corrupt_weighted_model, self.vdm.flags_arr,
+            ifrgain_machine.update(self.vdm.weighted_obser, self.vdm.corrupt_weighted_model, self.vdm.flags_arr,
                                    self.vdm.freq_slice, self.soldict)
 
         corr_vis = np.zeros_like(self.vdm.obser_arr)
