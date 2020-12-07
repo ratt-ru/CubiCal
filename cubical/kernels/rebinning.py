@@ -94,6 +94,8 @@ def rebin_vis(vis, vis0, uvw, uvw0, flag, flag0, weights, weights0, num_weights,
                         for w in range(num_weights):
                             weights[w, row, f, c] += weights0[w, row0, f0, c]
                         ww = weights0[0, row0, f0, c]
+                    else:
+                        ww = 1
                     vis[row, f, c] += ww*vis0[row0, f0, c].conjugate() if conjugate else ww*vis0[row0, f0, c]
                     sum_ww[row, f, c] += ww
                     sum_rw[row] += ww

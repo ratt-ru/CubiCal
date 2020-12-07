@@ -1026,7 +1026,11 @@ class MSTile(object):
                                 else:
                                     movis[idir, imod, ...] += model
                                 del model
-
+                
+                # round to 1e-16 to avoid underflows (casa setjy, for example, can yield visibilities with a tiny
+                # imaginary part, which cause underflows when squared)
+                movis.round(16, out=movis)
+            
                 # check for a null model (all directions)
                 invmodel = (~np.isfinite(movis)).any(axis=(0,1))
                 invmodel[...,(0,-1)] |= (movis[...,(0,-1)]==0).all(axis=(0,1))

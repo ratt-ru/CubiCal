@@ -507,14 +507,16 @@ class MasterMachine:
         return NotImplementedError
 
     @abstractmethod
-    def num_gain_flags(self, mask=None):
+    def num_gain_flags(self, mask=None, final=False):
         """
         This method returns the number of gains flagged, and the total number of gains.
         
         Args:
             mask (int):
                 Flag mask to apply. If None, ~FL.MISSING is expected to be used
-
+            final:
+                If True, this is the final (post-solution) call, so return sum of all flags (if e.g. a chain)
+ 
         Returns:
             Tuple of two values
                 - number of flagged gains

@@ -334,7 +334,8 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
                     wh = old_chi != 0
                     delta_chi[wh] /= old_chi[wh]
                     delta_chi_max  = delta_chi.max()
-                    delta_chi_mean = (old_mean_chi - stats.chunk.chi2u) / stats.chunk.chi2u
+                    chi_mean = float(stats.chunk.chi2u)
+                    delta_chi_mean = (old_mean_chi - chi_mean) / chi_mean if chi_mean != 0 else 0.
 
                 if stats.chunk.num_diverged:
                     diverging = ", " + ModColor.Str("diverging {:.2%}".format(stats.chunk.frac_diverged), "red")
@@ -356,8 +357,8 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
 
     if gm.has_valid_solutions:
         # Final round of flagging
-        flagged = gm.flag_solutions(flags_arr, True)
-        stats.chunk.num_sol_flagged = gm.num_gain_flags()[0]
+        flagged = gm.flag_solutions(flags_arr, final=True)
+        stats.chunk.num_sol_flagged = gm.num_gain_flags(final=True)[0]
     else:
         flagged = None
 
@@ -613,9 +614,9 @@ class SolverMachine(object):
         # for apply-only machines, precompute machine attributes and apply initial gain flags
         if self.is_apply_only:
             gm.precompute_attributes(vdm.obser_arr, vdm.model_arr, vdm.flags_arr, None)
-            gm.flag_solutions(vdm.flags_arr, -1)
+            gm.flag_solutions(vdm.flags_arr, True)
             self.stats.chunk.num_solutions = vdm.gm.num_solutions
-            self.stats.chunk.num_sol_flagged = vdm.gm.num_gain_flags()[0]
+            self.stats.chunk.num_sol_flagged = vdm.gm.num_gain_flags(final=True)[0]
 
         # initialize the flagger
         self.madmax = Flagger(GD, label, metadata, self.stats)
@@ -694,11 +695,11 @@ class SolverMachine(object):
             fstats = []
             for flagname, mask in FL.categories().items():
                 if mask != FL.MISSING:
-                    n_flag, n_tot = self.gm.num_gain_flags(mask)
+                    n_flag, n_tot = self.gm.num_gain_flags(mask, final=True)
                     if n_flag:
                         fstats.append("{}:{}({:.2%})".format(flagname, n_flag, n_flag/float(n_tot)))
 
-            nfl, nsol = self.gm.num_gain_flags()
+            nfl, nsol = self.gm.num_gain_flags(final=True)
             flagstatus.append("gain flags {} ({:.2%} total)".format(" ".join(fstats), nfl/float(nsol)))
 
         if self.stats.chunk.num_mad_flagged:
@@ -909,11 +910,13 @@ def run_solver(solver_type, itile, chunk_key, sol_opts, debug_opts):
 
         n_dir, n_mod = model_arr.shape[0:2] if model_arr is not None else (1,1)
 
+        solver_machine_class = SOLVERS[solver_type]
         # create GainMachine
+        # import pudb; pu.db
         gm = vdm.gm = gm_factory.create_machine(vdm.weighted_obser, n_dir, n_mod, chunk_ts, chunk_fs, label)
 
         # create solver machine
-        solver_machine = SOLVERS[solver_type](vdm, gm, soldict, sol_opts, label, metadata)
+        solver_machine = solver_machine_class(vdm, gm, soldict, sol_opts, label, metadata)
 
         # Invoke solver method
         if debug_opts['stop-before-solver']:

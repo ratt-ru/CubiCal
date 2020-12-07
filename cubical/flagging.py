@@ -30,19 +30,18 @@ class FL(object):
     INVALID  = dtype(1<<2)    # invalid data (zero, inf, nan)
     ILLCOND  = dtype(1<<3)    # solution ill conditioned - bad inverse
     DIVERGE  = dtype(1<<4)    # divergence
-    CHISQ    = dtype(1<<5)    # excessive chisq
+    NOSOL    = dtype(1<<5)    # missing solution (i.e. in load-from or xfer-from)
     GOOB     = dtype(1<<6)    # gain solution out of bounds
     BOOM     = dtype(1<<7)    # gain solution exploded (i.e. went to inf/nan)
     GNULL    = dtype(1<<8)    # gain solution gone to zero.
     LOWSNR   = dtype(1<<9)    # prior SNR too low for gain solution
-    GVAR     = dtype(1<<10)   # posterior variance too low for gain solution
+    GVAR     = dtype(1<<10)   # posterior variance too high for gain solution
     INVMODEL = dtype(1<<11)   # invalid model (zero, inf, nan)
     INVWGHT  = dtype(1<<12)   # invalid weight (inf or nan)
     NULLWGHT = dtype(1<<13)   # null weight
-    NOSOL    = GNULL          # missing solution (i.e. in load-from or xfer-from)
 
     MAD      = dtype(1<<14)   # residual exceeds MAD-based threshold
-    SKIPSOL  = dtype(1<<15)   # omit this data point from the solver
+    SKIPSOL  = dtype(1<<15)   # omit this data point from the solver (not a true flag!)
 
     @staticmethod
     def categories():
