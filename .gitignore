@@ -96,3 +96,7 @@ __pycache__
 # virtualenvs
 .venv*/
 .virtualenv*/
+.persistent_history
+
+*~
+.#*

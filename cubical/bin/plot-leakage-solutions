@@ -11,10 +11,11 @@ import numpy as np
 
 from cubical.plots import gainsols, leakages
 
-try:
-    import ipdb
-except:
-    ipdb = None
+ipdb = None
+# try:
+#     import ipdb
+# except:
+#     pass
 
 def main():
     import argparse

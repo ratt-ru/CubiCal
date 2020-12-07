@@ -202,7 +202,9 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
                                     ("c", ph1),  ("y", ph2))
                                ], loc="upper center", ncol=2, fontsize=options.font_size)
 
-    for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(list(sols.items())[:max_sols]):
+    for iant, (ant, (time, freq, g00, g01, g10, g11)) in enumerate(sols.items()):
+        if iant >= max_sols:
+            break
         #    print "shape is {}, grid span is {} {}".format(d00.shape, time[[0,-1]], freq[[0,-1]])
         freq = freq * 1e-6
 
