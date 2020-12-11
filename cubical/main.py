@@ -158,6 +158,8 @@ def main(debugging=False):
     def prelog_print(level, message):
         prelog_messages.append((level, message))
 
+    print("Using CubiCal version {}.".format(VERSION), file=log)
+
     try:
         if debugging:
             print("initializing from cubical.last", file=log)
@@ -168,8 +170,6 @@ def main(debugging=False):
             default_parset = parsets.Parset("%s/DefaultParset.cfg" % os.path.dirname(__file__))
 
             # if first argument is a filename, treat it as a parset
-
-            print("Using CubiCal version {}.".format(VERSION), file=log)
 
             if len(sys.argv) > 1 and not sys.argv[1][0].startswith('-'):
                 custom_parset_file = sys.argv[1]
