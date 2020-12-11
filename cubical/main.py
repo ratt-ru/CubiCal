@@ -26,6 +26,7 @@ import datetime
 import getpass
 import traceback
 from time import time
+from cubical import VERSION
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
 # even if one is only trying to save figures to .png.
@@ -167,6 +168,8 @@ def main(debugging=False):
             default_parset = parsets.Parset("%s/DefaultParset.cfg" % os.path.dirname(__file__))
 
             # if first argument is a filename, treat it as a parset
+
+            print("Using CubiCal version {}.".format(VERSION), file=log)
 
             if len(sys.argv) > 1 and not sys.argv[1][0].startswith('-'):
                 custom_parset_file = sys.argv[1]
