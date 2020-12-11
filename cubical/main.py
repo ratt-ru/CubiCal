@@ -26,6 +26,7 @@ import datetime
 import getpass
 import traceback
 from time import time
+from cubical import VERSION
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
 # even if one is only trying to save figures to .png.
@@ -156,6 +157,8 @@ def main(debugging=False):
 
     def prelog_print(level, message):
         prelog_messages.append((level, message))
+
+    print("Using CubiCal version {}.".format(VERSION), file=log)
 
     try:
         if debugging:
