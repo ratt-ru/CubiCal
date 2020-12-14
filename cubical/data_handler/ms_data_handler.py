@@ -317,7 +317,8 @@ class MSDataHandler:
 
             assert set(spwtabcols) <= set(
                 _spwtab.colnames()), "Measurement set conformance error - keyword table SPECTRAL_WINDOW incomplete. Perhaps disable --out-casa-gaintables or check your MS!"
-            self._spwtabcols = {t: _spwtab.getcol(t) for t in spwtabcols}
+            nrows = _spwtab.nrows()
+            self._spwtabcols = {t: [_spwtab.getcol(t, row, 1) for row in range(nrows)] for t in spwtabcols}
 
             # read observation details
             obstabcols = ["TIME_RANGE", "LOG", "SCHEDULE", "FLAG_ROW",
