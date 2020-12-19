@@ -52,6 +52,7 @@ class JonesChain(MasterMachine):
         self.jones_terms = []
         self.num_left_di_terms = 0  # how many DI terms are there at the left of the chain
         seen_dd_term = False
+
         for iterm, term_opts in enumerate(jones_options['chain']):
             jones_class = machine_types.get_machine_class(term_opts['type'])
             if jones_class is None:
@@ -124,8 +125,7 @@ class JonesChain(MasterMachine):
         """Precomputes various stats before starting a solution"""
         MasterMachine.precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan)
         for term in self.jones_terms:
-            if term.solvable:
-                term.precompute_attributes(data_arr, model_arr, flags_arr, inv_var_chan)
+            term.precompute_attributes(data_arr, model_arr, flags_arr, inv_var_chan)
 
     def export_solutions(self):
         """ Saves the solutions to a dict of {label: solutions,grids} items. """
@@ -428,7 +428,7 @@ class JonesChain(MasterMachine):
         """
         return self.active_term.restrict_solution(gains)
 
-    def flag_solutions(self, flags_arr, final=0):
+    def flag_solutions(self, flags_arr, final=False):
         """ Flags gain solutions."""
         # Per-iteration flagging done on the active term, final (or pre-apply) flagging is done on all terms.
         if final:
@@ -436,8 +436,16 @@ class JonesChain(MasterMachine):
         else:
             return self.active_term.flag_solutions(flags_arr, 0)
 
-    def num_gain_flags(self, mask=None):
-        return self.active_term.num_gain_flags(mask)
+    def num_gain_flags(self, mask=None, final=False):
+        if final:
+            nfl = [0, 0]
+            for term in self.jones_terms:
+                n1, n2 = term.num_gain_flags(mask, final=True)
+                nfl[0] += int(n1)
+                nfl[1] += int(n2)
+            return nfl
+        else:
+            return self.active_term.num_gain_flags(mask)
 
     def _next_chain_term(self):
         while True:
@@ -596,7 +604,12 @@ class JonesChain(MasterMachine):
         """
         def __init__(self, machine_cls, grid, double_precision, apply_only, global_options, jones_options):
             # manufacture dict of "Jones options" for the outer chain
+            # note that in apply-only mode, we enforce all terms to non-solvable
             opts = dict(label="chain", solvable=not apply_only, sol=global_options['sol'], chain=jones_options)
+            if apply_only:
+                for term in jones_options:
+                    term['solvable'] = False
+
             self.chain_options = jones_options
             MasterMachine.Factory.__init__(self, machine_cls, grid, double_precision, apply_only,
                                            global_options, opts)

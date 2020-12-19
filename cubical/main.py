@@ -26,6 +26,7 @@ import datetime
 import getpass
 import traceback
 from time import time
+from cubical import VERSION
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
 # even if one is only trying to save figures to .png.
@@ -156,6 +157,8 @@ def main(debugging=False):
 
     def prelog_print(level, message):
         prelog_messages.append((level, message))
+
+    print("Using CubiCal version {}.".format(VERSION), file=log)
 
     try:
         if debugging:
@@ -372,9 +375,9 @@ def main(debugging=False):
                            beam_pattern=GD["model"]["beam-pattern"],
                            beam_l_axis=GD["model"]["beam-l-axis"],
                            beam_m_axis=GD["model"]["beam-m-axis"],
-                           active_subset=GD["sol"]["subset"],
-                           min_baseline=GD["sol"]["min-bl"],
-                           max_baseline=GD["sol"]["max-bl"],
+                           active_subset=GD["sol"]["subset"] if not apply_only else None,
+                           min_baseline=GD["sol"]["min-bl"] if not apply_only else 0,
+                           max_baseline=GD["sol"]["max-bl"] if not apply_only else 0,
                            chunk_freq=GD["data"]["freq-chunk"],
                            rebin_freq=GD["data"]["rebin-freq"],
                            do_load_CASA_kwtables = GD["out"]["casa-gaintables"],
@@ -518,7 +521,8 @@ def main(debugging=False):
             chunks_per_tile = 1
             max_chunks_per_tile = 1
         else:
-            chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
+            nw = GD["dist"]["nworker"] or ((GD["dist"]["ncpu"] / (GD["dist"]["nthread"] or 1)) or 1) - 1
+            chunks_per_tile = max(GD["dist"]["min-chunks"], nw, 1)
             max_chunks_per_tile = 0
             if GD["dist"]["max-chunks"]:
                 chunks_per_tile = max(max(GD["dist"]["max-chunks"], chunks_per_tile), 1)

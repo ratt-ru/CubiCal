@@ -15,14 +15,8 @@ Contents:
    installation
    usage
    parset
+   examples
    performance
    licence
 
 .. cubical
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
