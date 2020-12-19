@@ -1,3 +1,4 @@
+# -*- coding: future_fstrings -*-
 # CubiCal: a radio interferometric calibration suite
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
@@ -93,9 +94,9 @@ class MSTile(object):
             self.nants = tile.nants
             # 
             if type(ms_rows) is slice:
-                log(0).print(f"{tile.label} subset {label} rows {ms_rows}")
+                log(1).print(f"{tile.label} subset {label} rows {ms_rows}")
             else:
-                log(0).print(f"{tile.label} subset {label} contains {len(ms_rows)} rows (min {ms_rows[0]} max {ms_rows[-1]})")
+                log(1).print(f"{tile.label} subset {label} contains {len(ms_rows)} rows (min {ms_rows[0]} max {ms_rows[-1]})")
             # subsets of rebinned rows
             self.ddid_col = self.tile.dh.ddid_col[ms_rows]
             self.time_col = self.tile.dh.time_col[ms_rows]
@@ -1126,7 +1127,7 @@ class MSTile(object):
         f_dim = freq1 - freq0
         freq_slice = slice(freq0, freq1)
 
-        log(0).print(f"getting cubes for subset {subset.label}: {len(row_index)} rows, first is {row_index[0]}, last is {row_index[-1]}")
+        log(1).print(f"getting cubes for subset {subset.label}: {len(row_index)} rows, first is {row_index[0]}, last is {row_index[-1]}")
         flags_2x2 = subset._column_to_cube(data['flags'], t_dim, f_dim, row_index, freq_slice,
                                          FL.dtype, FL.MISSING, allocator=allocator)
         flags = flag_allocator(flags_2x2.shape[:-2], flags_2x2.dtype)

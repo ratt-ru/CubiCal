@@ -46,7 +46,8 @@ on_rtd = os.environ.get('READTHEDOCS') == 'True'
 if on_rtd:
     requirements = ['numpy',
                     'futures; python_version <= "2.7"', 
-                    'matplotlib',
+                    'futures-fstrings; python_version < "3.6"',
+                    'matplotlib', 
                     'scipy']
 else:
     requirements = ['future',
@@ -54,7 +55,7 @@ else:
                     'llvmlite==v0.31.0; python_version <= "2.7"',
                     'numba==0.47.0; python_version <= "2.7"',
                     'numba; python_version >= "3.0"',
-#                    'python-casacore<=3.0.0; python_version <= "2.7"',
+                    'futures-fstrings; python_version < "3.6"',
                     'python-casacore',
                     'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
                     'matplotlib<3.0',

@@ -1,3 +1,4 @@
+# -*- coding: future_fstrings -*-
 # CubiCal: a radio interferometric calibration suite
 # (c) 2017 Rhodes University & Jonathan S. Kenyon
 # http://github.com/ratt-ru/CubiCal
