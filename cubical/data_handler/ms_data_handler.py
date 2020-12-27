@@ -824,7 +824,7 @@ class MSDataHandler:
         nrows, nfreq, ncorr = array.shape
         maxrows = max(1, _maxchunk // (nfreq*ncorr))
         #if maxrows < nrows:
-        log(0).print(f"  table I/O request of {nrows} rows: max chunk size is {maxrows} rows")
+        log(1).print(f"  table I/O request of {nrows} rows: max chunk size is {maxrows} rows")
         return maxrows, nrows
 
     @staticmethod
