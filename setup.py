@@ -57,7 +57,7 @@ else:
                     'numba; python_version >= "3.0"',
                     'future-fstrings',
                     'python-casacore',
-                    'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
+                    'sharedarray >= 3.2.1', 
                     'matplotlib<3.0',
                     'scipy',
                     'astro-tigger-lsm',
