@@ -8,7 +8,7 @@
 
 from __future__ import print_function
 from six import string_types
-import logging, logging.handlers, os, re, sys, multiprocessing, time
+import logging, logging.handlers, os, re, sys, multiprocessing, time, signal
 import psutil
 from . import ModColor
 
@@ -163,15 +163,13 @@ class LoggerWrapper(object):
                                                                                print_once=print_once)
 
 _parent_process = psutil.Process(os.getpid())
-_log_memory = False
 _log_memory_totals = True
-_log_memory_types = "rss pss".split()
+_log_memory_types = None, "rss vms".split(), "rss pss".split()
 GB = float(1024 ** 3)
 
 
-def enableMemoryLogging(enable=True):
-    global _log_memory
-    _log_memory = enable
+def enableMemoryLogging(level=1):
+    LogFilter.setMemoryLogging((level or 0)%3)   # level is 0/1/2
 
 _subprocess_label = None
 
@@ -198,15 +196,37 @@ def get_subprocess_label():
     return _subprocess_label
 
 
+def _sigusr1_handler(signum, frame):
+    level = 2 if LogFilter._log_memory == 1 else 1
+    print("pid {} received USR1: memory logging level {}".format(os.getpid(), level))
+    LogFilter.setMemoryLogging(level)
+
+
+def _sigusr2_handler(signum, frame):
+    print("pid {} received USR2: disabling memory logging".format(os.getpid()))
+    LogFilter.setMemoryLogging(0)
+
+
+signal.signal(signal.SIGUSR1, _sigusr1_handler)
+signal.signal(signal.SIGUSR2, _sigusr2_handler)
+
 class LogFilter(logging.Filter):
+    _log_memory = 0
+
+
+    @staticmethod
+    def setMemoryLogging(level):
+        LogFilter._log_memory = level
+        LogFilter._mem_ts = LogFilter._mem_totals_ts = LogFilter._children_ts = 0
+
     _mem = None
     _mem_totals = None
     _children = None
     _mem_ts = 0
     _mem_totals_ts = 0
     _children_ts = 0
-    _mem_update = .5     # full memory updates are a little costly, so do them only after this many seconds has elapsed
-    _mem_totals_update = 1
+    _mem_update = (0, .5, 2)     # full memory updates are a little costly, so do them only after this many seconds has elapsed
+    _mem_totals_update = (0, 1, 5)
     _children_update = 3 # children updates even more so, so do it even less frequently
 
     """LogFilter augments the event by a few new attributes used by our formatter"""
@@ -216,40 +236,42 @@ class LogFilter(logging.Filter):
         # short logger name (without app_name in front of it)
         setattr(event, 'shortname', event.name.split('.',1)[1] if '.' in event.name else event.name)
         setattr(event, 'separator', '| ')
-        if _log_memory:
+        memlevel = LogFilter._log_memory  # signal handler can change that midway through, so use this value
+        if memlevel:
             # memory usage info
             t = time.time()
-            if t - self._mem_ts > self._mem_update:
-                self._mem_ts = t
-                KEYS = _log_memory_types
+            if t - self._mem_ts > self._mem_update[memlevel]:
+                KEYS = _log_memory_types[memlevel]
                 # get memory for this process
-                mi0 = psutil.Process(os.getpid()).memory_full_info()
+                mi0 = psutil.Process(os.getpid()).memory_full_info() if memlevel == 2 else \
+                    psutil.Process(os.getpid()).memory_info()
                 mem = {key: getattr(mi0, key) / GB for key in KEYS}
                 shm = psutil.virtual_memory().shared / GB
                 # get total memory
                 if _log_memory_totals:
-                    if t - self._mem_totals_ts > self._mem_totals_update:
-                        self._mem_totals_ts = t
+                    if t - self._mem_totals_ts > self._mem_totals_update[memlevel]:
                         if t - self._children_ts > self._children_update:
-                            self._children_ts = t
                             self._children = [_parent_process] + list(_parent_process.children(recursive=True))
+                            self._children_ts = time.time()
                         if len(self._children) > 1:
                             mis = []
                             # scan over children, ignoring ones that may have disappeared
                             for p in self._children:
                                 try:
-                                    mis.append(p.memory_full_info())
+                                    mis.append(p.memory_full_info()) if memlevel == 2 else mis.append(p.memory_info())
                                 except psutil.NoSuchProcess:
                                     pass
                             self._mem_totals = {key: sum([getattr(mi,key) for mi in mis]) / GB for key in KEYS}
+                        self._mem_totals_ts = time.time()
                 # form up string
                 if self._mem_totals is None:
-                    smem = ["{:.1f}".format(mem[key]) for key in KEYS]
+                    smem = ["{:.1f}".format(mem.get(key, 0)) for key in KEYS]
                 else:
-                    smem = ["{:.1f}/{:.1f}".format(mem[key], self._mem_totals[key]) for key in KEYS]
+                    smem = ["{:.1f}/{:.1f}".format(mem.get(key, 0), self._mem_totals.get(key, 0)) for key in KEYS]
                 smem.append("{:.1f}Gb".format(shm))
                 self._mem = " ".join(smem)
-            setattr(event, "memory", "[{}] ".format(self._mem))
+                self._mem_ts = time.time()
+            setattr(event, "memory", "[{}{}] ".format("*" if memlevel == 2 else "", self._mem))
             setattr(event, 'separator', '')
         else:
             setattr(event, "memory", "")

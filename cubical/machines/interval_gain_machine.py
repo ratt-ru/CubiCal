@@ -339,6 +339,10 @@ class PerIntervalGains(MasterMachine):
     def apply_inv_gains(self, obser_arr, corr_vis=None, full2x2=True, direction=None):
         if corr_vis is None:
             corr_vis = np.empty_like(obser_arr)
+    
+        # parset uses -1 for None, so may as well support it here        
+        if direction is not None and direction < 0:
+            direction = None
 
         if self.dd_term and direction is None:
             corr_vis[:] = obser_arr
@@ -396,9 +400,11 @@ class PerIntervalGains(MasterMachine):
             self.gains[:] = sol.data
             # gain of all-1 are actually missing from the DB -- replace by unity
             all_ones = (self.gains == 1.+0j).all(axis=(-1, -2)) 
+            sol.mask[all_ones,:,:] = True
             self.gains[all_ones, 0, 1] = self.gains[all_ones, 1, 0] = 0
-            # collapse the corr1/2 axes
-            self.gflags[sol.mask.any(axis=(-1,-2))] |= FL.NOSOL
+            # flag them as NOSOL if we're not solvable
+            if not self.solvable:
+                self.gflags[sol.mask.any(axis=(-1,-2))] |= FL.NOSOL
             self._gains_loaded = True
 
         self.restrict_solution(self.gains)
@@ -416,7 +422,7 @@ class PerIntervalGains(MasterMachine):
 
         missing_intervals = self.missing_intervals_ant.all(axis=-1)
 
-        if missing_intervals.any() and log.verbosity() > 1:
+        if self.solvable and missing_intervals.any() and log.verbosity() > 1:
             self.raise_userwarning(
                 logging.WARNING,    # OMS: was CRITICAL but I disagree. Chunks of band/scans are often flagged, why cry wolf about it?
                 "{0:s} {1:s}: {2:d}/{3:d} solution intervals are fully flagged".format(
@@ -476,8 +482,6 @@ class PerIntervalGains(MasterMachine):
             if self.dd_term:
                 self.prior_gain_error[self.fix_directions, ...] = 0
 
-            # import ipdb; ipdb.set_trace()
-
             # if we did everything right above (ignoring flagged data etc.), PGE can't be inf/nan,
             # so this is just a sanity check
             pge_flag_invalid = np.isnan(self.prior_gain_error) | np.isinf(self.prior_gain_error)
@@ -499,8 +503,11 @@ class PerIntervalGains(MasterMachine):
                 self.gflags[self._interval_to_gainres(low_snr, 1)] |= FL.LOWSNR
                 self._report_gain_flags(low_snr, "on low SNR", "your max-prior-error settings", self.low_snr_warn)
 
-        # if INVALID or LOWSNR raised above, recompute equation counts
-        if self._update_gain_flags("INVALID", flags_arr) + self._update_gain_flags("LOWSNR", flags_arr):
+        # if INVALID or LOWSNR raised above, propagate and recompute equation counts
+        # This also propagates the NOSOL flag from missing solutions
+        if self._update_gain_flags("INVALID", flags_arr) + \
+                self._update_gain_flags("LOWSNR", flags_arr) + \
+                self._update_gain_flags("NOSOL", flags_arr):
             unflagged = flags_arr == 0
             self.update_equation_counts(unflagged)
 
@@ -598,7 +605,8 @@ class PerIntervalGains(MasterMachine):
         if self.missing_intervals_ant is None:
             # missing interval/antennas -- we can't solve for these, flag them as MISSING
             self.missing_intervals_ant = self.eqs_per_interval_ant == 0
-            self.gflags[:, self._interval_to_gainres(self.missing_intervals_ant)] = FL.MISSING
+            if self.solvable:
+                self.gflags[:, self._interval_to_gainres(self.missing_intervals_ant)] = FL.MISSING
 
         # Mask of valid time/frequency intervals/antennas (i.e. ones for which we have enough equations)
         # This may be a subset of ~missing_intervals_ant, if some intervals have more than zero but insufficient equations
@@ -781,7 +789,7 @@ class PerIntervalGains(MasterMachine):
         return False
 
 
-    def num_gain_flags(self, mask=None):
+    def num_gain_flags(self, mask=None, final=False):
         return int((self.gflags&(mask or ~FL.MISSING) != 0).sum()), self.gflags.size
 
     @property
@@ -864,7 +872,9 @@ class PerIntervalGains(MasterMachine):
         # explicitly roll back gains to previously known good values for fixed directions
         for idir in self.fix_directions:
             gains[idir, ...] = self.old_gains[idir, ...]
-            self.posterior_gain_error[idir, ...] = 0
+            # This might not be initialized in the load_from case.
+            if self.posterior_gain_error is not None:
+                self.posterior_gain_error[idir, ...] = 0
 
     @staticmethod
     def copy_or_identity(array, time_ind=0, out=None):
@@ -1010,7 +1020,7 @@ class PerIntervalGains(MasterMachine):
         """
         if self.solvable:
             string = "{}: {} iters, conv {:.2%}".format(self.jones_label, self.iters, self.converged_fraction)
-            nfl, ntot = self.num_gain_flags()
+            nfl, ntot = self.num_gain_flags(final=True)
             if nfl:
                 string += ", g/fl {:.2%} [{}]".format(nfl/float(ntot), self.flagging_stats_string)
             if self.missing_gain_fraction:

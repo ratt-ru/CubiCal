@@ -26,6 +26,7 @@ import datetime
 import getpass
 import traceback
 from time import time
+from cubical import VERSION
 
 # This is to keep matplotlib from falling over when no DISPLAY is set (which it otherwise does,
 # even if one is only trying to save figures to .png.
@@ -36,7 +37,7 @@ from cubical.tools import logger
 # (Thus before anything else that uses the logger is imported!)
 logger.init("cc")
 
-# Some modules cause issues with logging - grab their loggers and
+# Some modules cause issues with logging - grab their loggers and 
 # manually set the log levels to something less annoying.
 
 import logging
@@ -156,6 +157,8 @@ def main(debugging=False):
 
     def prelog_print(level, message):
         prelog_messages.append((level, message))
+
+    print("Using CubiCal version {}.".format(VERSION), file=log)
 
     try:
         if debugging:
@@ -372,9 +375,9 @@ def main(debugging=False):
                            beam_pattern=GD["model"]["beam-pattern"],
                            beam_l_axis=GD["model"]["beam-l-axis"],
                            beam_m_axis=GD["model"]["beam-m-axis"],
-                           active_subset=GD["sol"]["subset"],
-                           min_baseline=GD["sol"]["min-bl"],
-                           max_baseline=GD["sol"]["max-bl"],
+                           active_subset=GD["sol"]["subset"] if not apply_only else None,
+                           min_baseline=GD["sol"]["min-bl"] if not apply_only else 0,
+                           max_baseline=GD["sol"]["max-bl"] if not apply_only else 0,
                            chunk_freq=GD["data"]["freq-chunk"],
                            rebin_freq=GD["data"]["rebin-freq"],
                            do_load_CASA_kwtables = GD["out"]["casa-gaintables"],
@@ -427,7 +430,7 @@ def main(debugging=False):
             jones_class = machine_types.get_machine_class(jones_opts['type'])
             if jones_class is None:
                 raise UserInputError("unknown Jones type '{}'".format(jones_opts['type']))
-        elif jones_opts[0]['type'] == "robust-2x2":
+        elif jones_opts[0]['type'].startswith("robust"):
             jones_class = jones_chain_robust_machine.JonesChain
         else:
             jones_class = jones_chain_machine.JonesChain
@@ -506,12 +509,6 @@ def main(debugging=False):
         single_chunk = GD["data"]["single-chunk"]
         single_tile = GD["data"]["single-tile"]
 
-        # setup worker process properties
-
-        workers.setup_parallelism(GD["dist"]["ncpu"], GD["dist"]["nworker"], GD["dist"]["nthread"],
-                                  debugging or single_chunk,
-                                  GD["dist"]["pin"], GD["dist"]["pin-io"], GD["dist"]["pin-main"],
-                                  ms.use_montblanc, GD["montblanc"]["threads"])
 
         # set up chunking
 
@@ -524,7 +521,8 @@ def main(debugging=False):
             chunks_per_tile = 1
             max_chunks_per_tile = 1
         else:
-            chunks_per_tile = max(GD["dist"]["min-chunks"], workers.num_workers, 1)
+            nw = GD["dist"]["nworker"] or ((GD["dist"]["ncpu"] / (GD["dist"]["nthread"] or 1)) or 1) - 1
+            chunks_per_tile = max(GD["dist"]["min-chunks"], nw, 1)
             max_chunks_per_tile = 0
             if GD["dist"]["max-chunks"]:
                 chunks_per_tile = max(max(GD["dist"]["max-chunks"], chunks_per_tile), 1)
@@ -537,6 +535,14 @@ def main(debugging=False):
                                             GD["data"]["freq-chunk"],
                                             chunk_by=chunk_by, chunk_by_jump=jump,
                                             chunks_per_tile=chunks_per_tile, max_chunks_per_tile=max_chunks_per_tile)
+
+        # setup worker process properties
+        workers.setup_parallelism(GD["dist"]["ncpu"], GD["dist"]["nworker"], GD["dist"]["nthread"],
+                                  debugging or single_chunk,
+                                  GD["dist"]["pin"], GD["dist"]["pin-io"], GD["dist"]["pin-main"],
+                                  ms.use_montblanc, GD["montblanc"]["threads"],
+                                  max_workers=chunks_per_tile)
+
 
         # Estimate memory usage. This is still experimental.
         estimate_mem(ms, tile_list, GD["data"], GD["dist"])
@@ -668,4 +674,3 @@ def main(debugging=False):
                 exc, value, tb = sys.exc_info()
                 pdb.post_mortem(tb)
         sys.exit(2 if type(exc) is UserInputError else 1)
-

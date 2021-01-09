@@ -1187,6 +1187,7 @@ class MSDataHandler:
         save_bitflag = flagopts.get("save")
         save_flags   = flagopts.get("save-legacy")
         auto_init    = flagopts.get("auto-init") or reinit_bitflags
+        missing_cells = False
 
         # Do we have a proper bitflag column?
         bitflags = None
@@ -1205,13 +1206,14 @@ class MSDataHandler:
                 print("WARNING: the BITFLAG column does not appear to be properly initialized. " \
                                        "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. ", file=log(0, "red"))
             # all cells must be defined
-            elif not all([self.data.iscelldefined("BITFLAG", i) for i in range(self.data.nrows())]):
-                print("WARNING: the BITFLAG column appears to have missing cells. " \
-                                       "This is perhaps due to a previous CubiCal run being interrupted while it was filling the column. ", file=log(0, "red"))
-            # OK, it's valid as best as we can tell
             else:
-                print("the MS appears to have a properly formed BITFLAG column", file=log(0))
+                print("The MS appears to have a properly formed BITFLAG column", file=log(0))
                 bitflags = flagging.Flagsets(self.ms)
+                missing_cells = not all([self.data.iscelldefined("BITFLAG", i) for i in range(self.data.nrows())]) 
+                if missing_cells:
+                    print("WARNING: however, it also appears to have missing cells", file=log(0, "red"))
+                    if auto_init:
+                        print("  we'll attempt to reinitialize them", file=log(0, "red"))
 
             # If no bitflags at this stage (though the column exists), then blow it away if auto_init is enabled.
             # Note that this arises only if (a) the column is malformed, or (b) --flags-reinit-bitflags was
@@ -1240,7 +1242,7 @@ class MSDataHandler:
         if auto_init:
             if not isinstance(auto_init, string_types):
                 raise ValueError("Illegal --flags-auto-init setting -- a flagset name such as 'legacy' must be specified")
-            if auto_init in bitflags.names():
+            if auto_init in bitflags.names() and not missing_cells:
                 print("  bitflag '{}' already exists, will not auto-fill".format(auto_init), file=log(0))
             else:
                 print("  auto-filling bitflag '{}' from FLAG/FLAG_ROW column. Please do not interrupt this process!".format(auto_init), file=log(0, "blue"))

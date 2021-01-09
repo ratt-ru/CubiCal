@@ -1,8 +1,18 @@
 #!/usr/bin/env python
 from __future__ import print_function
+import sys
+import matplotlib
+if "-d" not in sys.argv:
+    matplotlib.use("agg")
 import pylab
 
 from cubical.plots import gainsols, leakages
+
+ipdb = None
+# try:
+#     import ipdb
+# except:
+#     pass
 
 def main():
     import argparse
@@ -78,4 +88,8 @@ def main():
         pylab.show()
 
 if __name__ == "__main__":
-    main()
+    if ipdb:
+        with ipdb.launch_ipdb_on_exception():
+            main()
+    else:
+        main()

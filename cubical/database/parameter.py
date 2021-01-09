@@ -536,6 +536,7 @@ class Parameter(object):
             arse = self._array_slices[slicer]
             if arse.array is None:
                 print("  slice {} fully flagged".format(slicer), file=log(2))
+                output_array[out_slicer] = np.nan
             else:
                 # Check which subset of the slice needs to be interpolated
                 # We build up the following lists describing the interpolation process

@@ -143,7 +143,7 @@ class TiggerSourceProvider(SourceProvider):
         # (npsrc, ntime, nchan, 4)
         stokes = np.empty(context.shape, context.dtype)
 
-        f = self._freqs[lc:uc]
+        f = self._freqs[lc:uc].ravel()
 
         for ind, source in enumerate(self._pnt_sources[lp:up]):
             spectrum = self.source_spectrum(source, f)[None, :]
@@ -180,17 +180,15 @@ class TiggerSourceProvider(SourceProvider):
         # (npsrc, ntime, nchan, 4)
         stokes = np.empty(context.shape, context.dtype)
 
-        f = self._freqs[lc:uc]
+        f = self._freqs[lc:uc].ravel()
 
         for ind, source in enumerate(self._gau_sources[lg:ug]):
             spectrum = self.source_spectrum(source, f)[None, :]
 
             # Multiply flux into the spectrum,
             # broadcasting into the time dimension
-            stokes[ind, :, :, 0] = source.flux.I*spectrum
-            stokes[ind, :, :, 1] = source.flux.Q*spectrum
-            stokes[ind, :, :, 2] = source.flux.U*spectrum
-            stokes[ind, :, :, 3] = source.flux.V*spectrum
+            for iS, S in enumerate('IQUV'):
+                stokes[ind, :, :, iS] = getattr(source.flux, S, 0.)*spectrum
 
         return stokes
 
