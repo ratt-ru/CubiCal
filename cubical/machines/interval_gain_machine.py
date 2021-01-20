@@ -877,8 +877,10 @@ class PerIntervalGains(MasterMachine):
                 self.posterior_gain_error[idir, ...] = 0
 
     @staticmethod
-    def copy_or_identity(array, time_ind=0, out=None):
-        """Helper conversion method. Returns array itself, or copies it to out"""
+    def copy_or_identity(array, tdim_ind=0, out=None):
+        """Helper conversion method. Returns array itself, or copies it to out
+        tdim_ind is unused, and is there to make the signature identical to unpack_intervals
+        """
         if out is None:
             return array
         np.copyto(out, array)
