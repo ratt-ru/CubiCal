@@ -287,8 +287,6 @@ class MSTile(object):
             tigger_source = model_source
             cached_src = CachedSourceProvider(tigger_source, clear_start=True, clear_stop=True)
             srcs = [self._mb_cached_ms_src, cached_src]
-            if self._mb_arbeam_src:
-                srcs.append(self._mb_arbeam_src)
 
             # make a sink with an array to receive visibilities
             ndirs = model_source._nclus
