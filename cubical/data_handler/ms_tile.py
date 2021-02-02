@@ -126,8 +126,8 @@ class MSTile(object):
         def load_ddfacet_models(self, uvwco, loaded_models, model_source, cluster, imod, idir, model_type):
             """
             Invoke DDFacet degridder to compute model visibilities
-            for all directions. 
-            
+            for all directions.
+
             Postcondition of loaded_models is a new entry
             of model_source cluster object with all directions predicted.
 
@@ -152,10 +152,10 @@ class MSTile(object):
             ddfsim.set_model_provider(model_source)
             for idir, clus in enumerate(model_source._cluster_keys):
                 ddfsim.set_direction(clus)
-                model = ddfsim.simulate(self.tile.dh, 
+                model = ddfsim.simulate(self.tile.dh,
                                         self.tile,
                                         self,
-                                        self.tile.dh._poltype, 
+                                        self.tile.dh._poltype,
                                         uvwco,
                                         self._freqs,
                                         model_type,
@@ -217,11 +217,11 @@ class MSTile(object):
                 ddid_index, uniq_ddids, _ = data_handler.uniquify(self.ddid_col)
 
                 self._freqs = np.array([self.tile.dh.chanfreqs[ddid] for ddid in uniq_ddids])
-                
-                
+
+
                 assert dtc.assert_isint(n_bl)
                 assert dtc.assert_isint(ddid_index)
-                
+
                 self._row_identifiers = ddid_index * n_bl * ntime + (self.times - self.times[0]) * n_bl + \
                                   (-0.5 * self.antea ** 2 + (self.nants - 1.5) * self.antea + self.anteb - 1).astype(
                                       np.int32)
@@ -268,7 +268,7 @@ class MSTile(object):
                 self._mb_sorted_ind = np.array([current_row_index[idx] for idx in full_index])
 
                 self._mb_measet_src = MBTiggerSim.MSSourceProvider(self.tile, time_col, antea, anteb, ddid_index, uvwco,
-                                                       self._freqs, self._mb_sorted_ind, len(self.time_col), 
+                                                       self._freqs, self._mb_sorted_ind, len(self.time_col),
                                                        do_pa_rotation=self.tile.dh.pa_rotate_montblanc)
 
                 if not self.tile.dh.pa_rotate_montblanc:
@@ -300,10 +300,18 @@ class MSTile(object):
             snks = [column_snk]
 
             for direction in range(ndirs):
-                tigger_source.set_direction(direction)
-                tigger_source.set_frequency(self._freqs)
-                column_snk.set_direction(direction)
-                MBTiggerSim.simulate(srcs, snks, polarisation_type=self.tile.dh._poltype, opts=self.tile.dh.mb_opts)
+                for req_beam in ["beam", "nobeam"]:
+                    tigger_source.set_direction(direction, req_beam)
+                    tigger_source.set_frequency(self._freqs)
+                    column_snk.set_direction(direction)
+                    if self._mb_arbeam_src and req_beam == "beam":
+                        dir_srcs = [*srcs, self._mb_arbeam_src]
+                    else:
+                        dir_srcs = srcs
+                    MBTiggerSim.simulate(dir_srcs,
+                                         snks,
+                                         polarisation_type=self.tile.dh._poltype,
+                                         opts=self.tile.dh.mb_opts)
 
             # convert back to float, if double was used
             if full_model.dtype != self.tile.dh.ctype:
@@ -886,7 +894,7 @@ class MSTile(object):
                 obvis = data.addSharedArray('obvis', [nrows, nchan, self.dh.ncorr], obvis0.dtype)
                 rebin_factor = obvis0.size / float(obvis.size)
                 flag_arr = data.addSharedArray('flags', obvis.shape, FL.dtype)
-                ### no longer filling with -1 -- see flag logic changes in the kernel 
+                ### no longer filling with -1 -- see flag logic changes in the kernel
                 ## flag_arr.fill(-1)
                 uvwco = data.addSharedArray('uvwco', [nrows, 3], float)
                 # make dummy weight array if not 0
@@ -918,7 +926,7 @@ class MSTile(object):
                 if num_weights:
                     data['weigh'] = weights0
                 del obvis0, uvw0, weights0
-                
+
             # normalize by amplitude, if needed
 #            if self.dh.do_normalize_data:
 #                dataabs = np.abs(obvis)
@@ -929,7 +937,7 @@ class MSTile(object):
 #                    data['weigh'] *= dataabs[np.newaxis, ...]
 #                else:
 #                    data['weigh'] = dataabs.reshape([1]+list(dataabs.shape))
-                    
+
             # compute PA rotation angles, if needed
             if self.dh.parallactic_machine is not None:
                 angles = self.dh.parallactic_machine.rotation_angles(subset.time_col)
@@ -1002,7 +1010,7 @@ class MSTile(object):
                                     model = subset.load_montblanc_models(uvwco, loaded_models, model_source, cluster, imod, idir)
                                     # montblanc applies the PA rotation matrix internally
                                 elif DicoSourceProvider is not None and isinstance(model_source, DicoSourceProvider):
-                                    
+
                                     if self.dh.ncorr == 4:
                                         model_type="cplx2x2"
                                     elif self.dh.ncorr == 2:
@@ -1026,11 +1034,11 @@ class MSTile(object):
                                 else:
                                     movis[idir, imod, ...] += model
                                 del model
-                
+
                 # round to 1e-16 to avoid underflows (casa setjy, for example, can yield visibilities with a tiny
                 # imaginary part, which cause underflows when squared)
                 movis.round(16, out=movis)
-            
+
                 # check for a null model (all directions)
                 invmodel = (~np.isfinite(movis)).any(axis=(0,1))
                 invmodel[...,(0,-1)] |= (movis[...,(0,-1)]==0).all(axis=(0,1))
@@ -1044,7 +1052,7 @@ class MSTile(object):
                     self.dh.flagcounts["INVMODEL"] += ninv*rebin_factor
                     print("  {} ({:.2%}) visibilities flagged due to 0/inf/nan model".format(
                         ninv, ninv / float(flagged.size)), file=log(0, "red"))
-                        
+
                 # release memory (gc.collect() particularly important), as model visibilities are *THE* major user (especially
                 # in the DD case)
                 del loaded_models, flag_arr0
@@ -1110,7 +1118,7 @@ class MSTile(object):
         else:
             flags[:] = flags_2x2[..., 0, 0]
             flags |= flags_2x2[..., 1, 1]
-        
+
         obs_arr = subset._column_to_cube(data['obvis'], t_dim, f_dim, rows, freq_slice, ctype,
                                        reqdims=6, allocator=allocator)
         if 'movis' in data:
