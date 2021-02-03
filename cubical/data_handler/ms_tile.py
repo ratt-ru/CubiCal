@@ -303,7 +303,7 @@ class MSTile(object):
                     tigger_source.set_frequency(self._freqs)
                     column_snk.set_direction(direction)
                     if self._mb_arbeam_src and req_beam == "beam":
-                        dir_srcs = [*srcs, self._mb_arbeam_src]
+                        dir_srcs = srcs + [self._mb_arbeam_src]
                     else:
                         dir_srcs = srcs
                     MBTiggerSim.simulate(dir_srcs,
