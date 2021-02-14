@@ -841,11 +841,12 @@ class MSDataHandler:
             prealloc = np.empty(shape, dtype=dtype)
             subset.getcolnp(str(column), prealloc, startrow, nrows)
             return prealloc
+
         # ugly hack because getcell returns a different dtype to getcol
         cell = (subset or self.data).getcol(str(column), startrow, nrow=1)[0, ...]
         dtype = getattr(cell, "dtype", type(cell))
 
-        shape = tuple([len(list(range(l, r + 1, i))) #inclusive in cc
+        shape = tuple([nrows] + [len(list(range(l, r + 1, i))) #inclusive in cc
                        for l, r, i in zip(self._ms_blc, self._ms_trc, self._ms_incr)])
         prealloc = np.empty(shape, dtype=dtype)
         subset.getcolslicenp(str(column), prealloc, self._ms_blc, self._ms_trc, self._ms_incr, startrow, nrows)
