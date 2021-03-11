@@ -607,7 +607,7 @@ class MSDataHandler:
             self.parallactic_machine = None
         pass
 
-    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False, degrid_opts={}):
+    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False, null_v=False, degrid_opts={}):
         """Parses the model list and initializes internal structures"""
 
         # ensure we have as many weights as models
@@ -621,6 +621,7 @@ class MSDataHandler:
 
         self.fill_offdiag_weights = fill_offdiag_weights
         self.use_montblanc = False    # will be set to true if Montblanc is invoked
+        self.null_model_v = null_v
         self.models = []
         self.model_directions = set() # keeps track of directions in Tigger models
         global montblanc

@@ -8,6 +8,8 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 import numpy as np
 from numpy.ma import masked_array
 import traceback
+import os
+import time
 
 from cubical import param_db
 from cubical.database.casa_db_adaptor import casa_db_adaptor
@@ -662,6 +664,8 @@ class MasterMachine:
             db, prefix, interpolate = init_sols.get(self.jones_label, (None, None, False))
             name = "{}:{}".format(prefix, label)
             if db is not None:
+                # get timestamp of DB
+                db_mtime = time.ctime(os.path.getmtime(db.filename))
                 if name in db:
                     # check for matching grids
                     mismatches = db[name].find_mismatched_grids(**grids)
@@ -684,14 +688,14 @@ class MasterMachine:
                                                     (", will interpolate" if interpolate and interpolatable else "")))
                     # if interpolating, this is allowed -- otherwise crash out
                     if interpolate:
-                        print("{}: interpolating {} from {}".format(self.chunk_label, name, db.filename), file=log)
+                        log(0).print(f"{self.chunk_label}: interpolating {name} from {db.filename} ({db_mtime})")
                         sols[label] = sol = db[name].reinterpolate(**grids)
 #                        import ipdb; ipdb.set_trace()
                     else:
                         if mismatches:
                             raise ValueError("{} does not define {} on the correct grid. Consider using "
                                              "-xfer-from rather than -load-from".format(name, db.filename))
-                        print("{}: loading {} from {}".format(self.chunk_label, name, db.filename), file=log)
+                        log(0).print(f"{self.chunk_label}: loading {name} from {db.filename} ({db_mtime})")
                         sols[label] = sol = db[name].lookup(**grids)
                     if sol.count() != sol.size:
                         print("{}: {:.2%} valid {} slots populated".format(

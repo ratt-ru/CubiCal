@@ -444,13 +444,17 @@ def main(debugging=False):
         # force floats in Montblanc calculations
         mb_opts = GD["montblanc"]
         # mb`_opts['dtype'] = 'float'
+        if load_model:
+            models = str(GD["model"]["list"]).split(",")
+            weights = GD["weight"]["column"].split(",") if GD["weight"]["column"] else None
+        else:
+            models = weights = []
 
-        ms.init_models(str(GD["model"]["list"]).split(","),
-                       GD["weight"]["column"].split(",") if GD["weight"]["column"] else None,
-                       fill_offdiag_weights=GD["weight"]["fill-offdiag"],
+        ms.init_models(models, weights, fill_offdiag_weights=GD["weight"]["fill-offdiag"],
                        mb_opts=GD["montblanc"],
                        use_ddes=have_dd_jones and dde_mode != 'never',
-                       degrid_opts=GD["degridding"])
+                       degrid_opts=GD["degridding"],
+                       null_v=GD["model"]["null-v"])
 
         if len(ms.model_directions) < 2 and have_dd_jones and dde_mode == 'auto':
             raise UserInputError("--model-list does not specify directions. "

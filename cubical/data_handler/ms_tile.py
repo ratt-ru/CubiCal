@@ -962,11 +962,13 @@ class MSTile(object):
                                     model = loaded_models[model_source][cluster]
                                 # cluster of None signifies that this is a visibility column
                                 elif cluster is None:
-
                                     if model_source == 1:
-                                        print("  using 1.+0j for model {} direction {}{}".format(model_source,
-                                                                                                         imod, idir, subtract_str), file=log(2))
+                                        print("  using 1.+0j for model {} direction {}{}".format(imod, idir, subtract_str), file=log(2))
                                         model = np.ones_like(obvis)
+                                    elif model_source == self.dh.data_column:
+                                        print("  reusing {} column for model {} direction {}{}".format(model_source,
+                                                                                                    imod, idir, subtract_str), file=log(2))
+                                        model = obvis
                                     else:
                                         print("  reading {} for model {} direction {}{}".format(model_source, imod,
                                                                                                         idir, subtract_str), file=log(2))
@@ -1026,6 +1028,30 @@ class MSTile(object):
                                 else:
                                     movis[idir, imod, ...] += model
                                 del model
+
+                if self.dh.null_model_v:
+                    print("  rotating model Stokes V to 0 as requested", file=log(2))
+                    if movis.shape[-1] != 4:
+                        raise RuntimeError("--model-null-v option only available for full-pol data")
+
+                    xy, yx = movis[..., 1], movis[..., 2]
+                    u_amp = np.sqrt(abs(xy)*abs(yx))
+                    # set XY to be 1j*mean_phase
+                    xy += yx
+                    xy.imag[...] = np.angle(xy)
+                    xy.real.fill(0)
+                    # negate phase if asked
+                    if self.dh.null_model_v < 0:
+                        np.negative(xy.imag, out=xy.imag)
+                    # make U value from amplitude and phase 
+                    np.exp(xy, out=xy)
+                    np.multiply(xy, u_amp, out=xy)
+                    yx[...] = xy
+
+                    # np.abs(movis[..., 1:3], out=movis[..., 1:3])                                        
+                    # movis[..., 1].real += movis[..., 2].real
+                    # movis[..., 1].real /= 2
+                    # movis[..., 2].real = movis[..., 1].real
                 
                 # round to 1e-16 to avoid underflows (casa setjy, for example, can yield visibilities with a tiny
                 # imaginary part, which cause underflows when squared)
@@ -1179,8 +1205,13 @@ class MSTile(object):
             subset._cube_to_column(data[column], cube, rows, freq_slice)
 
             ### APPLY DEROTATION HERE
-            if self.dh.derotate_output:
+            if self.dh.derotate_output > 0:
                 data[column][rows, freq_slice] = self.dh.parallactic_machine.derotate(subset.time_col[rows],
+                                                               data[column][rows, freq_slice],
+                                                               subset.antea[rows], subset.anteb[rows],
+                                                               angles=data['pa'][rows])
+            elif self.dh.derotate_output < 0:
+                data[column][rows, freq_slice] = self.dh.parallactic_machine.rotate(subset.time_col[rows],
                                                                data[column][rows, freq_slice],
                                                                subset.antea[rows], subset.anteb[rows],
                                                                angles=data['pa'][rows])
