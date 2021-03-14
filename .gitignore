@@ -44,6 +44,7 @@ Thumbs.db
 ##################
 .eggs/
 .idea/
+dist/
 cubical.egg-info/
 
 # Backup files #
@@ -97,6 +98,8 @@ __pycache__
 .venv*/
 .virtualenv*/
 .persistent_history
+venv/
 
 *~
 .#*
+
