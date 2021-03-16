@@ -7,10 +7,6 @@ TEST_DATA_DIR="$WORKSPACE/../../../test-data"
 mkdir $TEST_OUTPUT_DIR
 
 # build and testrun
-docker build -f ${WORKSPACE_ROOT}/projects/Cubical/.jenkins/1604.py2.docker -t cubical.1604.py2:${BUILD_NUMBER} ${WORKSPACE_ROOT}/projects/Cubical/
-docker run --rm cubical.1604.py2:${BUILD_NUMBER}
-docker build -f ${WORKSPACE_ROOT}/projects/Cubical/.jenkins/1804.py2.docker -t cubical.1804.py2:${BUILD_NUMBER} ${WORKSPACE_ROOT}/projects/Cubical/
-docker run --rm cubical.1804.py2:${BUILD_NUMBER}
 docker build -f ${WORKSPACE_ROOT}/projects/Cubical/.jenkins/1804.py3.docker -t cubical.1804.py3:${BUILD_NUMBER} ${WORKSPACE_ROOT}/projects/Cubical/
 docker run --rm cubical.1804.py3:${BUILD_NUMBER}
 
