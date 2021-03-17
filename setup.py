@@ -56,7 +56,7 @@ else:
                     'numba; python_version >= "3.0"',
 #                    'python-casacore<=3.0.0; python_version <= "2.7"',
                     'python-casacore',
-                    'sharedarray @ git+https://gitlab.com/bennahugo/shared-array.git@master', 
+                    'sharedarray >= 3.2.0',
                     'matplotlib<3.0',
                     'scipy',
                     'astro-tigger-lsm',
@@ -71,7 +71,7 @@ setup(name='cubical',
       version=cubical.VERSION,
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/ratt-ru/CubiCal',
-      classifiers=[
+      lassifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
@@ -93,7 +93,7 @@ setup(name='cubical',
                'cubical/bin/plot-gain-solutions'],
       entry_points={'console_scripts': ['gocubical = cubical.main:main']},
       extras_require={
-          'lsm-support': ['montblanc @git+https://github.com/ska-sa/montblanc.git@0.6.1'],
+          'lsm-support': ['montblanc@git+https://github.com/ska-sa/montblanc.git@0.6.4'],
           'degridder-support': ['ddfacet >= 0.5.0', 
                                 'regions >= 0.4',
                                 'meqtrees-cattery >= 1.7.0']
