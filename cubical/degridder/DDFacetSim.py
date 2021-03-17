@@ -359,8 +359,13 @@ class DDFacetSim(object):
                 jones_matrix["DicoJones_Beam"]["Dirs"]["I"] = I
                 jones_matrix["DicoJones_Beam"]["Dirs"]["Cluster"] = 0 # separate matrix stack for each subregion (facet)
                 sample_times = np.array(beam_provider.getBeamSampleTimes(utc_times))
-                dt = (sample_times[1:] - sample_times[:-1]) / 2. if sample_times.size > 1 else \
-                     np.array([1.0e-6]) # half width of beam sample time
+                dt = np.zeros_like(sample_times)
+                if sample_times.size > 1:
+                    # half width of beam sample time
+                    dt[:-1] = (sample_times[1:] - sample_times[:-1]) / 2.
+                    dt[-1] = dt[-2] # equal-sized left and right dt of the last step
+                else:
+                    dt[...] = 1.0e-6
                 t0 = sample_times - dt
                 t1 = sample_times + dt
                 E_jones = np.ascontiguousarray([beam_provider.evaluateBeam(t, [ra], [dec]) for t in sample_times], dtype=np.complex64)
