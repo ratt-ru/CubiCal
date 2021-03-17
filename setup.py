@@ -87,7 +87,7 @@ setup(name='cubical',
                'cubical/bin/plot-gain-solutions'],
       entry_points={'console_scripts': ['gocubical = cubical.main:main']},
       extras_require={
-          'lsm-support': ['montblanc @git+https://github.com/ska-sa/montblanc.git@0.6.1'],
+          'lsm-support': ['montblanc@git+https://github.com/ska-sa/montblanc.git@0.6.4'],
           'degridder-support': ['ddfacet >= 0.5.0', 
                                 'regions >= 0.4',
                                 'meqtrees-cattery >= 1.7.0']
