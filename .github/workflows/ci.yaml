@@ -48,7 +48,7 @@ jobs:
 
       # Install the package with testing extras
       - name: Install CubiCal
-        run: python -m pip install .
+        run: python -m pip install ".[lsm-support]"
 
       # Run the test cases
       - name: Testing Step
