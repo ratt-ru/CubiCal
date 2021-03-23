@@ -1,0 +1,55 @@
+name: CubiCal CI Workflow
+
+# Specific github action events that you can lookup in their API
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.6", "3.7", "3.8", "3.9"]
+
+    steps:
+      # Use Custom Github Action to setup different version
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Checkout the source code
+      - name: Checkout source
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      # Upgrade pip and setuptools
+      - name: Upgrade pip and setuptools
+        run: python -m pip install -U pip setuptools
+
+      - name: List the measures directory
+        run: curl ftp://ftp.astron.nl/outgoing/Measures/ > measures_dir.txt
+
+      - name: Load cached CASA Measures Data
+        id: load-cached-casa-measures
+        uses: actions/cache@v2
+        with:
+          key: casa-measures-${{ hashFiles('measures_dir.txt')}}
+          path: |
+            ~/measures
+            ~/.casarc
+        
+      - name: Download and install CASA Measures Data
+        if: steps.load-cached-casa-measures.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/measures
+          curl ftp://ftp.astron.nl/outgoing/Measures/WSRT_Measures.ztar | tar xvzf - -C ~/measures
+          echo "measures.directory: ~/measures" > ~/.casarc
+
+      # Install the package with testing extras
+      - name: Install CubiCal
+        run: python -m pip install .
+
+      # Run the test cases
+      - name: Testing Step
+        run: gocubical -h
