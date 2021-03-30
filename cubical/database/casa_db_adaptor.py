@@ -41,9 +41,7 @@ class casa_caltable_factory(object):
                     is_complex: Solutions are complex or real-valued
                     viscal_label: Sets viscal property of CASA table - used as identifier in CASA
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             if os.path.exists(filename):
                 if os.path.isfile(filename):
                     log.error("CASA calibration table destination already exists but is not a directory. Will not remove.")    
@@ -148,9 +146,7 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
@@ -224,9 +220,7 @@ class casa_caltable_factory(object):
                     outname: suffix of exported CASA gaintable
                     diag: Write out diagonal of Jones matrix if true, off-diagonal (leakage) terms otherwise.
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
@@ -295,9 +289,7 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             cls.create_B_table(db, gname, outname, diag=False)
         
         @classmethod
@@ -310,9 +302,7 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
@@ -398,9 +388,6 @@ class casa_db_adaptor(PickledDatabase):
             Args:
                 src: a cubical.data_handler instance
         """
-        if six.PY3 and self.export_enabled:
-            log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-            self.export_enabled = False
 
         if not isinstance(src, MSDataHandler):
             raise TypeError("src must be of type Cubical DataHandler")
@@ -456,9 +443,7 @@ class casa_db_adaptor(PickledDatabase):
 
     def __export(self):
         """ exports the database to CASA gaintables """
-        if six.PY3:
-            log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-            return
+
         self._load(self.filename)
         
         if not self.meta_avail:
