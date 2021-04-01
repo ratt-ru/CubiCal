@@ -76,7 +76,7 @@ class casa_caltable_factory(object):
                 t.putcol("REFERENCE_DIR", np.tile(db.fieldrefdir[selfield], (field_ndir, 1)))
                 t.putcol("CODE", np.tile(np.array(db.fieldcode)[selfield], (field_ndir, 1)))
                 t.putcol("FLAG_ROW", np.tile(db.fieldflagrow[selfield], (field_ndir, 1)))
-                t.putcol("NAME", np.array(map(str, ["%s_DIR_%d" % (f, fdi) for fdi, f in enumerate([db.fieldname[np.where(selfield)[0][0]]] * field_ndir)])).T)
+                t.putcol("NAME", np.array(list(map(str, ["%s_DIR_%d" % (f, fdi) for fdi, f in enumerate([db.fieldname[np.where(selfield)[0][0]]] * field_ndir)]))).T)
                 t.putcol("SOURCE_ID", np.tile(db.fieldsrcid[selfield], (field_ndir, 1)) + np.arange(field_ndir).T)
                 t.putcol("TIME", np.tile(db.fieldtime[selfield], (field_ndir, 1)))
     
