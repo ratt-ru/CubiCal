@@ -1042,7 +1042,7 @@ class MSTile(object):
                     xy.real.fill(0)
                     # negate phase if asked
                     if self.dh.null_model_v < 0:
-                        np.negative(xy.imag, out=xy.imag)
+                       xy.imag += np.pi
                     # make U value from amplitude and phase 
                     np.exp(xy, out=xy)
                     np.multiply(xy, u_amp, out=xy)

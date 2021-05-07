@@ -9,6 +9,7 @@ from cubical.machines.complex_2x2_machine import Complex2x2Gains
 from cubical.machines.complex_W_2x2_machine import ComplexW2x2Gains
 import numpy as np
 import cubical.kernels
+from cubical.kernels import full_complex
 
 from cubical.tools import logger
 from . import machine_types
@@ -57,8 +58,9 @@ class JonesChain(MasterMachine):
             jones_class = machine_types.get_machine_class(term_opts['type'])
             if jones_class is None:
                 raise UserInputError("unknown Jones class '{}'".format(term_opts['type']))
-            if not issubclass(jones_class, Complex2x2Gains) and not issubclass(jones_class, ComplexW2x2Gains) and term_opts['solvable']:
-                raise UserInputError("only complex-2x2 or robust-2x2 terms can be made solvable in a Jones chain")
+            if iterm and term_opts['solvable']:
+                if not issubclass(jones_class, Complex2x2Gains) and not issubclass(jones_class, ComplexW2x2Gains):
+                    raise UserInputError(f"unsupported Jones term at position {iterm} in chain. Solvable terms at positions >0 can only be of complex-2x2 or robust-2x2 types")
             term = jones_class(term_opts["label"], data_arr, ndir, nmod, times, frequencies, chunk_label, term_opts)
             self.jones_terms.append(term)
             if term.dd_term:
@@ -216,6 +218,9 @@ class JonesChain(MasterMachine):
             self._jhj = np.empty_like(self._jhrint)
             self._jhjinv =  np.empty_like(self._jhrint)
 
+        if self.active_index == 0:
+            return self.jones_terms[0].compute_js(obser_arr, self.cached_model_arr)
+
         np.copyto(self.jh, self.cached_model_arr)
 
         for ind in range(self.active_index, -1, -1):
@@ -229,25 +234,13 @@ class JonesChain(MasterMachine):
         else:
             r = obser_arr
 
-        if self.active_term.offdiag_only:
-            # self.jh[..., (0, 1), (0, 1)] = 0
-            if r is obser_arr:
-                r = r.copy()
-            r[..., (0, 1), (0, 1)] = 0
-
-        if self.active_term.diag_only:
-            # self.jh[..., (0, 1), (1, 0)] = 0
-            if r is obser_arr:
-                r = r.copy()
-            r[..., (0, 1), (1, 0)] = 0
+        ## not applied to self.jh here. NB: not sure why?
+        #r = self.active_term.mask_unused_equations(None, r, obser_arr)
+        r = self.active_term.mask_unused_equations(self.jh, r, obser_arr)
 
         self._jhr.fill(0)
 
-        #if self.active_term.jones_label == "D":
-        #    import ipdb; ipdb.set_trace()
-
         self.active_term.kernel.compute_jhr(self.jh, r, self._jhr, 1, 1)
-
 
         for ind in range(0, self.active_index, 1):
             term = self.jones_terms[ind]
@@ -294,7 +287,8 @@ class JonesChain(MasterMachine):
             g0 = g0[:1,...]
         gains[:] = g0
         for term in self.jones_terms[1:]:
-            term.kernel.right_multiply_gains(gains, term.gains, *term.gain_intervals)
+            ## this used to say self.term.right_multiply_gains, but this is always full_complex, and if the first term in the chain
+            full_complex.right_multiply_gains(gains, term.gains, *term.gain_intervals)
 
         # compute conjugate gains
         gh = np.empty_like(gains)
@@ -323,7 +317,7 @@ class JonesChain(MasterMachine):
                 # g = term._gainres_to_fullres(g, tdim_ind=1)
                 fc0 += fc
                 if init:
-                    term.kernel.right_multiply_gains(gains, g[dirslice,...], *term.gain_intervals)
+                    full_complex.right_multiply_gains(gains, g[dirslice,...], *term.gain_intervals)
                 else:
                     init = True
                     gains[:] = term._gainres_to_fullres(g[dirslice,...], tdim_ind=1)
@@ -461,7 +455,7 @@ class JonesChain(MasterMachine):
                     continue
                 self.active_term.iters = 0
                 self._convergence_states_finalized = False
-                if previous_term:
+                if previous_term and previous_term.solvable:
                     previous_term.has_converged = previous_term.has_stalled = False
                 self.active_term.has_converged = self.active_term.has_stalled = False
                 print("activating term {}".format(self.active_term.jones_label), file=log(1))
@@ -616,14 +610,14 @@ class JonesChain(MasterMachine):
 
         def init_solutions(self):
             from cubical.main import UserInputError
-            for opts in self.chain_options:
+            for iterm, opts in enumerate(self.chain_options):
                 label = opts["label"]
                 jones_class = machine_types.get_machine_class(opts['type'])
                 if jones_class is None:
                     raise UserInputError("unknown Jones class '{}'".format(opts['type']))
                 if not issubclass(jones_class, Complex2x2Gains) and not issubclass(jones_class, ComplexW2x2Gains) and \
-                        opts['solvable']:
-                    raise UserInputError("only complex-2x2 or robust-2x2 terms can be made solvable in a Jones chain")
+                        opts['solvable'] and iterm:
+                    raise UserInputError(f"unsupported Jones term at position {iterm} in chain. Solvable terms at positions >0 can only be of complex-2x2 or robust-2x2 types")
                 self._init_solutions(label,
                                      self.make_filename(opts["xfer-from"], label) or
                                      self.make_filename(opts["load-from"], label),

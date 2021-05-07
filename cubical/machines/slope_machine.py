@@ -184,12 +184,18 @@ class PhaseSlopeGains(ParameterisedGains):
     @property
     def has_converged(self):
         """ Returns convergence status. """
+        # extra condition
+        return (self.converged_fraction >= self.min_quorum or self.iters >= self.maxiter) \
+                and self.iters > self._pin_slope_iters
 
-        condition_1 = self.converged_fraction >= self.min_quorum
-        condition_2 = self.iters >= self.maxiter
-        condition_3 = self.iters > self._pin_slope_iters
+    @has_converged.setter
+    def has_converged(self, value):
+        ## why doesn't this work, and how can we have subclasses use the same setters?
+        # super(PhaseSlopeGains, self).has_converged = False
+        ## kludge this instead
+        if not value:
+            self._frac_cnvgd = self.n_cnvgd = 0
 
-        return (condition_1 or condition_2) and condition_3
 
     @classmethod
     def determine_diagonality(cls, options):
@@ -300,6 +306,8 @@ class PhaseSlopeGains(ParameterisedGains):
         jhr1 = self.get_new_jhr()
 
         r = self.get_obs_or_res(obser_arr, model_arr)
+
+        r = self.mmask_unused_equations(jh, r, obser_arr)
 
         # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHR
         self.kernel_solve.compute_jhr(gh, jh, r, jhr1, 1, 1)

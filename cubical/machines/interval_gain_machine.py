@@ -134,8 +134,13 @@ class PerIntervalGains(MasterMachine):
         if self.ref_ant is not None:
             if type(self.ref_ant) is not str:
                 self.ref_ant = str(self.ref_ant)
-            if self.ref_ant[0] == "#":
+            # an empty string becomes None i.e. no refant
+            if not self.ref_ant:
+                self.ref_ant = None
+            # "#N" or"=N" is antenna number N
+            elif self.ref_ant[0] in "#=":
                 self.ref_ant = int(self.ref_ant[1:])
+            # otherwise, treat as antenna name
             else:
                 from cubical.solver import metadata
                 self.ref_ant = metadata.antenna_index[self.ref_ant]

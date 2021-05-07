@@ -122,17 +122,7 @@ class Complex2x2Gains(PerIntervalGains):
         jhr = self.get_new_jhr()
         r = self.get_obs_or_res(obser_arr, model_arr)
 
-        if self.offdiag_only:
-            jh[...,(0,1),(0,1)] = 0
-            if r is obser_arr:
-                r = r.copy()
-            r[...,(0,1),(0,1)] = 0
-            
-        if self.diag_only:
-            jh[...,(0,1),(1,0)] = 0
-            if r is obser_arr:
-                r = r.copy()
-            r[...,(0,1),(1,0)] = 0
+        r = self.mask_unused_equations(jh, r, obser_arr)
 
         self.kernel_solve.compute_jhr(jh, r, jhr, self.t_int, self.f_int)
 

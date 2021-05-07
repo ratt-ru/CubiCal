@@ -359,6 +359,26 @@ class MasterMachine:
         """
         return 0
 
+    def mask_unused_equations(self, jh, r, obser_arr):
+        """
+        Masks out unused equations in J^H and R elements, following the diag_only and offdiag_only settings etc. Returns R.
+        """
+        if self.offdiag_only:
+            if jh is not None:
+                jh[...,(0,1),(0,1)] = 0
+            if r is obser_arr:
+                r = r.copy()
+            r[...,(0,1),(0,1)] = 0
+            
+        if self.diag_only:
+            if jh is not None:
+                jh[...,(0,1),(1,0)] = 0
+            if r is obser_arr:
+                r = r.copy()
+            r[...,(0,1),(1,0)] = 0
+
+        return r
+
     def update_equation_counts(self, unflagged):
         """
         Sets up equation counters and normalization factors. Sets up the following attributes:
