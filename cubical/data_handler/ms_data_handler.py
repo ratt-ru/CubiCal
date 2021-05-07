@@ -255,13 +255,19 @@ class MSDataHandler:
         self.ctype = np.complex64   # MS complex data type
         self.wtype = np.float32     # MS weights type
         self.nmscorrs = _poltab.getcol("NUM_CORR")[0]
+        self._corr_4to2 = False
         if self.nmscorrs == 4 and diag:
             self._corr_4to2 = True
             self.ncorr = 2
             self._corr_slice = (0,3)
         elif self.nmscorrs in (2,4):
             self.ncorr = self.nmscorrs
-            self._corr_4to2 = False
+            self._corr_slice = slice(None)
+        elif self.nmscorrs == 1:
+            print("WARNING: Single correlation measurement sets are neither "
+                  "fully supported nor fully tested! Use at own risk (and "
+                  "report failures on the issue tracker).", file=log(0, "red"))
+            self.ncorr = self.nmscorrs
             self._corr_slice = slice(None)
         else:
             raise RuntimeError("MS with {} correlations not (yet) supported".format(self.nmscorrs))
