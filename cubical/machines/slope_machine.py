@@ -307,7 +307,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         r = self.get_obs_or_res(obser_arr, model_arr)
 
-        r = self.mmask_unused_equations(jh, r, obser_arr)
+        r = self.mask_unused_equations(jh, r, obser_arr)
 
         # use appropriate phase-only kernel (with 1,1 intervals) to compute inner JHR
         self.kernel_solve.compute_jhr(gh, jh, r, jhr1, 1, 1)
