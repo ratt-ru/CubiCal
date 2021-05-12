@@ -333,6 +333,19 @@ class PerIntervalGains(MasterMachine):
 
         return resid_arr
 
+    def mask_unused_equations(self, jh, r, obser_arr):
+        """
+        Masks out unused equations in J^H and R elements, following the diag_only and offdiag_only settings etc. Returns R.
+        """
+        r = super().mask_unused_equations(jh, r, obser_arr)
+
+        if "scalar" in self.update_type:
+            r[...,:] = r.sum(-1)[..., np.newaxis]
+            jh[...,:] = jh.sum(-1)[..., np.newaxis]
+
+        return r
+
+
     def apply_gains(self, model_arr, full2x2=True, dd_only=False):
         gains_h = self.get_conj_gains()
 

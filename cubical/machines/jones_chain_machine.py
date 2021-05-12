@@ -230,7 +230,7 @@ class JonesChain(MasterMachine):
         if n_dir > 1:
             if self._r is None:
                 self._r = np.empty_like(obser_arr)
-            r = self.compute_residual(obser_arr, model_arr, self._r, require_full=False)
+            r = self.compute_residual(obser_arr, self.cached_model_arr, self._r, require_full=False)
         else:
             r = obser_arr
 
