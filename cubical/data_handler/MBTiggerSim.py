@@ -234,7 +234,7 @@ class ColumnSinkProvider(SinkProvider):
             ur = upper + offset
             lc = ddid_ind*self._chan_per_ddid
             uc = (ddid_ind+1)*self._chan_per_ddid
-            self._model[self._dir, 0, lr:ur, :, :] = \
+            self._model[self._dir, 0, lr:ur, :, :] += \
                     context.data[:,:,lc:uc,sel].reshape(-1, self._chan_per_ddid, self._ncorr)
 
     def __str__(self):

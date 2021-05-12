@@ -467,10 +467,9 @@ class PerIntervalGains(MasterMachine):
             if invalid_models.any():
                 self.raise_userwarning(
                     logging.CRITICAL,
-                    "{0:s} {1:s}: {2:d}/{3:d} directions/intervals has an invalid or null model. " +
-                    "This can be caused by bad data, but should have been handled gracefully, so please report this issue!".format(
-                        self.chunk_label, self.jones_label, invalid_models.sum(), invalid_models.size
-                    ),
+                    "{0:s} {1:s}: {2:d}/{3:d} directions/intervals has an invalid or null model. ".format(
+                        self.chunk_label, self.jones_label, invalid_models.sum(), invalid_models.size) +
+                    "This can be caused by bad data, but should have been handled gracefully, so please report this issue!",
                     90, raise_once="invalid_models", verbosity=2, color="red")
 
             with np.errstate(invalid='ignore', divide='ignore'):
