@@ -44,18 +44,22 @@ class TiggerSourceProvider(SourceProvider):
         self._freqs = None
 
         self._clusters = cluster_sources(self._sm, dde_tag)
+
         self._cluster_keys = list(self._clusters.keys())
         self._nclus = len(self._cluster_keys)
 
         self._target_key = 0
         self._target_cluster = self._cluster_keys[self._target_key]
+        self._target_reqbeam = "beam"
 
-        self._pnt_sources = self._clusters[self._target_cluster]["pnt"]
+        self._pnt_sources = \
+            self._clusters[self._target_cluster][self._target_reqbeam]["pnt"]
         self._npsrc = len(self._pnt_sources)
-        self._gau_sources = self._clusters[self._target_cluster]["gau"]
+        self._gau_sources = \
+            self._clusters[self._target_cluster][self._target_reqbeam]["gau"]
         self._ngsrc = len(self._gau_sources)
 
-    def set_direction(self, idir):
+    def set_direction(self, idir, req_beam="beam"):
         """Sets current direction being simulated.
 
         Args:
@@ -65,9 +69,12 @@ class TiggerSourceProvider(SourceProvider):
 
         self._target_key = idir
         self._target_cluster = self._cluster_keys[self._target_key]
-        self._pnt_sources = self._clusters[self._target_cluster]["pnt"]
+        self._target_reqbeam = req_beam
+        self._pnt_sources = \
+            self._clusters[self._target_cluster][self._target_reqbeam]["pnt"]
         self._npsrc = len(self._pnt_sources)
-        self._gau_sources = self._clusters[self._target_cluster]["gau"]
+        self._gau_sources = \
+            self._clusters[self._target_cluster][self._target_reqbeam]["gau"]
         self._ngsrc = len(self._gau_sources)
 
     def set_frequency(self, frequency):
@@ -211,10 +218,10 @@ class TiggerSourceProvider(SourceProvider):
 
         return [('npsrc', self._npsrc),
                 ('ngsrc', self._ngsrc)]
-    
+
     def phase_centre(self, context):
         """ Sets the MB phase direction """
-        radec = np.array([self._phase_center[...,-2], 
+        radec = np.array([self._phase_center[...,-2],
                           self._phase_center[...,-1]], context.dtype)
         return radec
 
@@ -248,9 +255,12 @@ def cluster_sources(sm, dde_tag):
                 else:
                     dde_cluster = src.getTag('cluster')
 
-        group = 'pnt' if src.typecode=='pnt' else 'gau'
+        req_beam = 'nobeam' if src.getTag('nobeam') else 'beam'
+        src_type = 'pnt' if src.typecode=='pnt' else 'gau'
 
-        clus.setdefault(dde_cluster, dict(pnt=[], gau=[]))[group].append(src)
+        clus.setdefault(dde_cluster, dict(beam=dict(pnt=[], gau=[]),
+                                          nobeam=dict(pnt=[], gau=[])))
+        clus[dde_cluster][req_beam][src_type].append(src)
 
     return clus
 
