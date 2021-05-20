@@ -406,8 +406,8 @@ class PhaseSlopeGains(ParameterisedGains):
         """
 
         # ParameterisedGains.restrict_solution(self)
-        # These need to be set here as we do not call the interval restrict solutions -
-        # out solutions are the parameters and not the gains themselves.
+        # These need to be set here as we do not call super().restrict_solutions(), since
+        # our solutions are the parameters and not the gains themselves.
         self._gh_update = self._ghinv_update = True
 
         if self.ref_ant is not None:
@@ -419,6 +419,14 @@ class PhaseSlopeGains(ParameterisedGains):
 
         for idir in self.fix_directions:
             slope_params[idir, ...] = 0
+
+        # this also needs to happen here, since the super() method is not called 
+        if "scalar" in self.update_type:
+            slope_params[..., (0,1), (0,1)] = slope_params[..., (0,1), (0,1)].mean(-1)[..., np.newaxis]
+
+        if "unislope" in self.update_type:
+            slope_params[..., 1:, (0,1), (0,1)] = slope_params[..., 1:, (0,1), (0,1)].mean(-1)[..., np.newaxis]
+
 
     def precompute_attributes(self, data_arr, model_arr, flags_arr, inv_var_chan):
         """

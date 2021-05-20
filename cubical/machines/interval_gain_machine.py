@@ -340,8 +340,10 @@ class PerIntervalGains(MasterMachine):
         r = super().mask_unused_equations(jh, r, obser_arr)
 
         if "scalar" in self.update_type:
-            r[...,:] = r.sum(-1)[..., np.newaxis]
-            jh[...,:] = jh.sum(-1)[..., np.newaxis]
+            r[...,:,:] = r.sum((-1,-2))[..., np.newaxis, np.newaxis]
+            jh[...,:,:] = jh.sum((-1,-2))[..., np.newaxis, np.newaxis]
+            # apply diag/offdiag nulling again
+            r = super().mask_unused_equations(jh, r, obser_arr)
 
         return r
 
