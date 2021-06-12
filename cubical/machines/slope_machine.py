@@ -8,6 +8,8 @@ import numpy as np
 from numpy.ma import masked_array
 import cubical.kernels
 from cubical.tools import logger
+from enum import Enum
+
 
 log = logger.getLogger("slopes")
 
@@ -17,7 +19,7 @@ def _normalize(x, dtype):
     """
 
     if len(x) > 1:
-        return ((x - x[0]) / (x[-1] - x[0])).astype(dtype)
+        return ((x - np.min(x)) / (np.max(x) - np.min(x))).astype(dtype)
     elif len(x) == 1:
         return np.zeros(1, dtype)
     else:
@@ -33,10 +35,55 @@ except AttributeError:
     builtins.profile = profile
 
 
+# this enumerates the variables (time, freq, 1/freq, 1/freq2) that slopes can work with
+class DepVar(Enum):
+    TIME = 0
+    FREQ = 1
+    IFREQ = 2
+    IFREQ2 = 3
+    PHASE0 = 4
+
+# corrsponding parameter labels for solutions DB
+PARAM_LABELS = { 
+    DepVar.TIME: "rate", 
+    DepVar.FREQ: "delay", 
+    DepVar.IFREQ: "iono", 
+    DepVar.IFREQ2: "iono2", 
+    DepVar.PHASE0: "phase"
+}
+
+# Recognized slope types and: (a) their dependent variables, in the order that we pass them to the kernel,
+# (b) the kernel name
+# In principle this captures the entire solution logic
+SLOPE_TYPES = { 
+    'f-slope':    ([None,            DepVar.FREQ],  "f_slope"),  
+    't-slope':    ([DepVar.TIME,     None],         "t_slope"),
+    'tf-plane':   ([DepVar.TIME,     DepVar.FREQ],  "tf_plane"),
+    'if-slope':   ([DepVar.IFREQ,    None],         "f_slope"),
+    'if2-slope':  ([DepVar.IFREQ2,   None],         "f_slope"),
+    'fif-slope':  ([DepVar.IFREQ,    DepVar.FREQ],  "ff2_slope"),
+}
+
+
+# user-friendly aliases for slope types
+SLOPE_TYPE_ALIASES = {
+    'delay':        "f-slope",
+    'rate':         "t-slope",
+    'tec':          "if-slope",
+    'tec2':         "if2-slope",
+    'delay-rate':   "tf-plane",
+    'rate-delay':   "tf-plane",
+    'delay-tec':    "fif-slope",
+    'tec-delay':    "fif-slope",
+}
+
+
+
 class PhaseSlopeGains(ParameterisedGains):
     """
     This class implements the diagonal phase-only parameterised slope gain machine.
     """
+
 
     def __init__(self, label, data_arr, ndir, nmod, chunk_ts, chunk_fs, chunk_label, options):
         """
@@ -63,7 +110,20 @@ class PhaseSlopeGains(ParameterisedGains):
                                     chunk_ts, chunk_fs, chunk_label, options)
 
         self.slope_type = options["type"]
-        self.n_param = 3 if self.slope_type == "tf-plane" else 2
+        if self.slope_type in SLOPE_TYPE_ALIASES:
+            self.slope_type = SLOPE_TYPE_ALIASES[self.slope_type]
+        if self.slope_type not in SLOPE_TYPES:
+            raise RuntimeError(f"unknown slope type '{self.slope_type}'")
+
+        # slope variables, in terms of positional arguments to kernels
+        self.slope_var_pos, kernel_name = SLOPE_TYPES[self.slope_type]
+        self.slope = cubical.kernels.import_kernel(kernel_name)
+
+        # effective slope variables (i.e. phase0, plus vars from the above)
+        self.slope_vars = tuple([DepVar.PHASE0] + [var for var in self.slope_var_pos if var is not None])
+
+        self.n_param = len(self.slope_vars)
+
         self._estimate_delays = options["estimate-delays"]
         self._pin_slope_iters = options["pin-slope-iters"]
 
@@ -72,9 +132,11 @@ class PhaseSlopeGains(ParameterisedGains):
                              "number of iterations. Please check term-iters, max-iters "
                              "and pin-slope-iters.")
 
-        if (self.slope_type != "f-slope") and (self._pin_slope_iters != 0):
-            raise ValueError("Slope pinning is not supported for modes other than "
-                             "f-slope. Please ensure that pin-slope-iters is zero.")
+        ## OMS: let's generalize this. Allow to pin all higher-order slope terms
+        ## (i.e. fit phase0 only for the first few iterations)
+        # if (self.slope_type != "f-slope") and (self._pin_slope_iters != 0):
+        #     raise ValueError("Slope pinning is not supported for modes other than "
+        #                      "f-slope. Please ensure that pin-slope-iters is zero.")
 
         self.param_shape = [self.n_dir, self.n_timint, self.n_freint,
                             self.n_ant, self.n_param, self.n_cor, self.n_cor]
@@ -85,92 +147,94 @@ class PhaseSlopeGains(ParameterisedGains):
         self.slope_params = np.zeros(self.param_shape, dtype=self.ftype)
         self.posterior_slope_error = None
 
-        self.chunk_ts = _normalize(chunk_ts, self.ftype)
-        self.chunk_fs = _normalize(chunk_fs, self.ftype)
+        # recipes to compute values of dependent variables over this chunk
+        self._depvars = {
+            DepVar.TIME:    lambda:_normalize(chunk_ts, self.ftype),
+            DepVar.FREQ:    lambda:_normalize(chunk_fs, self.ftype),
+            DepVar.IFREQ:   lambda:_normalize(1/chunk_fs, self.ftype),
+            DepVar.IFREQ2:  lambda:_normalize(1/chunk_fs**2, self.ftype),
+            None:           lambda:None 
+        }
+        # get the two positional variables to be passed to kernels
+        self._chunk_vars = (self._depvars[var]() for var in self.slope_var_pos)
 
-        if self.slope_type == "tf-plane":
-            self.slope = cubical.kernels.import_kernel("tf_plane")
-            self._labels = dict(phase=0, delay=1, rate=2)
-        elif self.slope_type == "f-slope":
-            self.slope = cubical.kernels.import_kernel("f_slope")
-            self._labels = dict(phase=0, delay=1)
-            if self._estimate_delays:
-                # Select all baselines containing the reference antenna.
+        # dict of parameter labels (label -> position in the parameter array)
+        self._labels = {PARAM_LABELS[var]: num for num, var in enumerate(self.slope_vars)}
 
-                ref_ant_data = data_arr[:, :, :, self.ref_ant]
+        # if we have a delay term, and estimates are enabled, proceed to do so
+        if DepVar.FREQ in self.slope_vars and self._estimate_delays:
+            # which position in the parameter vector is the delay parameter at?
+            DELAY_INDEX = self.slope_vars.index(DepVar.FREQ)
 
-                # Average over time solution intervals. This should improve SNR,
-                # but is not always necesssary.
+            # Select all baselines containing the reference antenna.
 
-                interval_data = np.add.reduceat(ref_ant_data, self.t_bins, 1)
-                interval_smpl = np.add.reduceat(ref_ant_data != 0, self.t_bins, 1)
-                selection = np.where(interval_smpl)
-                interval_data[selection] /= interval_smpl[selection]
+            ref_ant_data = data_arr[:, :, :, self.ref_ant]
 
-                bad_bins = np.add.reduceat(interval_data, self.f_bins, 2)
+            # Average over time solution intervals. This should improve SNR,
+            # but is not always necesssary.
 
-                # FFT the data along the frequency axis. TODO: Need to consider
-                # what happens if we solve for few delays across the band. As there
-                # is no guarantee that the band will be perfectly split, this may
-                # need to be a loop over frequency solution intervals.
+            interval_data = np.add.reduceat(ref_ant_data, self.t_bins, 1)
+            interval_smpl = np.add.reduceat(ref_ant_data != 0, self.t_bins, 1)
+            selection = np.where(interval_smpl)
+            interval_data[selection] /= interval_smpl[selection]
 
-                pad_factor = options["delay-estimate-pad-factor"]
+            bad_bins = np.add.reduceat(interval_data, self.f_bins, 2)
+
+            # FFT the data along the frequency axis. TODO: Need to consider
+            # what happens if we solve for few delays across the band. As there
+            # is no guarantee that the band will be perfectly split, this may
+            # need to be a loop over frequency solution intervals.
+
+            pad_factor = options["delay-estimate-pad-factor"]
+            
+            for i in range(self.n_freint):
+                edges = self.f_bins + [None]
+                slice_fs = self.chunk_fs[edges[i]:edges[i+1]]
+
+                slice_data = interval_data[:, :, edges[i]:edges[i+1]]
+
+                slice_nchan = slice_data.shape[2]
+
+                fft_data = np.abs(np.fft.fft(slice_data, n=slice_nchan*pad_factor, axis=2))
+                fft_data = np.fft.fftshift(fft_data, axes=2)
+
+                # Convert the normalised frequency values into delay values.
+
+                delta_freq = slice_fs[1] - slice_fs[0]
+                fft_freq = np.fft.fftfreq(slice_nchan*pad_factor, delta_freq)
+                fft_freq = np.fft.fftshift(fft_freq)
+
+                # Find the delay value at which the FFT of the data is
+                # maximised. As we do not pad the values, this only a rough
+                # approximation of the delay. We also reintroduce the
+                # frequency axis for consistency.
+
+                delay_est_ind = np.argmax(fft_data, axis=2)
+                delay_est_ind = np.expand_dims(delay_est_ind, axis=2)
+
+                delay_est = fft_freq[delay_est_ind]
+                delay_est[...,(0,1),(1,0)] = 0
                 
-                for i in range(self.n_freint):
-                    edges = self.f_bins + [None]
-                    slice_fs = self.chunk_fs[edges[i]:edges[i+1]]
+                # Check for bad data points (bls missing across all channels)
+                # and set their estimates to zero.
 
-                    slice_data = interval_data[:, :, edges[i]:edges[i+1]]
+                selection = np.where(bad_bins[:, :, i:i+1] == 0)
+                delay_est[selection] = 0
 
-                    slice_nchan = slice_data.shape[2]
+                # Zero the off diagonals and take the negative delay values -
+                # this is necessary as we technically get the delay
+                # corresponding to the conjugate term.
 
-                    fft_data = np.abs(np.fft.fft(slice_data, n=slice_nchan*pad_factor, axis=2))
-                    fft_data = np.fft.fftshift(fft_data, axes=2)
-
-                    # Convert the normalised frequency values into delay values.
-
-                    delta_freq = slice_fs[1] - slice_fs[0]
-                    fft_freq = np.fft.fftfreq(slice_nchan*pad_factor, delta_freq)
-                    fft_freq = np.fft.fftshift(fft_freq)
-
-                    # Find the delay value at which the FFT of the data is
-                    # maximised. As we do not pad the values, this only a rough
-                    # approximation of the delay. We also reintroduce the
-                    # frequency axis for consistency.
-
-                    delay_est_ind = np.argmax(fft_data, axis=2)
-                    delay_est_ind = np.expand_dims(delay_est_ind, axis=2)
-
-                    delay_est = fft_freq[delay_est_ind]
-                    delay_est[...,(0,1),(1,0)] = 0
-                    
-                    # Check for bad data points (bls missing across all channels)
-                    # and set their estimates to zero.
-
-                    selection = np.where(bad_bins[:, :, i:i+1] == 0)
-                    delay_est[selection] = 0
-
-                    # Zero the off diagonals and take the negative delay values -
-                    # this is necessary as we technically get the delay
-                    # corresponding to the conjugate term.
-
-                    self.slope_params[..., i:i+1, :, 1, :, :] = -1*delay_est
-                    self.slope_params[..., (1,0), (0,1)] = 0
-                    
-                    log(1).print("{}: slope estimates are {}, {}".format(chunk_label,
-                                        " ".join(map(str, self.slope_params[..., i:i+1, :, 1, 0, 0])),
-                                        " ".join(map(str, self.slope_params[..., i:i+1, :, 1, 1, 1]))
-                                         ))
-
-
-        elif self.slope_type == "t-slope":
-            self.slope = cubical.kernels.import_kernel("t_slope")
-            self._labels = dict(phase=0, rate=1)
-        else:
-            raise RuntimeError("unknown machine type '{}'".format(self.slope_type))
+                self.slope_params[..., i:i+1, :, DELAY_INDEX, :, :] = -1*delay_est
+                self.slope_params[..., (1,0), (0,1)] = 0
+                
+                log(1).print("{}: slope estimates are {}, {}".format(chunk_label,
+                                    " ".join(map(str, self.slope_params[..., i:i+1, :, DELAY_INDEX, 0, 0])),
+                                    " ".join(map(str, self.slope_params[..., i:i+1, :, DELAY_INDEX, 1, 1]))
+                                        ))
 
         self.slope.construct_gains(self.slope_params, self.gains,
-                                   self.chunk_ts, self.chunk_fs, self.t_int,
+                                   self._chunk_vars[0], self._chunk_vars[1], self.t_int,
                                    self.f_int)
 
         # kernel used in solver is diag-diag in diag mode, else uses full kernel version
@@ -206,14 +270,8 @@ class PhaseSlopeGains(ParameterisedGains):
 
         exportables = ParameterisedGains.exportable_solutions()
 
-        exportables.update({
-            "phase": (0., ("dir", "time", "freq", "ant", "corr")),
-            "delay":  (0., ("dir", "time", "freq", "ant", "corr")),
-            "rate":   (0., ("dir", "time", "freq", "ant", "corr")),
-            "phase.err": (0., ("dir", "time", "freq", "ant", "corr")),
-            "delay.err": (0., ("dir", "time", "freq", "ant", "corr")),
-            "rate.err": (0., ("dir", "time", "freq", "ant", "corr")),
-        })
+        exportables.update({label:          (0., ("dir", "time", "freq", "ant", "corr")) for label in PARAM_LABELS.values()})
+        exportables.update({label + ".err": (0., ("dir", "time", "freq", "ant", "corr")) for label in PARAM_LABELS.values()})
 
         return exportables
 
@@ -270,7 +328,7 @@ class PhaseSlopeGains(ParameterisedGains):
         if loaded:
             self.restrict_solution(self.slope_params)
             self.slope.construct_gains(self.slope_params, self.gains,
-                                           self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+                                           self._chunk_vars[0], self._chunk_vars[1], self.t_int, self.f_int)
             self._gains_loaded = True
 
     def compute_js(self, obser_arr, model_arr):
@@ -313,19 +371,14 @@ class PhaseSlopeGains(ParameterisedGains):
         else:
             self._jhr0.fill(0)
 
-        self.slope.compute_jhr(jhr1, self._jhr0, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        self.slope.compute_jhr(jhr1, self._jhr0, self._chunk_vars[0], self._chunk_vars[1], self.t_int, self.f_int)
 
         return self._jhr0, self.jhjinv, 0
 
     @property
     def dof_per_antenna(self):
         """This property returns the number of real degrees of freedom per antenna, per solution interval"""
-        if self.slope_type=="tf-plane":
-            return 6
-        elif self.slope_type=="f-slope":
-            return 4
-        elif self.slope_type=="t-slope":
-            return 4
+        return 2*self.n_param
 
     def implement_update(self, jhr, jhjinv):
 
@@ -385,7 +438,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         # Need to turn updated parameters into gains.
 
-        self.slope.construct_gains(self.slope_params, self.gains, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        self.slope.construct_gains(self.slope_params, self.gains, self._chunk_vars[0], self._chunk_vars[1], self.t_int, self.f_int)
 
         # raise flag so updates of G^H and G^-1 are computed
         self._gh_update = self._ghinv_update = True
@@ -436,7 +489,7 @@ class PhaseSlopeGains(ParameterisedGains):
 
         jhj = self.slope.allocate_param_array(jhj_shape, dtype=self.ftype, zeros=True)
 
-        self.slope.compute_jhj(jhj1.real, jhj, self.chunk_ts, self.chunk_fs, self.t_int, self.f_int)
+        self.slope.compute_jhj(jhj1.real, jhj, self._chunk_vars[0], self._chunk_vars[1], self.t_int, self.f_int)
 
         self.jhjinv = np.zeros_like(jhj)
 
