@@ -206,6 +206,8 @@ class JonesChain(MasterMachine):
                 self.cached_model_arr = np.empty_like(model_arr[0:1,...])
                 np.sum(cached_model_arr, axis=0, keepdims=True, out=self.cached_model_arr)
 
+            self.active_term.update_model(self.cached_model_arr)
+
             self.jh = np.empty_like(self.cached_model_arr)
 
             jhr_shape = [n_dir if self.active_term.dd_term else 1, self.n_tim, self.n_fre, n_ant, n_cor, n_cor]

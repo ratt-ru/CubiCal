@@ -220,6 +220,8 @@ class PhaseDiagGains(PerIntervalGains):
         """
         PerIntervalGains.precompute_attributes(self, data_arr, model_arr, flags_arr, noise)
 
+
+    def update_model(self, model_arr):
         self.jhjinv = np.zeros_like(self.gains)
 
         self.kernel_solve.compute_jhj(model_arr, self.jhjinv, self.t_int, self.f_int)

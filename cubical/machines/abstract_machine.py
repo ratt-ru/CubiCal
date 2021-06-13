@@ -495,6 +495,10 @@ class MasterMachine:
         self.update_equation_counts(unflagged)
         return unflagged
 
+    def update_model(self, model_arr):
+        """Called to show the machine a new model"""
+        pass
+
     @abstractmethod
     def check_convergence(self, min_delta_g):
         """

@@ -1237,15 +1237,15 @@ class MSTile(object):
 
             ### APPLY DEROTATION HERE
             if self.dh.derotate_output > 0:
-                data[column][rows, freq_slice] = self.dh.parallactic_machine.derotate(subset.time_col[rows],
-                                                               data[column][rows, freq_slice],
-                                                               subset.antea[rows], subset.anteb[rows],
-                                                               angles=data['pa'][rows])
+                data[column][row_index, freq_slice] = self.dh.parallactic_machine.derotate(subset.time_col[row_index],
+                                                               data[column][row_index, freq_slice],
+                                                               subset.antea[row_index], subset.anteb[row_index],
+                                                               angles=data['pa'][row_index])
             elif self.dh.derotate_output < 0:
-                data[column][rows, freq_slice] = self.dh.parallactic_machine.rotate(subset.time_col[rows],
-                                                               data[column][rows, freq_slice],
-                                                               subset.antea[rows], subset.anteb[rows],
-                                                               angles=data['pa'][rows])
+                data[column][row_index, freq_slice] = self.dh.parallactic_machine.rotate(subset.time_col[row_index],
+                                                               data[column][row_index, freq_slice],
+                                                               subset.antea[row_index], subset.anteb[row_index],
+                                                               angles=data['pa'][row_index])
         if flag_cube is not None:
             data['updated'][1] = True
             subset._cube_to_column(data['flags'], flag_cube, row_index, freq_slice, flags=True)

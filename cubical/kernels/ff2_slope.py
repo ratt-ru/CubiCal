@@ -3,7 +3,7 @@
 # http://github.com/ratt-ru/CubiCal
 # This code is distributed under the terms of GPLv2, see LICENSE.md for details
 """
-Cython kernels for the tf plane machine. Functions require output arrays to be
+Cython kernels for the f-f2 slope machine. Functions require output arrays to be
 provided. Common dimensions of arrays are:
 
 +----------------+------+
@@ -58,7 +58,7 @@ def allocate_param_array(shape, dtype, zeros=False):
     return cubical.kernels.allocate_reordered_array(shape, dtype, _param_axis_layout, zeros=zeros)
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
-def compute_jhj(tmp_jhj, jhj, ts, fs, t_int, f_int):
+def compute_jhj(tmp_jhj, jhj, fs2, fs, t_int, f_int):
     """
     Given the intermediary J\ :sup:`H`\J and channel frequencies, computes the diagonal entries of
     J\ :sup:`H`\J. J\ :sup:`H`\J is computed over intervals. This is an approximation of the
@@ -99,14 +99,14 @@ def compute_jhj(tmp_jhj, jhj, ts, fs, t_int, f_int):
                         tmp_jhjcc = tmp_jhj[d,t,f,aa,c,c]
 
                         ff = fs[f]
-                        tt = ts[t]
+                        f2 = fs2[f]
 
                         jhj[d,bt,bf,aa,0,c,c] += tmp_jhjcc
                         jhj[d,bt,bf,aa,1,c,c] += ff*tmp_jhjcc
-                        jhj[d,bt,bf,aa,2,c,c] += tt*tmp_jhjcc
+                        jhj[d,bt,bf,aa,2,c,c] += f2*tmp_jhjcc
                         jhj[d,bt,bf,aa,3,c,c] += ff*ff*tmp_jhjcc
-                        jhj[d,bt,bf,aa,4,c,c] += ff*tt*tmp_jhjcc
-                        jhj[d,bt,bf,aa,5,c,c] += tt*tt*tmp_jhjcc
+                        jhj[d,bt,bf,aa,4,c,c] += ff*f2*tmp_jhjcc
+                        jhj[d,bt,bf,aa,5,c,c] += f2*f2*tmp_jhjcc
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_jhjinv(jhj, jhjinv, eps):
@@ -162,7 +162,7 @@ def compute_jhjinv(jhj, jhjinv, eps):
                             jhjinv[d,t,f,aa,5,c,c] = det*(jhj3cc*jhj0cc - jhj1cc*jhj1cc)
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
-def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
+def compute_jhr(tmp_jhr, jhr, fs2, fs, t_int, f_int):
     """
     Given the intermediary J\ :sup:`H`\R and channel frequencies, computes J\ :sup:`H`\R.
     J\ :sup:`H`\R is computed over intervals. The addition of the block dimension is
@@ -201,7 +201,7 @@ def compute_jhr(tmp_jhr, jhr, ts, fs, t_int, f_int):
 
                         jhr[d,bt,bf,aa,0,c,c] +=       tmp_jhrcc
                         jhr[d,bt,bf,aa,1,c,c] += fs[f]*tmp_jhrcc
-                        jhr[d,bt,bf,aa,2,c,c] += ts[t]*tmp_jhrcc
+                        jhr[d,bt,bf,aa,2,c,c] += fs2[f]*tmp_jhrcc
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
 def compute_update(jhr, jhj, upd):
@@ -255,7 +255,7 @@ def compute_update(jhr, jhj, upd):
                                               jhj5cc*jhr2cc
 
 @jit(nopython=True, fastmath=True, parallel=use_parallel, cache=use_cache, nogil=True)
-def construct_gains(param, g, ts, fs, t_int, f_int):
+def construct_gains(param, g, fs2, fs, t_int, f_int):
     """
     Given the real-valued parameters of the gains, computes the complex gains.
 
@@ -291,7 +291,7 @@ def construct_gains(param, g, ts, fs, t_int, f_int):
                         p1cc = param[d,bt,bf,aa,1,c,c]
                         p2cc = param[d,bt,bf,aa,2,c,c]
 
-                        g[d,t,f,aa,c,c] = np.exp(1j*(p0cc + fs[f]*p1cc + ts[t]*p2cc))
+                        g[d,t,f,aa,c,c] = np.exp(1j*(p0cc + fs[f]*p1cc + fs2[f]*p2cc))
 
 # Cherry-pick other methods from standard kernels
 

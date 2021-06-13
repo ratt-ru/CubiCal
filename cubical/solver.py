@@ -102,6 +102,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     # factors etc, and does any other precomputation required by the current gain machine.
 
     gm.precompute_attributes(obser_arr, model_arr, flags_arr, inv_var_chan)
+    gm.update_model(model_arr)
 
     # apply any flags raised in the precompute
 
