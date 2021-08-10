@@ -45,25 +45,19 @@ on_rtd = os.environ.get('READTHEDOCS') == 'True'
 
 if on_rtd:
     requirements = ['numpy',
-                    'futures; python_version <= "2.7"', 
-                    'matplotlib',
+                    'matplotlib', 
                     'scipy']
 else:
     requirements = ['future',
                     'numpy',
-                    'llvmlite==v0.31.0; python_version <= "2.7"',
-                    'numba==0.47.0; python_version <= "2.7"',
-                    'numba; python_version >= "3.0"',
-#                    'python-casacore<=3.0.0; python_version <= "2.7"',
+                    'numba',
                     'python-casacore',
-                    'sharedarray >= 3.2.0',
-                    'matplotlib<3.0',
+                    'sharedarray >= 3.2.1', 
+                    'matplotlib',
                     'scipy',
                     'astro-tigger-lsm',
                     'six',
-                    'futures; python_version <= "2.7"',
-                    'astropy<3.0; python_version <= "2.7"',
-                    'astropy>=3.0; python_version > "2.7"',
+                    'astropy>=3.0',
                     'psutil'
                     ]
 
@@ -71,8 +65,8 @@ setup(name='cubical',
       version=cubical.VERSION,
       description='Fast calibration implementation exploiting complex optimisation.',
       url='https://github.com/ratt-ru/CubiCal',
-      lassifiers=[
-        "Development Status :: 3 - Alpha",
+      classifiers=[
+        "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: POSIX :: Linux",
@@ -84,7 +78,7 @@ setup(name='cubical',
       long_description=long_description,
       long_description_content_type='text/markdown',
       packages=find_packages(),
-      python_requires='<3.0' if six.PY2 else ">=3.0", #build a py2 or py3 specific wheel depending on environment (due to cython backend)
+      python_requires=">=3.6", 
       install_requires=requirements,
       include_package_data=True,
       zip_safe=False,
