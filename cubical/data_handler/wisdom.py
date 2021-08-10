@@ -21,7 +21,7 @@ def estimate_mem(data_handler, tile_list, data_opts, dist_opts):
 
     example_tile = tile_list[0]
     chunks_per_tile = example_tile.total_tf_chunks()
-    along_freq = len(data_handler.freqchunks[0])
+    along_freq = max(len(cf) for cf in data_handler.freqchunks.values())
     along_time = chunks_per_tile//along_freq
 
     # Figure out the chunk dimensions. The ors handle the 0 case. TODO: The

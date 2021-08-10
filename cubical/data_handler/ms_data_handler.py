@@ -476,7 +476,7 @@ class MSDataHandler:
         self._ddids_unequal = False
         ddid0_map = self.rebin_chan_maps[self._ddids[0]]
         for ddid in self._ddids[1:]:
-            if len(self.chanfreqs[0]) != len(self.chanfreqs[ddid]):
+            if len(self.chanfreqs[self._ddids[0]]) != len(self.chanfreqs[ddid]):
                 self._ddids_unequal = True
                 break
             map1 = self.rebin_chan_maps[ddid]
