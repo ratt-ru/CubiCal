@@ -559,10 +559,16 @@ class PerIntervalGains(MasterMachine):
                 if log.verbosity() > 1:
                     msg = "{} directions ({}) flagged {}".format(
                         len(bad_dirs),
-                        ", ".join(["dir {0:s}: {1:.3f}% gains affected".format(
-                            str(d), percflagged[d]) for d in bad_dirs]),
-                        why_flagged
-                    )
+                        ", ".join(["dir {0:s}: {1:s} gains affected".format(
+                            str(d[0]) if (type(d) is list or type(d) is np.ndarray) and len(d) == 1 else 
+                                ", ".join(d) if (type(d) is list or type(d) is np.ndarray) else 
+                                str(d), 
+                            "{0:.3f}%".format(percflagged[d[0]]) if (type(d) is list or type(d) is np.ndarray) and len(d) == 1 else 
+                                ", ".join(["{0:.3f}%".format(percflagged[dd]) for dd in d]) if (type(d) is list or type(d) is np.ndarray) else
+                                "UNDETERMINED") 
+                            for d in bad_dirs]),
+                        why_flagged)
+                    #import ipdb; ipdb.set_trace()
                 else:
                     msg = "{} directions flagged {}".format(len(bad_dirs), why_flagged)
                 issue_warning(msg, 50)
