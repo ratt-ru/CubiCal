@@ -322,16 +322,16 @@ class DDFacetSim(object):
             dt_start = self.__mjd2dt([np.min(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
             dt_end = self.__mjd2dt([np.max(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
             if provider is None:
-                log.info("Setting E Jones to unity for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
-                         "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
-                         str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
-                         np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
+                log(2).print("Setting E Jones to unity for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
+                             "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
+                             str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
+                             np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
                 jones_matrix = None
             elif provider == "FITS":
-                log.info("Calculating E Jones for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
-                         "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
-                         str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
-                         np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
+                log(2).print("Calculating E Jones for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
+                             "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
+                             str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
+                             np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
                 beam_provider = FITSBeamInterpolator(field_centre,
                                                      chunk_ctr_frequencies,
                                                      chunk_channel_widths,  
@@ -535,15 +535,15 @@ class DDFacetSim(object):
         region_model = np.zeros((nrow, nfreq, 4), dtype=np.complex64)
         flagged = np.zeros_like(region_model, dtype=np.bool)
         # now we predict for this direction
-        log.info("Computing visibilities in {1:d} facets for direction '{0:s}' for model '{2:s}'...".format(
-            str(self.__direction), src.subregion_count, str(self.__model)))
+        log(2).print("\tComputing visibilities in {1:d} facets for direction '{0:s}' for model '{2:s}'...".format(
+                     str(self.__direction), src.subregion_count, str(self.__model)))
 
         for gm, subregion_index in zip(gmacs, range(src.subregion_count)):
             model = np.zeros((nrow, nfreq, 4), dtype=np.complex64).copy()
             model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64).copy() #degridder needs transposes, dont mod the data globally
 
             if not np.any(model_image):
-                log(2).print("Facet {0:d} is empty. Skipping".format(subregion_index))
+                log(2).print("\tFacet {0:d} is empty. Skipping".format(subregion_index))
                 continue
             dname = self.__cachename_compute(src)
             model_image = DDFacetSim.__detaper_model(gm, model_image.view(), self.__direction_CFs[dname][subregion_index]).copy() # degridder don't respect strides must be contiguous

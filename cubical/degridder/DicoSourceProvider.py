@@ -107,9 +107,13 @@ class DicoSourceProvider(object):
         if fn is not None: # dde case
             with open(fn) as f:
                 parser = DS9Parser(f.read())
+                if not all(reg.region_type == "polygon" for reg in parser.shapes) or \
+                    not all(reg.coordsys == "physical" for reg in parser.shapes):
+                    raise RuntimeError("Currently only supports regions of type 'polygon' with 'physical' (pixel) coordinates as input regions")
                 for regi, reg in enumerate(parser.shapes):
                     coords = list(map(int, [c.value for c in reg.coord]))
-                    assert len(coords) % 2 == 0, "Number of region coords must be multiple of 2-tuple"
+                    if len(coords) % 2 != 0:
+                        raise RuntimeError("Region file invalid - one or more polygons have a length not divisible by 2 (ie. not all the corners are pixel tupples")
                     coords = np.array(coords).reshape([len(coords) // 2, 2])
                     clusters.append(BoundingConvexHull(coords,
                                                        name="DDE_REG{0:d}".format(regi + 1)))

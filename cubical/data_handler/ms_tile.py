@@ -171,6 +171,7 @@ class MSTile(object):
             ndirs = model_source._nclus
             loaded_models[model_source] = {}
             ddfsim.set_model_provider(model_source)
+            log.info("Predicting targetted directions... This may take some time")
             for idir, clus in enumerate(model_source._cluster_keys):
                 ddfsim.set_direction(clus)
                 model = ddfsim.simulate(self.tile.dh,
