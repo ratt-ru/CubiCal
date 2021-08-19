@@ -570,7 +570,7 @@ class PerIntervalGains(MasterMachine):
                         why_flagged)
                     #import ipdb; ipdb.set_trace()
                 else:
-                    msg = "{} directions flagged {}".format(len(bad_dirs), why_flagged)
+                    msg = "{} directions flagged {}. Verbosity level 2 gives a full list of these directions".format(len(bad_dirs), why_flagged)
                 issue_warning(msg, 50)
 
     def _update_gain_flags(self, flagtype, flags_arr):

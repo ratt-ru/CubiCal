@@ -438,8 +438,8 @@ class DDFacetSim(object):
         gmachines = []
         dname = self.__cachename_compute(src)
         if should_init_cf:
-            log.info("This is the first time predicting for '{0:s}' direction '{1:s}'. "
-                     "Initializing degridder for {2:d} facets - this may take a wee bit of time.".format(
+            log(2).print("This is the first time predicting for '{0:s}' direction '{1:s}'. "
+                         "Initializing degridder for {2:d} facets - this may take a wee bit of time.".format(
                          str(self.__model), str(self.__direction), src.subregion_count))
             DDFacetSim.__initted_CF_directions.append(dname)    
             DDFacetSim.__direction_CFs[dname] = DDFacetSim.__direction_CFs.get(dname, []) + list(DDFacetSim.__ifacet + np.arange(src.subregion_count)) #unique facet index for this subregion

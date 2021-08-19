@@ -5,7 +5,7 @@ try:
 except ImportError:
     raise ImportError("Cannot import DDFacet")
 
-from regions import DS9Parser
+from regions import Regions, PolygonPixelRegion
 import numpy as np
 from .geometry import BoundingConvexHull, BoundingBox, BoundingBoxFactory
 from cubical.tools import logger, ModColor
@@ -106,15 +106,12 @@ class DicoSourceProvider(object):
         clusters = []
         if fn is not None: # dde case
             with open(fn) as f:
-                parser = DS9Parser(f.read())
-                if not all(reg.region_type == "polygon" for reg in parser.shapes) or \
-                    not all(reg.coordsys == "physical" for reg in parser.shapes):
+                shapes = Regions.parse(f.read(), format="ds9")
+                if not all([type(reg) is PolygonPixelRegion for reg in shapes]):
                     raise RuntimeError("Currently only supports regions of type 'polygon' with 'physical' (pixel) coordinates as input regions")
-                for regi, reg in enumerate(parser.shapes):
-                    coords = list(map(int, [c.value for c in reg.coord]))
-                    if len(coords) % 2 != 0:
-                        raise RuntimeError("Region file invalid - one or more polygons have a length not divisible by 2 (ie. not all the corners are pixel tupples")
-                    coords = np.array(coords).reshape([len(coords) // 2, 2])
+                for regi, reg in enumerate(shapes):
+                    coords = np.array(list(zip(map(int, reg.vertices.x), 
+                                               map(int, reg.vertices.y))))
                     clusters.append(BoundingConvexHull(coords,
                                                        name="DDE_REG{0:d}".format(regi + 1)))
         else: # die case
