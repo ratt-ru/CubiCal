@@ -171,7 +171,7 @@ class MSTile(object):
             ndirs = model_source._nclus
             loaded_models[model_source] = {}
             ddfsim.set_model_provider(model_source)
-            log.info("Predicting targetted directions... This may take some time")
+            log.info("Predicting targeted directions... This may take some time")
             for idir, clus in enumerate(model_source._cluster_keys):
                 ddfsim.set_direction(clus)
                 model = ddfsim.simulate(self.tile.dh,
@@ -1141,6 +1141,8 @@ class MSTile(object):
 
         # These points correspond to the autocorrelations - they should always
         # be flagged for the purpose of calibration.
+        assert flags.ndim == 4 and flags.shape[2] == flags.shape[3]
+        nants = flags.shape[3]
         flags[..., range(nants), range(nants)] |= FL.SKIPSOL
 
         obs_arr = subset._column_to_cube(data['obvis'], t_dim, f_dim, row_index, freq_slice, ctype,
