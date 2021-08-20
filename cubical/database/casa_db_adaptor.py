@@ -116,7 +116,7 @@ class casa_caltable_factory(object):
                     t.putcell("REF_FREQUENCY", iddid, db.spwreffreq[spwid])
                     t.putcell("CHAN_WIDTH", iddid, ddsolwidth)
                     t.putcell("EFFECTIVE_BW", iddid, ddsolwidth) # TODO: this may not be true
-                    t.putcell("RESOLUTION", iddid, db.spwresolution[spwid])
+                    t.putcell("RESOLUTION", iddid, ddsolwidth)
                     t.putcell("FLAG_ROW", iddid, db.spwflagrow[spwid])
                     t.putcell("FREQ_GROUP", iddid, db.spwfreqgroup[spwid])
                     t.putcell("FREQ_GROUP_NAME", iddid, db.spwfreqgroupname[spwid])
