@@ -117,7 +117,7 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
     global num_threads
     def set_numba_threading(nthread):
         try:
-            numba.config.THREADING_LAYER = "tbb"
+            numba.config.THREADING_LAYER = "safe"
             @numba.njit(parallel=True)
             def foo(a, b):
                 return a + b
@@ -125,8 +125,8 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
             return nthread
         except:
             numba.config.THREADING_LAYER = "workqueue"
-            print("Cannot use TBB threading (check your installation). Reverting to workqueue parallelization.", file=log(0, "red"))
-            return nthread
+            print("Cannot use TBB threading (check your installation). Reverting to workqueue parallelization and dropping to 1 thread per worker in solvers", file=log(0, "red"))
+            return 1
     nthread = set_numba_threading(nthread)
     parallel, num_workers, nthread = _setup_workers_and_threads(force_serial, ncpu, nworker, nthread,
                                                                 montblanc_threads if use_montblanc else None, max_workers)  
