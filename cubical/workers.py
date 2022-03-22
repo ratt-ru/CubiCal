@@ -121,7 +121,7 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
             return nthread
         except:
             numba.config.THREADING_LAYER = "default"
-            print("Cannot use TDD threading (check your installation). Dropping the number of solver threads to 1", file=log(0, "red"))
+            print("Cannot use TBB threading (check your installation). Dropping the number of solver threads to 1", file=log(0, "red"))
             return 1
     nthread = set_numba_threading(nthread)
     parallel, num_workers, nthread = _setup_workers_and_threads(force_serial, ncpu, nworker, nthread,
