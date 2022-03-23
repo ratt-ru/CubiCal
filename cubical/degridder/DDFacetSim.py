@@ -34,7 +34,7 @@ from numba import jit, prange
 import concurrent.futures as cf
 import cubical.workers as cw
 import multiprocessing
-from astropy import wcs
+from astropy import wcs, coordinates, units
 
 def init_degridders(dir_CFs, 
                     dir_DCs,
@@ -560,7 +560,24 @@ class DDFacetSim(object):
         if self.__model is None:
             raise RuntimeError("Model has not been set. Please set model before simulating")
         DDFacetSim.initialize_pool(dh.degrid_opts["NProcess"])
-        self.__phasecenter = dh.phadir
+        if not isinstance(dh.degrid_opts["PointingCenterAt"], str) and not \
+           (isinstance(dh.degrid_opts["PointingCenterAt"], list) and len(dh.degrid_opts["PointingCenterAt"]) == 3):
+            raise RuntimeError("--degridding-PointingCenterAt must be a string or coordinate list. "
+                               "It can be either: 'DataPhaseDir' or a 'j2000,rahms,decsdms'-style coordinate that specifies "
+                               "the pointing centre of the model if it has been rephased (for e.g. mosaicing) prior to imaging")
+        if isinstance(dh.degrid_opts["PointingCenterAt"], str) and \
+           dh.degrid_opts["PointingCenterAt"].strip().upper() == "DATAPHASEDIR":
+            self.__phasecenter = dh.phadir
+        else:
+            try:
+                epoch,ra,dec = map(lambda x: x.strip(), dh.degrid_opts["PointingCenterAt"])
+                if epoch.upper() != "J2000":
+                    raise RuntimeError("Only supports j2000 coordinates for rephasing at present")
+                crd = coordinates.SkyCoord(f"{ra} {dec}", frame="fk5", equinox=epoch)
+                self.__phasecenter = np.array(list(map(np.deg2rad, [crd.ra.value, crd.dec.value])))
+            except Exception as e:
+                raise RuntimeError(f"Invalid dataset rephaseing coordinate specification. Expected j2000,ra,dec. "
+                                   f"Detailed message: {str(e)}")
         freqs = freqs.ravel()
         src = self.__model
         src.set_direction(self.__direction)
