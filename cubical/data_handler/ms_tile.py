@@ -171,6 +171,7 @@ class MSTile(object):
             ndirs = model_source._nclus
             loaded_models[model_source] = {}
             ddfsim.set_model_provider(model_source)
+            log.info("Predicting targeted directions... This may take some time")
             for idir, clus in enumerate(model_source._cluster_keys):
                 ddfsim.set_direction(clus)
                 model = ddfsim.simulate(self.tile.dh,
@@ -455,11 +456,6 @@ class MSTile(object):
                         out_arr[tuple(cub_selection)] = colsel.conj()
                     else:
                         out_arr[tuple(cub_selection)] = colsel
-
-            # This zeros the diagonal elements in the "baseline" plane. This is purely a precaution -
-            # we do not want autocorrelations on the diagonal.
-
-            out_arr[..., list(range(self.nants)), list(range(self.nants)), :] = zeroval
 
             return out_arr0
 
@@ -1143,6 +1139,12 @@ class MSTile(object):
             flags[:] = flags_2x2[..., 0, 0]
             flags |= flags_2x2[..., 1, 1]
 
+        # These points correspond to the autocorrelations - they should always
+        # be flagged for the purpose of calibration.
+        assert flags.ndim == 4 and flags.shape[2] == flags.shape[3]
+        nants = flags.shape[3]
+        flags[..., range(nants), range(nants)] |= FL.SKIPSOL
+
         obs_arr = subset._column_to_cube(data['obvis'], t_dim, f_dim, row_index, freq_slice, ctype,
                                        reqdims=6, allocator=allocator)
         if 'movis' in data:
@@ -1172,7 +1174,7 @@ class MSTile(object):
             # wgt_arr = flag_allocator(wgt_2x2.shape[:-2], wgt_2x2.dtype)
             # np.mean(wgt_2x2, axis=(-1, -2), out=wgt_arr)
             # #            wgt_arr = np.sqrt(wgt_2x2.sum(axis=(-1,-2)))    # this is wrong
-            wgt_arr[flags!=0, :, :] = 0
+            wgt_arr[flags!=0, :, :] = 0  # autocorrs will get weight zero.
             # wgt_arr = wgt_arr.reshape([1, t_dim, f_dim, nants, nants])
         else:
             wgt_arr = None

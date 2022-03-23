@@ -238,7 +238,7 @@ def compute_corrected(o, g, gh, corr, t_int, f_int):
     n_fre = o.shape[1]
     n_ant = o.shape[2]
 
-    bls = np.array([[i,j] for i in range(n_ant) for j in range(i+1, n_ant)], dtype=np.int32)
+    bls = np.array([[i,j] for i in range(n_ant) for j in range(i, n_ant)], dtype=np.int32)
     n_bl = bls.shape[0]
 
     broadcast_times = np.array([t//t_int for t in range(n_tim)])

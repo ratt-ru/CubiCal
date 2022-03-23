@@ -251,7 +251,7 @@ def make_ifrgain_plots(ig, ms, GD, basename):
         pylab.subplot(NR, NC, 2)
         plot_ants([(p, igpa[p]) for p in antennas], "IFR %s %s gain amplitudes per antenna" % FEEDS)
         if baseline:
-            pylab.subplot(NR, NC/2, 3)
+            pylab.subplot(NR, NC//2, 3)
             plot_baseline(norm_igs, baseline, "IFR gain amplitude vs. baseline length", FEEDS)
         save_figure("bbc-{}".format(label), width*NC, height*NR)
 

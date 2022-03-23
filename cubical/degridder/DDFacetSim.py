@@ -31,6 +31,10 @@ import hashlib
 import datetime as dt
 import pyrap.quanta as pq
 from numba import jit, prange
+import concurrent.futures as cf
+import cubical.workers as cw
+import multiprocessing
+from astropy import wcs, coordinates, units
 
 def init_degridders(dir_CFs, 
                     dir_DCs,
@@ -48,6 +52,11 @@ def init_degridders(dir_CFs,
                     GD,
                     gmachines=None):
     """ Dummy initialization method to be executed on process pool """
+    if cw.num_threads > 1:
+        old_omp_setting = os.environ.get("OMP_NUM_THREADS", str(multiprocessing.cpu_count()))
+        # OMP is not fork safe.... we have to force serialization in case the solvers are already set up
+        # to use threading
+        os.environ["OMP_NUM_THREADS"] = "1"
     dir_CFs = dir_CFs.instantiate()
     dir_DCs = dir_DCs.instantiate()
     CFs_dict = CFs_dict.instantiate()
@@ -69,6 +78,9 @@ def init_degridders(dir_CFs,
         wnd_detaper = MT.Sphe2D(npix)
         wnd_detaper[wnd_detaper != 0] = 1.0 / wnd_detaper[wnd_detaper != 0]
         dir_DCs["facet_{}".format(dir_CFs[dname][subregion_index])] = wnd_detaper
+
+    if cw.num_threads > 1:
+        os.environ["OMP_NUM_THREADS"] = old_omp_setting
 
 global UNIQ_ID
 try:
@@ -102,7 +114,8 @@ class DDFacetSim(object):
     @classmethod
     def initialize_pool(cls, num_processes=0):
         if num_processes > 1:
-            DDFacetSim.__exec_pool = PPE(max_workers=num_processes)
+            if DDFacetSim.__exec_pool is None:
+                DDFacetSim.__exec_pool = PPE(max_workers=num_processes)
             DDFacetSim.__IN_PARALLEL_INIT = True
 
     @classmethod
@@ -229,9 +242,9 @@ class DDFacetSim(object):
                     g = jp[1, 0]
                     h = jp[1, 1]
                     # jp.X.jq^H
-                    out_vis[r, ch, 0] = e * (XX*a + XY*b) + f * (YX*a + YY*b)
+                    out_vis[r, ch, 0] = e * (XX*a + XY*c) + f * (YX*a + YY*c)
                     out_vis[r, ch, 1] = e * (XX*b + XY*d) + f * (YX*b + YY*d)
-                    out_vis[r, ch, 2] = g * (XX*a + XY*b) + h * (YX*a + YY*c)
+                    out_vis[r, ch, 2] = g * (XX*a + XY*c) + h * (YX*a + YY*c)
                     out_vis[r, ch, 3] = g * (XX*b + XY*d) + h * (YX*b + YY*d)
         
         if jones_matrix is None:
@@ -322,16 +335,16 @@ class DDFacetSim(object):
             dt_start = self.__mjd2dt([np.min(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
             dt_end = self.__mjd2dt([np.max(utc_times)])[0].strftime('%Y/%m/%d %H:%M:%S')
             if provider is None:
-                log.info("Setting E Jones to unity for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
-                         "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
-                         str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
-                         np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
+                log(2).print("Setting E Jones to unity for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
+                             "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
+                             str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
+                             np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
                 jones_matrix = None
             elif provider == "FITS":
-                log.info("Calculating E Jones for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
-                         "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
-                         str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
-                         np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
+                log(2).print("Calculating E Jones for '{0:s}' direction '{1:s}' facet '{2:d}' between {3:s} and {4:s} UTC for "
+                             "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
+                             str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
+                             np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
                 beam_provider = FITSBeamInterpolator(field_centre,
                                                      chunk_ctr_frequencies,
                                                      chunk_channel_widths,  
@@ -347,8 +360,25 @@ class DDFacetSim(object):
                         "FITSProvider": beam_provider
                     }
                 }
-                ra, dec = np.deg2rad(src.get_direction_pxoffset(subregion_index=sub_region_index) * 
-                                     src.pixel_scale / 3600.0) + self.__phasecenter
+                subregion_pixoffset = src.get_direction_pxoffset(subregion_index=sub_region_index)
+                header = {
+                    "NAXIS": 2,
+                    "NAXIS1": subregion_pixoffset[0],
+                    "CRVAL1": np.rad2deg(self.__phasecenter[0]),
+                    "CRPIX1": 0,
+                    "CDELT1": src.pixel_scale/3600.0, # already negated in offset calc
+                    "CUNIT1": "deg",
+                    "CTYPE1": "RA---SIN",
+                    "NAXIS2": subregion_pixoffset[1],
+                    "CRVAL2": np.rad2deg(self.__phasecenter[1]),
+                    "CRPIX2": 0,
+                    "CDELT2": src.pixel_scale/3600.0,
+                    "CUNIT2": "deg",
+                    "CTYPE2": "DEC--SIN",
+                }
+                thiswcs = wcs.WCS(header)
+                sky = thiswcs.pixel_to_world(subregion_pixoffset[0], subregion_pixoffset[1])
+                ra, dec = map(np.deg2rad, [sky.ra.value, sky.dec.value])
                 l, m = self.radec2lm_scalar(ra, dec)
                 
                 jones_matrix["DicoJones_Beam"]["Dirs"]["l"] = l
@@ -438,8 +468,8 @@ class DDFacetSim(object):
         gmachines = []
         dname = self.__cachename_compute(src)
         if should_init_cf:
-            log.info("This is the first time predicting for '{0:s}' direction '{1:s}'. "
-                     "Initializing degridder for {2:d} facets - this may take a wee bit of time.".format(
+            log(2).print("This is the first time predicting for '{0:s}' direction '{1:s}'. "
+                         "Initializing degridder for {2:d} facets - this may take a wee bit of time.".format(
                          str(self.__model), str(self.__direction), src.subregion_count))
             DDFacetSim.__initted_CF_directions.append(dname)    
             DDFacetSim.__direction_CFs[dname] = DDFacetSim.__direction_CFs.get(dname, []) + list(DDFacetSim.__ifacet + np.arange(src.subregion_count)) #unique facet index for this subregion
@@ -449,7 +479,7 @@ class DDFacetSim(object):
                     shared_dict.SharedDict("convfilters.cubidegrid.{}.{}.{}".format(UNIQ_ID, dname, sri))
 
         # init in parallel
-        futures = []        
+        futures = {}        
         for subregion_index in range(src.subregion_count):
             ra, dec = np.deg2rad(src.get_direction_pxoffset(subregion_index=subregion_index) * 
                                     src.pixel_scale / 3600.0) + self.__phasecenter
@@ -469,15 +499,24 @@ class DDFacetSim(object):
                         wmax,
                         GD)
             if DDFacetSim.__IN_PARALLEL_INIT:
-                futures.append(DDFacetSim.__exec_pool.submit(init_degridders, *init_args))
+                futures[DDFacetSim.__exec_pool.submit(init_degridders, *init_args)] = subregion_index
             else:
                 init_degridders(*init_args)
 
         if DDFacetSim.__IN_PARALLEL_INIT:
-            for f in futures:
-                expt = f.exception()
-                if expt is not None:
-                    raise expt
+            def reap_children():
+                pid, status, _ = os.wait3(os.WNOHANG)
+                if pid:
+                    print("child process {} exited with status {}. This is a bug, or an out-of-memory condition.".format(pid, status), file=log(0,"red"))
+                    print("This error is not recoverable: the main process will now commit ritual harakiri.", file=log(0,"red"))
+                    os._exit(1)
+            while futures:
+                reap_children()
+                done, not_done = cf.wait(list(futures.keys()), timeout=1)
+                for future in done:
+                    key = futures[future]
+                    stats = future.result()
+                    del futures[future]
         
         # construct handles after the initialization has been completed
         for subregion_index in range(src.subregion_count):
@@ -521,7 +560,24 @@ class DDFacetSim(object):
         if self.__model is None:
             raise RuntimeError("Model has not been set. Please set model before simulating")
         DDFacetSim.initialize_pool(dh.degrid_opts["NProcess"])
-        self.__phasecenter = dh.phadir
+        if not isinstance(dh.degrid_opts["PointingCenterAt"], str) and not \
+           (isinstance(dh.degrid_opts["PointingCenterAt"], list) and len(dh.degrid_opts["PointingCenterAt"]) == 3):
+            raise RuntimeError("--degridding-PointingCenterAt must be a string or coordinate list. "
+                               "It can be either: 'DataPhaseDir' or a 'j2000,rahms,decsdms'-style coordinate that specifies "
+                               "the pointing centre of the model if it has been rephased (for e.g. mosaicing) prior to imaging")
+        if isinstance(dh.degrid_opts["PointingCenterAt"], str) and \
+           dh.degrid_opts["PointingCenterAt"].strip().upper() == "DATAPHASEDIR":
+            self.__phasecenter = dh.phadir
+        else:
+            try:
+                epoch,ra,dec = map(lambda x: x.strip(), dh.degrid_opts["PointingCenterAt"])
+                if epoch.upper() != "J2000":
+                    raise RuntimeError("Only supports j2000 coordinates for rephasing at present")
+                crd = coordinates.SkyCoord(f"{ra} {dec}", frame="fk5", equinox=epoch)
+                self.__phasecenter = np.array(list(map(np.deg2rad, [crd.ra.value, crd.dec.value])))
+            except Exception as e:
+                raise RuntimeError(f"Invalid dataset rephaseing coordinate specification. Expected j2000,ra,dec. "
+                                   f"Detailed message: {str(e)}")
         freqs = freqs.ravel()
         src = self.__model
         src.set_direction(self.__direction)
@@ -535,15 +591,15 @@ class DDFacetSim(object):
         region_model = np.zeros((nrow, nfreq, 4), dtype=np.complex64)
         flagged = np.zeros_like(region_model, dtype=np.bool)
         # now we predict for this direction
-        log.info("Computing visibilities in {1:d} facets for direction '{0:s}' for model '{2:s}'...".format(
-            str(self.__direction), src.subregion_count, str(self.__model)))
+        log(2).print("\tComputing visibilities in {1:d} facets for direction '{0:s}' for model '{2:s}'...".format(
+                     str(self.__direction), src.subregion_count, str(self.__model)))
 
         for gm, subregion_index in zip(gmacs, range(src.subregion_count)):
             model = np.zeros((nrow, nfreq, 4), dtype=np.complex64).copy()
             model_image = src.get_degrid_model(subregion_index=subregion_index).astype(dtype=np.complex64).copy() #degridder needs transposes, dont mod the data globally
 
             if not np.any(model_image):
-                log(2).print("Facet {0:d} is empty. Skipping".format(subregion_index))
+                log(2).print("\tFacet {0:d} is empty. Skipping".format(subregion_index))
                 continue
             dname = self.__cachename_compute(src)
             model_image = DDFacetSim.__detaper_model(gm, model_image.view(), self.__direction_CFs[dname][subregion_index]).copy() # degridder don't respect strides must be contiguous
@@ -567,7 +623,12 @@ class DDFacetSim(object):
                                         station_positions = dh.antpos,
                                         utc_times = utc_times,
                                         provider=dh.degrid_opts["BeamModel"])
-
+            if cw.num_threads > 1:
+                old_omp_setting = os.environ.get("OMP_NUM_THREADS", str(multiprocessing.cpu_count()))
+                # OMP is not fork safe.... we have to force serialization in case the solvers are already set up
+                # to use threading
+                os.environ["OMP_NUM_THREADS"] = "1"
+            
             this_region_model = -1 * gm.get( #default of the degridder is to subtract from the previous model
                 times=tile_subset.time_col, 
                 uvw=uvwco.astype(dtype=np.float64).copy(), 
@@ -583,11 +644,14 @@ class DDFacetSim(object):
                 TranformModelInput="FT", 
                 ChanMapping=np.array(freq_mapping, dtype=np.int32), 
                 sparsification=None)
-            
+
             region_model += self.__apply_jones(vis = this_region_model,
                                                jones_matrix = E_jones,
                                                a0 = tile_subset.antea,
                                                a1 = tile_subset.anteb)
+            
+            if cw.num_threads > 1:
+                os.environ["OMP_NUM_THREADS"] = old_omp_setting
 
         model_corr_slice = np.s_[0] if model_type == "cplxscalar" else \
                            np.s_[0::3] if model_type == "cplxdiag" else \
