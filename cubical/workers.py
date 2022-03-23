@@ -4,7 +4,7 @@ import multiprocessing, os, sys, traceback
 import concurrent.futures as cf
 import re
 import numba
-
+import numpy as np
 
 import cubical.kernels
 from cubical.tools import logger
@@ -16,7 +16,10 @@ log = logger.getLogger("main")
 worker_process_properties = dict(MainProcess={})
 
 # number of worker processes that will be run
+global num_workers
 num_workers = 0
+global num_threads
+num_threads = 0
 
 def _setup_workers_and_threads(force_serial, ncpu, nworkers, nthreads, montblanc_threads, max_workers):
     """
@@ -111,9 +114,23 @@ def setup_parallelism(ncpu, nworker, nthread, force_serial, affinity, io_affinit
         True if parallel mode is invoked (i.e. workers are to be launched)
     """
     global num_workers
+    global num_threads
+    def set_numba_threading(nthread):
+        try:
+            numba.config.THREADING_LAYER = "safe"
+            @numba.njit(parallel=True)
+            def foo(a, b):
+                return a + b
+            foo(np.arange(5), np.arange(5))
+            return nthread
+        except:
+            numba.config.THREADING_LAYER = "workqueue"
+            print("Cannot use TBB threading (check your installation). Reverting to workqueue parallelization and dropping to 1 thread per worker in solvers", file=log(0, "red"))
+            return 1
+    nthread = set_numba_threading(nthread)
     parallel, num_workers, nthread = _setup_workers_and_threads(force_serial, ncpu, nworker, nthread,
-                                                                montblanc_threads if use_montblanc else None, max_workers)
-
+                                                                montblanc_threads if use_montblanc else None, max_workers)  
+    num_threads = nthread 
     # in serial mode, simply set the Montblanc and/or worker thread count, and return
     if not parallel:
         if nthread:
