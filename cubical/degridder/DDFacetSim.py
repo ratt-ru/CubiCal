@@ -34,6 +34,7 @@ from numba import jit, prange
 import concurrent.futures as cf
 import cubical.workers as cw
 import multiprocessing
+from astropy import wcs
 
 def init_degridders(dir_CFs, 
                     dir_DCs,
@@ -241,9 +242,9 @@ class DDFacetSim(object):
                     g = jp[1, 0]
                     h = jp[1, 1]
                     # jp.X.jq^H
-                    out_vis[r, ch, 0] = e * (XX*a + XY*b) + f * (YX*a + YY*b)
+                    out_vis[r, ch, 0] = e * (XX*a + XY*c) + f * (YX*a + YY*c)
                     out_vis[r, ch, 1] = e * (XX*b + XY*d) + f * (YX*b + YY*d)
-                    out_vis[r, ch, 2] = g * (XX*a + XY*b) + h * (YX*a + YY*c)
+                    out_vis[r, ch, 2] = g * (XX*a + XY*c) + h * (YX*a + YY*c)
                     out_vis[r, ch, 3] = g * (XX*b + XY*d) + h * (YX*b + YY*d)
         
         if jones_matrix is None:
@@ -359,8 +360,25 @@ class DDFacetSim(object):
                         "FITSProvider": beam_provider
                     }
                 }
-                ra, dec = np.deg2rad(src.get_direction_pxoffset(subregion_index=sub_region_index) * 
-                                     src.pixel_scale / 3600.0) + self.__phasecenter
+                subregion_pixoffset = src.get_direction_pxoffset(subregion_index=sub_region_index)
+                header = {
+                    "NAXIS": 2,
+                    "NAXIS1": subregion_pixoffset[0],
+                    "CRVAL1": np.rad2deg(self.__phasecenter[0]),
+                    "CRPIX1": 0,
+                    "CDELT1": src.pixel_scale/3600.0, # already negated in offset calc
+                    "CUNIT1": "deg",
+                    "CTYPE1": "RA---SIN",
+                    "NAXIS2": subregion_pixoffset[1],
+                    "CRVAL2": np.rad2deg(self.__phasecenter[1]),
+                    "CRPIX2": 0,
+                    "CDELT2": src.pixel_scale/3600.0,
+                    "CUNIT2": "deg",
+                    "CTYPE2": "DEC--SIN",
+                }
+                thiswcs = wcs.WCS(header)
+                sky = thiswcs.pixel_to_world(subregion_pixoffset[0], subregion_pixoffset[1])
+                ra, dec = map(np.deg2rad, [sky.ra.value, sky.dec.value])
                 l, m = self.radec2lm_scalar(ra, dec)
                 
                 jones_matrix["DicoJones_Beam"]["Dirs"]["l"] = l
