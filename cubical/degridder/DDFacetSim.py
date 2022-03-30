@@ -18,7 +18,7 @@ try:
 except ImportError:
     raise ImportError("Could not import DDFacet")
 
-from .FITSBeamInterpolator import FITSBeamInterpolator
+from . import FITSBeamInterpolator 
 from . import DicoSourceProvider
 from cubical.tools import logger, ModColor
 log = logger.getLogger("DDFacetSim")
@@ -275,6 +275,7 @@ class DDFacetSim(object):
                      correlation_ids,
                      station_positions,
                      utc_times,
+                     station_names,
                      provider=None):
         """
             src: current dico source provider
@@ -285,6 +286,7 @@ class DDFacetSim(object):
             correlation_ids: hand labels per correlation term as defined in casacore Stokes.h
             station_positions: ECEF coordinates for stations (na, 3) array
             utc_times: UTC times as specified by measurement set
+            station_names: station names as loaded from measurement set
             provider: FITS or None available at present
         """
         src_name = self.__cachename_compute(src)
@@ -345,12 +347,13 @@ class DDFacetSim(object):
                              "fractional bandwidth {5:.2f}~{6:.2f} MHz".format(
                              str(self.__model), str(self.__direction), sub_region_index, dt_start, dt_end, 
                              np.min(chunk_ctr_frequencies*1e-6), np.max(chunk_ctr_frequencies*1e-6)))
-                beam_provider = FITSBeamInterpolator(field_centre,
-                                                     chunk_ctr_frequencies,
-                                                     chunk_channel_widths,  
-                                                     correlation_ids,
-                                                     station_positions,
-                                                     self.degrid_opts)
+                beam_provider = FITSBeamInterpolator.FITSBeamInterpolator(field_centre,
+                                                                          chunk_ctr_frequencies,
+                                                                          chunk_channel_widths,  
+                                                                          correlation_ids,
+                                                                          station_positions,
+                                                                          station_names,
+                                                                          self.degrid_opts)
                 jones_matrix = {"DicoJones_Beam": {
                         "Dirs": {},
                         "TimeMapping": {},
@@ -609,11 +612,14 @@ class DDFacetSim(object):
 
             # load cached E Jones (None if unity is to be applied):
             if poltype == "linear":
-                DataCorrelationFormat = [9, 10, 11, 12] # Defined in casacore Stokes.h
+                DataCorrelationFormat = list(map(lambda x: FITSBeamInterpolator.MS_STOKES_ENUMS.index(x), 
+                                                 FITSBeamInterpolator.LINEAR_CORRS))
             elif poltype == "circular":
-                DataCorrelationFormat = [5, 6, 7, 8]
+                DataCorrelationFormat = list(map(lambda x: FITSBeamInterpolator.MS_STOKES_ENUMS.index(x), 
+                                                 FITSBeamInterpolator.CIRCULAR_CORRS))
             else:
-                raise ValueError("Only supports linear or circular for now")
+                raise ValueError("Only supports linear or circular feeds for now")
+
             E_jones = self.__load_jones(src = src,
                                         sub_region_index = subregion_index,
                                         field_centre = self.__phasecenter,
@@ -621,6 +627,7 @@ class DDFacetSim(object):
                                         chunk_channel_widths = chan_widths.ravel(),
                                         correlation_ids = DataCorrelationFormat,
                                         station_positions = dh.antpos,
+                                        station_names = dh.antnames,
                                         utc_times = utc_times,
                                         provider=dh.degrid_opts["BeamModel"])
             if cw.num_threads > 1:
