@@ -30,7 +30,8 @@ if __name__ == "__main__":
                 attr = OmegaConf.create(attrs[name])
                 param = dict(
                     info=attr.doc.replace("\n", " "), 
-                    default=value, required=False)
+                    required=False)
+                    # default=value, required=False)
                 if hasattr(attr, 'type'):
                     param['dtype'] = attr.type.__name__
                 section_config[name] = param
