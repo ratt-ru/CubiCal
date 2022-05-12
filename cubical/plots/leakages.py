@@ -110,7 +110,7 @@ def read_aips_prtab_leakages(filename):
                 print(f"{filename}:{iline}: antenna entry before header")
                 raise RuntimeError
             antenna = columns[0]
-            freq, rr, ri, lr, li = map(float, columns[1:])
+            freq, rr, ri, lr, li = map(float, [float(col) if col != "INDE" else 0 for col in columns[1:]])
             freq *= 1e+9  # from GHz
             antdict = aips_rel_leak.setdefault(antenna, dict(R=OrderedDict(), L=OrderedDict()))
             antdict['R'][freq] = rr + 1j*ri
