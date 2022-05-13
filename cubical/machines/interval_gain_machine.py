@@ -13,12 +13,6 @@ import logging
 import re
 from numpy.ma import masked_array
 
-def copy_or_identity(array, time_ind=0, out=None):
-    if out is None:
-        return array
-    np.copyto(out, array)
-    return out
-
 
 class PerIntervalGains(MasterMachine):
     """
@@ -894,8 +888,8 @@ class PerIntervalGains(MasterMachine):
                 self.posterior_gain_error[idir, ...] = 0
 
     @staticmethod
-    def copy_or_identity(array, time_ind=0, out=None):
-        """Helper conversion method. Returns array itself, or copies it to out"""
+    def copy_or_identity(array, tdim_ind=0, out=None):
+        """Helper conversion method. Returns array itself, or copies it to out."""
         if out is None:
             return array
         np.copyto(out, array)

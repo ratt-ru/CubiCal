@@ -1383,7 +1383,7 @@ class MSTile(object):
                     flag_col |= prior_flags
                 ratio = prior_flags.sum() / float(prior_flags.size)
                 print("  also transferring {:.2%} input flags (--flags-save-legacy apply)".format(ratio), file=log)
-                flag_col[:] = np.logical_or.reduce(axis=-2)[:,:,np.newaxis]
+                flag_col[:] = np.logical_or.reduce(prior_flags, axis=-1)[:,:,np.newaxis]
 
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out

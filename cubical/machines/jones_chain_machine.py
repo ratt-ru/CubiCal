@@ -461,7 +461,7 @@ class JonesChain(MasterMachine):
                     continue
                 self.active_term.iters = 0
                 self._convergence_states_finalized = False
-                if previous_term:
+                if previous_term and previous_term.solvable:
                     previous_term.has_converged = previous_term.has_stalled = False
                 self.active_term.has_converged = self.active_term.has_stalled = False
                 print("activating term {}".format(self.active_term.jones_label), file=log(1))

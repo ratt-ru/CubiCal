@@ -27,7 +27,7 @@ def make_stimela_schema(params: Dict[str, Any], inputs: Dict[str, Parameter], ou
 
     for jones in terms:
         for key, value in JonesTemplate.items():
-            inputs[f"{jones}/{key}"] = value
+            inputs[f"{jones.lower()}/{key}"] = value
         # inputs[f"{jones}.label"].default = jones
 
     return inputs, outputs
