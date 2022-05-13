@@ -48,7 +48,7 @@ def CreateShared(Name, shape, dtype):
 def ToShared(Name, A):
 
     a = CreateShared(Name, A.shape, A.dtype)
-    a[:] = A[:]
+    a[...] = A[...]
     return a
 
 def DelArray(Name):

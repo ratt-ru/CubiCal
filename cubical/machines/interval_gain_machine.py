@@ -13,12 +13,6 @@ import logging
 import re
 from numpy.ma import masked_array
 
-def copy_or_identity(array, time_ind=0, out=None):
-    if out is None:
-        return array
-    np.copyto(out, array)
-    return out
-
 
 class PerIntervalGains(MasterMachine):
     """
@@ -576,14 +570,31 @@ class PerIntervalGains(MasterMachine):
 
             if len(bad_dirs):
                 if log.verbosity() > 1:
+                    def __extract_dirs(d):
+                        if (type(d) is list or type(d) is np.ndarray) and len(d) == 1:
+                            return str(d[0])
+                        elif (type(d) is list or type(d) is np.ndarray):
+                            return ", ".join(d)
+                        else:
+                            return str(d)
+
+                    def __extract_dirs_perc(d):
+                        if (type(d) is list or type(d) is np.ndarray) and len(d) == 1:
+                            return "{0:.3f}%".format(percflagged[d[0]])
+                        elif (type(d) is list or type(d) is np.ndarray):
+                            return ", ".join(["{0:.3f}%".format(percflagged[dd]) for dd in d])
+                        else:
+                            return "UNDETERMINED"
+
                     msg = "{} directions ({}) flagged {}".format(
                         len(bad_dirs),
-                        ", ".join(["dir {0:s}: {1:.3f}% gains affected".format(
-                            str(d), percflagged[d]) for d in bad_dirs]),
-                        why_flagged
-                    )
+                        ", ".join(["dir {0:s}: {1:s} gains affected".format(
+                                  __extract_dirs(d), __extract_dirs_perc(d)) 
+                            for d in bad_dirs]),
+                        why_flagged)
                 else:
-                    msg = "{} directions flagged {}".format(len(bad_dirs), why_flagged)
+                    msg = "{} directions flagged {}. Verbosity level 2 gives a full list of these directions".format(
+                        len(bad_dirs), why_flagged)
                 issue_warning(msg, 50)
 
     def _update_gain_flags(self, flagtype, flags_arr):
@@ -897,9 +908,7 @@ class PerIntervalGains(MasterMachine):
 
     @staticmethod
     def copy_or_identity(array, tdim_ind=0, out=None):
-        """Helper conversion method. Returns array itself, or copies it to out
-        tdim_ind is unused, and is there to make the signature identical to unpack_intervals
-        """
+        """Helper conversion method. Returns array itself, or copies it to out."""
         if out is None:
             return array
         np.copyto(out, array)
