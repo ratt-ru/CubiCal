@@ -20,20 +20,14 @@ JONES_TEMPLATE:
       parameter names, but his may be overridden by adding an explicit "//LABEL" to
       the database filename.
     required: false
-    policies:
-      disable_substitutions: true
   xfer-from:
     info: Transfer solutions from given database. Similar to -load-from, but solutions
       will be interpolated onto the required time/frequency grid, so they can originate
       from a different field (e.g. from a calibrator).
     required: false
-    policies:
-      disable_substitutions: true
   save-to:
     info: Save solutions to given database.
     required: false
-    policies:
-      disable_substitutions: true
   dd-term:
     info: Determines whether this term is direction dependent. --model-ddes must be
       enabled.

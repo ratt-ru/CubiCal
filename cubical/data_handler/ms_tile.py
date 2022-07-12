@@ -1408,13 +1408,16 @@ class MSTile(object):
 
             if self.dh._save_flags_apply:
                 prior_flags = subset.upsample((data['flags'] & FL.PRIOR) != 0)
+                ratio = prior_flags.sum() / float(prior_flags.size)
+                prior_flags[:] = np.logical_or.reduce(prior_flags, axis=-1)[:,:,np.newaxis]
+                ratio1 = prior_flags.sum() / float(prior_flags.size)
+                print(f"  also transferring {ratio1:.2%} input flags (--flags-save-legacy apply)", file=log)
+                if ratio1 != ratio:
+                    print(f"  note that extending flags to all corrs extended this from {ratio:.2%}", file=log)
                 if flag_col is None:
                     flag_col = prior_flags
                 else:
                     flag_col |= prior_flags
-                ratio = prior_flags.sum() / float(prior_flags.size)
-                print("  also transferring {:.2%} input flags (--flags-save-legacy apply)".format(ratio), file=log)
-                flag_col[:] = np.logical_or.reduce(prior_flags, axis=-1)[:,:,np.newaxis]
 
             # now figure out what to write
             # this is set if BITFLAG/BITFLAG_ROW is to be written out
