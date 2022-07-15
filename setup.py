@@ -89,7 +89,7 @@ setup(name='cubical',
       extras_require={
           'lsm-support': ['montblanc >= 0.6.4'],
           'degridder-support': ['ddfacet >= 0.6.0', 
-                                'regions >= 0.4',
+                                'regions < 0.5', # bug in new DS9 parser
                                 'meqtrees-cattery >= 1.7.0']
       }
 )
