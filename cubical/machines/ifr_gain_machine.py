@@ -150,8 +150,8 @@ class IfrGainMachine(object):
         fl[:] = subdict['ifrgains:flags__'][...,np.newaxis,np.newaxis]
         ddh = masked_array(ddh, fl, fill_value=0)
         mdh = masked_array(subdict['ifrgains:MDH__'], fl, fill_value=0)
-        self._ddh_sum[subdict['ifrgains:freqslice__'],...] += ddh
-        self._mdh_sum[subdict['ifrgains:freqslice__'],...] += mdh
+        self._ddh_sum[subdict['ifrgains:freqslice__'],...] += ddh.data
+        self._mdh_sum[subdict['ifrgains:freqslice__'],...] += mdh.data
 
     def save(self):
         """
