@@ -9,6 +9,13 @@ cabs:
       explicit_false: false
     inputs:
       _include: (cubical.stimela)schema.yaml
+      parset: 
+        dtype: File
+        policies:
+          positional_head: true
+      debug:
+        pdb:
+          default: false
     dynamic_schema: cubical.stimela.make_stimela_schema
 
   cubical_gain_plots:
