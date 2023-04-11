@@ -964,21 +964,16 @@ class MSDataHandler:
             value[:] = np.bitwise_or.reduce(value, axis=2)[:,:,np.newaxis]
 
         if self._channel_slice == slice(None) and self._corr_slice == slice(None):
-            return self._putcol_wrapper(subset, value, startrow)
+            return self._putcol_wrapper(subset, str(column), value, startrow)
         else:
-            # for bitflags, we want to preserve flags we haven't touched -- read the column
-            if column == "BITFLAG" or column == "FLAG":
-                value0 = np.empty_like(value)
-                self._getcolnp_wrapper(subset, column, value0, startrow)
-                # cheekily propagate per-corr flags to all corrs
-                value0[:] = np.bitwise_or.reduce(value0, axis=2)[:,:,np.newaxis]
-            # otherwise, init empty column
-            else:
-                ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
-                shape = (nrows, self._nchan0_orig[ddid], self.nmscorrs)
-                value0 = np.zeros(shape, value.dtype)
+            # init empty column
+            ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
+            shape = (nrows, self._nchan0_orig[ddid], self.nmscorrs)
+            value0 = np.zeros(shape, value.dtype)
+            if subset.iscelldefined(column, startrow):
+              self._getcolnp_wrapper(subset, column, value0, startrow)
             value0[:, self._channel_slice, self._corr_slice] = value
-            return self._putcol_wrapper(subset, str(column), value0, startrow, nrows)
+            return self._putcol_wrapper(subset, str(column), value0, startrow)
 
     def define_chunk(self, chunk_time, rebin_time, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """

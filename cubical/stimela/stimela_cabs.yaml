@@ -1,0 +1,52 @@
+cabs:
+  cubical:
+    command: gocubical
+    policies:
+      prefix: '--'
+      replace:
+        '.': '-'
+      explicit_true: true
+      explicit_false: false
+    inputs:
+      _include: (cubical.stimela)schema.yaml
+      parset: 
+        dtype: File
+        policies:
+          positional_head: true
+      debug:
+        pdb:
+          default: false
+    dynamic_schema: cubical.stimela.make_stimela_schema
+
+  cubical_gain_plots:
+    command: plot-gain-solutions
+    policies:
+      prefix: '--'
+      replace: {'_': '-'}
+    inputs:
+      table:
+        dtype: File
+        required: true
+        policies:
+          positional: true
+      parameter:
+        dtype: str
+      label:
+        dtype: str
+      gain:
+        dtype: bool
+      bandpass:
+        dtype: bool
+      leakage:
+        dtype: bool
+      diag:
+        choices: [ri, ap, none]
+      off-diag:
+        choices: [ri, ap, none]
+      nrow:
+        dtype: int
+      ncol:
+        dtype: int
+    outputs:
+      output-name:
+        dtype: File
