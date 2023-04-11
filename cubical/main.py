@@ -649,9 +649,9 @@ def main(debugging=False):
                     cubical.plots.ifrgains.make_ifrgain_plots(solver.ifrgain_machine.reload(), ms, GD, basename)
                 except Exception as exc:
                     import traceback
-                    print(file=ModColor.Str("An error has occurred while making BBC plots: {}({})\n {}".format(type(exc).__name__,
+                    print(ModColor.Str("An error has occurred while making BBC plots: {}({})\n {}".format(type(exc).__name__,
                                                                                            exc,
-                                                                                           traceback.format_exc())))
+                                                                                           traceback.format_exc())), file=log)
                     print(ModColor.Str("This is not fatal, but should be reported (and your plots have gone missing!)"), file=log)
 
         ms.close()
