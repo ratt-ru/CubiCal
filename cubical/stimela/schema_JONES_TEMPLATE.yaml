@@ -1,0 +1,165 @@
+JONES_TEMPLATE:
+  solvable:
+    info: Set to 0 (and specify -load-from or -xfer-from) to load a non-solvable term
+      is loaded from disk. Not to be confused with --sol-jones, which determines the
+      active Jones terms.
+    required: false
+  type:
+    info: Type of Jones matrix to solve for. Note that if multiple Jones terms are
+      enabled, then only complex-2x2 is supported.
+    required: false
+  delay-estimate-pad-factor:
+    info: Integer by which the bandwidth will be multiplied for padding the FFT. Used
+      in the f-slope solver to make an initial guess of delay values.
+    required: false
+    dtype: int
+  load-from:
+    info: Load solutions from given database. The DB must define solutions on the
+      same time/frequency grid (i.e. should normally come from calibrating the same
+      pointing/observation). By default, the Jones matrix label is used to form up
+      parameter names, but his may be overridden by adding an explicit "//LABEL" to
+      the database filename.
+    required: false
+  xfer-from:
+    info: Transfer solutions from given database. Similar to -load-from, but solutions
+      will be interpolated onto the required time/frequency grid, so they can originate
+      from a different field (e.g. from a calibrator).
+    required: false
+  save-to:
+    info: Save solutions to given database.
+    required: false
+  dd-term:
+    info: Determines whether this term is direction dependent. --model-ddes must be
+      enabled.
+    required: false
+    dtype: bool
+  fix-dirs:
+    info: For DD terms, makes the listed directions non-solvable.
+    required: false
+  update-type:
+    info: 'Determines update type. This does not change the Jones solver type, but
+      restricts the update rule to pin the solutions within a certain subspace: ''full''
+      is an unrestricted 2x2 solution; ''diag'' pins the off-diagonal terms to 0;
+      ''scalar'' makes the diagonal terms equal; ''phase-diag'' or ''phase-scalar''
+      pins the amplitudes to unity; ''amp-diag'' or ''amp-scalar'' pins the phases
+      to 0; ''pzd-diag'' allows for a diagonal phase-zero-difference (PZD) term only;
+      ''leakage'' allows complex off-diagonal leakages and pins the diagonals to 1;
+      ''pzd-leakage'' allows complex off-diagonal leakages and a diagonal PZD term;'
+    required: false
+  estimate-pzd:
+    info: Estimate phase-zero difference to initialize the diagonal phases
+    required: false
+    dtype: bool
+  time-int:
+    info: Time solution interval for this term.
+    required: false
+  freq-int:
+    info: Frequency solution interval for this term.
+    required: false
+  max-prior-error:
+    info: Flag solution intervals where the prior error estimate is above this value.
+    required: false
+    dtype: float
+  max-post-error:
+    info: Flag solution intervals where the posterior variance estimate is above this
+      value.
+    required: false
+    dtype: float
+  low-snr-warn:
+    info: Trigger SNR warning to the user at this threshold
+    required: false
+  high-gain-var-warn:
+    info: Trigger posterior gain variance warning to the user at this threshold
+    required: false
+  clip-low:
+    info: Amplitude clipping - flag solutions with diagonal amplitudes below this
+      va lue.
+    required: false
+    dtype: float
+  clip-high:
+    info: Amplitude clipping - flag solutions with any amplitudes above this value.
+      0 disables.
+    required: false
+    dtype: float
+  clip-after:
+    info: Number of iterations after which to start clipping this gain. Use a value
+      of 0 to also enable clipping in apply-only modes (--out-mode ac/ar/as).
+    required: false
+  max-iter:
+    info: Maximum number of iterations spent on this term.
+    required: false
+  pin-slope-iters:
+    info: The number of iterations for which the delay should be held constant when
+    required: false
+  epsilon:
+    info: Convergence threshold. Solutions that change by less than this value are
+      considered converged.
+    required: false
+  delta-chi:
+    info: Threshold for solution stagnancy -- if the chi-squared is improving by less
+      (relatively), then the solution is marked as stalled.
+    required: false
+  conv-quorum:
+    info: Minimum percentage of converged solutions to accept.
+    required: false
+  ref-ant:
+    info: Reference antenna - its phase is guaranteed to be zero.
+    required: false
+  prop-flags:
+    info: Flag propagation policy. Determines how flags raised on gains propagate
+      back into the data. Options are 'never' to never propagate, 'always' to always
+      propagate, 'default' to only propagate flags from direction-independent gains.
+    required: false
+  diag-only:
+    info: Use only diagonal (parallel-hand) data and model terms for the solution.
+      Note that gains are still applied to the full 2x2 data (unless --sel-diag is
+      also set).
+    required: false
+  offdiag-only:
+    info: Use only off-diagonal data and model terms for the solution, and only solve
+      for off-diagonal Jones elements, pinning the on-diagonals to 1.
+    required: false
+    dtype: bool
+  robust-cov:
+    info: Determines how the residuals covariance matrix is computed if the robust-2x2
+      solver is selected. Options are 'compute' to compute normaly, 'identity' to
+      set the covariance to 1 (identity matrix) as in the Robust-t paper, and 'hybrid'
+      which is the default computes the covaraince matrix, C but sets it to 1 if the
+      elements are greater than 1.
+    required: false
+  robust-scale:
+    info: Scales down the residuals covariance matrix by this factor. Simulations
+      show that this improves the results with unmodelled sources. This might because
+      of how to correctly computed the normalisation factor for computing the covariance
+      matrix.
+    required: false
+  robust-npol:
+    info: The number of correlations (polarizations) actually present in the visibilities.
+      This option only applies if the robust-2x2 solver is selected. Expecting 2 or
+      4 correlations
+    required: false
+  robust-int:
+    info: Number of iterations after which the v-parameter and the covariance matrice
+      are recomputed for the robust solver
+    required: false
+  robust-flag-weights:
+    info: run a dummy iteration with the robust solver and flag the data bsaed on
+      the weights
+    required: false
+  robust-cov-thresh:
+    info: An estimated Covariance higher than this threshold indicates significant
+      RFI in the data
+    required: false
+  robust-sigma-thresh:
+    info: Number of sigma thresholds to use when flagging with the weights from the
+      robust solver
+    required: false
+  robust-save-weights:
+    info: Determines if the appied weights from the robust-2x2 solver are stored.
+      This option only applies if the robust-2x2 solver is selected. If this option
+      is set and output-weight-column must be set as well.
+    required: false
+  estimate-delays:
+    info: Estimate delays (for f-slope) using a reference antenna
+    required: false
+    dtype: bool

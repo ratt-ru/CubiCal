@@ -13,12 +13,6 @@ import logging
 import re
 from numpy.ma import masked_array
 
-def copy_or_identity(array, time_ind=0, out=None):
-    if out is None:
-        return array
-    np.copyto(out, array)
-    return out
-
 
 class PerIntervalGains(MasterMachine):
     """
@@ -134,8 +128,13 @@ class PerIntervalGains(MasterMachine):
         if self.ref_ant is not None:
             if type(self.ref_ant) is not str:
                 self.ref_ant = str(self.ref_ant)
-            if self.ref_ant[0] == "#":
+            # an empty string becomes None i.e. no refant
+            if not self.ref_ant:
+                self.ref_ant = None
+            # "#N" or"=N" is antenna number N
+            elif self.ref_ant[0] in "#=":
                 self.ref_ant = int(self.ref_ant[1:])
+            # otherwise, treat as antenna name
             else:
                 from cubical.solver import metadata
                 self.ref_ant = metadata.antenna_index[self.ref_ant]
@@ -328,6 +327,21 @@ class PerIntervalGains(MasterMachine):
 
         return resid_arr
 
+    def mask_unused_equations(self, jh, r, obser_arr):
+        """
+        Masks out unused equations in J^H and R elements, following the diag_only and offdiag_only settings etc. Returns R.
+        """
+        r = super().mask_unused_equations(jh, r, obser_arr)
+
+        if "scalar" in self.update_type:
+            r[...,:,:] = r.sum((-1,-2))[..., np.newaxis, np.newaxis]
+            jh[...,:,:] = jh.sum((-1,-2))[..., np.newaxis, np.newaxis]
+            # apply diag/offdiag nulling again
+            r = super().mask_unused_equations(jh, r, obser_arr)
+
+        return r
+
+
     def apply_gains(self, model_arr, full2x2=True, dd_only=False):
         gains_h = self.get_conj_gains()
 
@@ -462,10 +476,9 @@ class PerIntervalGains(MasterMachine):
             if invalid_models.any():
                 self.raise_userwarning(
                     logging.CRITICAL,
-                    "{0:s} {1:s}: {2:d}/{3:d} directions/intervals has an invalid or null model. " +
-                    "This can be caused by bad data, but should have been handled gracefully, so please report this issue!".format(
-                        self.chunk_label, self.jones_label, invalid_models.sum(), invalid_models.size
-                    ),
+                    "{0:s} {1:s}: {2:d}/{3:d} directions/intervals has an invalid or null model. ".format(
+                        self.chunk_label, self.jones_label, invalid_models.sum(), invalid_models.size) +
+                    "This can be caused by bad data, but should have been handled gracefully, so please report this issue!",
                     90, raise_once="invalid_models", verbosity=2, color="red")
 
             with np.errstate(invalid='ignore', divide='ignore'):
@@ -894,8 +907,8 @@ class PerIntervalGains(MasterMachine):
                 self.posterior_gain_error[idir, ...] = 0
 
     @staticmethod
-    def copy_or_identity(array, time_ind=0, out=None):
-        """Helper conversion method. Returns array itself, or copies it to out"""
+    def copy_or_identity(array, tdim_ind=0, out=None):
+        """Helper conversion method. Returns array itself, or copies it to out."""
         if out is None:
             return array
         np.copyto(out, array)

@@ -1,3 +1,7 @@
 include cubical/DefaultParset.cfg
 include cubical/database/blankcaltable.CASA.tgz
 include cubical/bin/gocubical
+include cubical/stimela/schema.yaml
+include cubical/stimela/schema_JONES_TEMPLATE.yaml
+include cubical/stimela/stimela_cabs.yaml
+

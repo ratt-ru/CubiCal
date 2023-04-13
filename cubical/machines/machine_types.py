@@ -1,3 +1,4 @@
+from logging import setLoggerClass
 from . import complex_2x2_machine
 from . import complex_W_2x2_machine
 from . import pol_gain_machine
@@ -13,11 +14,11 @@ GAIN_MACHINE_TYPES = {
     'complex-pol': pol_gain_machine.PolarizationGains,
     'phase-diag': phase_diag_machine.PhaseDiagGains,
     'robust-2x2': complex_W_2x2_machine.ComplexW2x2Gains,
-    'robust-diag': complex_W_2x2_machine.ComplexW2x2Gains, 
-    'f-slope': slope_machine.PhaseSlopeGains,
-    't-slope': slope_machine.PhaseSlopeGains,
-    'tf-plane': slope_machine.PhaseSlopeGains
+    'robust-diag': complex_W_2x2_machine.ComplexW2x2Gains
 }
+
+GAIN_MACHINE_TYPES.update({name: slope_machine.PhaseSlopeGains for name in slope_machine.SLOPE_TYPES})
+GAIN_MACHINE_TYPES.update({name: slope_machine.PhaseSlopeGains for name in slope_machine.SLOPE_TYPE_ALIASES})
 
 def get_machine_class(typestr):
     """

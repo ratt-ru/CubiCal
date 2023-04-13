@@ -8,6 +8,7 @@ Handles parameter databases which can contain solutions and other relevant value
 from __future__ import print_function
 from builtins import range
 import numpy as np
+from numpy import ma
 from numpy.ma import masked_array
 from cubical.tools import logger
 
@@ -564,10 +565,20 @@ class Parameter(object):
                                                    arse.grid, arse.norm_grid):
                     # interpolatable axis of size >1: process by interpolator
                     if self.grid[iaxis].size > 1:
-                        output_coord.append(self._to_norm(iaxis, outgr))
                         # find [i0,i1]: index of envelope of output grid points in the array grid
                         i0, i1 = np.searchsorted(agr, [outgr[0], outgr[-1]])
                         i0, i1 = max(0, i0 - 1), min(len(agr), i1 + 1)
+                        # there's an edge case here whereby with i1=i0+1 (i.e. envelope consists of just one point,
+                        # which generally happens if the output grid is outside the solution domain), the  
+                        # interpolator fails. So in this case adjust i0 or i1 up or down by one so that we have
+                        # at least two points in the interpolator object
+                        if i1 - i0 == 1:
+                            if not i0:
+                                i1 += 1
+                            else:
+                                i0 -= 1
+                        # 
+                        output_coord.append(self._to_norm(iaxis, outgr))
                         segment_grid.append(angr[i0:i1])
                         input_grid_segment.append((iaxis, i0, i1))
                         # extract segment on input to interpolator, do not broadcast back out
@@ -593,8 +604,10 @@ class Parameter(object):
                     arseg = arse.array[tuple(array_segment_slice)]
                     # arav: linear array of all values, adata: all unflagged values
                     arav = arseg.ravel()
-                    adata = arav.data[~arav.mask] if arav.mask is not np.ma.nomask else arav.data
-
+                    if type(arav) is np.ndarray:
+                        adata = arav
+                    else:
+                        adata = arav.data[~arav.mask] if arav.mask is not np.ma.nomask else arav.data
                     # this is used by the 2D and >2D cases, so make a function
                     def makeLinearNDInterpolator(segment_grid, arav, adata):
                         meshgrids_full = np.array([g.ravel() for g in np.meshgrid(*segment_grid, indexing='ij')]).T
@@ -648,7 +661,9 @@ class Parameter(object):
                         # make 2D interpolator
                         interpolator1 = scipy.interpolate.interp2d(segment_grid[0], segment_grid[1],
                                                                   filled_array.T, bounds_error=False)
-                        interpolator = lambda *output_coord: interpolator1(*output_coord).T
+                        # NB: interp2d() will return (N,) rather than (N,1) arrays when the output coordinates have lengths of N and 1.
+                        # Since the broadcasting code below expects (N,1), add an explicit reshape here
+                        interpolator = lambda *output_coord: interpolator1(*output_coord).T.reshape(len(output_coord[0]), len(output_coord[1]))
 
                     # for >2 dims, use LinearNDInterpolator. Note that this does not extrapolate.
                     elif len(segment_grid) > 2:

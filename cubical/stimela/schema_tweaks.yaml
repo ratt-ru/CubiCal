@@ -1,0 +1,36 @@
+## "tweaks" applied on top of auto-generated schema
+
+data:
+  ms:
+    dtype: MS
+    writable: true
+
+sol:
+  jones:
+    dtype: List[str]
+    policies:
+      repeat: ','
+  terms-iter:
+    dtype: List[int]
+    policies:
+      repeat: ','
+
+# bbc:
+#   save-to: 
+#     policies:
+#       disable_substitutions: true
+#   load-from: 
+#     policies:
+#       disable_substitutions: true
+
+
+# JONES_TEMPLATE:
+#   save-to: 
+#     policies:
+#       disable_substitutions: true
+#   load-from: 
+#     policies:
+#       disable_substitutions: true
+#   xfer-from: 
+#     policies:
+#       disable_substitutions: true

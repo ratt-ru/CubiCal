@@ -1,0 +1,24 @@
+cabs:
+  cubical:
+    command: gocubical
+    policies:
+      prefix: '--'
+      replace:
+        '.': '-'
+      explicit_true: true
+      explicit_false: true
+    inputs:
+      _include: (cubical.stimela)schema.yaml
+      _flatten: 1
+      _flatten_sep: '/'
+    dynamic_schema: cubical.stimela.make_stimela_schema
+
+test_recipe:
+  steps:
+    cc:
+      cab: cubical
+      params:
+        data/ms: 'test.ms'
+        sol/jones: [b,g]
+        b/freq-int: 1
+

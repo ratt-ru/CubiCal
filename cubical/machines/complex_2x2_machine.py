@@ -122,17 +122,7 @@ class Complex2x2Gains(PerIntervalGains):
         jhr = self.get_new_jhr()
         r = self.get_obs_or_res(obser_arr, model_arr)
 
-        if self.offdiag_only:
-            jh[...,(0,1),(0,1)] = 0
-            if r is obser_arr:
-                r = r.copy()
-            r[...,(0,1),(0,1)] = 0
-            
-        if self.diag_only:
-            jh[...,(0,1),(1,0)] = 0
-            if r is obser_arr:
-                r = r.copy()
-            r[...,(0,1),(1,0)] = 0
+        r = self.mask_unused_equations(jh, r, obser_arr)
 
         self.kernel_solve.compute_jhr(jh, r, jhr, self.t_int, self.f_int)
 
@@ -190,6 +180,7 @@ class Complex2x2Gains(PerIntervalGains):
         super(Complex2x2Gains, self).precompute_attributes(data_arr, model_arr, flags_arr, noise)
 
         if self.solvable and self._estimate_pzd and self._pzd is 0 and model_arr is not None:
+            np.savez("data", d=data_arr, m=model_arr, f=flags_arr)
             marr = model_arr[..., (0, 1), (1, 0)][:, 0].sum(0)
             darr = data_arr[..., (0, 1), (1, 0)][0]
             mask = (flags_arr[..., np.newaxis] != 0) | (marr == 0)
@@ -218,18 +209,36 @@ class Complex2x2Gains(PerIntervalGains):
 
     def restrict_solution(self, gains):
         """
-        Restricts the solution by invoking the inherited restrict_soultion method and applying
+        Restricts the solution by invoking the inherited restrict_solution method and applying
         any machine specific restrictions.
         """
 
-        if "pzd" in self.update_type:
+        if "pzd" in self.update_type: #  and self.iters >= 6:
             # re-estimate pzd
             mask = self.gflags!=0
+            
+            # with np.errstate(divide='ignore', invalid='ignore'):
+            #     pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
+            # pzd = np.angle(pzd.sum(axis=(0,3)))
+
+            g1, g2 = gains[:, :, :, :, 0, 0], gains[:, :, :, :, 1, 1]
+            a1, a2 = abs(g1), abs(g2)
             with np.errstate(divide='ignore', invalid='ignore'):
-                pzd = masked_array(gains[:, :, :, :, 0, 0] / gains[:, :, :, :, 1, 1], mask)
-            pzd = np.angle(pzd.sum(axis=(0,3)))
+                pzd = masked_array((g1*a2)/(g2*a1), mask)
+            weight = masked_array(np.sqrt(a1*a2), mask)
+
+            pzd = np.angle((pzd*weight).sum(axis=(0,3)) / weight.sum(axis=(0,3)))
+
+            # amps = np.abs(gains[:, :, :, :, (0,1), (0,1)]).min(axis=-1)
+            # phases = np.angle(gains[:, :, :, :, (0,1), (0,1)])
+            # phase_diff = masked_array(phases[:,:,:,:,0] - phases[:,:,:,:,1], mask)
+            # amps = masked_array(amps, mask)
+            # with np.errstate(divide='ignore', invalid='ignore'):
+            #     pzd = np.sum(phase_diff*amps, axis=(0,3)) / np.sum(amps, axis=(0,3))
+
             with np.printoptions(precision=4, suppress=True, linewidth=1000):
-                print("{0}: PZD estimate changes by {1} deg".format(self.chunk_label, (pzd-self._pzd)* 180 / np.pi), file=log(2))
+                log(2).print(f"{self.chunk_label}: PZD estimate changes by {(pzd-self._pzd)*180/np.pi} deg")
+                log(2).print(f"{self.chunk_label}: new PZD is {pzd*180/np.pi} deg")
             # import ipdb; ipdb.set_trace()
             self._pzd = pzd
             self._exp_pzd = np.exp(-1j * pzd)
@@ -249,9 +258,12 @@ class Complex2x2Gains(PerIntervalGains):
                 with np.printoptions(precision=4, suppress=True, linewidth=1000):
                     print("{0}: subtracting relative leakage offset {1}".format(self.chunk_label, offset), file=log(2))
 
+        # ref antenna doesn't apply to PZD, since that's the same for all antennas anyway
         if self.ref_ant is not None:
             phase = np.angle(self.gains[...,self.ref_ant,0,0])
             gains[:,:,:,:,(0,1),(0,1)] *= np.exp(-1j*phase)[:,:,:,np.newaxis,np.newaxis]
+            print(f"{self.chunk_label}: applying reference antenna #{self.ref_ant}", file=log(2))
+
 
         super(Complex2x2Gains, self).restrict_solution(gains)
         

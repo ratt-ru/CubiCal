@@ -102,6 +102,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
     # factors etc, and does any other precomputation required by the current gain machine.
 
     gm.precompute_attributes(obser_arr, model_arr, flags_arr, inv_var_chan)
+    gm.update_model(model_arr)
 
     # apply any flags raised in the precompute
 
@@ -297,7 +298,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             # Don't do this on a major step (i.e. when going from term to term in a chain), as the
             # reduced chisq (which compute_chisq() returns) can actually jump when going to the next term
 
-            if update_major_step:
+            if update_major_step: # or num_iter <= 6:
                 stats.chunk.num_stalled = stats.chunk.num_diverged = 0
             else:
                 delta_chi = old_chi - chi
@@ -328,7 +329,7 @@ def _solve_gains(gm, stats, madmax, obser_arr, model_arr, flags_arr, sol_opts, l
             #     import pdb; pdb.set_trace()
 
             if log.verbosity() > 1:
-                if update_major_step:
+                if update_major_step: # or num_iter <= 6:
                     delta_chi_max = delta_chi_mean = 0.
                 else:
                     wh = old_chi != 0

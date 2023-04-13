@@ -1,0 +1,618 @@
+data:
+  ms:
+    info: Name of measurement set (MS)
+    required: false
+    dtype: MS
+    writable: true
+  column:
+    info: Name of MS column to read for data.
+    required: false
+    dtype: str
+  time-chunk:
+    info: Chunk data up by this number of timeslots. This limits the amount of data
+      processed at once. Smaller chunks allow for a smaller RAM footprint and greater
+      parallelism, but this sets an upper limit on the solution intervals that may
+      be employed. Specify as an integer number of timeslots, or a value with a unit
+      (e.g. '300s'). 0 means use full time axis.
+    required: false
+  freq-chunk:
+    info: Chunk data by this number of channels. See time-chunk for info. Specify
+      as an integer number of channels, or a value with a unit (e.g. '128MHz'). 0
+      means full frequency axis.
+    required: false
+  rebin-time:
+    info: Rebin data in time on the fly. Specify as a number of timeslots to average
+      together, or a value with a unit (e.g. '5s').
+    required: false
+  rebin-freq:
+    info: Rebin data in frequency on the fly. Specify as a number of channels to average
+      together, or a value with a unit (e.g. '4MHz').
+    required: false
+  chunk-by:
+    info: If set, then time chunks will be broken up whenever the value in the named
+      column(s) jumps by >JUMPSIZE. Multiple column names may be given, separated
+      by commas. Use None to disable.
+    required: false
+  chunk-by-jump:
+    info: The jump size used in conjunction with chunk-by. If 0, then any change in
+      value is a jump. If n, then the change must be >n.
+    required: false
+  single-chunk:
+    info: If set, processes just one chunk of data matching the chunk ID. Useful for
+      debugging.
+    required: false
+  single-tile:
+    info: If set to >=0, processes just one tile of data. Useful for debugging.
+    required: false
+    dtype: int
+  normalize:
+    info: Normalizes the data to have an amplitude of unity (and applies the amplitude
+      to the
+    required: false
+sel:
+  field:
+    info: FIELD_ID to read from the MS.
+    required: false
+    dtype: int
+  ddid:
+    info: DATA_DESC_IDs to read from the MS. Default reads all. Can be specified as
+      e.g. "5", "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range), "5:" (from
+      5 to last).
+    required: false
+  taql:
+    info: Additional TaQL selection string. Combined with other selection options.
+    required: false
+  chan:
+    info: Channels to read (within each DDID). Default reads all. Can be specified
+      as e.g. "5", "10~20" (10 to 20 inclusive), "10:21" (same), "10:" (from 10 to
+      end), ":10:2" (0 to 9 inclusive, stepped by 2), "~9:2" (same).
+    required: false
+  diag:
+    info: Use diagonal (i.e. parallel hand) correlations only. Off-diagonals will
+      be null in the outputs. See also --JONES-diag-only.
+    required: false
+    dtype: bool
+out:
+  dir:
+    info: Base name of directory for output files. The suffix .cc-out will be implicitly
+      appended, unless OUTDIR ends with a slash.
+    required: false
+    dtype: str
+  name:
+    info: Base name for output files. Full base path will be OUTDIR[.cc-out]/OUTNAMExxx,
+      unless OUTNAME contains a slash, in which case OUTDIR is ignored and OUTNAME
+      is taken to be a full base path.
+    required: false
+  overwrite:
+    info: Allow overwriting of existing output files. If this is set, and the output
+      parset file exists, will raise an exception.
+    required: false
+    dtype: bool
+  backup:
+    info: Allow automatic backup of existing output directories. Automatic backup
+      is only used when OUTDIR is used (i.e. OUTNAME doesn't contain any slashes),
+      and it ends with .cc-out (implicitly or explicitly). In this case, existing
+      output directories are renamed to .cc.out.0, .1, etc.
+    required: false
+  mode:
+    info: Operational mode. [so] solve only; [sc] solve and generate corrected visibilities;
+      [sr] solve and generate corrected residuals; [ss] solve and generate uncorrected
+      residuals; [ac] apply solutions, generate corrected visibilities; [ar] apply
+      solutions, generate corrected residuals; [as] apply solutions, generate uncorrected
+      residuals;
+    required: false
+  apply-solver-flags:
+    info: Apply solver flags when writing new data to measurement set.
+    required: false
+    dtype: bool
+  column:
+    info: Output MS column name (if applicable).
+    required: false
+  derotate:
+    info: Explicitly enables or disables derotation of output visibilities. Default
+      (None) is to use the --model-pa-rotate and --model-feed-rotate settings.
+    required: false
+  model-column:
+    info: If set, model visibilities will be written to the specified column.
+    required: false
+  weight-column:
+    info: If set, weights from the Robust Solver will be written to the specified
+      column. This should be set only if we are using the robust solver.
+    required: false
+  reinit-column:
+    info: Reinitialize output MS column. Useful if the column is in a half-filled
+      or corrupt state.
+    required: false
+    dtype: bool
+  subtract-model:
+    info: Which model to subtract, if generating residuals.
+    required: false
+  subtract-dirs:
+    info: Which model directions to subtract, if generating residuals. ":" subtracts
+      all. Can also be specified as "N", "N:M", ":N", "N:", "N,M,K".
+    required: false
+  correct-dir:
+    info: If direction-dependent gains are in use and correction is being done, selects
+      direction to correct in. If -1, corrects for direction-independent terms only.
+    required: false
+  plots:
+    info: Generate summary plots. Use 'show' to show summary plots interactively.
+    required: false
+  casa-gaintables:
+    info: Export gaintables to CASA caltable format. Tables are exported to same directory
+      as set for cubical databases.
+    required: false
+    dtype: bool
+model:
+  list:
+    info: Predict model visibilities from given column(s) or LSM(s) (using Montblanc).
+    required: false
+  ddes:
+    info: Enable direction-dependent models. If 'auto', this is determined by --sol-jones
+      and --model-list, otherwise, enable/disable explicitly.
+    required: false
+  beam-pattern:
+    info: Apply beams if specified eg. 'beam_$(corr)_$(reim).fits' or 'beam_$(CORR)_$(REIM).fits'
+    required: false
+  beam-l-axis:
+    info: ''
+    required: false
+  beam-m-axis:
+    info: ''
+    required: false
+  feed-rotate:
+    info: Apply a feed angle rotation to the model visibilities. Use 'auto' to read
+      angles from FEED subtable, or give an explicit value in degrees. A value of
+      0 disables. This only matters for polarimetry.
+    required: false
+  pa-rotate:
+    info: Apply parallactic angle rotation to model visibilities. Enable this for
+      alt-az mounts, unless your model visibilities are already rotated. This only
+      matters for polarimetry.
+    required: false
+    dtype: bool
+  null-v:
+    info: rotate model Stokes V to zero. Special mode for some types of polcal.  Use
+      1 if the PZD is expected to be from -90 to 90deg, or -1 if >90deg or <-90deg
+    required: false
+montblanc:
+  device-type:
+    info: Use CPU or GPU for simulation.
+    required: false
+  dtype:
+    info: Precision for simulation.
+    required: false
+    dtype: str
+  mem-budget:
+    info: Memory budget in MB for simulation.
+    required: false
+    dtype: int
+  verbosity:
+    info: verbosity level of Montblanc's console output
+    required: false
+  threads:
+    info: Number of OMP threads to run. Note that --dist-pin-io overrides this, if
+      set. If 0, uses default setting.
+    required: false
+    dtype: int
+  pa-rotate:
+    info: If not None, then overrides --model-pa-rotate setting to explicitly enable
+      or disable parallactic angle rotation when computing Montblanc model visibilities.
+      Ninja option.
+    required: false
+weight:
+  column:
+    info: Column to read weights from. Weights are applied by default. Specify an
+      empty string to disable.
+    required: false
+  fill-offdiag:
+    info: Fill off-diagonal weights from geometric mean of diagonal weights. Use this
+      if you have missing off-diagonal weights for whatever reason.
+    required: false
+    dtype: bool
+  legacy-v1-2:
+    info: Replicate the technically incorrect weight handling behaviour of CubiCal<=1.2.1
+      (which averages the weights across correlations, and squares them).
+    required: false
+    dtype: bool
+flags:
+  apply:
+    info: Which flagsets will be applied prior to calibration.  Use a comma-separated
+      list of flagset name to use bitflags. Use "-FLAGSET" to apply all bitflags except
+      the named flagset ("-cubical" is useful, to ignore the flags of a previous CubiCal
+      run). Use "FLAG" to just apply FLAG/FLAG_ROW.
+    required: false
+  auto-init:
+    info: Insert BITFLAG column if it is missing, and initialize the named flagset
+      from FLAG/FLAG_ROW.
+    required: false
+  save:
+    info: Save flags to named flagset in BITFLAG. If none or 0, will not save.
+    required: false
+  save-legacy:
+    info: Controls whether output flags are written to FLAG/FLAG_ROW. If set to 'auto',
+      then follows the --flag-save option. If set to 'apply', then fills FLAG/FLAG_ROW
+      based on the --flags-apply setting.
+    required: false
+  reinit-bitflags:
+    info: If true, reinitializes BITFLAG column from scratch. Useful if you ended
+      up with a botched one, but be careful what the state of the FLAG/FLAG_ROW column
+      is when you use this option.
+    required: false
+    dtype: bool
+  warn-thr:
+    info: If more than this fraction of data is flagged by the solver, issues gentle
+      warnings
+    required: false
+  see-no-evil:
+    info: Proceed even if flag columns appear to be botched or damaged.
+    required: false
+degridding:
+  OverS:
+    info: Oversampling factor.
+    required: false
+    dtype: int
+  Support:
+    info: CF support size.
+    required: false
+    dtype: int
+  Nw:
+    info: Number of w-planes.
+    required: false
+    dtype: int
+  wmax:
+    info: Maximum w coordinate. Visibilities with larger w will not be gridded. If
+      0, no maximum is imposed.
+    required: false
+    dtype: float
+  Padding:
+    info: Facet padding factor.
+    required: false
+    dtype: float
+  NDegridBand:
+    info: Number of image bands for degridding. 0 means degrid each channel.
+    required: false
+    dtype: int
+  MaxFacetSize:
+    info: Maximum facet size in degrees
+    required: false
+  MinNFacetPerAxis:
+    info: Minimum number of facets per direction
+    required: false
+  NProcess:
+    info: Number of subprocesses to use in degridding-based predict
+    required: false
+  BeamModel:
+    info: Beam model to use.
+    required: false
+  NBand:
+    info: Number of channels over which same beam value is used. 0 means use every
+      channel.
+    required: false
+    dtype: int
+  FITSFile:
+    info: 'Beam FITS file pattern. A beam pattern consists of eight FITS files, i.e.
+      a real and imaginary part for each of the four Jones terms. The following substitutions
+      are performed to form up the eight filenames: $(corr) or $(xy) is replaced by
+      the Jones element label (e.g. "xx" or "rr"), $(reim) is replaced by "re" or
+      "im", $(realimag) is replaced by "real" or "imag". Uppercase variables are replaced
+      by uppercase values, e.g. $(REIM) by "RE" pr "IM". Use "unity" if you want to
+      apply a unity matrix for the E term (e.g. only want to do visibility derotations).
+      Correlation labels (XY or RL) are determined by reading the MS, but may be overridden
+      by the FITSFeed option.'
+    required: false
+  FITSFeed:
+    info: If set, overrides correlation labels given by the measurement set.
+    required: false
+  FITSFeedSwap:
+    info: swap feed patterns (X to Y and R to L)
+    required: false
+    dtype: bool
+  DtBeamMin:
+    info: change in minutes on which the beam is re-evaluated
+    required: false
+    dtype: float
+  FITSParAngleIncDeg:
+    info: increment in PA in degrees at which the beam is to be re-evaluated (on top
+      of DtBeamMin)
+    required: false
+    dtype: float
+  FITSLAxis:
+    info: L axis of FITS file. Minus sign indicates reverse coordinate convention.
+    required: false
+    dtype: str
+  FITSMAxis:
+    info: M axis of FITS file. Minus sign indicates reverse coordinate convention.
+    required: false
+    dtype: str
+  FITSVerbosity:
+    info: set to >0 to have verbose output from FITS interpolator classes.
+    required: false
+    dtype: int
+  FeedAngle:
+    info: offset feed angle to add to parallactic angle
+    required: false
+    dtype: float
+  FlipVisibilityHands:
+    info: apply anti-diagonal matrix if FITS beam is enabled effectively swapping
+      X and Y or R and L and their respective hands
+    required: false
+postmortem:
+  enable:
+    info: 'If True, will do an extra round of flagging at the end based on solution
+      statistics NB: EXPERIMENTAL. USE AT OWN RISK.'
+    required: false
+    dtype: bool
+  tf-chisq-median:
+    info: Intervals with chi-squared values larger than X times the median chi-square
+      value will be flagged.
+    required: false
+    dtype: float
+  tf-np-median:
+    info: Intervals with a number of valid point less than X times the median number
+      of valid points will be flagged.
+    required: false
+    dtype: float
+  time-density:
+    info: If more than the given fraction of data in a timeslot is flagged, flag entire
+      timeslot.
+    required: false
+  chan-density:
+    info: If more than the given fraction of data in a timeslot is flagged, flag entire
+      channel.
+    required: false
+  ddid-density:
+    info: If more than the given fraction of data in a DDID is flagged, flag entire
+      DDID.
+    required: false
+madmax:
+  enable:
+    info: Enable Mad Max flagging in the solver. This computes the median absolute
+      residual (i.e. median absolute deviation from zero), and flags visibilities
+      exceeding the thresholds set below. Use 1 to enable. For a trial run, if you
+      don't want the flags to be written out, use either 'pretend' to compute Mad
+      Max flags (and report statistics and make plots), then throw them away, or 'trial'
+      to also apply the flags during solutions, but not write them out.
+    required: false
+  residuals:
+    info: Enables an optional round of Mad Max flagging on the final residuals, with
+      all directions subtracted. This works in all --out-mode settings, but will incur
+      extra processing, unless these residuals are already being produced by the given
+      mode. Options are as per --madmax-enable, except 'trial' mode makes no sense.
+    required: false
+  estimate:
+    info: MAD estimation mode. Use 'corr' for a separate estimate per each baseline
+      and correlation. Otherwise, a single estimate per baseline is computed using
+      'all' correlations, or only the 'diag' or 'offdiag' correlations.
+    required: false
+  diag:
+    info: Flag on on-diagonal (parallel-hand) residuals.
+    required: false
+    dtype: bool
+  offdiag:
+    info: Flag on off-diagonal (cross-hand) residuals.
+    required: false
+    dtype: bool
+  threshold:
+    info: Threshold for MAD flagging per baseline (specified in sigmas). Residuals
+      exceeding S*MAD/1.428 will be flagged. MAD is computed per baseline. This can
+      be specified as a list e.g. N1,N2,N3,... The first value is used to flag residuals
+      before a solution starts (use 0 to disable), the next value is used when the
+      residuals are first recomputed during the solution several iteratins later (see
+      -chi-int), etc. A final pass may be done at the end of the solution. The last
+      value in the list is reused if necessary. Using a list with gradually decreasing
+      values may be sensible.
+    required: false
+  global-threshold:
+    info: Threshold for global median MAD (MMAD) flagging. MMAD is computed as the
+      median of the per-baseline MADs. Residuals exceeding S*MMAD/1.428 will be flagged.
+      Can be specified as a list, with the same semantics as --madmax-threshold.
+    required: false
+  plot:
+    info: Enable plots for Mad Max flagging. Use 'show' to show figures interactively.
+      Plots will show the worst flagged baseline, and a median flagged baseline, provided
+      the fraction of flagged visibilities is above --madmax-plot-frac-above.
+    required: false
+  plot-frac-above:
+    info: Threshold (in terms of fraction of visibilities flagged) above which Mad
+      Max plots will be generated.
+    required: false
+  plot-bl:
+    info: Plot given baseline regardless (multiple baseline IDs may be separated by
+      commas)
+    required: false
+    dtype: str
+  flag-ant:
+    info: Flag antennas with excessive residuals, based on MAD criterion. Note that
+      currently --madmax-plot must be enabled for this to work.
+    required: false
+  flag-ant-thr:
+    info: Threshold (in sigmas) used to flag bad antennas.
+    required: false
+sol:
+  jones:
+    info: 'Comma-separated list of Jones terms to enable, e.g. "G,B,dE" (default:
+      default)'
+    required: false
+    dtype: List[str]
+    policies:
+      repeat: ','
+  precision:
+    info: Solve in single or double precision
+    required: false
+  delta-g:
+    info: Theshold for gain accuracy - gains which improve by less than this value
+      are considered converged. DEPRECATED FOR PER-JONES epsilon OPTION.
+    required: false
+  delta-chi:
+    info: Theshold for solution stagnancy - if the chi-squared is improving by less
+      than this value, the gain is considered stalled. DEPRECATED FOR PER-JONES delta-chi
+      OPTION.
+    required: false
+  chi-int:
+    info: Number of iterations to perform between chi-squared checks. This is done
+      to avoid computing the expensive chi-squared test evey iteration.
+    required: false
+  last-rites:
+    info: Re-estimate chi-squared and noise at the end of a solution cycle. Disabling
+      last rites can save a bit of time, but makes the post-solution stats less informative.
+    required: false
+    dtype: bool
+  stall-quorum:
+    info: Minimum percentage of solutions which must have stalled before terminating
+      the solver.
+    required: false
+  term-iters:
+    info: Number of iterations per Jones term. If empty, then each Jones term is solved
+      for once, up to convergence, or up to its -max-iter setting. Otherwise, set
+      to a list giving the number of iterations per Jones term. For example, given
+      two Jones terms and --sol-num-iter 10,20,10, it will do 10 iterations on the
+      first term, 20 on the second, and 10 again on the first.
+    required: false
+  flag-divergence:
+    info: Flag time/frequency slots that immediately diverge
+    required: false
+  min-bl:
+    info: Min baseline length to solve for
+    required: false
+    dtype: float
+  max-bl:
+    info: Max baseline length to solve for. If 0, no maximum is applied.
+    required: false
+  subset:
+    info: Additional subset of data to actually solve for. Any TaQL string may be
+      used.
+    required: false
+    dtype: str
+  terms-iter:
+    dtype: List[int]
+    policies:
+      repeat: ','
+bbc:
+  load-from:
+    info: Load and apply BBCs computed in a previous run. Apply with care! This will
+      tend to suppress all unmodelled flux towards the centre of the field.
+    required: false
+  compute-2x2:
+    info: Compute full 2x2 BBCs (as opposed to diagonal-only). Only useful if you
+      really trust the polarisation information in your sky model.
+    required: false
+    dtype: bool
+  apply-2x2:
+    info: Apply full 2x2 BBCs (as opposed to diagonal-only). Only enable this if you
+      really trust the polarisation information in your sky model.
+    required: false
+    dtype: bool
+  save-to:
+    info: Compute suggested BBCs at end of run, and save them to the given database.
+      It can be useful to have this always enabled, since the BBCs provide useful
+      diagnostics of the solution quality (and are not actually applied without a
+      load-from setting).
+    required: false
+  per-chan:
+    info: Compute BBCs per-channel (else across entire band).
+    required: false
+    dtype: bool
+  plot:
+    info: Generate output BBC plots.
+    required: false
+    dtype: bool
+dist:
+  ncpu:
+    info: Max number of CPU cores to use.
+    required: false
+    dtype: int
+  nworker:
+    info: 'Number of worker processes to launch (excluding the I/O worker). 0: determine
+      automatically from the --dist-ncpu setting.'
+    required: false
+    dtype: int
+  nthread:
+    info: 'Number of OMP threads to use. 0: determine automatically.'
+    required: false
+    dtype: int
+  max-chunks:
+    info: Maximum number of time/freq data-chunks to load into memory simultaneously.
+      If 0, then as many as possible will be loaded.
+    required: false
+    dtype: int
+  min-chunks:
+    info: Minimum number of time/freq data-chunks to load into memory simultaneously.
+      If 0, determined automatically.
+    required: false
+    dtype: int
+  pin:
+    info: If empty or None, processes will not be pinned to cores. Otherwise, set
+      to the starting core number, or "N:K" to start with N and step by K.
+    required: false
+  pin-io:
+    info: If not 0, pins the I/O & Montblanc process to a separate core, or cores
+      (if --montblanc-threads is specified). Ignored if --dist-pin is not set.
+    required: false
+    dtype: bool
+  pin-main:
+    info: If set, pins the main process to a separate core. If set to "io", pins it
+      to the same core as the I/O process, if I/O process is pinned. Ignored if --dist-pin
+      is not set.
+    required: false
+  safe:
+    info: If set and estimated memory usage exceeds this fraction of total system
+      memory, will raise an error and abort the run. Setting to one will use the total
+      system memory value. Setting to zero will disable this check. Can be set greater
+      than one if the wisdom estimate is overistimating memory usage.
+    required: false
+    dtype: float
+log:
+  memory:
+    info: Log memory usage.
+    required: false
+  stats:
+    info: 'Which post-solution statistics to print. Specify field names or full format
+      strings. Multiple tables may be printed by searating their content by "//".
+      Example "chi2//iters", "{chi2:.3f}//{iters:4}{num_converged:4}" Field is one
+      of: chi2, init_chi2, final_chi2, init_noise, noise, iters, num_intervals, num_converged,
+      num_stalled, num_sol_flagged, num_mad_flagged.'
+    required: false
+  stats-warn:
+    info: Warn when stats field exceeds given threshold. Specify as FIELD:THR. Multiple
+      instances may be given, separated by commas/
+    required: false
+  boring:
+    info: Disable progress bars and some console output.
+    required: false
+    dtype: bool
+  append:
+    info: Append to log file if it exists.
+    required: false
+    dtype: bool
+  verbose:
+    info: Default console output verbosity level.  Can either be a single number,
+      or a sequence of "name=level,name=level,..." assignments.
+    required: false
+  file-verbose:
+    info: Default logfile output verbosity level.  Can either be a single number,
+      or a sequence of "name=level,name=level,..." assignments. If None, then this
+      simply follows the console level.
+    required: false
+debug:
+  pdb:
+    info: Jump into pdb on any exception.
+    required: false
+    dtype: bool
+  panic-amplitude:
+    info: Throw an error if a visibility amplitude in the results exceeds the given
+      value. Useful for troubleshooting.
+    required: false
+    dtype: float
+  stop-before-solver:
+    info: Invoke pdb before entering the solver.
+    required: false
+    dtype: bool
+  escalate-warnings:
+    info: Escalate warnings (e.g. np.ComplexWarning) into proper exceptions.
+    required: false
+misc:
+  random-seed:
+    info: Seed random number generator with explicit seed. Useful for reproducibility
+      of the random-based optimizations (sparsification, etc.).
+    required: false
