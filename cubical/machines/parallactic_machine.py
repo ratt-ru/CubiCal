@@ -130,7 +130,16 @@ class parallactic_machine(object):
                 """ 2D rotation matrix according to Hales, 2017: 
                 Calibration Errors in Interferometric Radio Polarimetry """
                 c1, s1 = np.cos(pa[:, aindex, 0]).repeat(nchan), np.sin(pa[:, aindex, 0]).repeat(nchan)
-                c2, s2 = np.cos(pa[:, aindex, 1]).repeat(nchan), np.sin(pa[:, aindex, 1]).repeat(nchan)
+                #BH2023: This is consistent with CASA's treatment of receptor angles in linear bases
+                #priv. comm George Moellenbrock at NRAO
+                #the angles would be 90 degrees apart by internal defintion not properly defined in CASA memo 219
+                #but reasonably well defined in FITSIDI Memo 114 - relative to IAU standard convention.
+                #The receptor bases here are treated as IAU standard definition where +X means North (+decl)
+                #and +Y means East (+RA) at PA of 0. The vector rotates counter clockwise North->East in this frame
+                #dipole phasing calibration ***MUST*** be calibrated prior to applying corrective parallactic angle matrices 
+                #because the phasing affects the rotation handedness (ie. incorrect phasing results in a sign flip not only
+                #on V, but also on U).
+                c2, s2 = np.cos(pa[:, aindex, 0]).repeat(nchan), np.sin(pa[:, aindex, 0]).repeat(nchan)
                 N = pa.shape[0]
                 if N == 0: 
                     return np.zeros((0, nchan, 2, 2)) # special case: no data for this baseline
