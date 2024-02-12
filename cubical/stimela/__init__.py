@@ -23,7 +23,7 @@ def make_stimela_schema(params: Dict[str, Any], inputs: Dict[str, Parameter], ou
     """Augments a schema for stimela based on solver.terms"""
     inputs = inputs.copy()
 
-    terms = params.get('sol/jones', None)
+    terms = params.get('sol.jones', [])
 
     for jones in terms:
         for key, value in JonesTemplate.items():

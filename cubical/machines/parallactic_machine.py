@@ -9,7 +9,7 @@ import numpy as np
 import datetime as dt
 
 from cubical.tools import logger, ModColor
-log = logger.getLogger("parallactic_machine")
+log = logger.getLogger("pa_machine")
 
 class parallactic_machine(object):
     def __init__(self, 

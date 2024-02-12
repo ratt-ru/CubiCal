@@ -145,7 +145,7 @@ out:
     dtype: bool
 model:
   list:
-    info: Predict model visibilities from given LSM (using Montblanc).
+    info: Predict model visibilities from given column(s) or LSM(s) (using Montblanc).
     required: false
   ddes:
     info: Enable direction-dependent models. If 'auto', this is determined by --sol-jones
@@ -171,6 +171,10 @@ model:
       matters for polarimetry.
     required: false
     dtype: bool
+  null-v:
+    info: rotate model Stokes V to zero. Special mode for some types of polcal.  Use
+      1 if the PZD is expected to be from -90 to 90deg, or -1 if >90deg or <-90deg
+    required: false
 montblanc:
   device-type:
     info: Use CPU or GPU for simulation.
@@ -480,13 +484,15 @@ sol:
       used.
     required: false
     dtype: str
+  terms-iter:
+    dtype: List[int]
+    policies:
+      repeat: ','
 bbc:
   load-from:
     info: Load and apply BBCs computed in a previous run. Apply with care! This will
       tend to suppress all unmodelled flux towards the centre of the field.
     required: false
-    policies:
-      disable_substitutions: true
   compute-2x2:
     info: Compute full 2x2 BBCs (as opposed to diagonal-only). Only useful if you
       really trust the polarisation information in your sky model.
@@ -503,8 +509,6 @@ bbc:
       diagnostics of the solution quality (and are not actually applied without a
       load-from setting).
     required: false
-    policies:
-      disable_substitutions: true
   per-chan:
     info: Compute BBCs per-channel (else across entire band).
     required: false

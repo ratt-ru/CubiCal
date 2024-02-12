@@ -41,6 +41,8 @@ from cubical.kernels import tf_plane
 use_parallel = True if cubical.kernels.num_omp_threads > 1 else False
 use_cache = cubical.kernels.use_cache
 
+blocks_per_inverse = 3
+
 # Allocators same as for generic full kernel.
 allocate_vis_array = tf_plane.allocate_vis_array
 allocate_gain_array = tf_plane.allocate_gain_array

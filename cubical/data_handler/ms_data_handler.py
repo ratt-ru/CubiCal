@@ -610,7 +610,7 @@ class MSDataHandler:
             self.parallactic_machine = None
         pass
 
-    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False, degrid_opts={}):
+    def init_models(self, models, weights, fill_offdiag_weights=False, mb_opts={}, use_ddes=False, null_v=False, degrid_opts={}):
         """Parses the model list and initializes internal structures"""
 
         # ensure we have as many weights as models
@@ -624,6 +624,7 @@ class MSDataHandler:
 
         self.fill_offdiag_weights = fill_offdiag_weights
         self.use_montblanc = False    # will be set to true if Montblanc is invoked
+        self.null_model_v = null_v
         self.models = []
         self.model_directions = set() # keeps track of directions in Tigger models
         global montblanc
@@ -878,11 +879,12 @@ class MSDataHandler:
             prealloc = np.empty(shape, dtype=dtype)
             self._getcolnp_wrapper(subset, str(column), prealloc, startrow)
             return prealloc
+
         # ugly hack because getcell returns a different dtype to getcol
         cell = subset.getcol(str(column), startrow, nrow=1)[0, ...]
         dtype = getattr(cell, "dtype", type(cell))
 
-        shape = tuple([len(list(range(l, r + 1, i))) #inclusive in cc
+        shape = tuple([nrows] + [len(list(range(l, r + 1, i))) #inclusive in cc
                        for l, r, i in zip(self._ms_blc, self._ms_trc, self._ms_incr)])
         prealloc = np.empty(shape, dtype=dtype)
         self._getcolslicenp_wrapper(subset, str(column), prealloc, self._ms_blc, self._ms_trc, self._ms_incr, startrow)
@@ -956,21 +958,16 @@ class MSDataHandler:
             value[:] = np.bitwise_or.reduce(value, axis=2)[:,:,np.newaxis]
 
         if self._channel_slice == slice(None) and self._corr_slice == slice(None):
-            return self._putcol_wrapper(subset, value, startrow)
+            return self._putcol_wrapper(subset, str(column), value, startrow)
         else:
-            # for bitflags, we want to preserve flags we haven't touched -- read the column
-            if column == "BITFLAG" or column == "FLAG":
-                value0 = np.empty_like(value)
-                self._getcolnp_wrapper(subset, column, value0, startrow)
-                # cheekily propagate per-corr flags to all corrs
-                value0[:] = np.bitwise_or.reduce(value0, axis=2)[:,:,np.newaxis]
-            # otherwise, init empty column
-            else:
-                ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
-                shape = (nrows, self._nchan0_orig[ddid], self.nmscorrs)
-                value0 = np.zeros(shape, value.dtype)
+            # init empty column
+            ddid = subset.getcol("DATA_DESC_ID", 0, 1)[0]
+            shape = (nrows, self._nchan0_orig[ddid], self.nmscorrs)
+            value0 = np.zeros(shape, value.dtype)
+            if subset.iscelldefined(column, startrow):
+              self._getcolnp_wrapper(subset, column, value0, startrow)
             value0[:, self._channel_slice, self._corr_slice] = value
-            return self._putcol_wrapper(subset, str(column), value0, startrow, nrows)
+            return self._putcol_wrapper(subset, str(column), value0, startrow)
 
     def define_chunk(self, chunk_time, rebin_time, fdim=1, chunk_by=None, chunk_by_jump=0, chunks_per_tile=4, max_chunks_per_tile=0):
         """
