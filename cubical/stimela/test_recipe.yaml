@@ -21,4 +21,3 @@ test_recipe:
         sol.jones: [b,g]
         b:
           freq-int: 1
-

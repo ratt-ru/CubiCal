@@ -2,18 +2,18 @@
 Requirements and Installation
 *****************************
 
-Ubuntu 18.04
+Ubuntu 20.04
 ~~~~~~~~~~~~
 
 CubiCal depends on python-casacore, the dependencies of which should be
-installed from the KERN-5_ ppa. The ppa can be added as follows:
+installed from the KERN-8_ ppa. The ppa can be added as follows:
 
-.. _KERN-5: https://kernsuite.info/installation/
+.. _KERN-8: https://kernsuite.info/installation/
 
 .. code:: bash
 
 	sudo apt install software-properties-common
-	sudo add-apt-repository -s ppa:kernsuite/kern-5
+	sudo add-apt-repository -s ppa:kernsuite/kern-8
 	sudo apt-add-repository multiverse
 	sudo apt-add-repository restricted
 	sudo apt update
