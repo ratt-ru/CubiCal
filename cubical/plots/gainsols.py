@@ -6,6 +6,7 @@ import matplotlib.patches as mpatches
 from pylab import *
 import re, fnmatch
 import warnings
+import math
 
 log = logger.getLogger("gain_plots")
 
@@ -167,7 +168,7 @@ def plot_bandpass(sols, plot_diag='ap', plot_offdiag='', gaintype=("Bandpass", "
                 ax2.set_yticks([])
         for axis in ax.xaxis, ax.yaxis:
             for tick in axis.get_major_ticks():
-                tick.label.set_fontsize(options.font_size)
+                tick.label1.set_fontsize(options.font_size)
         ax.get_yaxis().get_major_formatter().set_useOffset(False)
         return nplot, ax, ax2
 
@@ -298,7 +299,7 @@ def plot_gain(sols, plot_diag='ap', plot_offdiag='', gaintype=("Gain", "Offdiag 
                 ax2.set_yticks([])
         for axis in ax.xaxis, ax.yaxis:
             for tick in axis.get_major_ticks():
-                tick.label.set_fontsize(options.font_size)
+                tick.label1.set_fontsize(options.font_size)
         ax.get_yaxis().get_major_formatter().set_useOffset(False)
         return nplot, ax, ax2
 
