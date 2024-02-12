@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
+import re, cmath
+import numpy as np
 from collections import OrderedDict
 import matplotlib.patches as mpatches
 from pylab import *
@@ -56,15 +58,76 @@ def plot_leakages_aips(Daips, FS=None, ANTS=slice(None),
                          gaintype=("Diff bandpass", "Diff leakage") if diff else ("Bandpass", "Leakage"),
                          figtitle=figtitle)
 
-def read_aips_leakages(filename):
+
+def _finalize_aips_leakages(aips_rel_leak, allfreqs):
+    """Common function to finalize AIPS leakage tables, used by the AIPS readers below"""
+    missing = []
+    for antenna, antdict in aips_rel_leak.items():
+        if (np.array([antdict['R'].values(), antdict['L'].values()]) == 0).all():
+            missing.append(antenna)
+    if missing:
+        print("  missing antennas: {}".format(" ".join(missing)))
+    for m in missing:
+        del aips_rel_leak[m]
+    freqs = np.array(sorted(allfreqs))
+    freq_index = {f: i for i, f in enumerate(freqs)}
+    ants = list(aips_rel_leak.keys())
+    ant_index = {a: i for i, a in enumerate(ants)}
+    leakage = np.zeros((1, len(allfreqs), len(ants), 2, 2), np.complex64)
+    print("  {} antennas: {}".format(len(ants), " ".join(ants)))
+    print("  freqs {} to {} MHz".format(*(freqs[[0, -1]] * 1e-6)))
+
+    for antenna, antdict in aips_rel_leak.items():
+        iant = ant_index[antenna]
+        for icorr, corr in enumerate('RL'):
+            corrdict = antdict[corr]
+            ifreqs = [freq_index[f] for f in corrdict.keys()]
+            leakage[0, ifreqs, iant, icorr, 1 - icorr] = np.array(list(corrdict.values()))
+    return leakage, ants, freqs
+
+
+def read_aips_prtab_leakages(filename):
     """
-    Reads AIPS leakage solutions from text file.
+    Reads AIPS leakage solutions from PRTAB output of PD table
+    
+    Returns:
+        leakage_array [(1,NFREQ,NANT,2,2) complex], antenna_names [(NANT) str], frequencies [(NFREQ) float]
+    """
+    allfreqs = set()
+    aips_rel_leak = OrderedDict()
+    antenna = antdict = None
+    have_header = False
+    for iline, line in enumerate(open(filename).readlines()):
+        match = re.match("^#ANT\s+FREQ\s+REAL\(R\)\s+IMAG\(R\)\s+REAL\(L\)\s+IMAG\(L\)$", line)
+        if match:
+            if not have_header:
+                print(f"{filename}:{iline}: found AIPS leakage file header")
+                have_header = True
+            continue
+        columns = line.strip().split()
+        if len(columns) == 6 and re.match("\d+", columns[0]):
+            if not have_header:
+                print(f"{filename}:{iline}: antenna entry before header")
+                raise RuntimeError
+            antenna = columns[0]
+            freq, rr, ri, lr, li = map(float, [float(col) if col != "INDE" else 0 for col in columns[1:]])
+            freq *= 1e+9  # from GHz
+            antdict = aips_rel_leak.setdefault(antenna, dict(R=OrderedDict(), L=OrderedDict()))
+            antdict['R'][freq] = rr + 1j*ri
+            antdict['L'][freq] = lr + 1j*li
+            allfreqs.add(freq)
+
+    return _finalize_aips_leakages(aips_rel_leak, allfreqs)
+
+
+def read_aips_pdtable_leakages(filename):
+    """
+    Reads AIPS leakage solutions from strange "PD TABLE" text file (got it from Rick Perley in 2018,
+    but neither him nor Eric Greisen can recreate that format now...)
 
     Returns:
         leakage_array [(1,NFREQ,NANT,2,2) complex], antenna_names [(NANT) str], frequencies [(NFREQ) float]
     """
-    import re, cmath
-    from collections import OrderedDict
     allfreqs = set()
     aips_rel_leak = OrderedDict()
     antenna = antdict = None
@@ -90,30 +153,9 @@ def read_aips_leakages(filename):
             antdict[pol][freq] = d = amp * cmath.exp(1j * phase * cmath.pi / 180)
             allfreqs.add(freq)
             # print("  {} {} MHz: {}".format(pol, freq, d))
-    # filter out missing antennas
-    missing = []
-    for antenna, antdict in aips_rel_leak.items():
-        if (np.array([antdict['R'].values(), antdict['L'].values()]) == 0).all():
-            missing.append(antenna)
-    if missing:
-        print("  missing antennas: {}".format(" ".join(missing)))
-    for m in missing:
-        del aips_rel_leak[m]
-    freqs = np.array(sorted(allfreqs))
-    freq_index = {f: i for i, f in enumerate(freqs)}
-    ants = list(aips_rel_leak.keys())
-    ant_index = {a: i for i, a in enumerate(ants)}
-    leakage = np.zeros((1, len(allfreqs), len(ants), 2, 2), np.complex64)
-    print("  {} antennas: {}".format(len(ants), " ".join(ants)))
-    print("  freqs {} to {} MHz".format(*(freqs[[0, -1]] * 1e-6)))
 
-    for antenna, antdict in aips_rel_leak.items():
-        iant = ant_index[antenna]
-        for icorr, corr in enumerate('RL'):
-            corrdict = antdict[corr]
-            ifreqs = [freq_index[f] for f in corrdict.keys()]
-            leakage[0, ifreqs, iant, icorr, 1 - icorr] = np.array(corrdict.values())
-    return leakage, ants, freqs
+    return _finalize_aips_leakages(aips_rel_leak, allfreqs)
+
 
 def apply_ref_ant(leak, refant, ant_index):
     iref = ant_index.get(refant)
@@ -123,6 +165,7 @@ def apply_ref_ant(leak, refant, ant_index):
         refleak = leak[:, :, iref, 0, 1].copy()
         leak[:, :, :, 0, 1] -= refleak[..., np.newaxis]
         leak[:, :, :, 1, 0] += np.conj(refleak)[..., np.newaxis]
+
 
 def subtract_leakages(leak, antennas, leak0, ant0_index):
     diffleak = leak.copy()
@@ -134,6 +177,7 @@ def subtract_leakages(leak, antennas, leak0, ant0_index):
         else:
             diffleak[:, :, iant, :, :] -= leak0[:, :, iant0, :, :]
     return diffleak
+
 
 def read_cubical_leakages(filename):
     return gainsols.read_cubical_gains(filename, "D")

@@ -51,13 +51,18 @@ def main():
         output_name = options.output_name or filename + ".png"
         differential = False
         refant = None
+        Daips = None
 
         # check file type
         line0 = open(filename, encoding='latin-1').readline().strip()
         if line0.startswith("PD TABLE"):
             print("{} seems to be an AIPS PD table printout".format(filename))
+            leak, antennas, freq = Daips = leakages.read_aips_pdtable_leakages(filename)
+        if line0.startswith("# FILE"):
+            print("{} seems to be an AIPS leakage table".format(filename))
+            leak, antennas, freq = Daips = leakages.read_aips_prtab_leakages(filename)
 
-            leak, antennas, freq = Daips = leakages.read_aips_leakages(filename)
+        if Daips:
             ant_index = {a: i for i, a in enumerate(antennas)}
 
             figtitle = filename
