@@ -6,6 +6,7 @@ import matplotlib.patches as mpatches
 from pylab import *
 import re, fnmatch
 import warnings
+import numpy as np
 
 log = logger.getLogger("gain_plots")
 
@@ -534,3 +535,125 @@ def read_cubical_gains(filename, label=None, component="gain"):
     log.print("  valid antennas:", " ".join([ant for ant in gg.grid[gg.ax.ant] if ant in valid_ants]))
     log.print("  missing antennas:", " ".join([ant for ant in gg.grid[gg.ax.ant] if ant not in valid_ants] or ["none"]))
     return gg
+
+
+def plot_bandpass_aips(Baips, SRC=0, FS=None, TS=None, ANTS=slice(None),
+                       plot_diag='ap', diff=False, figtitle=None):
+    """
+    Plots AIPS bandpass solutions
+    """
+    Ba, all_srcs, all_ants, all_times, all_freqs = Baips
+    FS = get_freq_slice(FS, all_freqs)
+    TS = get_freq_slice(TS, all_times)
+
+    sols = OrderedDict()
+    # get valid D solutions
+    if isinstance(ANTS, (list, tuple)):
+        ANTS = [(ant, all_ants[ant]) for ant in ANTS]
+    else:
+        ANTS = enumerate(all_ants[ANTS])
+    time = all_times[TS]
+    freq = all_freqs[FS]
+    for iant,ant in ANTS:
+        b00 = Ba[SRC, TS, FS, iant, 0]
+        b11 = Ba[SRC, TS, FS, iant, 1]
+        sols[ant] = time,freq,b00,0,0,b11
+
+    return plot_bandpass(sols, plot_diag=plot_diag, plot_offdiag=None,
+                         gaintype=("Diff bandpass") if diff else ("Bandpass"),
+                         figtitle=figtitle)
+
+
+def read_aips_prtab_bandpass(filename, freq0, dfreq, nfreq):
+    """
+    Reads AIPS bandpass solutions from PRTAB output of BP table
+    
+    Returns:
+        bandpass_array [(NSRC,NTIME,NFREQ,NANT,2,2) complex], 
+        antenna_names [(NANT) str], 
+        frequencies [(NFREQ) float], 
+        times [(NTIME), float]
+        sources [(NSRC), str] 
+    """
+    allsrc = set()
+    allants = set()
+    alltimes = set()
+    aips_bp = OrderedDict()
+    have_header = False
+    # this will have starting positions for each column parsed from header
+    colstart = {
+        'ROW': None, 'TIME': None,
+        'SOURCE ID': None, 'ANTENNA': None, 'REFANT 1': None,
+        'REAL 1': None, 'IMAG 1': None,
+        'REAL 2': None, 'IMAG 2': None }
+    row_time_src_ant = {}
+    for iline, line in enumerate(open(filename).readlines()):
+        columns = re.split("\s\s+", line.strip())
+        if not columns:
+            continue
+        # if first column is "ROW", we have a row header
+        if columns[0] == "ROW":
+            print(f"{filename}:{iline}: AIPS PRTAB column header: {line}")
+            for colname in columns:
+                colstart[colname] = line.index(colname)
+            missing = [name for name, pos in colstart.items() if pos is None]
+            if missing:
+                raise RuntimeError(f"{filename}:{iline}: missing columns {', '.join(missing)}")
+            have_header = True
+            continue
+        # if first column is a row number, we have a legit entry
+        if re.match("\d+$", columns[0]):
+            if not have_header:
+                raise RuntimeError(f"{filename}:{iline}: antenna entry before header")
+            rownum = int(columns[0])
+            if rownum in row_time_src_ant:
+                if lastrow != rownum:
+                    raise RuntimeError(f"{filename}:{iline}: expected row {lastrow}, got {rownum}")
+                ifreq += 1
+            else:
+                timestr = line[colstart['TIME']:].strip().split(1)[0]
+                m = re.match("(\d+)/(\d+):(\d+):(\d.)+$", timestr)
+                if not m:
+                    raise RuntimeError(f"{filename}:{iline}: invalid TIME entry {timestr}")
+                day, hour, min, sec = map(float, m.groups())
+                time = day*24*3600 + hour*3600 + min*60 + sec
+                src = int(line[colstart['SOURCE ID']:].strip().split(1)[0])
+                ant = int(line[colstart['ANTENNA']:].strip().split(1)[0])
+                row_time_src_ant[rownum] = time, src, ant
+                R = np.zeros(nfreq, float)
+                L = np.zeros(nfreq, float)
+                aips_bp[time, src, ant] = dict(R=R, L=L)
+                allants.add(ant)
+                allsrc.add(src)
+                alltimes.add(time)
+                ifreq = 0
+                lastrow = rownum
+            nums = []
+            for col in 'REAL 1', 'IMAG 1', 'REAL 2', 'IMAG 2':
+                column = line[colstart[col]:].strip().split(1)[0]
+                nums.append(float(column))
+            rr, ri, lr, li = nums
+            R[ifreq] = rr + 1j*ri
+            L[ifreq] = lr + 1j*li
+
+    freqs = np.arange(freq0, freq0 + nfreq*dfreq, dfreq)
+    times = sorted(alltimes)
+    time_index = {t: i for i, t in enumerate(times)}
+    ants = list(allants)
+    ant_index = {a: i for i, a in enumerate(ants)}
+    srcs = list(allsrc)
+    src_index = {s: i for i, s in enumerate(srcs)}
+
+    bp = np.zeros((len(srcs), len(times), nfreq, len(ants), 2), np.complex64)
+    print("  {} antennas: {}".format(len(ants), " ".join(ants)))
+    print("  freqs {} to {} MHz".format(*(freqs[[0, -1]] * 1e-6)))
+
+    for (time, src, ant), bpdict in row_time_src_ant.items():
+        iant = ant_index[ant]
+        isrc = src_index[src]
+        itime = time_index[time]
+        bp[isrc, itime, :, iant, 0] = bpdict['R']
+        bp[isrc, itime, :, iant, 1] = bpdict['L']
+
+    return bp, srcs, ants, times, freqs
+    

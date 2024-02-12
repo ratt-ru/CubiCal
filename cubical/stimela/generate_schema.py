@@ -56,7 +56,6 @@ if __name__ == "__main__":
     OmegaConf.save(jones_config, f"{output_base}_JONES_TEMPLATE.yaml")
     OmegaConf.save(base_config, output_name)
 
-
     print(f"Saved schema to {output_name}, loading back")
 
     # read config as structured schema
