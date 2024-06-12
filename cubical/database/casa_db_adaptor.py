@@ -41,9 +41,7 @@ class casa_caltable_factory(object):
                     is_complex: Solutions are complex or real-valued
                     viscal_label: Sets viscal property of CASA table - used as identifier in CASA
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             if os.path.exists(filename):
                 if os.path.isfile(filename):
                     log.error("CASA calibration table destination already exists but is not a directory. Will not remove.")    
@@ -78,7 +76,7 @@ class casa_caltable_factory(object):
                 t.putcol("REFERENCE_DIR", np.tile(db.fieldrefdir[selfield], (field_ndir, 1)))
                 t.putcol("CODE", np.tile(np.array(db.fieldcode)[selfield], (field_ndir, 1)))
                 t.putcol("FLAG_ROW", np.tile(db.fieldflagrow[selfield], (field_ndir, 1)))
-                t.putcol("NAME", np.array(map(str, ["%s_DIR_%d" % (f, fdi) for fdi, f in enumerate([db.fieldname[np.where(selfield)[0][0]]] * field_ndir)])).T)
+                t.putcol("NAME", np.array(list(map(str, ["%s_DIR_%d" % (f, fdi) for fdi, f in enumerate([db.fieldname[np.where(selfield)[0][0]]] * field_ndir)]))).T)
                 t.putcol("SOURCE_ID", np.tile(db.fieldsrcid[selfield], (field_ndir, 1)) + np.arange(field_ndir).T)
                 t.putcol("TIME", np.tile(db.fieldtime[selfield], (field_ndir, 1)))
     
@@ -118,7 +116,7 @@ class casa_caltable_factory(object):
                     t.putcell("REF_FREQUENCY", iddid, db.spwreffreq[spwid])
                     t.putcell("CHAN_WIDTH", iddid, ddsolwidth)
                     t.putcell("EFFECTIVE_BW", iddid, ddsolwidth) # TODO: this may not be true
-                    t.putcell("RESOLUTION", iddid, db.spwresolution[spwid])
+                    t.putcell("RESOLUTION", iddid, ddsolwidth)
                     t.putcell("FLAG_ROW", iddid, db.spwflagrow[spwid])
                     t.putcell("FREQ_GROUP", iddid, db.spwfreqgroup[spwid])
                     t.putcell("FREQ_GROUP_NAME", iddid, db.spwfreqgroupname[spwid])
@@ -148,9 +146,7 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
@@ -224,9 +220,7 @@ class casa_caltable_factory(object):
                     outname: suffix of exported CASA gaintable
                     diag: Write out diagonal of Jones matrix if true, off-diagonal (leakage) terms otherwise.
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
@@ -295,9 +289,7 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             cls.create_B_table(db, gname, outname, diag=False)
         
         @classmethod
@@ -310,9 +302,7 @@ class casa_caltable_factory(object):
                     gname: name of pickled_db solutions to export
                     outname: suffix of exported CASA gaintable
             """
-            if six.PY3:
-                log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-                return
+
             if np.prod(db[gname].shape) == 0:
                 log.warn("No %s solutions. Will not write CASA table" % gname)
                 return
@@ -398,9 +388,6 @@ class casa_db_adaptor(PickledDatabase):
             Args:
                 src: a cubical.data_handler instance
         """
-        if six.PY3 and self.export_enabled:
-            log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-            self.export_enabled = False
 
         if not isinstance(src, MSDataHandler):
             raise TypeError("src must be of type Cubical DataHandler")
@@ -456,9 +443,7 @@ class casa_db_adaptor(PickledDatabase):
 
     def __export(self):
         """ exports the database to CASA gaintables """
-        if six.PY3:
-            log.error("Gaintables cannot be written in Python 3 mode due to current casacore implementation issues")
-            return
+
         self._load(self.filename)
         
         if not self.meta_avail:
