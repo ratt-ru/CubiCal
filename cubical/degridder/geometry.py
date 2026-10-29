@@ -205,7 +205,7 @@ class BoundingConvexHull(object):
 
         # now count the number of times a pixel is painted onto
         unique_pxls_flatten, paint_count = np.unique(allmasks_flatten, return_counts=True)
-        paint_count = paint_count.astype(np.float)
+        paint_count = paint_count.astype(np.float64)
         
         if only_overlapped_regions:
             sel = paint_count > 1

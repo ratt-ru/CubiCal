@@ -13,7 +13,8 @@ import traceback
 from cubical.tools import logger, ModColor
 log = logger.getLogger("param_db")
 import time
-from collections import OrderedDict, Iterator
+from collections import OrderedDict
+from collections.abc import Iterator
 
 from cubical.database.parameter import Parameter, _Record
 from .iface_database import iface_database
@@ -70,7 +71,7 @@ class PickledDatabase(iface_database):
                 Keyword arguments.
         """
 
-        assert (self.mode is "create")
+        assert (self.mode == "create")
         parm = Parameter(*args, **kw)
         self._parameters[parm.name] = parm
         # we don't write it to DB yet -- write it in add_chunk() rather
@@ -91,7 +92,7 @@ class PickledDatabase(iface_database):
 
         """
 
-        assert (self.mode is "create")
+        assert (self.mode == "create")
         parm = self._parameters.get(name)
         assert (parm is not None)
         # dump parm to DB the first time a slice shows up
@@ -111,7 +112,7 @@ class PickledDatabase(iface_database):
             self._fobj.close()
             self._fobj = None
         # in create mode, update the descriptions file
-        if self.mode is "create":
+        if self.mode == "create":
             self._save_desc()
             self._backup_and_rename(self.do_backup)
         self.mode = "closed"
@@ -160,7 +161,7 @@ class PickledDatabase(iface_database):
             backup (bool, optional):
                 If True, create a backup.
         """
-        assert (self.mode is "load")
+        assert (self.mode == "load")
         self.metadata['mode'] = self.MODE_CONSOLIDATED
         filename = filename or self.filename
         with open(filename + ".tmp", 'w') as fobj:

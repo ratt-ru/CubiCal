@@ -592,7 +592,7 @@ class DDFacetSim(object):
             raise ValueError("Only supports cplx2x2 or cplxdiag or cplxscalar models at the moment")
         ncorr = 4
         region_model = np.zeros((nrow, nfreq, 4), dtype=np.complex64)
-        flagged = np.zeros_like(region_model, dtype=np.bool)
+        flagged = np.zeros_like(region_model, dtype=bool)
         # now we predict for this direction
         log(2).print("\tComputing visibilities in {1:d} facets for direction '{0:s}' for model '{2:s}'...".format(
                      str(self.__direction), src.subregion_count, str(self.__model)))
